@@ -29,9 +29,9 @@ comando CMake `project()`. CMake genera `gtosd/version.hpp`.
 | Minor | Funzione retrocompatibile |
 | Patch | Correzione retrocompatibile |
 
-La versione corrente è `0.6.0`: la minor F6 introduce il modulo pubblico
-`gtosd::memory`, i preflight PF-F1/PF-F2/PF-F3 e i prototype backend di
-memoria exact. Durante lo sviluppo pre-1.0 una modifica
+La versione corrente è `0.7.0`: la minor F7 introduce il modulo pubblico
+`gtosd::postflop`, il traversal CFR+ exact, la certificazione BR/NashConv e i
+checkpoint postflop inline/out-of-core. Durante lo sviluppo pre-1.0 una modifica
 incompatibile richiede almeno un incremento minor e una nota di migrazione.
 
 ## Versionamento file
@@ -44,6 +44,7 @@ Ogni formato persistente ha una coppia `major/minor` indipendente:
 | Canonical key isomorfismo | 1.0 |
 | Soluzione `.gtsd` | 1.0 |
 | Checkpoint `.gtsdckpt` | 1.0 |
+| Checkpoint postflop F7 | 1.0 |
 
 - un reader rifiuta un major futuro;
 - un minor futuro può essere accettato soltanto se tutte le feature richieste

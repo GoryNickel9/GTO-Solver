@@ -78,6 +78,7 @@ add_subdirectory(libs/isomorphism)
 add_subdirectory(libs/solver)
 add_subdirectory(libs/best_response)
 add_subdirectory(libs/memory)
+add_subdirectory(libs/postflop)
 add_subdirectory(apps/gto_cli)
 
 if(GTOSD_BUILD_TESTS)
@@ -98,6 +99,7 @@ install(TARGETS
     gtosd_solver
     gtosd_best_response
     gtosd_memory
+    gtosd_postflop
     gto_cli
   EXPORT gtosdTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -108,6 +110,7 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 install(FILES ${PROJECT_BINARY_DIR}/generated/gtosd/version.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/gtosd)
 install(FILES schemas/postflop_tree_config.schema.json
+              schemas/gto_plus_reference.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
 install(DIRECTORY benchmarks/fixtures/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)

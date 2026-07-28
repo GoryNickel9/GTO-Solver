@@ -83,6 +83,25 @@ PF-F1/PF-F2/PF-F3 fixtures:
   memory-probe pf-f1 .\out\pf-f1-probe.bin
 ```
 
-The project does not yet claim a solved or certified GTO strategy for the
-complete Short Deck postflop tree. Phase 7 performs that production
-integration using lazy in-RAM as primary and out-of-core as fallback.
+Phase 7 is complete locally: `gtosd::postflop` integrates exact physical-combo
+CFR+, periodic best response/NashConv certification, atomic checkpoint/resume,
+pause/cancel controls, strategy queries, Markdown/JSON reports and a paged
+out-of-core fallback. PF-F1 reached `NashConv / pot = 0.741405%` at iteration
+125 and passes the `<1%` gate.
+
+```powershell
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop benchmark-config pf-f1 .\out\pf-f1.json
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop solve .\out\pf-f1.json 125 .\out\pf-f1.chk `
+  .\out\pf-f1-report 12 8 25
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop certify .\out\pf-f1.json .\out\pf-f1.chk
+```
+
+The claim is scoped to the versioned PF-F1 configuration and is backed by
+exact best response, not profile EV alone. See
+`docs/PHASE_7_COMPLETION_REPORT.md`. Phase 8 adds the durable `.gtsd` solution
+storage format, compression, encryption and indexed navigation.

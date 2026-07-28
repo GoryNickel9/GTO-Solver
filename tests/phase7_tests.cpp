@@ -1,9 +1,19 @@
 #include "gtosd/memory/memory.hpp"
+#include "gtosd/postflop/postflop_solver.hpp"
 
+#include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+
+#ifndef GTOSD_SOURCE_DIR
+#define GTOSD_SOURCE_DIR "."
+#endif
 
 namespace {
 
@@ -42,13 +52,200 @@ void test_invalid_config_is_rejected() {
           "invalid production config returns a typed error");
 }
 
+void test_invalid_solver_options_are_rejected() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_check_only.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto config = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && config.has_value(), "solver option fixture parses");
+
+  gtosd::PostflopSolveOptions options;
+  options.memory_backend = gtosd::MemoryPrototype::StreetDecomposition;
+  const auto unsupported = gtosd::solve_postflop_exact(config.value(), options);
+  require(!unsupported && unsupported.error() == gtosd::PostflopSolverError::InvalidConfiguration,
+          "street decomposition is rejected by the production traversal");
+}
+
+void test_exact_check_only_solve_and_resume() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_check_only.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto config = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && config.has_value(), "check-only config parses");
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 3;
+  options.certification_interval = 1;
+  options.control_callback = [](const std::uint64_t iteration) {
+    return iteration == 1U ? gtosd::PostflopControlCommand::Pause
+                           : gtosd::PostflopControlCommand::Continue;
+  };
+  const auto solved = gtosd::solve_postflop_exact(config.value(), options);
+  require(solved.has_value(), "exact check-only postflop solve succeeds");
+  require(solved.value().public_tree.node_count == 3'270U &&
+              solved.value().information_sets == 1'015'872U && solved.value().actions == 1'015'872U,
+          "solver layout preserves physical public nodes and combo infosets");
+  require(solved.value().convergence.size() == 1U &&
+              solved.value().stop_reason == gtosd::PostflopStopReason::Paused &&
+              solved.value().checkpoint.completed_iterations == 1U &&
+              solved.value().maximum_normalization_error < 1e-12 &&
+              std::abs(solved.value().convergence[0].nash_conv_antes) < 1e-12 &&
+              std::abs(solved.value().convergence[0].expected_payoff_sum_antes) < 1e-12,
+          "single-action game certifies at zero NashConv and remains zero-sum");
+
+  const auto serialized = gtosd::serialize_postflop_checkpoint(solved.value().checkpoint);
+  require(serialized.has_value(), "production checkpoint serializes");
+  auto inconsistent_checkpoint = solved.value().checkpoint;
+  ++inconsistent_checkpoint.action_count;
+  require(!gtosd::serialize_postflop_checkpoint(inconsistent_checkpoint),
+          "checkpoint serialization rejects an inconsistent action count");
+  const auto restored = gtosd::deserialize_postflop_checkpoint(serialized.value());
+  require(restored.has_value() &&
+              restored.value().cumulative_regret == solved.value().checkpoint.cumulative_regret &&
+              restored.value().cumulative_strategy == solved.value().checkpoint.cumulative_strategy,
+          "production checkpoint round-trip is lossless");
+  const auto oversized_text = gtosd::deserialize_postflop_checkpoint(
+      "GTOSD_POSTFLOP_CHECKPOINT 1 0\nfingerprint\n1 0 999999999999\n");
+  require(!oversized_text &&
+              oversized_text.error() == gtosd::PostflopSolverError::InvalidCheckpoint,
+          "text checkpoint rejects an impossible value count before allocation");
+
+  const auto checkpoint_path = std::filesystem::current_path() / "gtosd_phase7_checkpoint_test.bin";
+  const auto saved =
+      gtosd::save_postflop_checkpoint(solved.value().checkpoint, checkpoint_path.string());
+  const auto loaded = gtosd::load_postflop_checkpoint(checkpoint_path.string());
+  require(saved.has_value() && loaded.has_value() &&
+              loaded.value().cumulative_regret == solved.value().checkpoint.cumulative_regret &&
+              loaded.value().cumulative_strategy == solved.value().checkpoint.cumulative_strategy,
+          "atomic binary checkpoint round-trip is lossless");
+  const auto checkpoint_size = std::filesystem::file_size(checkpoint_path);
+  {
+    std::ofstream append(checkpoint_path, std::ios::binary | std::ios::app);
+    append.put('\0');
+  }
+  const auto oversized_binary = gtosd::load_postflop_checkpoint(checkpoint_path.string());
+  require(!oversized_binary &&
+              oversized_binary.error() == gtosd::PostflopSolverError::InvalidCheckpoint,
+          "binary checkpoint rejects an inconsistent payload size before allocation");
+  std::filesystem::resize_file(checkpoint_path, checkpoint_size);
+
+  options.iterations = 2;
+  options.control_callback = {};
+  const auto resumed = gtosd::solve_postflop_exact(config.value(), options, &loaded.value());
+  require(resumed.has_value() && resumed.value().checkpoint.completed_iterations == 2U,
+          "production checkpoint resumes to the requested iteration");
+  const auto continuous = gtosd::solve_postflop_exact(config.value(), options);
+  require(continuous.has_value() &&
+              continuous.value().checkpoint.cumulative_regret ==
+                  resumed.value().checkpoint.cumulative_regret &&
+              continuous.value().checkpoint.cumulative_strategy ==
+                  resumed.value().checkpoint.cumulative_strategy,
+          "continuous and resumed CFR+ checkpoints are byte-equivalent");
+
+  const auto out_of_core_manifest =
+      std::filesystem::current_path() / "gtosd_phase7_out_of_core_test.chk";
+  const auto out_of_core_buffers =
+      std::filesystem::current_path() / "gtosd_phase7_out_of_core_test.buffers";
+  gtosd::PostflopSolveOptions out_of_core_options = options;
+  out_of_core_options.iterations = 1;
+  out_of_core_options.memory_backend = gtosd::MemoryPrototype::OutOfCore;
+  out_of_core_options.backing_file = out_of_core_buffers.string();
+  const auto out_of_core = gtosd::solve_postflop_exact(config.value(), out_of_core_options);
+  require(out_of_core.has_value() && out_of_core.value().checkpoint.cumulative_regret.empty() &&
+              out_of_core.value().checkpoint.external_buffer_file == out_of_core_buffers.string(),
+          "out-of-core traversal keeps action buffers outside the checkpoint object");
+  const auto external_saved = gtosd::save_postflop_checkpoint(out_of_core.value().checkpoint,
+                                                              out_of_core_manifest.string());
+  const auto external_loaded = gtosd::load_postflop_checkpoint(out_of_core_manifest.string());
+  require(external_saved.has_value() && external_loaded.has_value() &&
+              external_loaded.value().action_count == solved.value().actions,
+          "out-of-core manifest round-trip preserves the exact buffer contract");
+  out_of_core_options.iterations = 2;
+  const auto external_resumed =
+      gtosd::solve_postflop_exact(config.value(), out_of_core_options, &external_loaded.value());
+  require(external_resumed.has_value() &&
+              external_resumed.value().checkpoint.completed_iterations == 2U,
+          "out-of-core checkpoint resumes");
+  const auto external_certified =
+      gtosd::certify_postflop_checkpoint(config.value(), external_resumed.value().checkpoint);
+  require(external_certified.has_value() &&
+              std::abs(external_certified.value().nash_conv_antes) < 1e-12,
+          "out-of-core strategy certifies with exact BR");
+
+  const auto combos = gtosd::all_combos();
+  const auto flop_mask =
+      config.value().flop[0].mask() | config.value().flop[1].mask() | config.value().flop[2].mask();
+  gtosd::ComboId query_combo = 0;
+  while (query_combo < combos.size() &&
+         ((combos[query_combo].first.mask() | combos[query_combo].second.mask()) & flop_mask) !=
+             0U) {
+    ++query_combo;
+  }
+  const auto query =
+      gtosd::query_postflop_strategy(config.value(), resumed.value().checkpoint, 0, query_combo);
+  require(query.has_value() && query.value().actions.size() == 1U &&
+              query.value().probabilities.size() == 1U &&
+              std::abs(query.value().probabilities[0] - 1.0) < 1e-12,
+          "strategy query returns the exact physical-combo policy");
+
+  {
+    std::fstream corrupt(checkpoint_path, std::ios::binary | std::ios::in | std::ios::out);
+    corrupt.seekg(-1, std::ios::end);
+    char byte = '\0';
+    corrupt.read(&byte, 1);
+    byte ^= 0x01;
+    corrupt.seekp(-1, std::ios::end);
+    corrupt.write(&byte, 1);
+  }
+  const auto corrupted = gtosd::load_postflop_checkpoint(checkpoint_path.string());
+  require(!corrupted && corrupted.error() == gtosd::PostflopSolverError::InvalidCheckpoint,
+          "binary checkpoint checksum detects a bit flip");
+  std::error_code remove_error;
+  std::filesystem::remove(checkpoint_path, remove_error);
+  require(!remove_error, "binary checkpoint test file is removed");
+  std::filesystem::remove(out_of_core_manifest, remove_error);
+  require(!remove_error, "out-of-core manifest is removed");
+  std::filesystem::remove(out_of_core_buffers, remove_error);
+  require(!remove_error, "out-of-core buffers are removed");
+}
+
+void test_nontrivial_zero_sum_certification() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_river_bet.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto config = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && config.has_value(), "river-bet config parses");
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 1;
+  options.certification_interval = 1;
+  const auto solved = gtosd::solve_postflop_exact(config.value(), options);
+  require(solved.has_value() && solved.value().convergence.size() == 1U,
+          "nontrivial exact river betting solve certifies");
+  const auto &point = solved.value().convergence.front();
+  require(std::abs(point.expected_payoff_sum_antes) < 1e-10 &&
+              std::abs(point.profile_value_antes[0] + point.profile_value_antes[1]) < 1e-10,
+          "zero-rake profile remains zero-sum");
+  require(point.nash_conv_antes >= -1e-12 && point.normalized_nash_conv >= -1e-12,
+          "exact best responses produce nonnegative NashConv");
+}
+
 } // namespace
 
 int main() {
   try {
     test_config_specific_preflight();
     test_invalid_config_is_rejected();
-    std::cout << "F7_POSTFLOP_PREFLIGHT_TESTS=PASS\n"
+    test_invalid_solver_options_are_rejected();
+    test_exact_check_only_solve_and_resume();
+    test_nontrivial_zero_sum_certification();
+    std::cout << "F7_POSTFLOP_PRODUCTION_TESTS=PASS\n"
               << "assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

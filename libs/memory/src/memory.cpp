@@ -856,4 +856,6 @@ const char *memory_error_name(const MemoryError error) noexcept {
   return "unknown";
 }
 
+std::uint64_t process_peak_rss_bytes() noexcept { return measured_peak_rss(); }
+
 } // namespace gtosd

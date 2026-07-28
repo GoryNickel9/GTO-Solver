@@ -13,8 +13,8 @@ Aggiornato: 2026-07-28
 | F4 | **Completata** | Modulo `gtosd::isomorphism`, tutte le 24 permutazioni, mapping inverso, 7.140 flop fisici e 573 orbite, chance con molteplicità | Nessun residuo F4 |
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
 | F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
-| F7 | **In corso** | Preflight config-specifico, selezione lazy/out-of-core e rifiuto preventivo implementati | Finite game poker, traversal CFR+, controlli job e BR/NashConv production |
-| F8+ | Non iniziata | — | Storage e prodotto |
+| F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query e PF-F1 a 0,741405% | Nessun residuo del gate locale; confronto numerico GTO+ attende un export equivalente |
+| F8+ | Non iniziata | — | Storage della soluzione e prodotto |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -43,7 +43,7 @@ essere osservata solo dopo un push.
 | 8 | GitHub Actions Windows x64 Debug/Release | Completato | Matrice `windows-debug`/`windows-release`, bootstrap vcpkg pinned, build, test, CLI smoke, install e benchmark |
 | 9 | Sanitizer clang-cl dove supportato | Completato | Job Windows clang-cl ASan e job Linux UBSan; preset MSVC ASan locale; directory runtime del compilatore propagata ai test CTest |
 | 10 | Policy `Result<T, Error>` | Completato | `Result` è `[[nodiscard]]`; policy degli errori, eccezioni e diagnostiche documentata in `ERROR_AND_VERSIONING_POLICY.md` |
-| 11 | Semantic versioning file/API | Completato | API corrente `0.6.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
+| 11 | Semantic versioning file/API | Completato | API corrente `0.7.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
 | 12 | `THIRD_PARTY_NOTICES.md` | Completato | Baseline, versioni risolte, licenze e distinzione dipendenze production/development registrate |
 
 ### Dipendenze risolte
@@ -379,14 +379,30 @@ non vengono usati sampling o bucketing.
 Il dettaglio è in [`PHASE_6_COMPLETION_REPORT.md`](PHASE_6_COMPLETION_REPORT.md)
 e nei tre report di prototipo.
 
+## Fase 7 — HU postflop CLI production
+
+### Esito
+
+Il gate locale F7 è completato. `gtosd::postflop` integra il finite game
+fisico Short Deck con CFR+ alternato, card removal, turn e river enumerati,
+checkpoint atomico riprendibile, fallback out-of-core paginato, query per
+combo fisica e certificazione tramite best response exact infoset-aware.
+
+| Gate | Esito |
+|---|---:|
+| PF-F1 sotto 1% del pot | PASS, 0,741405% a 125 iterazioni |
+| Turn e river enumerati | PASS, denominatori HU `29/28` |
+| Checkpoint riprendibile | PASS, inline e out-of-core |
+| Report con metriche | PASS, JSON e Markdown |
+| Nessuna dichiarazione GTO senza BR | PASS, BR CO/BTN e NashConv pubblicati |
+
+Build Release completa, Debug focalizzata, MSVC ASan, clang-format e
+ricertificazione PF-F1 sono verdi. Il dettaglio è registrato in
+[`PHASE_7_COMPLETION_REPORT.md`](PHASE_7_COMPLETION_REPORT.md).
+
 ### Prossimo ingresso
 
-La milestone corrente è **Fase 7 — HU postflop CLI production**. Il primo
-incremento è documentato in
-[`PHASE_7_PROGRESS_REPORT.md`](PHASE_7_PROGRESS_REPORT.md): validazione,
-preflight exact config-specifico, selezione lazy/out-of-core e rifiuto
-preventivo sono implementati. Restano finite game poker, traversal CFR+,
-controlli job, BR/NashConv e verifica del gate PF-F1.
+La milestone corrente è **Fase 8 — Storage della soluzione**.
 
 ## Contratti poker già codificati
 
@@ -407,6 +423,6 @@ Il dettaglio del gate F1 è registrato in
 Il dettaglio del gate F5 è registrato in
 [`PHASE_5_COMPLETION_REPORT.md`](PHASE_5_COMPLETION_REPORT.md).
 
-Nessun risultato di questo incremento è etichettato come strategia GTO Short
-Deck completa: F5 certifica gli algoritmi sui reference game, non un solve
-dell'albero poker completo.
+Il risultato PF-F1 F7 è una soluzione HU postflop exact della configurazione
+versionata e certificata tramite BR/NashConv. Non è una strategia preflop, non
+copre configurazioni diverse da PF-F1 e non sostituisce i gate F8–F15.

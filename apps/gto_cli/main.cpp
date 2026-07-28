@@ -3,11 +3,14 @@
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/isomorphism/isomorphism.hpp"
 #include "gtosd/memory/memory.hpp"
+#include "gtosd/postflop/postflop_solver.hpp"
 #include "gtosd/solver/best_response.hpp"
 #include "gtosd/solver/reference_games.hpp"
 #include "gtosd/solver/solver.hpp"
 #include "gtosd/tree/tree.hpp"
 #include "gtosd/version.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
@@ -17,6 +20,7 @@
 #include <cmath>
 #include <cstdio>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -41,6 +45,8 @@ std::optional<std::uint64_t> parse_u64(const std::string_view text) {
   return value;
 }
 
+std::optional<gtosd::PostflopBenchmark> parse_memory_benchmark(std::string_view text);
+
 std::optional<gtosd::PostflopTreeConfig> load_postflop_config(const char *const path,
                                                               std::string &error) {
   std::ifstream input(path, std::ios::binary);
@@ -55,6 +61,377 @@ std::optional<gtosd::PostflopTreeConfig> load_postflop_config(const char *const 
     return std::nullopt;
   }
   return config.value();
+}
+
+const char *postflop_stop_reason_name(const gtosd::PostflopStopReason reason) {
+  switch (reason) {
+  case gtosd::PostflopStopReason::Completed:
+    return "completed";
+  case gtosd::PostflopStopReason::Paused:
+    return "paused";
+  case gtosd::PostflopStopReason::Cancelled:
+    return "cancelled";
+  }
+  return "unknown";
+}
+
+const char *action_type_name(const gtosd::ActionType type) {
+  switch (type) {
+  case gtosd::ActionType::Fold:
+    return "fold";
+  case gtosd::ActionType::Check:
+    return "check";
+  case gtosd::ActionType::Call:
+    return "call";
+  case gtosd::ActionType::Bet:
+    return "bet";
+  case gtosd::ActionType::Raise:
+    return "raise";
+  case gtosd::ActionType::AllIn:
+    return "all-in";
+  }
+  return "unknown";
+}
+
+bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolveResult &result,
+                            const double elapsed_seconds, const std::uint64_t peak_rss_bytes,
+                            const std::string_view backend) {
+  if (prefix.empty()) {
+    return false;
+  }
+  const auto &final = result.convergence.back();
+  {
+    std::ofstream json(prefix + ".json", std::ios::binary | std::ios::trunc);
+    json << "{\n"
+         << "  \"schema_version\": 1,\n"
+         << "  \"status\": \"" << postflop_stop_reason_name(result.stop_reason) << "\",\n"
+         << "  \"backend\": \"" << backend << "\",\n"
+         << "  \"exact_outcomes\": true,\n"
+         << "  \"uses_bucketing\": false,\n"
+         << "  \"iterations\": " << result.checkpoint.completed_iterations << ",\n"
+         << "  \"nodes\": " << result.public_tree.node_count << ",\n"
+         << "  \"infosets\": " << result.information_sets << ",\n"
+         << "  \"actions\": " << result.actions << ",\n"
+         << "  \"ev_co_antes\": " << final.profile_value_antes[0] << ",\n"
+         << "  \"ev_btn_antes\": " << final.profile_value_antes[1] << ",\n"
+         << "  \"br_co_antes\": " << final.best_response_value_antes[0] << ",\n"
+         << "  \"br_btn_antes\": " << final.best_response_value_antes[1] << ",\n"
+         << "  \"nash_conv_antes\": " << final.nash_conv_antes << ",\n"
+         << "  \"normalized_nash_conv\": " << final.normalized_nash_conv << ",\n"
+         << "  \"maximum_normalization_error\": " << result.maximum_normalization_error << ",\n"
+         << "  \"peak_rss_bytes\": " << peak_rss_bytes << ",\n"
+         << "  \"elapsed_seconds\": " << elapsed_seconds << "\n"
+         << "}\n";
+    if (!json) {
+      return false;
+    }
+  }
+  {
+    std::ofstream markdown(prefix + ".md", std::ios::binary | std::ios::trunc);
+    markdown << "# GTOSD HU postflop solve report\n\n"
+             << "| Metrica | Valore |\n"
+             << "|---|---:|\n"
+             << "| Stato | " << postflop_stop_reason_name(result.stop_reason) << " |\n"
+             << "| Backend | " << backend << " |\n"
+             << "| Iterazioni | " << result.checkpoint.completed_iterations << " |\n"
+             << "| Nodi pubblici | " << result.public_tree.node_count << " |\n"
+             << "| Infoset exact | " << result.information_sets << " |\n"
+             << "| Azioni exact | " << result.actions << " |\n"
+             << "| EV CO (ante) | " << final.profile_value_antes[0] << " |\n"
+             << "| EV BTN (ante) | " << final.profile_value_antes[1] << " |\n"
+             << "| BR CO (ante) | " << final.best_response_value_antes[0] << " |\n"
+             << "| BR BTN (ante) | " << final.best_response_value_antes[1] << " |\n"
+             << "| NashConv (ante) | " << final.nash_conv_antes << " |\n"
+             << "| NashConv / pot | " << final.normalized_nash_conv << " |\n"
+             << "| Errore massimo normalizzazione | " << result.maximum_normalization_error
+             << " |\n"
+             << "| Peak RSS (byte) | " << peak_rss_bytes << " |\n"
+             << "| Tempo (s) | " << elapsed_seconds << " |\n\n"
+             << "Turn e river sono enumerati esattamente. Nessun bucketing o sampling.\n";
+    if (!markdown) {
+      return false;
+    }
+  }
+  return true;
+}
+
+struct PostflopRunArguments {
+  const char *config_path;
+  std::string_view iterations;
+  const char *checkpoint_path;
+  const char *report_prefix;
+  std::string_view ram_gib;
+  std::string_view disk_gib;
+  std::string_view certification_interval;
+  bool resume{false};
+};
+
+int run_postflop_solve(const PostflopRunArguments &arguments) {
+  const auto iterations = parse_u64(arguments.iterations);
+  const auto ram_gib = parse_u64(arguments.ram_gib);
+  const auto disk_gib = parse_u64(arguments.disk_gib);
+  const auto certification_interval = arguments.certification_interval.empty()
+                                          ? std::optional<std::uint64_t>{1U}
+                                          : parse_u64(arguments.certification_interval);
+  constexpr std::uint64_t gib = 1ULL << 30U;
+  if (!iterations || *iterations == 0U || !ram_gib || *ram_gib == 0U || !disk_gib ||
+      !certification_interval || *certification_interval == 0U ||
+      *ram_gib > std::numeric_limits<std::uint64_t>::max() / gib ||
+      *disk_gib > std::numeric_limits<std::uint64_t>::max() / gib) {
+    std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
+              << " failed: invalid_argument\n";
+    return 2;
+  }
+  std::string config_error;
+  const auto config = load_postflop_config(arguments.config_path, config_error);
+  if (!config) {
+    std::cerr << "postflop solve failed: " << config_error << '\n';
+    return 1;
+  }
+  const auto lazy = gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::LazyInRam);
+  const auto out_of_core =
+      gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::OutOfCore);
+  if (!lazy || !out_of_core) {
+    std::cerr << "postflop solve failed: preflight_failure\n";
+    return 1;
+  }
+  const std::uint64_t ram_bytes = *ram_gib * gib;
+  const std::uint64_t disk_bytes = *disk_gib * gib;
+  const bool lazy_fits = lazy.value().memory.peak_resident_bytes <= ram_bytes;
+  const bool out_of_core_fits = out_of_core.value().memory.peak_resident_bytes <= ram_bytes &&
+                                out_of_core.value().memory.backing_store_bytes <= disk_bytes;
+  if (!lazy_fits && !out_of_core_fits) {
+    std::cerr << "postflop solve failed: insufficient_ram_or_disk\n";
+    return 3;
+  }
+
+  std::optional<gtosd::PostflopCheckpoint> checkpoint;
+  if (arguments.resume) {
+    const auto loaded = gtosd::load_postflop_checkpoint(arguments.checkpoint_path);
+    if (!loaded) {
+      std::cerr << "postflop resume failed: " << gtosd::postflop_solver_error_name(loaded.error())
+                << '\n';
+      return 1;
+    }
+    checkpoint = loaded.value();
+  }
+  gtosd::MemoryPrototype backend =
+      lazy_fits ? gtosd::MemoryPrototype::LazyInRam : gtosd::MemoryPrototype::OutOfCore;
+  if (checkpoint && !checkpoint->external_buffer_file.empty()) {
+    if (!out_of_core_fits) {
+      std::cerr << "postflop resume failed: insufficient_ram_or_disk\n";
+      return 3;
+    }
+    backend = gtosd::MemoryPrototype::OutOfCore;
+  } else if (checkpoint && backend == gtosd::MemoryPrototype::OutOfCore) {
+    std::cerr << "postflop resume failed: checkpoint_backend_mismatch\n";
+    return 3;
+  }
+  const std::string_view backend_name =
+      backend == gtosd::MemoryPrototype::LazyInRam ? "lazy-in-ram" : "out-of-core";
+  const std::filesystem::path control_path = std::string(arguments.checkpoint_path) + ".control";
+  std::error_code stale_control_error;
+  std::filesystem::remove(control_path, stale_control_error);
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = *iterations;
+  options.averaging_delay =
+      checkpoint ? checkpoint->averaging_delay : std::min<std::uint64_t>(100U, *iterations / 10U);
+  options.certification_interval = *certification_interval;
+  options.memory_backend = backend;
+  options.backing_file = std::string(arguments.checkpoint_path) + ".buffers";
+  options.progress_callback = [](const gtosd::PostflopCertification &point) {
+    std::cout << "progress iteration=" << point.iteration
+              << " ev_co_antes=" << point.profile_value_antes[0]
+              << " ev_btn_antes=" << point.profile_value_antes[1]
+              << " br_co_antes=" << point.best_response_value_antes[0]
+              << " br_btn_antes=" << point.best_response_value_antes[1]
+              << " nash_conv_antes=" << point.nash_conv_antes
+              << " normalized_nash_conv=" << point.normalized_nash_conv << std::endl;
+  };
+  options.checkpoint_callback =
+      [path = std::string(arguments.checkpoint_path)](const gtosd::PostflopCertification &,
+                                                      const gtosd::PostflopCheckpoint &current) {
+        return gtosd::save_postflop_checkpoint(current, path).has_value();
+      };
+  options.control_callback = [&control_path](const std::uint64_t) {
+    std::ifstream control(control_path, std::ios::binary);
+    if (!control) {
+      return gtosd::PostflopControlCommand::Continue;
+    }
+    std::string command;
+    control >> command;
+    control.close();
+    std::error_code remove_error;
+    std::filesystem::remove(control_path, remove_error);
+    if (command == "pause") {
+      return gtosd::PostflopControlCommand::Pause;
+    }
+    if (command == "cancel") {
+      return gtosd::PostflopControlCommand::Cancel;
+    }
+    return gtosd::PostflopControlCommand::Continue;
+  };
+
+  std::cout << "GTOSD_POSTFLOP_SOLVE_1\n"
+            << "backend=" << backend_name << " exact_outcomes=true bucketing=false"
+            << " target_iterations=" << *iterations
+            << " certification_interval=" << *certification_interval << std::endl;
+  const auto started = std::chrono::steady_clock::now();
+  const auto solved =
+      gtosd::solve_postflop_exact(*config, options, checkpoint ? &*checkpoint : nullptr);
+  const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (!solved) {
+    std::cerr << "postflop solve failed: " << gtosd::postflop_solver_error_name(solved.error())
+              << '\n';
+    return 1;
+  }
+  const auto saved =
+      gtosd::save_postflop_checkpoint(solved.value().checkpoint, arguments.checkpoint_path);
+  if (!saved) {
+    std::cerr << "postflop solve failed: " << gtosd::postflop_solver_error_name(saved.error())
+              << '\n';
+    return 1;
+  }
+  const auto peak_rss_bytes = gtosd::process_peak_rss_bytes();
+  if (solved.value().convergence.empty() ||
+      !write_postflop_reports(arguments.report_prefix, solved.value(), elapsed, peak_rss_bytes,
+                              backend_name)) {
+    std::cerr << "postflop solve failed: report_io_failure\n";
+    return 1;
+  }
+  std::cout << "status=" << postflop_stop_reason_name(solved.value().stop_reason)
+            << " completed_iterations=" << solved.value().checkpoint.completed_iterations
+            << " checkpoint=" << arguments.checkpoint_path
+            << " report_json=" << arguments.report_prefix << ".json"
+            << " report_markdown=" << arguments.report_prefix << ".md"
+            << " peak_rss_bytes=" << peak_rss_bytes << " elapsed_seconds=" << elapsed << std::endl;
+  return 0;
+}
+
+int write_postflop_control(const char *const checkpoint_path, const std::string_view command) {
+  const std::string control_path = std::string(checkpoint_path) + ".control";
+  std::ofstream output(control_path, std::ios::binary | std::ios::trunc);
+  output << command << '\n';
+  output.flush();
+  if (!output) {
+    std::cerr << "postflop " << command << " failed: control_io_failure\n";
+    return 1;
+  }
+  std::cout << "postflop " << command << " requested control_file=" << control_path << '\n';
+  return 0;
+}
+
+int run_postflop_query(const char *const config_path, const char *const checkpoint_path,
+                       const std::string_view node_text, const std::string_view combo_text) {
+  const auto node = parse_u64(node_text);
+  const auto combo = parse_u64(combo_text);
+  std::string error;
+  const auto config = load_postflop_config(config_path, error);
+  const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
+  if (!config || !checkpoint || !node || !combo || *combo >= 630U) {
+    std::cerr << "postflop query failed: invalid_argument_or_checkpoint\n";
+    return 1;
+  }
+  const auto query = gtosd::query_postflop_strategy(*config, checkpoint.value(), *node,
+                                                    static_cast<gtosd::ComboId>(*combo));
+  if (!query) {
+    std::cerr << "postflop query failed: " << gtosd::postflop_solver_error_name(query.error())
+              << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_POSTFLOP_STRATEGY_1\n"
+            << "public_node=" << *node << " combo=" << *combo << '\n';
+  for (std::size_t action = 0; action < query.value().actions.size(); ++action) {
+    std::cout << "action=" << action_type_name(query.value().actions[action].type)
+              << " amount_units=" << query.value().actions[action].amount.units()
+              << " probability=" << query.value().probabilities[action] << '\n';
+  }
+  return 0;
+}
+
+int run_postflop_certify(const char *const config_path, const char *const checkpoint_path) {
+  std::string error;
+  const auto config = load_postflop_config(config_path, error);
+  const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
+  if (!config || !checkpoint) {
+    std::cerr << "postflop certify failed: invalid_config_or_checkpoint\n";
+    return 1;
+  }
+  const auto certified = gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
+  if (!certified) {
+    std::cerr << "postflop certify failed: " << gtosd::postflop_solver_error_name(certified.error())
+              << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_POSTFLOP_CERTIFICATION_1\n"
+            << "game_fingerprint=" << checkpoint.value().game_fingerprint
+            << " iteration=" << certified.value().iteration
+            << " ev_co_antes=" << certified.value().profile_value_antes[0]
+            << " ev_btn_antes=" << certified.value().profile_value_antes[1]
+            << " payoff_sum_antes=" << certified.value().expected_payoff_sum_antes << '\n'
+            << "br_co_antes=" << certified.value().best_response_value_antes[0]
+            << " br_btn_antes=" << certified.value().best_response_value_antes[1]
+            << " nash_conv_antes=" << certified.value().nash_conv_antes
+            << " normalized_nash_conv=" << certified.value().normalized_nash_conv << '\n'
+            << "gate_below_one_percent="
+            << (certified.value().normalized_nash_conv < 0.01 ? "pass" : "fail") << '\n';
+  return certified.value().normalized_nash_conv < 0.01 ? 0 : 4;
+}
+
+int compare_gto_plus_reference(const char *const config_path, const char *const checkpoint_path,
+                               const char *const reference_path) {
+  std::string error;
+  const auto config = load_postflop_config(config_path, error);
+  const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
+  if (!config || !checkpoint) {
+    std::cerr << "postflop compare-gto-plus failed: invalid_config_or_checkpoint\n";
+    return 1;
+  }
+  const auto certified = gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
+  if (!certified) {
+    std::cerr << "postflop compare-gto-plus failed: "
+              << gtosd::postflop_solver_error_name(certified.error()) << '\n';
+    return 1;
+  }
+  std::ifstream input(reference_path, std::ios::binary);
+  nlohmann::json reference;
+  double reference_co = 0.0;
+  double reference_btn = 0.0;
+  try {
+    input >> reference;
+    if (!input || !reference.is_object() || reference.value("schema_version", 0) != 1 ||
+        reference.value("source", std::string{}) != "GTO+" ||
+        reference.value("game_fingerprint", std::string{}) != checkpoint.value().game_fingerprint ||
+        !reference.contains("ev_co_antes") || !reference["ev_co_antes"].is_number() ||
+        !reference.contains("ev_btn_antes") || !reference["ev_btn_antes"].is_number()) {
+      std::cerr << "postflop compare-gto-plus failed: reference_mismatch\n";
+      return 1;
+    }
+    reference_co = reference["ev_co_antes"].get<double>();
+    reference_btn = reference["ev_btn_antes"].get<double>();
+  } catch (const nlohmann::json::exception &) {
+    std::cerr << "postflop compare-gto-plus failed: invalid_reference_json\n";
+    return 1;
+  }
+  if (!std::isfinite(reference_co) || !std::isfinite(reference_btn)) {
+    std::cerr << "postflop compare-gto-plus failed: invalid_reference_value\n";
+    return 1;
+  }
+  std::cout << "GTOSD_GTO_PLUS_COMPARISON_1\n"
+            << "iteration=" << certified.value().iteration
+            << " game_fingerprint=" << checkpoint.value().game_fingerprint << '\n'
+            << "gtosd_ev_co_antes=" << certified.value().profile_value_antes[0]
+            << " gto_plus_ev_co_antes=" << reference_co
+            << " delta_ev_co_antes=" << certified.value().profile_value_antes[0] - reference_co
+            << '\n'
+            << "gtosd_ev_btn_antes=" << certified.value().profile_value_antes[1]
+            << " gto_plus_ev_btn_antes=" << reference_btn
+            << " delta_ev_btn_antes=" << certified.value().profile_value_antes[1] - reference_btn
+            << '\n'
+            << "gtosd_normalized_nash_conv=" << certified.value().normalized_nash_conv << '\n';
+  return 0;
 }
 
 int run_postflop_validate(const char *const path) {
@@ -124,6 +501,30 @@ int run_postflop_estimate(const char *const path, const std::string_view ram_gib
     std::cerr << "postflop estimate rejected: insufficient_ram_or_disk\n";
     return 3;
   }
+  return 0;
+}
+
+int write_postflop_benchmark_config(const std::string_view benchmark_text, const char *const path) {
+  const auto benchmark = parse_memory_benchmark(benchmark_text);
+  if (!benchmark) {
+    std::cerr << "postflop benchmark-config failed: invalid_benchmark\n";
+    return 2;
+  }
+  const auto config = gtosd::make_postflop_benchmark_config(*benchmark);
+  if (!config) {
+    std::cerr << "postflop benchmark-config failed: " << gtosd::memory_error_name(config.error())
+              << '\n';
+    return 1;
+  }
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  output << gtosd::serialize_tree_config_json(config.value());
+  output.flush();
+  if (!output) {
+    std::cerr << "postflop benchmark-config failed: io_failure\n";
+    return 1;
+  }
+  std::cout << "postflop benchmark config written benchmark="
+            << gtosd::postflop_benchmark_name(*benchmark) << " path=" << path << '\n';
   return 0;
 }
 
@@ -586,6 +987,16 @@ void print_usage() {
             << "  gto_cli memory-probe <pf-f1|pf-f2|pf-f3> <backing_file>\n"
             << "  gto_cli postflop validate <config.json>\n"
             << "  gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>\n"
+            << "  gto_cli postflop solve <config.json> <iterations> <checkpoint> "
+               "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
+            << "  gto_cli postflop resume <config.json> <iterations> <checkpoint> "
+               "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
+            << "  gto_cli postflop pause|cancel <checkpoint>\n"
+            << "  gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>\n"
+            << "  gto_cli postflop certify <config.json> <checkpoint>\n"
+            << "  gto_cli postflop compare-gto-plus <config.json> <checkpoint> "
+               "<reference.json>\n"
+            << "  gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>\n"
             << "    game: matching|kuhn|leduc|short-deck-toy|short-deck-rake-toy\n"
             << "    algorithm: cfr|cfr+|linear|dcfr|mccfr\n";
 }
@@ -635,6 +1046,32 @@ int run_cli(const int argc, const char *const argv[]) {
   if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "estimate") {
     return run_postflop_estimate(argv[3], argv[4], argv[5]);
+  }
+  if ((argc == 9 || argc == 10) && std::string_view(argv[1]) == "postflop" &&
+      (std::string_view(argv[2]) == "solve" || std::string_view(argv[2]) == "resume")) {
+    return run_postflop_solve({argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],
+                               argc == 10 ? std::string_view(argv[9]) : std::string_view{},
+                               std::string_view(argv[2]) == "resume"});
+  }
+  if (argc == 4 && std::string_view(argv[1]) == "postflop" &&
+      (std::string_view(argv[2]) == "pause" || std::string_view(argv[2]) == "cancel")) {
+    return write_postflop_control(argv[3], argv[2]);
+  }
+  if (argc == 7 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "query") {
+    return run_postflop_query(argv[3], argv[4], argv[5], argv[6]);
+  }
+  if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "certify") {
+    return run_postflop_certify(argv[3], argv[4]);
+  }
+  if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "compare-gto-plus") {
+    return compare_gto_plus_reference(argv[3], argv[4], argv[5]);
+  }
+  if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "benchmark-config") {
+    return write_postflop_benchmark_config(argv[3], argv[4]);
   }
   print_usage();
   return argc == 1 ? 0 : 2;
