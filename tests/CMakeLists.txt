@@ -62,6 +62,22 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_phase6_tests phase6_tests.cpp)
+target_compile_definitions(gtosd_phase6_tests PRIVATE
+  GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(gtosd_phase6_tests
+  PRIVATE
+    gtosd::memory
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_phase6_tests)
+add_test(NAME gtosd_phase6_tests COMMAND gtosd_phase6_tests)
+set_tests_properties(gtosd_phase6_tests
+  PROPERTIES LABELS "phase6;memory;exact")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_phase6_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 if(GTOSD_BUILD_NIGHTLY_TESTS)
   add_executable(gtosd_phase2_nightly_tests phase2_nightly_tests.cpp)
   target_link_libraries(gtosd_phase2_nightly_tests PRIVATE gtosd::equity)

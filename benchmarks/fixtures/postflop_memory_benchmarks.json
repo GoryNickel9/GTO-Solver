@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "variant": "short_deck_hu",
+  "positions": ["CO", "BTN"],
+  "flop": ["As", "Qd", "7c"],
+  "initial_pot_ante": 10,
+  "rake": {
+    "enabled": false
+  },
+  "ranges": {
+    "fixture_id": "full_physical_630_v1",
+    "co": {
+      "selection": "all_630_physical_combos",
+      "weight_basis_points": 10000
+    },
+    "btn": {
+      "selection": "all_630_physical_combos",
+      "weight_basis_points": 10000
+    }
+  },
+  "benchmarks": [
+    {
+      "id": "PF-F1",
+      "effective_stack_ante": 20,
+      "sizes_basis_points": [5000],
+      "raise_depth": 1
+    },
+    {
+      "id": "PF-F2",
+      "effective_stack_ante": 100,
+      "sizes_basis_points": [3300, 7500],
+      "raise_depth": 2
+    },
+    {
+      "id": "PF-F3",
+      "effective_stack_ante": 100,
+      "sizes_basis_points": [2500, 5000, 10000],
+      "raise_depth": 4
+    }
+  ],
+  "all_in_mode": "disabled",
+  "minimum_bet_ante": 1,
+  "notes": [
+    "Every listed size is applied to both players, all three streets and every betting scenario.",
+    "No range is sampled or generated randomly; the fixture selects the complete physical combo set."
+  ]
+}

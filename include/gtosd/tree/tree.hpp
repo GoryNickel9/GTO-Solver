@@ -50,12 +50,17 @@ struct PublicTreeNode {
 
 struct PublicTreeStats {
   std::uint64_t node_count{0};
+  std::array<std::uint64_t, 3> node_count_by_street{};
   std::uint64_t edge_count{0};
+  std::array<std::uint64_t, 3> edge_count_by_street{};
   std::uint64_t decision_nodes{0};
+  std::array<std::uint64_t, 3> decision_nodes_by_street{};
   std::uint64_t chance_nodes{0};
   std::uint64_t terminal_fold_nodes{0};
   std::uint64_t terminal_showdown_nodes{0};
   std::uint64_t chance_edges{0};
+  std::array<std::uint64_t, 3> chance_edges_by_street{};
+  std::array<std::uint64_t, 3> action_edges_by_street{};
   std::uint32_t maximum_depth{0};
   std::uint64_t estimated_eager_bytes{0};
 };

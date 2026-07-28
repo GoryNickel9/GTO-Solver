@@ -2,6 +2,7 @@
 #include "gtosd/core/game.hpp"
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/isomorphism/isomorphism.hpp"
+#include "gtosd/memory/memory.hpp"
 #include "gtosd/solver/best_response.hpp"
 #include "gtosd/solver/reference_games.hpp"
 #include "gtosd/solver/solver.hpp"
@@ -193,6 +194,139 @@ std::optional<gtosd::SolverAlgorithm> parse_algorithm(const std::string_view tex
   return std::nullopt;
 }
 
+std::optional<gtosd::PostflopBenchmark> parse_memory_benchmark(const std::string_view text) {
+  if (text == "pf-f1") {
+    return gtosd::PostflopBenchmark::PfF1;
+  }
+  if (text == "pf-f2") {
+    return gtosd::PostflopBenchmark::PfF2;
+  }
+  if (text == "pf-f3") {
+    return gtosd::PostflopBenchmark::PfF3;
+  }
+  return std::nullopt;
+}
+
+std::optional<gtosd::MemoryPrototype> parse_memory_prototype(const std::string_view text) {
+  if (text == "lazy") {
+    return gtosd::MemoryPrototype::LazyInRam;
+  }
+  if (text == "street") {
+    return gtosd::MemoryPrototype::StreetDecomposition;
+  }
+  if (text == "out-of-core") {
+    return gtosd::MemoryPrototype::OutOfCore;
+  }
+  return std::nullopt;
+}
+
+struct MemoryLabArguments {
+  std::string_view benchmark;
+  std::string_view prototype;
+  std::string_view resident_pages;
+};
+
+int run_memory_lab(const MemoryLabArguments arguments) {
+  const auto benchmark = parse_memory_benchmark(arguments.benchmark);
+  const auto prototype = parse_memory_prototype(arguments.prototype);
+  gtosd::MemoryPrototypeOptions options;
+  if (!arguments.resident_pages.empty()) {
+    const auto resident_pages = parse_u64(arguments.resident_pages);
+    if (!resident_pages) {
+      std::cerr << "memory-lab failed: invalid_resident_pages\n";
+      return 2;
+    }
+    options.resident_page_count = *resident_pages;
+  }
+  if (!benchmark || !prototype) {
+    std::cerr << "memory-lab failed: invalid_argument\n";
+    return 2;
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto report = gtosd::analyze_memory_prototype(*benchmark, *prototype, options);
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  if (!report) {
+    std::cerr << "memory-lab failed: " << gtosd::memory_error_name(report.error()) << '\n';
+    return 1;
+  }
+
+  const auto &value = report.value();
+  std::cout << "GTOSD_MEMORY_LAB_1\n"
+            << "benchmark=" << gtosd::postflop_benchmark_name(value.benchmark)
+            << " prototype=" << gtosd::memory_prototype_name(value.prototype) << '\n'
+            << "exact_outcomes=" << (value.exact_outcomes ? "yes" : "no")
+            << " bucketing=" << (value.uses_bucketing ? "yes" : "no") << '\n'
+            << "nodes=" << value.public_tree.node_count << " edges=" << value.public_tree.edge_count
+            << " infosets=" << value.information_sets << " actions=" << value.actions
+            << " range_state_slots=" << value.range_state_slots << '\n';
+  constexpr std::array<std::string_view, 3> street_names{"flop", "turn", "river"};
+  for (std::size_t street = 0; street < street_names.size(); ++street) {
+    std::cout << "street=" << street_names[street]
+              << " nodes=" << value.public_tree.node_count_by_street[street]
+              << " decisions=" << value.public_tree.decision_nodes_by_street[street]
+              << " infosets=" << value.information_sets_by_street[street]
+              << " actions=" << value.actions_by_street[street]
+              << " range_state_slots=" << value.range_state_slots_by_street[street] << '\n';
+  }
+  const auto &memory = value.memory;
+  std::cout << "public_tree_bytes=" << memory.public_tree_bytes
+            << " infoset_index_bytes=" << memory.infoset_index_bytes
+            << " action_bytes=" << memory.action_bytes << '\n'
+            << "regret_bytes=" << memory.regret_bytes << " strategy_bytes=" << memory.strategy_bytes
+            << " reach_bytes=" << memory.reach_bytes
+            << " best_response_bytes=" << memory.best_response_bytes << '\n'
+            << "boundary_bytes=" << memory.boundary_bytes
+            << " checkpoint_staging_bytes=" << memory.checkpoint_staging_bytes
+            << " gui_cache_bytes=" << memory.gui_cache_bytes << '\n'
+            << "backing_store_bytes=" << memory.backing_store_bytes
+            << " peak_resident_bytes=" << memory.peak_resident_bytes << '\n'
+            << "bytes_per_node=" << value.bytes_per_public_node
+            << " bytes_per_infoset=" << value.bytes_per_information_set << '\n'
+            << "preflop_full_projection_bytes=" << value.preflop_full_projection_bytes << '\n'
+            << "gate_pf_f1_12gib=";
+  if (value.benchmark != gtosd::PostflopBenchmark::PfF1) {
+    std::cout << "not_applicable\n";
+  } else {
+    std::cout << (memory.peak_resident_bytes <= 12ULL * 1'024ULL * 1'024ULL * 1'024ULL ? "pass"
+                                                                                       : "fail")
+              << '\n';
+  }
+  std::cout << "elapsed_seconds=" << std::chrono::duration<double>(elapsed).count() << '\n';
+  return 0;
+}
+
+int run_memory_probe(const std::string_view benchmark_text, const char *const backing_file) {
+  const auto benchmark = parse_memory_benchmark(benchmark_text);
+  if (!benchmark) {
+    std::cerr << "memory-probe failed: invalid_argument\n";
+    return 2;
+  }
+  const auto report =
+      gtosd::analyze_memory_prototype(*benchmark, gtosd::MemoryPrototype::OutOfCore);
+  if (!report) {
+    std::cerr << "memory-probe failed: " << gtosd::memory_error_name(report.error()) << '\n';
+    return 1;
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto probe = gtosd::probe_out_of_core_residency(report.value(), backing_file);
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+  if (!probe) {
+    std::cerr << "memory-probe failed: " << gtosd::memory_error_name(probe.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_MEMORY_PROBE_1\n"
+            << "benchmark=" << gtosd::postflop_benchmark_name(*benchmark)
+            << " prototype=out_of_core\n"
+            << "backing_file=" << backing_file << '\n'
+            << "logical_backing_bytes=" << probe.value().logical_backing_bytes
+            << " touched_bytes=" << probe.value().touched_bytes
+            << " measured_peak_rss_bytes=" << probe.value().measured_peak_rss_bytes << '\n'
+            << "page_reads=" << probe.value().page_reads
+            << " page_writes=" << probe.value().page_writes << '\n'
+            << "elapsed_seconds=" << std::chrono::duration<double>(elapsed).count() << '\n';
+  return 0;
+}
+
 std::optional<gtosd::FiniteGame> make_lab_game(const std::string_view name) {
   if (name == "matching") {
     return gtosd::make_matching_pennies_game();
@@ -360,6 +494,9 @@ void print_usage() {
             << "  gto_cli isomorphism-audit <config.json>\n"
             << "  gto_cli solver-lab <game> <algorithm> <iterations> [seed] [threads]\n"
             << "  gto_cli dcfr-sweep <game> <iterations>\n"
+            << "  gto_cli memory-lab <pf-f1|pf-f2|pf-f3> "
+               "<lazy|street|out-of-core> [resident_pages]\n"
+            << "  gto_cli memory-probe <pf-f1|pf-f2|pf-f3> <backing_file>\n"
             << "    game: matching|kuhn|leduc|short-deck-toy|short-deck-rake-toy\n"
             << "    algorithm: cfr|cfr+|linear|dcfr|mccfr\n";
 }
@@ -394,6 +531,13 @@ int run_cli(const int argc, const char *const argv[]) {
   }
   if (argc == 4 && std::string_view(argv[1]) == "dcfr-sweep") {
     return run_dcfr_sweep({argv[2], argv[3]});
+  }
+  if ((argc == 4 || argc == 5) && std::string_view(argv[1]) == "memory-lab") {
+    return run_memory_lab(
+        {argv[2], argv[3], argc == 5 ? std::string_view(argv[4]) : std::string_view{}});
+  }
+  if (argc == 4 && std::string_view(argv[1]) == "memory-probe") {
+    return run_memory_probe(argv[2], argv[3]);
   }
   print_usage();
   return argc == 1 ? 0 : 2;

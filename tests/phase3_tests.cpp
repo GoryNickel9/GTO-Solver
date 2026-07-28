@@ -113,6 +113,12 @@ gtosd::PublicTree test_check_only_physical_tree() {
   require(tree.stats.node_count == 3'270U, "approved check-only snapshot node count");
   require(estimate.value().node_count == tree.stats.node_count,
           "preflight node estimate equals materialized tree");
+  require(estimate.value().node_count_by_street == tree.stats.node_count_by_street &&
+              estimate.value().edge_count_by_street == tree.stats.edge_count_by_street &&
+              estimate.value().decision_nodes_by_street == tree.stats.decision_nodes_by_street &&
+              estimate.value().chance_edges_by_street == tree.stats.chance_edges_by_street &&
+              estimate.value().action_edges_by_street == tree.stats.action_edges_by_street,
+          "preflight per-street counts equal the materialized tree");
   require(estimate.value().estimated_eager_bytes == tree.stats.estimated_eager_bytes,
           "preflight eager memory estimate equals materialized layout estimate");
   require(tree.stats.edge_count == 3'269U, "tree edge count is nodes minus root");

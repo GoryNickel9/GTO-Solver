@@ -6,6 +6,7 @@ target_link_libraries(gtosd_benchmark_smoke
     gtosd::equity
     gtosd::isomorphism
     gtosd::solver
+    gtosd::memory
     benchmark::benchmark
     benchmark::benchmark_main)
 gtosd_set_warnings(gtosd_benchmark_smoke)

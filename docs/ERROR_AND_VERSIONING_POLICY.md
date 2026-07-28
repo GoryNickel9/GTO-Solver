@@ -29,10 +29,9 @@ comando CMake `project()`. CMake genera `gtosd/version.hpp`.
 | Minor | Funzione retrocompatibile |
 | Patch | Correzione retrocompatibile |
 
-La versione corrente è `0.5.0`: la minor F5 introduce i moduli pubblici
-`gtosd::solver` e `gtosd::best_response`, il formato checkpoint
-`GTOSD_CFR_CHECKPOINT 1.0`, i reference game, le varianti CFR e le metriche
-exact BR/NashConv. Durante lo sviluppo pre-1.0 una modifica
+La versione corrente è `0.6.0`: la minor F6 introduce il modulo pubblico
+`gtosd::memory`, i preflight PF-F1/PF-F2/PF-F3 e i prototype backend di
+memoria exact. Durante lo sviluppo pre-1.0 una modifica
 incompatibile richiede almeno un incremento minor e una nota di migrazione.
 
 ## Versionamento file

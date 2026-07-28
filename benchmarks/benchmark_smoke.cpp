@@ -1,5 +1,6 @@
 #include "gtosd/equity/evaluator.hpp"
 #include "gtosd/isomorphism/isomorphism.hpp"
+#include "gtosd/memory/memory.hpp"
 #include "gtosd/solver/reference_games.hpp"
 #include "gtosd/solver/solver.hpp"
 
@@ -106,5 +107,23 @@ void BM_KuhnDcfrIterations(benchmark::State &state) {
 }
 
 BENCHMARK(BM_KuhnDcfrIterations);
+
+void BM_MemoryPlanPfF1(benchmark::State &state) {
+  const auto prototype = static_cast<gtosd::MemoryPrototype>(state.range(0));
+  for (auto _ : state) {
+    static_cast<void>(_);
+    auto report = gtosd::analyze_memory_prototype(gtosd::PostflopBenchmark::PfF1, prototype);
+    benchmark::DoNotOptimize(report);
+  }
+  state.SetItemsProcessed(state.iterations());
+}
+
+BENCHMARK(BM_MemoryPlanPfF1)
+    ->DenseRange(static_cast<std::int64_t>(gtosd::MemoryPrototype::LazyInRam),
+                 static_cast<std::int64_t>(gtosd::MemoryPrototype::OutOfCore))
+    ->Threads(1)
+    ->Threads(2)
+    ->Threads(4)
+    ->Threads(8);
 
 } // namespace

@@ -12,8 +12,9 @@ Aggiornato: 2026-07-28
 | F3 | **Completata** | Modulo `gtosd::tree`, 13.191 asserzioni, 1.056 runout ordinati, snapshot/hash deterministico, Debug/Release/ASan/UBSan verdi | Nessun residuo del gate locale; confronto esterno GTO+ rinviato finché non viene fornita una configurazione di riferimento |
 | F4 | **Completata** | Modulo `gtosd::isomorphism`, tutte le 24 permutazioni, mapping inverso, 7.140 flop fisici e 573 orbite, chance con molteplicità | Nessun residuo F4 |
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
-| F6 | Prossima | Solver laboratory F5 certificato sui reference game | Prototipi memoria exact: lazy, street decomposition e out-of-core |
-| F7+ | Non iniziata | — | HU postflop CLI, storage e prodotto |
+| F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
+| F7 | Prossima | Lazy in-RAM primary e out-of-core fallback selezionati | HU postflop CLI production con BR/NashConv |
+| F8+ | Non iniziata | — | Storage e prodotto |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -42,7 +43,7 @@ essere osservata solo dopo un push.
 | 8 | GitHub Actions Windows x64 Debug/Release | Completato | Matrice `windows-debug`/`windows-release`, bootstrap vcpkg pinned, build, test, CLI smoke, install e benchmark |
 | 9 | Sanitizer clang-cl dove supportato | Completato | Job Windows clang-cl ASan e job Linux UBSan; preset MSVC ASan locale; directory runtime del compilatore propagata ai test CTest |
 | 10 | Policy `Result<T, Error>` | Completato | `Result` è `[[nodiscard]]`; policy degli errori, eccezioni e diagnostiche documentata in `ERROR_AND_VERSIONING_POLICY.md` |
-| 11 | Semantic versioning file/API | Completato | API corrente `0.5.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
+| 11 | Semantic versioning file/API | Completato | API corrente `0.6.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
 | 12 | `THIRD_PARTY_NOTICES.md` | Completato | Baseline, versioni risolte, licenze e distinzione dipendenze production/development registrate |
 
 ### Dipendenze risolte
@@ -358,11 +359,31 @@ clang-format, clang-tidy e install tree sono verdi. Il dettaglio, gli sweep e
 le misure sono registrati in
 [`PHASE_5_COMPLETION_REPORT.md`](PHASE_5_COMPLETION_REPORT.md).
 
+## Fase 6 — Prototipi memoria exact
+
+### Esito
+
+Il gate locale F6 è completato. `gtosd::memory` confronta lazy in-RAM, street
+decomposition e out-of-core sui benchmark versionati PF-F1/PF-F2/PF-F3.
+I conteggi conservano tutti gli outcome fisici e tutte le combo private legali:
+non vengono usati sampling o bucketing.
+
+| Decisione | Esito |
+|---|---|
+| Primary PF-F1 | Lazy in-RAM, peak previsto 5,236 GiB |
+| Fallback | Out-of-core, probe RSS PF-F1 16,918 MiB |
+| Street decomposition | Corretta, non selezionata: +1,56% su PF-F1 con boundary lossless |
+| Parità | Checkpoint byte-identico, delta EV/NashConv zero |
+| PRE-FULL | Upper bound fisico pubblicato, 29,574–36,510 TiB |
+
+Il dettaglio è in [`PHASE_6_COMPLETION_REPORT.md`](PHASE_6_COMPLETION_REPORT.md)
+e nei tre report di prototipo.
+
 ### Prossimo ingresso
 
-La prossima milestone è **Fase 6 — Prototipi memoria exact**: confrontare lazy
-in-RAM, street decomposition e out-of-core, misurando byte per nodo/infoset e
-parità EV/NashConv senza bucketing.
+La prossima milestone è **Fase 7 — HU postflop CLI production**: integrare
+range fisici, public tree, CFR+ primary, BR/NashConv, progress e checkpoint
+usando lazy in-RAM come layout principale e out-of-core come fallback.
 
 ## Contratti poker già codificati
 

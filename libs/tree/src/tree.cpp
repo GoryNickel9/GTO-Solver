@@ -118,10 +118,14 @@ private:
     const auto id = static_cast<NodeId>(tree_.nodes.size());
     tree_.nodes.push_back(PublicTreeNode{id, kind, state, depth, {}});
     ++tree_.stats.node_count;
+    ++tree_.stats.node_count_by_street[static_cast<std::size_t>(state.street) -
+                                       static_cast<std::size_t>(Street::Flop)];
     tree_.stats.maximum_depth = std::max(tree_.stats.maximum_depth, depth);
     switch (kind) {
     case PublicNodeKind::Decision:
       ++tree_.stats.decision_nodes;
+      ++tree_.stats.decision_nodes_by_street[static_cast<std::size_t>(state.street) -
+                                             static_cast<std::size_t>(Street::Flop)];
       break;
     case PublicNodeKind::Chance:
       ++tree_.stats.chance_nodes;
@@ -193,6 +197,10 @@ private:
       edges.push_back(edge);
     }
     tree_.stats.edge_count += edges.size();
+    const auto street_index =
+        static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
+    tree_.stats.edge_count_by_street[street_index] += edges.size();
+    tree_.stats.action_edges_by_street[street_index] += edges.size();
     tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
     return node;
   }
@@ -233,6 +241,10 @@ private:
     }
     tree_.stats.edge_count += edges.size();
     tree_.stats.chance_edges += edges.size();
+    const auto street_index =
+        static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
+    tree_.stats.edge_count_by_street[street_index] += edges.size();
+    tree_.stats.chance_edges_by_street[street_index] += edges.size();
     tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
     return node;
   }
@@ -261,96 +273,160 @@ public:
     if (!counted) {
       return Result<PublicTreeStats, TreeError>::failure(counted.error());
     }
-    stats_.estimated_eager_bytes =
-        stats_.node_count * sizeof(PublicTreeNode) + stats_.edge_count * sizeof(PublicTreeEdge);
-    return Result<PublicTreeStats, TreeError>::success(stats_);
+    auto stats = counted.value();
+    if (stats.node_count > options_.maximum_nodes ||
+        stats.node_count > std::numeric_limits<std::uint64_t>::max() / sizeof(PublicTreeNode) ||
+        stats.edge_count > std::numeric_limits<std::uint64_t>::max() / sizeof(PublicTreeEdge)) {
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::BuildLimitExceeded);
+    }
+    const auto node_bytes = stats.node_count * sizeof(PublicTreeNode);
+    const auto edge_bytes = stats.edge_count * sizeof(PublicTreeEdge);
+    if (node_bytes > std::numeric_limits<std::uint64_t>::max() - edge_bytes) {
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::NodeOverflow);
+    }
+    stats.estimated_eager_bytes = node_bytes + edge_bytes;
+    return Result<PublicTreeStats, TreeError>::success(stats);
   }
 
 private:
-  Result<bool, TreeError> add(const PublicNodeKind kind, const std::uint32_t depth) {
-    if (stats_.node_count >= options_.maximum_nodes) {
-      return Result<bool, TreeError>::failure(TreeError::BuildLimitExceeded);
+  static bool checked_add(std::uint64_t &target, const std::uint64_t value) {
+    if (target > std::numeric_limits<std::uint64_t>::max() - value) {
+      return false;
     }
-    ++stats_.node_count;
-    stats_.maximum_depth = std::max(stats_.maximum_depth, depth);
-    switch (kind) {
-    case PublicNodeKind::Decision:
-      ++stats_.decision_nodes;
-      break;
-    case PublicNodeKind::Chance:
-      ++stats_.chance_nodes;
-      break;
-    case PublicNodeKind::TerminalFold:
-      ++stats_.terminal_fold_nodes;
-      break;
-    case PublicNodeKind::TerminalShowdown:
-      ++stats_.terminal_showdown_nodes;
-      break;
-    }
-    return Result<bool, TreeError>::success(true);
+    target += value;
+    return true;
   }
 
-  Result<bool, TreeError> count(const PublicState &state, const std::uint32_t depth) {
+  static bool add_scaled(PublicTreeStats &target, const PublicTreeStats &source,
+                         const std::uint64_t multiplier) {
+    const auto add_field = [multiplier](std::uint64_t &destination, const std::uint64_t value) {
+      return value == 0U || (multiplier <= std::numeric_limits<std::uint64_t>::max() / value &&
+                             checked_add(destination, value * multiplier));
+    };
+    if (!add_field(target.node_count, source.node_count) ||
+        !add_field(target.edge_count, source.edge_count) ||
+        !add_field(target.decision_nodes, source.decision_nodes) ||
+        !add_field(target.chance_nodes, source.chance_nodes) ||
+        !add_field(target.terminal_fold_nodes, source.terminal_fold_nodes) ||
+        !add_field(target.terminal_showdown_nodes, source.terminal_showdown_nodes) ||
+        !add_field(target.chance_edges, source.chance_edges)) {
+      return false;
+    }
+    for (std::size_t street = 0; street < 3U; ++street) {
+      if (!add_field(target.node_count_by_street[street], source.node_count_by_street[street]) ||
+          !add_field(target.edge_count_by_street[street], source.edge_count_by_street[street]) ||
+          !add_field(target.decision_nodes_by_street[street],
+                     source.decision_nodes_by_street[street]) ||
+          !add_field(target.chance_edges_by_street[street],
+                     source.chance_edges_by_street[street]) ||
+          !add_field(target.action_edges_by_street[street],
+                     source.action_edges_by_street[street])) {
+        return false;
+      }
+    }
+    target.maximum_depth = std::max(target.maximum_depth, source.maximum_depth);
+    return true;
+  }
+
+  static PublicTreeStats one_node(const PublicNodeKind kind, const PublicState &state,
+                                  const std::uint32_t depth) {
+    PublicTreeStats stats;
+    stats.node_count = 1;
+    stats.node_count_by_street[static_cast<std::size_t>(state.street) -
+                               static_cast<std::size_t>(Street::Flop)] = 1;
+    stats.maximum_depth = depth;
+    switch (kind) {
+    case PublicNodeKind::Decision:
+      stats.decision_nodes = 1;
+      stats.decision_nodes_by_street[static_cast<std::size_t>(state.street) -
+                                     static_cast<std::size_t>(Street::Flop)] = 1;
+      break;
+    case PublicNodeKind::Chance:
+      stats.chance_nodes = 1;
+      break;
+    case PublicNodeKind::TerminalFold:
+      stats.terminal_fold_nodes = 1;
+      break;
+    case PublicNodeKind::TerminalShowdown:
+      stats.terminal_showdown_nodes = 1;
+      break;
+    }
+    return stats;
+  }
+
+  Result<PublicTreeStats, TreeError> count(const PublicState &state, const std::uint32_t depth) {
     if (!validate_state(state)) {
-      return Result<bool, TreeError>::failure(TreeError::GameFailure);
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
     }
     if (state.status == HandStatus::Folded) {
       if (!settle_terminal(state, config_.rake)) {
-        return Result<bool, TreeError>::failure(TreeError::SettlementFailure);
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::SettlementFailure);
       }
-      return add(PublicNodeKind::TerminalFold, depth);
+      return Result<PublicTreeStats, TreeError>::success(
+          one_node(PublicNodeKind::TerminalFold, state, depth));
     }
     if (state.status == HandStatus::Showdown) {
       if (state.street != Street::River || std::popcount(state.board_mask) != 5) {
-        return Result<bool, TreeError>::failure(TreeError::InvalidBoard);
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::InvalidBoard);
       }
-      return add(PublicNodeKind::TerminalShowdown, depth);
+      return Result<PublicTreeStats, TreeError>::success(
+          one_node(PublicNodeKind::TerminalShowdown, state, depth));
     }
     if (state.status == HandStatus::StreetComplete || state.status == HandStatus::AllInRunout) {
       return count_chance(state, depth);
     }
     if (state.status != HandStatus::InProgress) {
-      return Result<bool, TreeError>::failure(TreeError::GameFailure);
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
     }
 
-    const auto added = add(PublicNodeKind::Decision, depth);
-    if (!added) {
-      return added;
-    }
+    auto stats = one_node(PublicNodeKind::Decision, state, depth);
     const auto actor = static_cast<Player>(state.player_to_act);
     const auto &source = scenario_config(config_, state.street, actor, current_scenario(state));
     const auto action_config = to_action_config(source);
     const auto actions = legal_actions(state, action_config);
     if (!actions || actions.value().empty()) {
-      return Result<bool, TreeError>::failure(TreeError::GameFailure);
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
     }
-    stats_.edge_count += actions.value().size();
+    const auto action_count = static_cast<std::uint64_t>(actions.value().size());
+    stats.edge_count = action_count;
+    const auto street_index =
+        static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
+    stats.edge_count_by_street[street_index] = action_count;
+    stats.action_edges_by_street[street_index] = action_count;
     for (const auto &action : actions.value()) {
       const auto successor = apply_action(state, action, action_config);
       if (!successor) {
-        return Result<bool, TreeError>::failure(TreeError::GameFailure);
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
       }
       const auto child = count(successor.value(), depth + 1U);
       if (!child) {
         return child;
       }
+      if (!add_scaled(stats, child.value(), 1U)) {
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::NodeOverflow);
+      }
     }
-    return Result<bool, TreeError>::success(true);
+    if (stats.node_count > options_.maximum_nodes) {
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::BuildLimitExceeded);
+    }
+    return Result<PublicTreeStats, TreeError>::success(stats);
   }
 
-  Result<bool, TreeError> count_chance(const PublicState &state, const std::uint32_t depth) {
+  Result<PublicTreeStats, TreeError> count_chance(const PublicState &state,
+                                                  const std::uint32_t depth) {
     if (state.street == Street::River || std::popcount(state.board_mask) < 3 ||
         std::popcount(state.board_mask) >= 5) {
-      return Result<bool, TreeError>::failure(TreeError::InvalidBoard);
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::InvalidBoard);
     }
-    const auto added = add(PublicNodeKind::Chance, depth);
-    if (!added) {
-      return added;
-    }
+    auto stats = one_node(PublicNodeKind::Chance, state, depth);
     const auto available_mask = full_deck_mask ^ state.board_mask;
     const auto outcomes = static_cast<std::uint64_t>(std::popcount(available_mask));
-    stats_.edge_count += outcomes;
-    stats_.chance_edges += outcomes;
+    stats.edge_count = outcomes;
+    stats.chance_edges = outcomes;
+    const auto street_index =
+        static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
+    stats.edge_count_by_street[street_index] = outcomes;
+    stats.chance_edges_by_street[street_index] = outcomes;
     for (std::uint8_t index = 0; index < 36U; ++index) {
       const auto card = CardId::from_index(index).value();
       if ((available_mask & card.mask()) == 0U) {
@@ -358,19 +434,25 @@ private:
       }
       const auto successor = advance_chance_state(state, card);
       if (!successor) {
-        return Result<bool, TreeError>::failure(successor.error());
+        return Result<PublicTreeStats, TreeError>::failure(successor.error());
       }
       const auto child = count(successor.value(), depth + 1U);
       if (!child) {
         return child;
       }
+      if (!add_scaled(stats, child.value(), outcomes)) {
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::NodeOverflow);
+      }
+      if (stats.node_count > options_.maximum_nodes) {
+        return Result<PublicTreeStats, TreeError>::failure(TreeError::BuildLimitExceeded);
+      }
+      break;
     }
-    return Result<bool, TreeError>::success(true);
+    return Result<PublicTreeStats, TreeError>::success(stats);
   }
 
   const PostflopTreeConfig &config_;
   TreeBuildOptions options_;
-  PublicTreeStats stats_{};
 };
 
 void hash_byte(std::uint64_t &hash, const std::uint8_t value) {

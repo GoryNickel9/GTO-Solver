@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
   gtosd
-  VERSION 0.5.0
+  VERSION 0.6.0
   DESCRIPTION "Exact Short Deck game and solver core"
   LANGUAGES CXX)
 
@@ -77,6 +77,7 @@ add_subdirectory(libs/tree)
 add_subdirectory(libs/isomorphism)
 add_subdirectory(libs/solver)
 add_subdirectory(libs/best_response)
+add_subdirectory(libs/memory)
 add_subdirectory(apps/gto_cli)
 
 if(GTOSD_BUILD_TESTS)
@@ -96,6 +97,7 @@ install(TARGETS
     gtosd_isomorphism
     gtosd_solver
     gtosd_best_response
+    gtosd_memory
     gto_cli
   EXPORT gtosdTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -107,6 +109,8 @@ install(FILES ${PROJECT_BINARY_DIR}/generated/gtosd/version.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/gtosd)
 install(FILES schemas/postflop_tree_config.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
+install(DIRECTORY benchmarks/fixtures/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)
 install(EXPORT gtosdTargets
   FILE gtosdTargets.cmake
   NAMESPACE gtosd::

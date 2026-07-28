@@ -5,5 +5,6 @@ target_link_libraries(gto_cli
     gtosd::tree
     gtosd::isomorphism
     gtosd::solver
-    gtosd::best_response)
+    gtosd::best_response
+    gtosd::memory)
 gtosd_set_warnings(gto_cli)

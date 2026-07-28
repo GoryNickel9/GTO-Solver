@@ -71,6 +71,18 @@ checkpoint/resume and convergence curves:
   solver-lab kuhn cfr+ 20000 1 1
 ```
 
+Phase 6 is complete locally: `gtosd::memory` compares lazy in-RAM, street
+decomposition and memory-mapped out-of-core layouts on the versioned
+PF-F1/PF-F2/PF-F3 fixtures:
+
+```powershell
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  memory-lab pf-f1 lazy
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  memory-probe pf-f1 .\out\pf-f1-probe.bin
+```
+
 The project does not yet claim a solved or certified GTO strategy for the
-complete Short Deck postflop tree. Phase 6 measures exact memory
-architectures before that integration.
+complete Short Deck postflop tree. Phase 7 performs that production
+integration using lazy in-RAM as primary and out-of-core as fallback.
