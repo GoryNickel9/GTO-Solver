@@ -1,0 +1,8 @@
+Checks: >-
+  bugprone-*,
+  performance-*,
+  portability-*,
+  readability-identifier-naming
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(include|libs|apps|tests)/'
+FormatStyle: file

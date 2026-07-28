@@ -1,0 +1,112 @@
+#pragma once
+
+#include "gtosd/core/money.hpp"
+
+#include <array>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace gtosd {
+
+constexpr std::size_t maximum_players = 6;
+enum class Player : std::uint8_t { CO = 0, BTN = 1 };
+enum class Street : std::uint8_t { Preflop, Flop, Turn, River };
+enum class ActionType : std::uint8_t { Fold, Check, Call, Bet, Raise, AllIn };
+enum class AllInMode : std::uint8_t { Disabled, Add, Go };
+enum class AllInKind : std::uint8_t { None, Call, Raise };
+enum class HandStatus : std::uint8_t { InProgress, StreetComplete, Folded, AllInRunout, Showdown };
+enum class GameError : std::uint8_t {
+  InvalidStack,
+  InvalidPot,
+  InvalidConfiguration,
+  InvalidState,
+  IllegalAction,
+  ArithmeticFailure,
+  NotTerminal
+};
+
+struct WinnerMask {
+  std::uint8_t bits{0};
+};
+
+struct Action {
+  ActionType type{ActionType::Check};
+  Money amount{};
+  AllInKind all_in_kind{AllInKind::None};
+  std::uint32_t requested_basis_points{0};
+  friend bool operator==(const Action &, const Action &) = default;
+};
+
+struct PublicState {
+  Street street{Street::Preflop};
+  HandStatus status{HandStatus::InProgress};
+  std::uint64_t board_mask{0};
+  std::uint8_t player_count{2};
+  std::uint8_t player_to_act{0};
+  Money initial_pot{};
+  Money pot{};
+  Money returned_uncalled{};
+  Money current_bet{};
+  Money last_full_raise_increment{};
+  std::array<Money, maximum_players> initial_pot_contributions{};
+  std::array<Money, maximum_players> remaining_stacks{};
+  std::array<Money, maximum_players> committed_this_street{};
+  std::array<Money, maximum_players> committed_total{};
+  std::array<Money, maximum_players> returned_uncalled_by_player{};
+  std::uint8_t active_players_mask{0b11};
+  std::uint8_t all_in_players_mask{0};
+  std::uint8_t acted_players_mask{0};
+  std::uint8_t terminal_winner_mask{0};
+  std::uint8_t raise_count_this_street{0};
+
+  friend bool operator==(const PublicState &, const PublicState &) = default;
+};
+
+struct ActionConfig {
+  std::vector<PotPercentage> aggressive_sizes;
+  std::uint8_t raise_depth{0};
+  AllInMode all_in_mode{AllInMode::Disabled};
+  PotPercentage all_in_threshold{PotPercentage::from_basis_points(0).value()};
+  Money minimum_bet{};
+};
+
+struct RakeConfig {
+  bool enabled{false};
+  RangeWeight percentage{RangeWeight::from_basis_points(0).value()};
+  Money cap{};
+  bool no_flop_no_drop{true};
+  Money minimum_pot{};
+};
+
+struct Settlement {
+  Money called_pot{};
+  Money rake{};
+  Money returned_uncalled{};
+  std::array<Money, maximum_players> payouts{};
+  std::array<std::int64_t, maximum_players> payoff_units{};
+};
+
+[[nodiscard]] Result<PublicState, GameError> make_hu_preflop_state(Money effective_stack,
+                                                                   Money ante);
+[[nodiscard]] Result<PublicState, GameError> make_hu_postflop_state(Street street,
+                                                                    Money initial_pot,
+                                                                    Money effective_stack,
+                                                                    std::uint64_t board_mask = 0);
+[[nodiscard]] Money amount_to_call(const PublicState &state, std::uint8_t player);
+[[nodiscard]] Result<bool, GameError> validate_state(const PublicState &state);
+[[nodiscard]] std::string serialize_public_state(const PublicState &state);
+[[nodiscard]] Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
+                                                                   const ActionConfig &config);
+[[nodiscard]] Result<PublicState, GameError>
+apply_action(const PublicState &state, const Action &action, const ActionConfig &config);
+[[nodiscard]] Result<PublicState, GameError> advance_street(const PublicState &state);
+[[nodiscard]] Result<Money, GameError> calculate_rake(const RakeConfig &config, Money called_pot,
+                                                      bool flop_dealt);
+[[nodiscard]] Result<std::array<Money, maximum_players>, GameError>
+split_pot(Money called_pot, Money rake, WinnerMask winner_mask, std::size_t player_count);
+[[nodiscard]] Result<Settlement, GameError> settle_terminal(const PublicState &state,
+                                                            const RakeConfig &rake_config,
+                                                            std::uint8_t showdown_winner_mask = 0);
+
+} // namespace gtosd

@@ -1,0 +1,21 @@
+#pragma once
+
+#include <cstdint>
+
+namespace gtosd {
+
+inline constexpr std::uint32_t api_version_major = @PROJECT_VERSION_MAJOR@U;
+inline constexpr std::uint32_t api_version_minor = @PROJECT_VERSION_MINOR@U;
+inline constexpr std::uint32_t api_version_patch = @PROJECT_VERSION_PATCH@U;
+inline constexpr char api_version_string[] = "@PROJECT_VERSION@";
+
+inline constexpr std::uint32_t public_state_format_major = 1U;
+inline constexpr std::uint32_t public_state_format_minor = 0U;
+inline constexpr std::uint32_t isomorphism_format_major = 1U;
+inline constexpr std::uint32_t isomorphism_format_minor = 0U;
+inline constexpr std::uint32_t solution_format_major = 1U;
+inline constexpr std::uint32_t solution_format_minor = 0U;
+inline constexpr std::uint32_t checkpoint_format_major = 1U;
+inline constexpr std::uint32_t checkpoint_format_minor = 0U;
+
+} // namespace gtosd

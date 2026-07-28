@@ -1,0 +1,5 @@
+/out/
+/.cache/
+*.user
+*.suo
+*.VC.db
