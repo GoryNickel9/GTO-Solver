@@ -83,6 +83,10 @@ make_postflop_benchmark_config(PostflopBenchmark benchmark);
 analyze_memory_prototype(PostflopBenchmark benchmark, MemoryPrototype prototype,
                          const MemoryPrototypeOptions &options = {});
 
+[[nodiscard]] Result<MemoryPrototypeReport, MemoryError>
+analyze_postflop_config(const PostflopTreeConfig &config, MemoryPrototype prototype,
+                        const MemoryPrototypeOptions &options = {});
+
 [[nodiscard]] Result<MemoryRoundTripResult, MemoryError>
 round_trip_checkpoint_memory(const SolverCheckpoint &checkpoint, MemoryPrototype prototype,
                              const std::string &backing_file = {},

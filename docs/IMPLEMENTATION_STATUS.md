@@ -13,7 +13,7 @@ Aggiornato: 2026-07-28
 | F4 | **Completata** | Modulo `gtosd::isomorphism`, tutte le 24 permutazioni, mapping inverso, 7.140 flop fisici e 573 orbite, chance con molteplicità | Nessun residuo F4 |
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
 | F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
-| F7 | Prossima | Lazy in-RAM primary e out-of-core fallback selezionati | HU postflop CLI production con BR/NashConv |
+| F7 | **In corso** | Preflight config-specifico, selezione lazy/out-of-core e rifiuto preventivo implementati | Finite game poker, traversal CFR+, controlli job e BR/NashConv production |
 | F8+ | Non iniziata | — | Storage e prodotto |
 
 ## Fase 0 — Fondazioni del repository
@@ -381,9 +381,12 @@ e nei tre report di prototipo.
 
 ### Prossimo ingresso
 
-La prossima milestone è **Fase 7 — HU postflop CLI production**: integrare
-range fisici, public tree, CFR+ primary, BR/NashConv, progress e checkpoint
-usando lazy in-RAM come layout principale e out-of-core come fallback.
+La milestone corrente è **Fase 7 — HU postflop CLI production**. Il primo
+incremento è documentato in
+[`PHASE_7_PROGRESS_REPORT.md`](PHASE_7_PROGRESS_REPORT.md): validazione,
+preflight exact config-specifico, selezione lazy/out-of-core e rifiuto
+preventivo sono implementati. Restano finite game poker, traversal CFR+,
+controlli job, BR/NashConv e verifica del gate PF-F1.
 
 ## Contratti poker già codificati
 

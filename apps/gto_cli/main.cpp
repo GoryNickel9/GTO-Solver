@@ -20,6 +20,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -38,6 +39,92 @@ std::optional<std::uint64_t> parse_u64(const std::string_view text) {
     return std::nullopt;
   }
   return value;
+}
+
+std::optional<gtosd::PostflopTreeConfig> load_postflop_config(const char *const path,
+                                                              std::string &error) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    error = "cannot_open_config";
+    return std::nullopt;
+  }
+  const std::string json((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+  const auto config = gtosd::parse_tree_config_json(json);
+  if (!config) {
+    error = gtosd::tree_config_error_name(config.error());
+    return std::nullopt;
+  }
+  return config.value();
+}
+
+int run_postflop_validate(const char *const path) {
+  std::string error;
+  const auto config = load_postflop_config(path, error);
+  if (!config) {
+    std::cerr << "postflop validate failed: " << error << '\n';
+    return 1;
+  }
+  const auto estimate = gtosd::estimate_public_tree(*config);
+  if (!estimate) {
+    std::cerr << "postflop validate failed: " << gtosd::tree_error_name(estimate.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_POSTFLOP_VALIDATE_1\n"
+            << "status=valid exact_outcomes=true bucketing=false\n"
+            << "nodes=" << estimate.value().node_count << " edges=" << estimate.value().edge_count
+            << " decision_nodes=" << estimate.value().decision_nodes
+            << " chance_edges=" << estimate.value().chance_edges << '\n';
+  return 0;
+}
+
+int run_postflop_estimate(const char *const path, const std::string_view ram_gib_text,
+                          const std::string_view disk_gib_text) {
+  const auto ram_gib = parse_u64(ram_gib_text);
+  const auto disk_gib = parse_u64(disk_gib_text);
+  constexpr std::uint64_t gib = 1ULL << 30U;
+  if (!ram_gib || !disk_gib || *ram_gib == 0U ||
+      *ram_gib > std::numeric_limits<std::uint64_t>::max() / gib ||
+      *disk_gib > std::numeric_limits<std::uint64_t>::max() / gib) {
+    std::cerr << "postflop estimate failed: invalid_resource_budget\n";
+    return 2;
+  }
+  std::string error;
+  const auto config = load_postflop_config(path, error);
+  if (!config) {
+    std::cerr << "postflop estimate failed: " << error << '\n';
+    return 1;
+  }
+  const auto lazy = gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::LazyInRam);
+  const auto out_of_core =
+      gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::OutOfCore);
+  if (!lazy || !out_of_core) {
+    const auto failure = lazy ? out_of_core.error() : lazy.error();
+    std::cerr << "postflop estimate failed: " << gtosd::memory_error_name(failure) << '\n';
+    return 1;
+  }
+  const std::uint64_t ram_bytes = *ram_gib * gib;
+  const std::uint64_t disk_bytes = *disk_gib * gib;
+  const bool lazy_fits = lazy.value().memory.peak_resident_bytes <= ram_bytes;
+  const bool out_of_core_fits = out_of_core.value().memory.peak_resident_bytes <= ram_bytes &&
+                                out_of_core.value().memory.backing_store_bytes <= disk_bytes;
+  const char *const selected =
+      lazy_fits ? "lazy-in-ram" : (out_of_core_fits ? "out-of-core" : "rejected");
+  std::cout << "GTOSD_POSTFLOP_ESTIMATE_1\n"
+            << "exact_outcomes=true bucketing=false\n"
+            << "nodes=" << lazy.value().public_tree.node_count
+            << " infosets=" << lazy.value().information_sets << " actions=" << lazy.value().actions
+            << '\n'
+            << "lazy_peak_bytes=" << lazy.value().memory.peak_resident_bytes
+            << " out_of_core_peak_bytes=" << out_of_core.value().memory.peak_resident_bytes
+            << " out_of_core_backing_bytes=" << out_of_core.value().memory.backing_store_bytes
+            << '\n'
+            << "ram_budget_bytes=" << ram_bytes << " disk_budget_bytes=" << disk_bytes
+            << " selected_backend=" << selected << '\n';
+  if (!lazy_fits && !out_of_core_fits) {
+    std::cerr << "postflop estimate rejected: insufficient_ram_or_disk\n";
+    return 3;
+  }
+  return 0;
 }
 
 int inspect_tree(const char *const path, const std::string_view maximum_nodes_text) {
@@ -497,6 +584,8 @@ void print_usage() {
             << "  gto_cli memory-lab <pf-f1|pf-f2|pf-f3> "
                "<lazy|street|out-of-core> [resident_pages]\n"
             << "  gto_cli memory-probe <pf-f1|pf-f2|pf-f3> <backing_file>\n"
+            << "  gto_cli postflop validate <config.json>\n"
+            << "  gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>\n"
             << "    game: matching|kuhn|leduc|short-deck-toy|short-deck-rake-toy\n"
             << "    algorithm: cfr|cfr+|linear|dcfr|mccfr\n";
 }
@@ -538,6 +627,14 @@ int run_cli(const int argc, const char *const argv[]) {
   }
   if (argc == 4 && std::string_view(argv[1]) == "memory-probe") {
     return run_memory_probe(argv[2], argv[3]);
+  }
+  if (argc == 4 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "validate") {
+    return run_postflop_validate(argv[3]);
+  }
+  if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "estimate") {
+    return run_postflop_estimate(argv[3], argv[4], argv[5]);
   }
   print_usage();
   return argc == 1 ? 0 : 2;

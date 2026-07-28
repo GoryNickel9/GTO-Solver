@@ -482,18 +482,17 @@ make_postflop_benchmark_config(const PostflopBenchmark benchmark) {
 }
 
 Result<MemoryPrototypeReport, MemoryError>
-analyze_memory_prototype(const PostflopBenchmark benchmark, const MemoryPrototype prototype,
-                         const MemoryPrototypeOptions &options) {
+analyze_postflop_config(const PostflopTreeConfig &config, const MemoryPrototype prototype,
+                        const MemoryPrototypeOptions &options) {
   if (!valid_options(options)) {
     return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::InvalidConfiguration);
   }
-  const auto config = make_postflop_benchmark_config(benchmark);
-  if (!config) {
-    return Result<MemoryPrototypeReport, MemoryError>::failure(config.error());
+  if (!validate_tree_config(config)) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::InvalidConfiguration);
   }
   TreeBuildOptions tree_options;
   tree_options.maximum_nodes = std::numeric_limits<std::uint64_t>::max();
-  const auto tree = estimate_public_tree(config.value(), tree_options);
+  const auto tree = estimate_public_tree(config, tree_options);
   if (!tree) {
     return Result<MemoryPrototypeReport, MemoryError>::failure(
         tree.error() == TreeError::NodeOverflow ? MemoryError::ArithmeticOverflow
@@ -502,7 +501,6 @@ analyze_memory_prototype(const PostflopBenchmark benchmark, const MemoryPrototyp
 
   MemoryPrototypeReport report;
   report.prototype = prototype;
-  report.benchmark = benchmark;
   report.public_tree = tree.value();
   for (std::size_t street = 0; street < 3U; ++street) {
     if (!checked_multiply(tree.value().decision_nodes_by_street[street],
@@ -656,6 +654,20 @@ analyze_memory_prototype(const PostflopBenchmark benchmark, const MemoryPrototyp
     return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
   }
   return Result<MemoryPrototypeReport, MemoryError>::success(report);
+}
+
+Result<MemoryPrototypeReport, MemoryError>
+analyze_memory_prototype(const PostflopBenchmark benchmark, const MemoryPrototype prototype,
+                         const MemoryPrototypeOptions &options) {
+  const auto config = make_postflop_benchmark_config(benchmark);
+  if (!config) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(config.error());
+  }
+  auto report = analyze_postflop_config(config.value(), prototype, options);
+  if (report) {
+    report.value().benchmark = benchmark;
+  }
+  return report;
 }
 
 Result<MemoryRoundTripResult, MemoryError>

@@ -78,6 +78,17 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_phase7_tests phase7_tests.cpp)
+target_link_libraries(gtosd_phase7_tests PRIVATE gtosd::memory)
+gtosd_set_warnings(gtosd_phase7_tests)
+add_test(NAME gtosd_phase7_tests COMMAND gtosd_phase7_tests)
+set_tests_properties(gtosd_phase7_tests
+  PROPERTIES LABELS "phase7;postflop;preflight;exact")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_phase7_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 if(GTOSD_BUILD_NIGHTLY_TESTS)
   add_executable(gtosd_phase2_nightly_tests phase2_nightly_tests.cpp)
   target_link_libraries(gtosd_phase2_nightly_tests PRIVATE gtosd::equity)

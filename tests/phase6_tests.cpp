@@ -115,6 +115,19 @@ void test_all_prototype_reports() {
                                                            gtosd::MemoryPrototype::OutOfCore);
   require(out_of_core.has_value() && out_of_core.value().memory.peak_resident_bytes <= twelve_gib,
           "PF-F1 out-of-core prototype passes the 12 GiB resident gate");
+
+  const auto custom_config = gtosd::make_postflop_benchmark_config(gtosd::PostflopBenchmark::PfF1);
+  require(custom_config.has_value(), "custom preflight source config builds");
+  const auto custom =
+      gtosd::analyze_postflop_config(custom_config.value(), gtosd::MemoryPrototype::LazyInRam);
+  const auto canonical = gtosd::analyze_memory_prototype(gtosd::PostflopBenchmark::PfF1,
+                                                         gtosd::MemoryPrototype::LazyInRam);
+  require(custom.has_value() && canonical.has_value() &&
+              custom.value().information_sets == canonical.value().information_sets &&
+              custom.value().actions == canonical.value().actions &&
+              custom.value().memory.peak_resident_bytes ==
+                  canonical.value().memory.peak_resident_bytes,
+          "production config preflight matches the canonical PF-F1 report");
 }
 
 void test_checkpoint_parity() {
