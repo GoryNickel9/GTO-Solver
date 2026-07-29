@@ -1,0 +1,141 @@
+#include "gtosd/memory/memory.hpp"
+#include "gtosd/storage/storage.hpp"
+
+#include <filesystem>
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+std::size_t assertions = 0;
+
+void require(const bool condition, const std::string &message) {
+  ++assertions;
+  if (!condition) {
+    throw std::runtime_error(message);
+  }
+}
+
+gtosd::PostflopTreeConfig make_small_config() {
+  auto config = gtosd::make_postflop_benchmark_config(gtosd::PostflopBenchmark::PfF1).value();
+  for (auto &street : config.streets) {
+    for (auto &player : street.players) {
+      for (auto &scenario : player) {
+        scenario.aggressive_sizes.clear();
+        scenario.raise_depth = 0;
+        scenario.all_in_mode = gtosd::AllInMode::Disabled;
+      }
+    }
+  }
+  return config;
+}
+
+gtosd::PostflopRanges make_weighted_ranges(const gtosd::PostflopTreeConfig &config) {
+  auto ranges = gtosd::make_uniform_postflop_ranges();
+  const auto zero = gtosd::RangeWeight::from_basis_points(0).value();
+  const auto half = gtosd::RangeWeight::from_basis_points(5'000).value();
+  const auto combos = gtosd::all_combos();
+  const auto board = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask();
+  for (std::size_t combo = 0; combo < combos.size(); ++combo) {
+    const auto mask = combos[combo].first.mask() | combos[combo].second.mask();
+    if ((mask & board) == 0U) {
+      ranges.players[0][combo] = combo % 2U == 0U ? half : zero;
+    }
+  }
+  return ranges;
+}
+
+gtosd::PostflopSolveResult solve(const gtosd::PostflopTreeConfig &config,
+                                 const gtosd::PostflopRanges *ranges = nullptr) {
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 1U;
+  options.certification_interval = 1U;
+  const auto result = ranges == nullptr ? gtosd::solve_postflop_exact(config, options)
+                                        : gtosd::solve_postflop_exact(config, *ranges, options);
+  require(result.has_value(), "small exact solve succeeds");
+  return result.value();
+}
+
+void test_weighted_reach_and_fingerprint() {
+  const auto config = make_small_config();
+  const auto uniform = gtosd::make_uniform_postflop_ranges();
+  const auto weighted = make_weighted_ranges(config);
+  require(gtosd::validate_postflop_ranges(config, uniform).has_value() &&
+              gtosd::validate_postflop_ranges(config, weighted).has_value(),
+          "uniform and fractional physical ranges are valid");
+
+  const auto legacy = solve(config);
+  const auto explicit_uniform = solve(config, &uniform);
+  const auto weighted_result = solve(config, &weighted);
+  require(legacy.checkpoint.game_fingerprint == explicit_uniform.checkpoint.game_fingerprint,
+          "explicit uniform ranges preserve the F7 checkpoint fingerprint");
+  require(weighted_result.checkpoint.game_fingerprint != legacy.checkpoint.game_fingerprint,
+          "physical range weights are part of the game fingerprint");
+  require(weighted_result.convergence.back().profile_value_antes !=
+              legacy.convergence.back().profile_value_antes,
+          "weighted root reach changes the exact profile EV");
+  const auto batch =
+      gtosd::query_postflop_strategies(config, weighted, weighted_result.checkpoint, 0U);
+  require(batch.has_value() && !batch.value().empty(),
+          "all legal physical combos are queryable with one layout build");
+  const auto single = gtosd::query_postflop_strategy(config, weighted, weighted_result.checkpoint,
+                                                     0U, batch.value().front().combo);
+  require(single.has_value() && single.value().probabilities == batch.value().front().probabilities,
+          "batch and single-combo strategy queries agree exactly");
+  require(
+      !gtosd::certify_postflop_checkpoint(config, uniform, weighted_result.checkpoint) &&
+          gtosd::certify_postflop_checkpoint(config, uniform, weighted_result.checkpoint).error() ==
+              gtosd::PostflopSolverError::CheckpointMismatch,
+      "a checkpoint cannot be silently reused with different ranges");
+}
+
+void test_range_storage_round_trip() {
+  const auto config = make_small_config();
+  const auto ranges = make_weighted_ranges(config);
+  const auto solved = solve(config, &ranges);
+  const auto archive =
+      gtosd::make_postflop_solution(config, ranges, solved.checkpoint, solved.convergence.back());
+  require(archive.has_value(), "weighted solution archive builds");
+  const auto key = gtosd::generate_storage_key();
+  const auto path = std::filesystem::current_path() / "phase10_weighted_ranges.gtsd";
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
+  require(gtosd::save_solution(path, archive.value(), key).has_value(),
+          "weighted solution saves atomically");
+  const auto reader = gtosd::open_solution(path, key);
+  require(reader.has_value(), "weighted solution opens");
+  const auto restored = gtosd::restore_postflop_solution(reader.value());
+  require(restored.has_value() && restored.value().ranges == ranges,
+          "all 1,260 physical range weights round-trip losslessly");
+  require(gtosd::certify_postflop_checkpoint(restored.value().config, restored.value().ranges,
+                                             restored.value().checkpoint)
+              .has_value(),
+          "restored range/checkpoint pair remains certifiable");
+  std::filesystem::remove(path, ignored);
+}
+
+void test_empty_range_rejected() {
+  const auto config = make_small_config();
+  gtosd::PostflopRanges empty;
+  require(!gtosd::validate_postflop_ranges(config, empty),
+          "a range pair with no compatible private deal is rejected");
+  gtosd::PostflopSolveOptions options;
+  require(!gtosd::solve_postflop_exact(config, empty, options),
+          "solver rejects an empty range before traversal");
+}
+
+} // namespace
+
+int main() {
+  try {
+    test_weighted_reach_and_fingerprint();
+    test_range_storage_round_trip();
+    test_empty_range_rejected();
+    std::cout << "phase10 assertions=" << assertions << '\n';
+    return 0;
+  } catch (const std::exception &error) {
+    std::cerr << "phase10 failure after assertions=" << assertions << ": " << error.what() << '\n';
+    return 1;
+  }
+}

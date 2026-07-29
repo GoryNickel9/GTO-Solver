@@ -7,6 +7,7 @@
 #include "gtosd/solver/best_response.hpp"
 #include "gtosd/solver/reference_games.hpp"
 #include "gtosd/solver/solver.hpp"
+#include "gtosd/storage/storage.hpp"
 #include "gtosd/tree/tree.hpp"
 #include "gtosd/version.hpp"
 
@@ -431,6 +432,197 @@ int compare_gto_plus_reference(const char *const config_path, const char *const 
             << " delta_ev_btn_antes=" << certified.value().profile_value_antes[1] - reference_btn
             << '\n'
             << "gtosd_normalized_nash_conv=" << certified.value().normalized_nash_conv << '\n';
+  return 0;
+}
+
+std::optional<gtosd::StorageKey> parse_storage_key(const std::string_view text,
+                                                   const char *const operation) {
+  const auto key = gtosd::storage_key_from_hex(text);
+  if (!key) {
+    std::cerr << operation << " failed: " << gtosd::storage_error_name(key.error()) << '\n';
+    return std::nullopt;
+  }
+  return key.value();
+}
+
+void print_storage_metrics(const gtosd::StorageMetrics &metrics) {
+  std::cout << "file_bytes=" << metrics.file_size << " raw_bytes=" << metrics.raw_size
+            << " compressed_bytes=" << metrics.compressed_size
+            << " encrypted_bytes=" << metrics.encrypted_size
+            << " compression_ratio=" << metrics.compression_ratio
+            << " peak_open_bytes=" << metrics.peak_open_bytes << " chunks=" << metrics.chunk_count
+            << '\n';
+}
+
+int run_storage_pack(const char *const config_path, const char *const checkpoint_path,
+                     const char *const solution_path, const std::string_view key_text) {
+  const auto key = parse_storage_key(key_text, "storage pack");
+  std::string config_error;
+  const auto config = load_postflop_config(config_path, config_error);
+  const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
+  if (!key || !config || !checkpoint) {
+    std::cerr << "storage pack failed: invalid_config_key_or_checkpoint\n";
+    return 1;
+  }
+  const auto certification = gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
+  if (!certification) {
+    std::cerr << "storage pack failed: " << gtosd::postflop_solver_error_name(certification.error())
+              << '\n';
+    return 1;
+  }
+  const auto archive =
+      gtosd::make_postflop_solution(*config, checkpoint.value(), certification.value());
+  if (!archive) {
+    std::cerr << "storage pack failed: " << gtosd::storage_error_name(archive.error()) << '\n';
+    return 1;
+  }
+  auto solution = archive.value();
+  const auto dictionary = gtosd::train_solution_dictionary(solution, 32U * 1024U);
+  if (!dictionary) {
+    std::cerr << "storage pack failed: " << gtosd::storage_error_name(dictionary.error()) << '\n';
+    return 1;
+  }
+  solution.chunks.push_back({gtosd::SolutionChunkType::Dictionary, dictionary.value()});
+  const auto saved = gtosd::save_solution(solution_path, solution, *key);
+  if (!saved) {
+    std::cerr << "storage pack failed: " << gtosd::storage_error_name(saved.error()) << '\n';
+    return 1;
+  }
+  const auto verified = gtosd::verify_solution(solution_path, *key);
+  if (!verified) {
+    std::cerr << "storage pack failed: " << gtosd::storage_error_name(verified.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_SOLUTION_1\n"
+            << "status=packed path=" << solution_path
+            << " game_fingerprint=" << checkpoint.value().game_fingerprint
+            << " iteration=" << certification.value().iteration
+            << " normalized_nash_conv=" << certification.value().normalized_nash_conv << '\n';
+  print_storage_metrics(verified.value().metrics);
+  return 0;
+}
+
+int run_storage_verify(const char *const solution_path, const std::string_view key_text) {
+  const auto key = parse_storage_key(key_text, "storage verify");
+  if (!key) {
+    return 2;
+  }
+  const auto verified = gtosd::verify_solution(solution_path, *key);
+  if (!verified) {
+    std::cerr << "storage verify failed: " << gtosd::storage_error_name(verified.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_STORAGE_VERIFICATION_1\n"
+            << "index_authenticated=" << std::boolalpha << verified.value().index_authenticated
+            << " all_chunks_authenticated=" << verified.value().all_chunks_authenticated
+            << " all_chunks_decompressed=" << verified.value().all_chunks_decompressed << '\n';
+  print_storage_metrics(verified.value().metrics);
+  return 0;
+}
+
+int run_storage_query(const char *const solution_path, const std::string_view key_text,
+                      const std::string_view node_text, const std::string_view combo_text) {
+  const auto key = parse_storage_key(key_text, "storage query");
+  const auto node = parse_u64(node_text);
+  const auto combo = parse_u64(combo_text);
+  if (!key || !node || !combo || *combo >= 630U) {
+    std::cerr << "storage query failed: invalid_argument\n";
+    return 2;
+  }
+  const auto reader = gtosd::open_solution(solution_path, *key);
+  if (!reader) {
+    std::cerr << "storage query failed: " << gtosd::storage_error_name(reader.error()) << '\n';
+    return 1;
+  }
+  const auto restored = gtosd::restore_postflop_solution(reader.value());
+  if (!restored) {
+    std::cerr << "storage query failed: " << gtosd::storage_error_name(restored.error()) << '\n';
+    return 1;
+  }
+  const auto query = gtosd::query_postflop_strategy(
+      restored.value().config, restored.value().ranges, restored.value().checkpoint, *node,
+      static_cast<gtosd::ComboId>(*combo));
+  if (!query) {
+    std::cerr << "storage query failed: " << gtosd::postflop_solver_error_name(query.error())
+              << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_STORAGE_QUERY_1\n"
+            << "public_node=" << *node << " combo=" << *combo << '\n';
+  for (std::size_t action = 0; action < query.value().actions.size(); ++action) {
+    std::cout << "action=" << action_type_name(query.value().actions[action].type)
+              << " amount_units=" << query.value().actions[action].amount.units()
+              << " probability=" << query.value().probabilities[action] << '\n';
+  }
+  return 0;
+}
+
+int run_storage_migrate(const char *const source, const char *const destination,
+                        const std::string_view key_text) {
+  const auto key = parse_storage_key(key_text, "storage migrate");
+  if (!key) {
+    return 2;
+  }
+  const auto migrated = gtosd::migrate_solution(source, destination, *key);
+  if (!migrated) {
+    std::cerr << "storage migrate failed: " << gtosd::storage_error_name(migrated.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_STORAGE_MIGRATION_1\n"
+            << "status=migrated source=" << source << " destination=" << destination << '\n';
+  return 0;
+}
+
+int run_storage_catalog_add(const char *const database_path, const char *const solution_path,
+                            const std::string_view key_text) {
+  const auto key = parse_storage_key(key_text, "storage catalog-add");
+  if (!key) {
+    return 2;
+  }
+  const auto reader = gtosd::open_solution(solution_path, *key);
+  if (!reader) {
+    std::cerr << "storage catalog-add failed: " << gtosd::storage_error_name(reader.error())
+              << '\n';
+    return 1;
+  }
+  const auto restored = gtosd::restore_postflop_solution(reader.value());
+  if (!restored) {
+    std::cerr << "storage catalog-add failed: " << gtosd::storage_error_name(restored.error())
+              << '\n';
+    return 1;
+  }
+  gtosd::CatalogEntry entry;
+  entry.path = std::filesystem::absolute(solution_path).string();
+  entry.game_fingerprint = restored.value().checkpoint.game_fingerprint;
+  entry.file_size = reader.value().metrics().file_size;
+  entry.modified_unix_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+  entry.normalized_nash_conv = restored.value().certification.normalized_nash_conv;
+  const auto added = gtosd::upsert_solution_catalog(database_path, entry);
+  if (!added) {
+    std::cerr << "storage catalog-add failed: " << gtosd::storage_error_name(added.error()) << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_STORAGE_CATALOG_1\n"
+            << "status=upserted database=" << database_path << " path=" << entry.path << '\n';
+  return 0;
+}
+
+int run_storage_catalog_list(const char *const database_path) {
+  const auto entries = gtosd::list_solution_catalog(database_path);
+  if (!entries) {
+    std::cerr << "storage catalog-list failed: " << gtosd::storage_error_name(entries.error())
+              << '\n';
+    return 1;
+  }
+  std::cout << "GTOSD_STORAGE_CATALOG_1\n"
+            << "entries=" << entries.value().size() << '\n';
+  for (const auto &entry : entries.value()) {
+    std::cout << "path=" << entry.path << " game_fingerprint=" << entry.game_fingerprint
+              << " file_bytes=" << entry.file_size << " modified_unix_ms=" << entry.modified_unix_ms
+              << " normalized_nash_conv=" << entry.normalized_nash_conv << '\n';
+  }
   return 0;
 }
 
@@ -997,6 +1189,13 @@ void print_usage() {
             << "  gto_cli postflop compare-gto-plus <config.json> <checkpoint> "
                "<reference.json>\n"
             << "  gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>\n"
+            << "  gto_cli storage keygen\n"
+            << "  gto_cli storage pack <config.json> <checkpoint> <solution.gtsd> <key_hex>\n"
+            << "  gto_cli storage verify <solution.gtsd> <key_hex>\n"
+            << "  gto_cli storage query <solution.gtsd> <key_hex> <node> <combo_id>\n"
+            << "  gto_cli storage migrate <source.gtsd> <destination.gtsd> <key_hex>\n"
+            << "  gto_cli storage catalog-add <catalog.gtsddb> <solution.gtsd> <key_hex>\n"
+            << "  gto_cli storage catalog-list <catalog.gtsddb>\n"
             << "    game: matching|kuhn|leduc|short-deck-toy|short-deck-rake-toy\n"
             << "    algorithm: cfr|cfr+|linear|dcfr|mccfr\n";
 }
@@ -1072,6 +1271,33 @@ int run_cli(const int argc, const char *const argv[]) {
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "benchmark-config") {
     return write_postflop_benchmark_config(argv[3], argv[4]);
+  }
+  if (argc == 3 && std::string_view(argv[1]) == "storage" &&
+      std::string_view(argv[2]) == "keygen") {
+    std::cout << gtosd::storage_key_to_hex(gtosd::generate_storage_key()) << '\n';
+    return 0;
+  }
+  if (argc == 7 && std::string_view(argv[1]) == "storage" && std::string_view(argv[2]) == "pack") {
+    return run_storage_pack(argv[3], argv[4], argv[5], argv[6]);
+  }
+  if (argc == 5 && std::string_view(argv[1]) == "storage" &&
+      std::string_view(argv[2]) == "verify") {
+    return run_storage_verify(argv[3], argv[4]);
+  }
+  if (argc == 7 && std::string_view(argv[1]) == "storage" && std::string_view(argv[2]) == "query") {
+    return run_storage_query(argv[3], argv[4], argv[5], argv[6]);
+  }
+  if (argc == 6 && std::string_view(argv[1]) == "storage" &&
+      std::string_view(argv[2]) == "migrate") {
+    return run_storage_migrate(argv[3], argv[4], argv[5]);
+  }
+  if (argc == 6 && std::string_view(argv[1]) == "storage" &&
+      std::string_view(argv[2]) == "catalog-add") {
+    return run_storage_catalog_add(argv[3], argv[4], argv[5]);
+  }
+  if (argc == 4 && std::string_view(argv[1]) == "storage" &&
+      std::string_view(argv[2]) == "catalog-list") {
+    return run_storage_catalog_list(argv[3]);
   }
   print_usage();
   return argc == 1 ? 0 : 2;

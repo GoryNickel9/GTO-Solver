@@ -1,15 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "gtosd",
-  "version-semver": "0.10.0",
+  "name": "gtosd-install-consumer",
+  "version-semver": "0.1.0",
   "builtin-baseline": "cd61e1e26a038e82d6550a3ebbe0fbbfe7da78e3",
   "dependencies": [
-    "benchmark",
-    "gtest",
-    "nlohmann-json",
     "libsodium",
+    "nlohmann-json",
     "sqlite3",
-    "spdlog",
     "zstd"
   ]
 }

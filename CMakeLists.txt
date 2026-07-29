@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
   gtosd
-  VERSION 0.7.0
+  VERSION 0.10.0
   DESCRIPTION "Exact Short Deck game and solver core"
   LANGUAGES CXX)
 
@@ -71,6 +71,13 @@ if(GTOSD_CLANG_FORMAT_EXECUTABLE)
     VERBATIM)
 endif()
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if(GTOSD_BUILD_TESTS)
+  enable_testing()
+endif()
+
 add_subdirectory(libs/core)
 add_subdirectory(libs/equity)
 add_subdirectory(libs/tree)
@@ -79,10 +86,10 @@ add_subdirectory(libs/solver)
 add_subdirectory(libs/best_response)
 add_subdirectory(libs/memory)
 add_subdirectory(libs/postflop)
+add_subdirectory(libs/storage)
 add_subdirectory(apps/gto_cli)
 
 if(GTOSD_BUILD_TESTS)
-  enable_testing()
   add_subdirectory(tests)
 endif()
 
@@ -90,7 +97,6 @@ if(GTOSD_BUILD_BENCHMARKS)
   add_subdirectory(benchmarks)
 endif()
 
-include(GNUInstallDirs)
 install(TARGETS
     gtosd_core
     gtosd_equity
@@ -100,6 +106,7 @@ install(TARGETS
     gtosd_best_response
     gtosd_memory
     gtosd_postflop
+    gtosd_storage
     gto_cli
   EXPORT gtosdTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -117,4 +124,16 @@ install(DIRECTORY benchmarks/fixtures/
 install(EXPORT gtosdTargets
   FILE gtosdTargets.cmake
   NAMESPACE gtosd::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gtosd)
+configure_package_config_file(
+  cmake/gtosdConfig.cmake.in
+  ${PROJECT_BINARY_DIR}/gtosdConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gtosd)
+write_basic_package_version_file(
+  ${PROJECT_BINARY_DIR}/gtosdConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion)
+install(FILES
+    ${PROJECT_BINARY_DIR}/gtosdConfig.cmake
+    ${PROJECT_BINARY_DIR}/gtosdConfigVersion.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/gtosd)

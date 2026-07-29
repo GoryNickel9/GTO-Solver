@@ -9,5 +9,6 @@ target_link_libraries(gto_cli
     gtosd::best_response
     gtosd::memory
     gtosd::postflop
+    gtosd::storage
     nlohmann_json::nlohmann_json)
 gtosd_set_warnings(gto_cli)

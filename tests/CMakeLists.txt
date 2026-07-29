@@ -91,6 +91,44 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_phase8_tests phase8_tests.cpp)
+target_compile_definitions(gtosd_phase8_tests PRIVATE
+  GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+target_link_libraries(gtosd_phase8_tests PRIVATE gtosd::storage)
+gtosd_set_warnings(gtosd_phase8_tests)
+add_test(NAME gtosd_phase8_tests COMMAND gtosd_phase8_tests)
+set_tests_properties(gtosd_phase8_tests
+  PROPERTIES LABELS "phase8;storage;encryption;random_access")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_phase8_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_phase8_large_file_tests phase8_large_file_tests.cpp)
+target_link_libraries(gtosd_phase8_large_file_tests PRIVATE gtosd::storage)
+gtosd_set_warnings(gtosd_phase8_large_file_tests)
+if(GTOSD_BUILD_NIGHTLY_TESTS)
+  add_test(NAME gtosd_phase8_large_file_tests
+    COMMAND gtosd_phase8_large_file_tests)
+  set_tests_properties(gtosd_phase8_large_file_tests
+    PROPERTIES LABELS "phase8;storage;large;nightly")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_phase8_large_file_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+add_executable(gtosd_phase10_tests phase10_tests.cpp)
+target_link_libraries(gtosd_phase10_tests PRIVATE gtosd::storage)
+gtosd_set_warnings(gtosd_phase10_tests)
+add_test(NAME gtosd_phase10_tests COMMAND gtosd_phase10_tests)
+set_tests_properties(gtosd_phase10_tests
+  PROPERTIES LABELS "phase10;postflop;ranges;storage;regression")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_phase10_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 if(GTOSD_BUILD_NIGHTLY_TESTS)
   add_executable(gtosd_phase2_nightly_tests phase2_nightly_tests.cpp)
   target_link_libraries(gtosd_phase2_nightly_tests PRIVATE gtosd::equity)

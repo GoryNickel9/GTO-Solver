@@ -257,6 +257,7 @@ struct DenseLayout {
   PublicTree tree;
   std::array<Combo, combo_count> combos{};
   std::array<std::uint64_t, combo_count> combo_masks{};
+  std::array<ComboVector, 2> initial_reach{};
   std::vector<BoardData> boards;
   std::vector<std::uint32_t> node_board;
   std::vector<DecisionLayout> decisions;
@@ -282,6 +283,26 @@ std::string fingerprint_text(const std::string_view text) {
   return output.str();
 }
 
+std::string serialize_range_fingerprint(const PostflopRanges &ranges) {
+  std::string result;
+  result.reserve(2U * combo_count * 6U);
+  for (const auto &range : ranges.players) {
+    for (const auto weight : range) {
+      result += std::to_string(weight.basis_points());
+      result.push_back(',');
+    }
+    result.push_back('|');
+  }
+  return result;
+}
+
+bool uniform_full_ranges(const PostflopRanges &ranges) {
+  return std::all_of(ranges.players.begin(), ranges.players.end(), [](const auto &range) {
+    return std::all_of(range.begin(), range.end(),
+                       [](const auto weight) { return weight.basis_points() == 10'000U; });
+  });
+}
+
 std::vector<CardId> cards_from_mask(const std::uint64_t mask) {
   std::vector<CardId> cards;
   cards.reserve(static_cast<std::size_t>(std::popcount(mask)));
@@ -293,7 +314,8 @@ std::vector<CardId> cards_from_mask(const std::uint64_t mask) {
   return cards;
 }
 
-Result<DenseLayout, PostflopSolverError> build_layout(const PostflopTreeConfig &config) {
+Result<DenseLayout, PostflopSolverError> build_layout(const PostflopTreeConfig &config,
+                                                      const PostflopRanges &ranges) {
   TreeBuildOptions options;
   options.maximum_nodes = std::numeric_limits<std::uint64_t>::max();
   auto tree = build_public_tree(config, options);
@@ -356,9 +378,15 @@ Result<DenseLayout, PostflopSolverError> build_layout(const PostflopTreeConfig &
 
   const auto &flop_board = layout.boards[layout.node_board[layout.tree.root]];
   for (const ComboId first : flop_board.legal_combos) {
+    layout.initial_reach[0][first] =
+        static_cast<double>(ranges.players[0][first].basis_points()) / 10'000.0;
+    layout.initial_reach[1][first] =
+        static_cast<double>(ranges.players[1][first].basis_points()) / 10'000.0;
     for (const ComboId second : flop_board.legal_combos) {
       if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
-        layout.initial_normalization += 1.0;
+        layout.initial_normalization +=
+            layout.initial_reach[0][first] *
+            (static_cast<double>(ranges.players[1][second].basis_points()) / 10'000.0);
       }
     }
   }
@@ -366,8 +394,12 @@ Result<DenseLayout, PostflopSolverError> build_layout(const PostflopTreeConfig &
     return Result<DenseLayout, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
-  layout.fingerprint =
-      fingerprint_text(layout.tree.betting_tree_hash + "|" + serialize_tree_config_json(config));
+  std::string fingerprint_source =
+      layout.tree.betting_tree_hash + "|" + serialize_tree_config_json(config);
+  if (!uniform_full_ranges(ranges)) {
+    fingerprint_source += "|ranges-v1|" + serialize_range_fingerprint(ranges);
+  }
+  layout.fingerprint = fingerprint_text(fingerprint_source);
   return Result<DenseLayout, PostflopSolverError>::success(std::move(layout));
 }
 
@@ -767,15 +799,7 @@ private:
   double maximum_normalization_error_{0.0};
 };
 
-std::array<ComboVector, 2> initial_reach(const DenseLayout &layout) {
-  std::array<ComboVector, 2> reach{};
-  const auto &board = layout.boards[layout.node_board[layout.tree.root]];
-  for (const ComboId combo : board.legal_combos) {
-    reach[0][combo] = 1.0;
-    reach[1][combo] = 1.0;
-  }
-  return reach;
-}
+std::array<ComboVector, 2> initial_reach(const DenseLayout &layout) { return layout.initial_reach; }
 
 Result<PostflopCertification, PostflopSolverError>
 certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration) {
@@ -852,17 +876,103 @@ bool atomic_replace(const std::string &temporary, const std::filesystem::path &t
 #endif
 }
 
+Result<PostflopStrategyQuery, PostflopSolverError>
+query_strategy_from_layout(const DenseLayout &layout, const ActionBuffers buffers,
+                           const NodeId public_node, const ComboId combo) {
+  if (public_node >= layout.tree.nodes.size() || combo >= combo_count) {
+    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &decision = layout.decisions[static_cast<std::size_t>(public_node)];
+  if (!decision.present) {
+    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &board = layout.boards[decision.board_index];
+  const auto local = board.local_index[combo];
+  if (local < 0) {
+    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto offset =
+      decision.action_base + static_cast<std::uint64_t>(local) * decision.action_count;
+  PostflopStrategyQuery query;
+  query.public_node = public_node;
+  query.combo = combo;
+  query.actions.reserve(decision.action_count);
+  query.probabilities.resize(decision.action_count);
+  double sum = 0.0;
+  for (std::size_t action = 0; action < decision.action_count; ++action) {
+    query.actions.push_back(
+        layout.tree.nodes[static_cast<std::size_t>(public_node)].edges[action].action);
+    query.probabilities[action] = buffers.strategy_at(static_cast<std::size_t>(offset + action));
+    sum += query.probabilities[action];
+  }
+  if (sum <= 0.0) {
+    std::fill(query.probabilities.begin(), query.probabilities.end(),
+              1.0 / static_cast<double>(decision.action_count));
+  } else {
+    for (double &probability : query.probabilities) {
+      probability /= sum;
+    }
+  }
+  return Result<PostflopStrategyQuery, PostflopSolverError>::success(std::move(query));
+}
+
 } // namespace
+
+PostflopRanges make_uniform_postflop_ranges() {
+  PostflopRanges ranges;
+  const auto full = RangeWeight::from_basis_points(10'000).value();
+  for (auto &range : ranges.players) {
+    range.fill(full);
+  }
+  return ranges;
+}
+
+Result<bool, PostflopSolverError> validate_postflop_ranges(const PostflopTreeConfig &config,
+                                                           const PostflopRanges &ranges) {
+  const auto valid_config = validate_tree_config(config);
+  if (!valid_config) {
+    return Result<bool, PostflopSolverError>::failure(PostflopSolverError::InvalidConfiguration);
+  }
+  const auto combos = all_combos();
+  const auto board_mask = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask();
+  for (std::size_t first = 0; first < combos.size(); ++first) {
+    const auto first_mask = combos[first].first.mask() | combos[first].second.mask();
+    if ((first_mask & board_mask) != 0U || ranges.players[0][first].basis_points() == 0U) {
+      continue;
+    }
+    for (std::size_t second = 0; second < combos.size(); ++second) {
+      const auto second_mask = combos[second].first.mask() | combos[second].second.mask();
+      if ((second_mask & board_mask) == 0U && (first_mask & second_mask) == 0U &&
+          ranges.players[1][second].basis_points() != 0U) {
+        return Result<bool, PostflopSolverError>::success(true);
+      }
+    }
+  }
+  return Result<bool, PostflopSolverError>::failure(PostflopSolverError::InvalidConfiguration);
+}
 
 Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from) {
+  return solve_postflop_exact(config, make_uniform_postflop_ranges(), options, resume_from);
+}
+
+Result<PostflopSolveResult, PostflopSolverError>
+solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                     const PostflopSolveOptions &options, const PostflopCheckpoint *resume_from) {
   if (options.iterations == 0U || options.certification_interval == 0U ||
       options.memory_backend == MemoryPrototype::StreetDecomposition) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
-  auto layout = build_layout(config);
+  if (!validate_postflop_ranges(config, ranges)) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  auto layout = build_layout(config, ranges);
   if (!layout) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(layout.error());
   }
@@ -1015,7 +1125,13 @@ solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOption
 Result<PostflopCertification, PostflopSolverError>
 certify_postflop_checkpoint(const PostflopTreeConfig &config,
                             const PostflopCheckpoint &checkpoint) {
-  auto layout = build_layout(config);
+  return certify_postflop_checkpoint(config, make_uniform_postflop_ranges(), checkpoint);
+}
+
+Result<PostflopCertification, PostflopSolverError>
+certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                            const PostflopCheckpoint &checkpoint) {
+  auto layout = build_layout(config, ranges);
   if (!layout) {
     return Result<PostflopCertification, PostflopSolverError>::failure(layout.error());
   }
@@ -1047,7 +1163,15 @@ certify_postflop_checkpoint(const PostflopTreeConfig &config,
 Result<PostflopStrategyQuery, PostflopSolverError>
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint,
                         const NodeId public_node, const ComboId combo) {
-  auto layout = build_layout(config);
+  return query_postflop_strategy(config, make_uniform_postflop_ranges(), checkpoint, public_node,
+                                 combo);
+}
+
+Result<PostflopStrategyQuery, PostflopSolverError>
+query_postflop_strategy(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                        const PostflopCheckpoint &checkpoint, const NodeId public_node,
+                        const ComboId combo) {
+  auto layout = build_layout(config, ranges);
   if (!layout || public_node >= layout.value().tree.nodes.size() || combo >= combo_count) {
     return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
@@ -1073,36 +1197,51 @@ query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoi
     return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
         PostflopSolverError::CheckpointMismatch);
   }
-  const auto &board = layout.value().boards[decision.board_index];
-  const auto local = board.local_index[combo];
-  if (local < 0) {
-    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+  return query_strategy_from_layout(layout.value(), query_buffers, public_node, combo);
+}
+
+Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>
+query_postflop_strategies(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                          const PostflopCheckpoint &checkpoint, const NodeId public_node) {
+  auto layout = build_layout(config, ranges);
+  if (!layout || public_node >= layout.value().tree.nodes.size()) {
+    return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
-  const auto offset =
-      decision.action_base + static_cast<std::uint64_t>(local) * decision.action_count;
-  PostflopStrategyQuery query;
-  query.public_node = public_node;
-  query.combo = combo;
-  query.actions.reserve(decision.action_count);
-  query.probabilities.resize(decision.action_count);
-  double sum = 0.0;
-  for (std::size_t action = 0; action < decision.action_count; ++action) {
-    query.actions.push_back(
-        layout.value().tree.nodes[static_cast<std::size_t>(public_node)].edges[action].action);
-    query.probabilities[action] =
-        query_buffers.strategy_at(static_cast<std::size_t>(offset + action));
-    sum += query.probabilities[action];
+  const auto &decision = layout.value().decisions[static_cast<std::size_t>(public_node)];
+  if (!decision.present || checkpoint.game_fingerprint != layout.value().fingerprint ||
+      checkpoint.action_count != layout.value().actions) {
+    return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
   }
-  if (sum <= 0.0) {
-    std::fill(query.probabilities.begin(), query.probabilities.end(),
-              1.0 / static_cast<double>(decision.action_count));
-  } else {
-    for (double &probability : query.probabilities) {
-      probability /= sum;
+  std::unique_ptr<PagedActionFile> mapped;
+  ActionBuffers query_buffers{nullptr, const_cast<double *>(checkpoint.cumulative_strategy.data()),
+                              checkpoint.cumulative_strategy.size(), nullptr};
+  if (!checkpoint.external_buffer_file.empty()) {
+    mapped = std::make_unique<PagedActionFile>(
+        checkpoint.external_buffer_file, static_cast<std::size_t>(checkpoint.action_count), false);
+    if (!mapped->valid()) {
+      return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::failure(
+          PostflopSolverError::IoFailure);
     }
+    query_buffers = mapped->buffers();
+  } else if (checkpoint.cumulative_strategy.size() != layout.value().actions) {
+    return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
   }
-  return Result<PostflopStrategyQuery, PostflopSolverError>::success(std::move(query));
+  std::vector<PostflopStrategyQuery> result;
+  const auto &board = layout.value().boards[decision.board_index];
+  result.reserve(board.legal_combos.size());
+  for (const ComboId combo : board.legal_combos) {
+    auto query = query_strategy_from_layout(layout.value(), query_buffers, public_node, combo);
+    if (!query) {
+      return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::failure(
+          query.error());
+    }
+    result.push_back(std::move(query.value()));
+  }
+  return Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>::success(
+      std::move(result));
 }
 
 Result<std::string, PostflopSolverError>

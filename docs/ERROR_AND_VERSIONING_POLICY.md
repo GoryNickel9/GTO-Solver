@@ -29,10 +29,12 @@ comando CMake `project()`. CMake genera `gtosd/version.hpp`.
 | Minor | Funzione retrocompatibile |
 | Patch | Correzione retrocompatibile |
 
-La versione corrente è `0.7.0`: la minor F7 introduce il modulo pubblico
-`gtosd::postflop`, il traversal CFR+ exact, la certificazione BR/NashConv e i
-checkpoint postflop inline/out-of-core. Durante lo sviluppo pre-1.0 una modifica
-incompatibile richiede almeno un incremento minor e una nota di migrazione.
+La versione corrente è `0.10.0`: la minor F10 aggiunge la GUI prodotto Qt,
+i range fisici pesati al solver postflop e le query strategy batch. Il formato
+`.gtsd` resta 1.0: il chunk `RANGES` ora contiene 1.260 pesi lossless e il
+reader conserva compatibilità con il marker uniform-range scritto da F8/F9.
+Durante lo sviluppo pre-1.0 una modifica incompatibile richiede almeno un
+incremento minor e una nota di migrazione.
 
 ## Versionamento file
 

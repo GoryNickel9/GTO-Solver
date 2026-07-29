@@ -33,10 +33,14 @@ development dependencies:
 | nlohmann/json | 3.12.0 port revision 2 | MIT |
 | spdlog | 1.17.0 | MIT |
 | fmt, transitive | 12.2.0 | MIT |
+| libsodium | 1.0.22 | ISC |
+| SQLite | 3.53.2 port revision 1 | blessing / public-domain dedication |
+| Zstandard | 1.5.7 | BSD-3-Clause oppure GPL-2.0-only |
 
 GoogleTest and Google Benchmark are linked only into development targets.
-nlohmann/json and spdlog are pinned for the configuration and logging modules
-planned by the roadmap; they are not yet linked into the production library.
+nlohmann/json is linked by the CLI. libsodium, SQLite and Zstandard are linked
+by `gtosd::storage`; their authoritative license texts are installed beside
+the product under `share/gtosd/licenses`.
 
 Release packaging must copy the authoritative license texts exported by vcpkg
 for every dependency actually distributed.

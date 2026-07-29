@@ -29,6 +29,14 @@ enum class PostflopStopReason : std::uint8_t { Completed, Paused, Cancelled };
 struct PostflopCertification;
 struct PostflopCheckpoint;
 
+using PostflopRange = std::array<RangeWeight, 630>;
+
+struct PostflopRanges {
+  std::array<PostflopRange, 2> players{};
+
+  friend bool operator==(const PostflopRanges &, const PostflopRanges &) = default;
+};
+
 struct PostflopSolveOptions {
   std::uint64_t iterations{1};
   std::uint64_t averaging_delay{0};
@@ -83,16 +91,38 @@ struct PostflopStrategyQuery {
   std::vector<double> probabilities;
 };
 
+[[nodiscard]] PostflopRanges make_uniform_postflop_ranges();
+
+[[nodiscard]] Result<bool, PostflopSolverError>
+validate_postflop_ranges(const PostflopTreeConfig &config, const PostflopRanges &ranges);
+
 [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOptions &options,
+                     const PostflopCheckpoint *resume_from = nullptr);
+
+[[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
+solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                     const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
 
 [[nodiscard]] Result<PostflopCertification, PostflopSolverError>
 certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint);
 
+[[nodiscard]] Result<PostflopCertification, PostflopSolverError>
+certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                            const PostflopCheckpoint &checkpoint);
+
 [[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError>
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint,
                         NodeId public_node, ComboId combo);
+
+[[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError>
+query_postflop_strategy(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                        const PostflopCheckpoint &checkpoint, NodeId public_node, ComboId combo);
+
+[[nodiscard]] Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>
+query_postflop_strategies(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                          const PostflopCheckpoint &checkpoint, NodeId public_node);
 
 [[nodiscard]] Result<std::string, PostflopSolverError>
 serialize_postflop_checkpoint(const PostflopCheckpoint &checkpoint);

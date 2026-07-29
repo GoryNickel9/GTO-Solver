@@ -8,9 +8,9 @@
 TEST(Phase0Infrastructure, GoogleTestRunnerLinksProductionCore) {
   EXPECT_EQ(gtosd::short_deck().size(), 36U);
   EXPECT_EQ(gtosd::api_version_major, 0U);
-  EXPECT_EQ(gtosd::api_version_minor, 7U);
+  EXPECT_EQ(gtosd::api_version_minor, 10U);
   EXPECT_EQ(gtosd::api_version_patch, 0U);
-  EXPECT_EQ(std::string_view(gtosd::api_version_string), "0.7.0");
+  EXPECT_EQ(std::string_view(gtosd::api_version_string), "0.10.0");
 }
 
 TEST(Phase0Infrastructure, FileVersionsHaveExplicitMajors) {
