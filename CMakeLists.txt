@@ -10,6 +10,8 @@ option(GTOSD_BUILD_TESTS "Build first-party tests" ON)
 option(GTOSD_BUILD_BENCHMARKS "Build benchmark smoke targets" ON)
 option(GTOSD_BUILD_FRAMEWORK_TESTS "Build GoogleTest infrastructure tests" ON)
 option(GTOSD_BUILD_NIGHTLY_TESTS "Build deterministic million-deal tests" OFF)
+option(GTOSD_BUILD_GUI_PROTOTYPES "Build the Phase 9 Qt and Dear ImGui prototypes" OFF)
+option(GTOSD_BUILD_DESKTOP_GUI "Build the Phase 10 Qt desktop application" OFF)
 option(GTOSD_WARNINGS_AS_ERRORS "Treat first-party warnings as errors" ON)
 option(GTOSD_ENABLE_CLANG_TIDY "Run clang-tidy while compiling first-party targets" OFF)
 
@@ -87,7 +89,21 @@ add_subdirectory(libs/best_response)
 add_subdirectory(libs/memory)
 add_subdirectory(libs/postflop)
 add_subdirectory(libs/storage)
+add_subdirectory(libs/gui_prototype)
 add_subdirectory(apps/gto_cli)
+if(GTOSD_BUILD_GUI_PROTOTYPES)
+  if(NOT WIN32)
+    message(FATAL_ERROR "Phase 9 GUI prototypes currently target Windows only")
+  endif()
+  add_subdirectory(apps/gui_qt_prototype)
+  add_subdirectory(apps/gui_imgui_prototype)
+endif()
+if(GTOSD_BUILD_DESKTOP_GUI)
+  if(NOT WIN32)
+    message(FATAL_ERROR "The Phase 10 desktop GUI currently targets Windows only")
+  endif()
+  add_subdirectory(apps/gto_gui)
+endif()
 
 if(GTOSD_BUILD_TESTS)
   add_subdirectory(tests)
@@ -107,6 +123,7 @@ install(TARGETS
     gtosd_memory
     gtosd_postflop
     gtosd_storage
+    gtosd_gui_prototype
     gto_cli
   EXPORT gtosdTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -11,5 +11,30 @@
     "sqlite3",
     "spdlog",
     "zstd"
-  ]
+  ],
+  "features": {
+    "gui-prototypes": {
+      "description": "Phase 9 Qt 6 Widgets and Dear ImGui docking prototypes",
+      "dependencies": [
+        {
+          "name": "imgui",
+          "default-features": false,
+          "features": [
+            "docking-experimental",
+            "dx11-binding",
+            "win32-binding"
+          ]
+        },
+        {
+          "name": "qtbase",
+          "default-features": false,
+          "features": [
+            "testlib",
+            "widgets",
+            "windeployqt"
+          ]
+        }
+      ]
+    }
+  }
 }
