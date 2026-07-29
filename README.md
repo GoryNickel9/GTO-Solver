@@ -103,5 +103,70 @@ out-of-core fallback. PF-F1 reached `NashConv / pot = 0.741405%` at iteration
 
 The claim is scoped to the versioned PF-F1 configuration and is backed by
 exact best response, not profile EV alone. See
-`docs/PHASE_7_COMPLETION_REPORT.md`. Phase 8 adds the durable `.gtsd` solution
-storage format, compression, encryption and indexed navigation.
+`docs/PHASE_7_COMPLETION_REPORT.md`.
+
+Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
+container, per-chunk Zstandard compression, independent authenticated
+XChaCha20-Poly1305 secretstreams, bounded-memory random access, atomic save,
+non-destructive migration, a verification tool and an external SQLite catalog.
+The encryption key is supplied by the license layer; `.gtsd` never derives a
+key from a user password.
+
+```powershell
+$key = .\out\build\windows-release\apps\gto_cli\gto_cli.exe storage keygen
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  storage pack .\out\pf-f1.json .\out\pf-f1.chk .\out\pf-f1.gtsd $key
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  storage verify .\out\pf-f1.gtsd $key
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  storage query .\out\pf-f1.gtsd $key 0 100
+```
+
+The F8 storage benchmark used the full PF-F1 topology at one iteration:
+1,068,121,299 logical bytes became a 5,618,173-byte encrypted file, and its
+root index opened with 676 bytes of metadata. This measures the format, not
+convergence; the F7 125-iteration certification remains authoritative. See
+`docs/PHASE_8_COMPLETION_REPORT.md`.
+
+Phase 9 is complete locally: Qt 6 Widgets and Dear ImGui docking prototypes
+share a 100,000-node virtual tree, the exact Short Deck 9×9 matrix, lazy
+authenticated `.gtsd` opening and ten automated workflows. Qt 6 Widgets is
+selected for the F10 product GUI by `docs/ADR_0001_GUI_FRAMEWORK.md`.
+
+```powershell
+cmake --preset windows-gui-release
+cmake --build --preset windows-gui-release
+ctest --preset windows-gui-release -L phase9
+powershell -ExecutionPolicy Bypass -File .\tools\run_f9_benchmarks.ps1
+powershell -ExecutionPolicy Bypass -File .\tools\verify_f9_install.ps1
+```
+
+On the measured four-core i3-10100F host, Qt raster reached 238.95 FPS,
+Dear ImGui DX11 4,362.19 FPS and forced WARP 62.20 FPS; all p95 frame times
+were below 16.666667 ms. This is a local four-physical-core result, not an
+emulation of a 2 GHz / 16 GB machine. See
+`docs/PHASE_9_COMPLETION_REPORT.md`.
+
+Phase 10 is complete locally: `gto_gui` is the Qt 6 product application. It
+connects weighted physical CO/BTN ranges to exact CFR+/BR, performs resource
+preflight, solves on a worker thread, writes authenticated crash-recovery
+checkpoints, saves/opens `.gtsd`, and navigates real strategy data by 9×9 hand
+class and physical combo.
+
+```powershell
+cmake --preset windows-gui-release
+cmake --build --preset windows-gui-release --target gto_gui
+ctest --preset windows-gui-release -L phase10
+.\out\build\windows-gui-release\apps\gto_gui\gto_gui.exe
+```
+
+The automated product workflow is
+`create → solve → save → reopen → navigate → resume`. On the measured
+i3-10100F host, the installed application completed the reduced E2E fixture in
+1.937 s with a 104.239.104-byte peak RSS and a 12,0331 ms maximum UI heartbeat
+gap during solving. These values validate integration and responsiveness, not
+convergence or the exact 2 GHz / 16 GB release target. See
+`docs/PHASE_10_COMPLETION_REPORT.md`.

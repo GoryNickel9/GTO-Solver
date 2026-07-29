@@ -1,6 +1,6 @@
 # Stato implementazione roadmap HU Short Deck
 
-Aggiornato: 2026-07-28
+Aggiornato: 2026-07-29
 
 ## Stato sintetico dei gate
 
@@ -14,7 +14,10 @@ Aggiornato: 2026-07-28
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
 | F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
 | F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query e PF-F1 a 0,741405% | Nessun residuo del gate locale; confronto numerico GTO+ attende un export equivalente |
-| F8+ | Non iniziata | — | Storage della soluzione e prodotto |
+| F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e 309 asserzioni | La quantizzazione resta sperimentale; la misura PF-F1 storage usa una iterazione e non sostituisce la certificazione F7 |
+| F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
+| F10 | **Completata localmente** | `gto_gui` Qt, range fisici, worker non bloccante, recovery cifrato, heatmap 9×9, E2E create→solve→save→reopen→navigate→resume, Release/Debug/ASan e install smoke verdi | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta un gate di release; action EV e node reach non sono ancora viste per-combo |
+| F11+ | Non iniziata | — | Nodelock globale e milestone successive |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -43,7 +46,7 @@ essere osservata solo dopo un push.
 | 8 | GitHub Actions Windows x64 Debug/Release | Completato | Matrice `windows-debug`/`windows-release`, bootstrap vcpkg pinned, build, test, CLI smoke, install e benchmark |
 | 9 | Sanitizer clang-cl dove supportato | Completato | Job Windows clang-cl ASan e job Linux UBSan; preset MSVC ASan locale; directory runtime del compilatore propagata ai test CTest |
 | 10 | Policy `Result<T, Error>` | Completato | `Result` è `[[nodiscard]]`; policy degli errori, eccezioni e diagnostiche documentata in `ERROR_AND_VERSIONING_POLICY.md` |
-| 11 | Semantic versioning file/API | Completato | API corrente `0.7.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
+| 11 | Semantic versioning file/API | Completato | API corrente `0.10.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
 | 12 | `THIRD_PARTY_NOTICES.md` | Completato | Baseline, versioni risolte, licenze e distinzione dipendenze production/development registrate |
 
 ### Dipendenze risolte
@@ -400,9 +403,95 @@ Build Release completa, Debug focalizzata, MSVC ASan, clang-format e
 ricertificazione PF-F1 sono verdi. Il dettaglio è registrato in
 [`PHASE_7_COMPLETION_REPORT.md`](PHASE_7_COMPLETION_REPORT.md).
 
+### Ingresso completato
+
+La Fase 8 è stata completata sopra le API query e checkpoint introdotte qui.
+
+## Fase 8 — Storage della soluzione
+
+### Esito
+
+Il gate locale F8 è completato. `gtosd::storage` implementa il container
+versionato `.gtsd` 1.0 con indice interno autenticato, compressione Zstandard
+per chunk, cifratura XChaCha20-Poly1305 secretstream indipendente per chunk,
+random access, verifica completa prima del commit e sostituzione atomica.
+SQLite è usato esclusivamente come catalogo esterno `.gtsddb`; non sostituisce
+l'indice binario interno necessario per aprire un singolo file.
+
+| Gate | Esito |
+|---|---:|
+| Round-trip config/strategia/EV | PASS, lossless |
+| Bit flip ciphertext | PASS, `AuthenticationFailed` |
+| File troncato | PASS, `TruncatedFile` |
+| Root senza full load | PASS, 676 B sul PF-F1 |
+| Atomic save | PASS, vecchio file intatto su errore pre-commit |
+| Migrazione | PASS, destinazione separata e sorgente preservata |
+| Target 250 MB | PASS storage PF-F1 a una iterazione: 5.618.173 B |
+| File fisico 250 MB simulato | PASS, 262.150.191 B aperti con 164 B |
+
+Il benchmark PF-F1 storage usa la topologia completa da 66.756.096 azioni e
+1.068.121.299 byte logici, ma una sola iterazione. Misura formato, compressione
+e random access; non è una nuova certificazione di convergenza. Il risultato
+F7 a 125 iterazioni resta la sola evidenza locale sotto l'1% del pot.
+
+Debug completo, Release completa con F4 exhaustive verificata separatamente,
+MSVC ASan focalizzato F8, clang-format, CLI end-to-end e install tree sono
+verdi. Il dettaglio è registrato in
+[`PHASE_8_COMPLETION_REPORT.md`](PHASE_8_COMPLETION_REPORT.md).
+
+## Fase 9 — Prototipo e scelta GUI
+
+### Esito
+
+Il gate F9 è completato localmente. I prototipi Qt 6 Widgets e Dear ImGui
+docking condividono fixture da 100.000 nodi, matrice Short Deck 9×9, apertura
+lazy `.gtsd`, dieci workflow e tre scale DPI.
+
+| Gate | Evidenza |
+|---|---|
+| Frame time | Qt raster 238,95 FPS; ImGui DX11 4.362,19 FPS; WARP 62,20 FPS, p95 tutti ≤16,666667 ms |
+| E2E | 7/7 test F9; Qt e ImGui a 100/150/200% |
+| Root lazy | 8 chunk totali, solo `CONFIG` caricato, strategy non caricata |
+| Packaging | 21 artefatti verificati; smoke Qt/ImGui dall'install tree |
+| Licenze | ImGui MIT; Qt dinamico con obblighi LGPLv3 oppure licenza commerciale |
+| Regressioni | Release 19/19, focused MSVC ASan F9 1/1, format-check verde |
+
+L'ADR [`ADR_0001_GUI_FRAMEWORK.md`](ADR_0001_GUI_FRAMEWORK.md) seleziona Qt 6
+Widgets per la GUI prodotto. Dear ImGui resta disponibile per tooling
+diagnostico. La misura usa quattro core fisici dell'i3-10100F a 3,6 GHz e
+31,94 GiB: non è presentata come emulazione esatta del PC minimo 2 GHz/16 GB.
+Il dettaglio è in
+[`PHASE_9_COMPLETION_REPORT.md`](PHASE_9_COMPLETION_REPORT.md).
+
+## Fase 10 — GUI HU postflop
+
+### Esito
+
+Il gate locale F10 è completato. L'eseguibile prodotto `gto_gui` integra
+configurazione dichiarativa completa, editor range CO/BTN a basis point,
+preflight risorse, solve CFR+ in worker separato, progresso per iterazione,
+checkpoint/recovery `.gtsd`, save/open autenticato, albero fisico e strategy
+matrix per classe e combo.
+
+| Gate | Evidenza |
+|---|---|
+| Crea→solve→salva→riapri→naviga→resume | PASS, E2E Qt sull'eseguibile reale e dall'install tree |
+| Classe/combo | PASS, heatmap 9×9 combo-weighted e query batch delle combo fisiche legali |
+| Progress continuo | PASS, iteration counter indipendente dall'intervallo BR/NashConv |
+| Nessun freeze solve | PASS, massimo gap heartbeat 12,0331 ms sulla fixture E2E installata |
+| Range effettivi | PASS, reach CFR/BR, fingerprint, checkpoint e chunk `RANGES` condividono gli stessi 1.260 pesi |
+| Regressioni | PASS, Release 21/21; Debug F10; MSVC ASan core e GUI; clang-format |
+| Packaging | PASS, install tree pulito 75 file / 89.080.903 B e smoke E2E installato |
+
+La misura E2E usa una fixture ridotta check-only da due iterazioni, poi ripresa
+fino alla terza, e non dimostra convergenza. La certificazione solver resta
+PF-F1 F7 a 0,741405%.
+Il dettaglio, i limiti e i comandi di riproduzione sono in
+[`PHASE_10_COMPLETION_REPORT.md`](PHASE_10_COMPLETION_REPORT.md).
+
 ### Prossimo ingresso
 
-La milestone corrente è **Fase 8 — Storage della soluzione**.
+La milestone successiva è **Fase 11 — Nodelock globale**.
 
 ## Contratti poker già codificati
 
@@ -425,4 +514,4 @@ Il dettaglio del gate F5 è registrato in
 
 Il risultato PF-F1 F7 è una soluzione HU postflop exact della configurazione
 versionata e certificata tramite BR/NashConv. Non è una strategia preflop, non
-copre configurazioni diverse da PF-F1 e non sostituisce i gate F8–F15.
+copre configurazioni diverse da PF-F1 e non sostituisce i gate F9–F15.
