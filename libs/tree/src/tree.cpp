@@ -85,13 +85,15 @@ public:
   }
 
   Result<PublicTree, TreeError> build() {
-    const std::vector<CardId> flop(tree_.config.flop.begin(), tree_.config.flop.end());
-    const auto mask = card_mask(flop);
-    if (!mask || std::popcount(mask.value()) != 3) {
+    const auto board = configured_board(tree_.config);
+    const auto mask = card_mask(board);
+    if (!mask || board.size() < 3U || board.size() > 5U ||
+        std::popcount(mask.value()) != static_cast<int>(board.size())) {
       return Result<PublicTree, TreeError>::failure(TreeError::InvalidBoard);
     }
-    const auto state = make_hu_postflop_state(Street::Flop, tree_.config.initial_pot,
-                                              tree_.config.effective_stack, mask.value());
+    const auto state =
+        make_hu_postflop_state(configured_starting_street(tree_.config), tree_.config.initial_pot,
+                               tree_.config.effective_stack, mask.value());
     if (!state) {
       return Result<PublicTree, TreeError>::failure(TreeError::GameFailure);
     }
@@ -259,13 +261,15 @@ public:
       : config_(config), options_(options) {}
 
   Result<PublicTreeStats, TreeError> estimate() {
-    const std::vector<CardId> flop(config_.flop.begin(), config_.flop.end());
-    const auto mask = card_mask(flop);
-    if (!mask || std::popcount(mask.value()) != 3) {
+    const auto board = configured_board(config_);
+    const auto mask = card_mask(board);
+    if (!mask || board.size() < 3U || board.size() > 5U ||
+        std::popcount(mask.value()) != static_cast<int>(board.size())) {
       return Result<PublicTreeStats, TreeError>::failure(TreeError::InvalidBoard);
     }
-    const auto state = make_hu_postflop_state(Street::Flop, config_.initial_pot,
-                                              config_.effective_stack, mask.value());
+    const auto state =
+        make_hu_postflop_state(configured_starting_street(config_), config_.initial_pot,
+                               config_.effective_stack, mask.value());
     if (!state) {
       return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
     }

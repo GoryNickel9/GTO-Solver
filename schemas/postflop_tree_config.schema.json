@@ -12,6 +12,9 @@
     "rake",
     "streets"
   ],
+  "dependentRequired": {
+    "river": ["turn"]
+  },
   "properties": {
     "version": {
       "const": 1
@@ -25,6 +28,14 @@
         "type": "string",
         "pattern": "^[6789TJQKA][cdhs]$"
       }
+    },
+    "turn": {
+      "type": "string",
+      "pattern": "^[6789TJQKA][cdhs]$"
+    },
+    "river": {
+      "type": "string",
+      "pattern": "^[6789TJQKA][cdhs]$"
     },
     "initial_pot_units": {
       "type": "integer",

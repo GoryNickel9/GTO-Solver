@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -43,11 +44,16 @@ struct PostflopTreeConfig {
 
   std::uint32_t version{current_version};
   std::array<CardId, 3> flop{};
+  std::optional<CardId> turn;
+  std::optional<CardId> river;
   Money initial_pot{};
   Money effective_stack{};
   RakeConfig rake{};
   std::array<StreetActionConfig, 3> streets{};
 };
+
+[[nodiscard]] std::vector<CardId> configured_board(const PostflopTreeConfig &config);
+[[nodiscard]] Street configured_starting_street(const PostflopTreeConfig &config) noexcept;
 
 [[nodiscard]] Result<bool, TreeConfigError> validate_tree_config(const PostflopTreeConfig &config);
 

@@ -101,6 +101,33 @@ void test_config_schema_contract() {
           "four sizes rejected");
 }
 
+void test_fixed_turn_and_river_roots() {
+  auto turn_config = check_only_config();
+  turn_config.turn = card("Jh");
+  const auto serialized = gtosd::serialize_tree_config_json(turn_config);
+  const auto restored = gtosd::parse_tree_config_json(serialized);
+  require(restored.has_value() && restored.value().turn == turn_config.turn,
+          "fixed turn round trips");
+  const auto turn_tree = gtosd::build_public_tree(turn_config);
+  require(turn_tree.has_value(), "fixed-turn tree builds");
+  require(turn_tree.value().nodes[turn_tree.value().root].state.street == gtosd::Street::Turn,
+          "four-card board starts on turn");
+  require(std::popcount(turn_tree.value().nodes[turn_tree.value().root].state.board_mask) == 4,
+          "turn root contains four public cards");
+
+  auto river_config = turn_config;
+  river_config.river = card("9s");
+  const auto river_tree = gtosd::build_public_tree(river_config);
+  require(river_tree.has_value(), "fixed-river tree builds");
+  require(river_tree.value().nodes[river_tree.value().root].state.street == gtosd::Street::River,
+          "five-card board starts on river");
+  require(river_tree.value().stats.chance_nodes == 0U, "fixed river has no public chance nodes");
+
+  auto invalid = check_only_config();
+  invalid.river = card("9s");
+  require(!gtosd::validate_tree_config(invalid), "river without turn is rejected");
+}
+
 gtosd::PublicTree test_check_only_physical_tree() {
   const auto first = gtosd::build_public_tree(check_only_config());
   require(first.has_value(), "check-only physical tree builds");
@@ -329,6 +356,7 @@ void test_sizing_and_raise_depth_in_tree() {
 int main() {
   try {
     test_config_schema_contract();
+    test_fixed_turn_and_river_roots();
     const auto tree = test_check_only_physical_tree();
     require(!tree.betting_tree_hash.empty(), "snapshot hash available to inspector");
     test_all_in_runout_and_terminal_resolution();

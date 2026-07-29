@@ -937,7 +937,10 @@ Result<bool, PostflopSolverError> validate_postflop_ranges(const PostflopTreeCon
     return Result<bool, PostflopSolverError>::failure(PostflopSolverError::InvalidConfiguration);
   }
   const auto combos = all_combos();
-  const auto board_mask = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask();
+  std::uint64_t board_mask = 0U;
+  for (const auto card : configured_board(config)) {
+    board_mask |= card.mask();
+  }
   for (std::size_t first = 0; first < combos.size(); ++first) {
     const auto first_mask = combos[first].first.mask() | combos[first].second.mask();
     if ((first_mask & board_mask) != 0U || ranges.players[0][first].basis_points() == 0U) {

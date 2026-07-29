@@ -139,8 +139,10 @@ Result<bool, TreeConfigError> validate_tree_config(const PostflopTreeConfig &con
   if (config.initial_pot.units() <= 0 || config.effective_stack.units() <= 0) {
     return Result<bool, TreeConfigError>::failure(TreeConfigError::InvalidMoney);
   }
-  const std::vector<CardId> flop(config.flop.begin(), config.flop.end());
-  if (!card_mask(flop)) {
+  if (config.river && !config.turn) {
+    return Result<bool, TreeConfigError>::failure(TreeConfigError::InvalidConfiguration);
+  }
+  if (!card_mask(configured_board(config))) {
     return Result<bool, TreeConfigError>::failure(TreeConfigError::DuplicateCard);
   }
   for (const auto &street : config.streets) {
@@ -194,6 +196,26 @@ parse_tree_config_json(const std::string_view json_text) {
         return Result<PostflopTreeConfig, TreeConfigError>::failure(TreeConfigError::InvalidCard);
       }
       config.flop[index] = card.value();
+    }
+    if (root.contains("turn") && !root.at("turn").is_null()) {
+      if (!root.at("turn").is_string()) {
+        return Result<PostflopTreeConfig, TreeConfigError>::failure(TreeConfigError::InvalidCard);
+      }
+      const auto card = parse_card(root.at("turn").get<std::string>());
+      if (!card) {
+        return Result<PostflopTreeConfig, TreeConfigError>::failure(TreeConfigError::InvalidCard);
+      }
+      config.turn = card.value();
+    }
+    if (root.contains("river") && !root.at("river").is_null()) {
+      if (!root.at("river").is_string()) {
+        return Result<PostflopTreeConfig, TreeConfigError>::failure(TreeConfigError::InvalidCard);
+      }
+      const auto card = parse_card(root.at("river").get<std::string>());
+      if (!card) {
+        return Result<PostflopTreeConfig, TreeConfigError>::failure(TreeConfigError::InvalidCard);
+      }
+      config.river = card.value();
     }
 
     const auto initial_pot = parse_money(root.at("initial_pot_units"), true);
@@ -270,6 +292,12 @@ std::string serialize_tree_config_json(const PostflopTreeConfig &config) {
   root["version"] = config.version;
   root["flop"] = Json::array(
       {format_card(config.flop[0]), format_card(config.flop[1]), format_card(config.flop[2])});
+  if (config.turn) {
+    root["turn"] = format_card(*config.turn);
+  }
+  if (config.river) {
+    root["river"] = format_card(*config.river);
+  }
   root["initial_pot_units"] = config.initial_pot.units();
   root["effective_stack_units"] = config.effective_stack.units();
   root["rake"] = Json{{"enabled", config.rake.enabled},
@@ -286,6 +314,24 @@ std::string serialize_tree_config_json(const PostflopTreeConfig &config) {
     }
   }
   return root.dump(2);
+}
+
+std::vector<CardId> configured_board(const PostflopTreeConfig &config) {
+  std::vector<CardId> board(config.flop.begin(), config.flop.end());
+  if (config.turn) {
+    board.push_back(*config.turn);
+  }
+  if (config.river) {
+    board.push_back(*config.river);
+  }
+  return board;
+}
+
+Street configured_starting_street(const PostflopTreeConfig &config) noexcept {
+  if (config.river) {
+    return Street::River;
+  }
+  return config.turn ? Street::Turn : Street::Flop;
 }
 
 const char *tree_config_error_name(const TreeConfigError error) noexcept {
