@@ -29,18 +29,23 @@ class QListWidget;
 class QModelIndex;
 class QObject;
 class QProgressBar;
+class QPushButton;
+class QSlider;
 class QSpinBox;
 class QStackedWidget;
 class QTableWidget;
+class QToolButton;
 class QTreeView;
+class QAction;
 
 namespace gtosd::desktop {
 
 struct DesktopProject {
   PostflopTreeConfig config;
   PostflopRanges ranges{make_uniform_postflop_ranges()};
-  std::uint64_t iterations{2};
+  std::uint64_t iterations{1'000'000'000};
   std::uint64_t certification_interval{1};
+  double target_normalized_nash_conv{0.01};
   std::uint64_t ram_budget_bytes{8ULL * 1024ULL * 1024ULL * 1024ULL};
   std::uint64_t disk_budget_bytes{16ULL * 1024ULL * 1024ULL * 1024ULL};
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
@@ -115,18 +120,26 @@ protected:
   bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-  struct ScenarioWidgets {
-    QLineEdit *sizes{nullptr};
-    QSpinBox *raise_depth{nullptr};
-    QComboBox *all_in_mode{nullptr};
+  struct StreetBettingWidgets {
+    QCheckBox *custom{nullptr};
+    QLineEdit *bet_sizes{nullptr};
+    QLineEdit *raise_sizes{nullptr};
+    QSpinBox *maximum_raises{nullptr};
+  };
+
+  struct PlayerBettingWidgets {
+    QDoubleSpinBox *default_bet{nullptr};
+    QCheckBox *all_in_policy{nullptr};
     QDoubleSpinBox *all_in_threshold{nullptr};
-    QDoubleSpinBox *minimum_bet{nullptr};
+    std::array<StreetBettingWidgets, 3> streets{};
   };
 
   void build_ui();
   void load_default_project();
   void refresh_config_controls();
   [[nodiscard]] bool sync_visual_config();
+  void refresh_board_picker();
+  void set_solve_controls_enabled(bool solving);
   void refresh_range_matrix();
   void paint_range_cell(int row, int column, bool erase);
   void sync_project_settings();
@@ -157,22 +170,19 @@ private:
   QListWidget *recent_{nullptr};
   QDoubleSpinBox *starting_pot_{nullptr};
   QDoubleSpinBox *effective_stack_{nullptr};
-  QCheckBox *rake_enabled_{nullptr};
   QDoubleSpinBox *rake_percentage_{nullptr};
   QDoubleSpinBox *rake_cap_{nullptr};
-  std::array<QComboBox *, 5> board_cards_{};
-  QTableWidget *postflop_settings_{nullptr};
-  std::array<std::array<std::array<ScenarioWidgets, 3>, 2>, 3> scenario_widgets_{};
+  std::array<QToolButton *, 36> board_buttons_{};
+  std::vector<CardId> selected_board_;
+  QLabel *board_selection_{nullptr};
+  std::array<PlayerBettingWidgets, 2> player_betting_{};
   QComboBox *range_player_{nullptr};
   QTableWidget *range_matrix_{nullptr};
   QDoubleSpinBox *range_weight_{nullptr};
+  QSlider *range_slider_{nullptr};
   bool range_painting_{false};
   bool range_erasing_{false};
-  QSpinBox *iterations_{nullptr};
-  QSpinBox *certification_interval_{nullptr};
-  QDoubleSpinBox *ram_budget_gib_{nullptr};
-  QDoubleSpinBox *disk_budget_gib_{nullptr};
-  QComboBox *memory_backend_{nullptr};
+  QDoubleSpinBox *target_dev_{nullptr};
   QLabel *estimate_summary_{nullptr};
   QLabel *solve_status_{nullptr};
   QLabel *solve_metrics_{nullptr};
@@ -186,6 +196,10 @@ private:
   QTableWidget *strategy_matrix_{nullptr};
   QTableWidget *strategy_table_{nullptr};
   QLabel *browser_summary_{nullptr};
+  QPushButton *pause_button_{nullptr};
+  QPushButton *cancel_button_{nullptr};
+  QAction *pause_action_{nullptr};
+  QAction *cancel_action_{nullptr};
   std::uint64_t ui_heartbeat_count_{0};
   std::chrono::steady_clock::time_point last_ui_heartbeat_{std::chrono::steady_clock::now()};
   double maximum_ui_heartbeat_gap_ms_{0.0};

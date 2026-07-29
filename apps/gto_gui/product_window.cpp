@@ -19,6 +19,7 @@
 #include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QLabel>
@@ -32,6 +33,8 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QSignalBlocker>
+#include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -41,6 +44,7 @@
 #include <QTableWidget>
 #include <QTimer>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeView>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -49,6 +53,7 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <random>
 #include <set>
 #include <thread>
 
@@ -428,6 +433,23 @@ void ProductWindow::build_ui() {
       QMessageBox::information(this, tr_text("Log diagnostici"), log_file_path());
     }
   });
+  toolbar->addSeparator();
+  pause_action_ = toolbar->addAction(tr_text("Pausa solve"));
+  cancel_action_ = toolbar->addAction(tr_text("Annulla solve"));
+  connect(pause_action_, &QAction::triggered, this, [this] {
+    if (session_) {
+      session_->command.store(PostflopControlCommand::Pause);
+      solve_status_->setText(tr_text("Pausa richiesta…"));
+    }
+  });
+  connect(cancel_action_, &QAction::triggered, this, [this] {
+    if (session_) {
+      session_->command.store(PostflopControlCommand::Cancel);
+      solve_status_->setText(tr_text("Annullamento richiesto…"));
+    }
+  });
+  pause_action_->setEnabled(false);
+  cancel_action_->setEnabled(false);
 
   pages_ = new QStackedWidget(this);
   setCentralWidget(pages_);
@@ -461,13 +483,10 @@ void ProductWindow::build_ui() {
   starting_pot_->setObjectName(QStringLiteral("startingPot"));
   starting_pot_->setRange(0.01, 1'000'000.0);
   starting_pot_->setDecimals(2);
-  starting_pot_->setSuffix(tr_text(" ante"));
   effective_stack_ = new QDoubleSpinBox(preflop_tab);
   effective_stack_->setObjectName(QStringLiteral("effectiveStack"));
   effective_stack_->setRange(0.01, 1'000'000.0);
   effective_stack_->setDecimals(2);
-  effective_stack_->setSuffix(tr_text(" ante"));
-  rake_enabled_ = new QCheckBox(tr_text("Applica rake"), preflop_tab);
   rake_percentage_ = new QDoubleSpinBox(preflop_tab);
   rake_percentage_->setRange(0.0, 100.0);
   rake_percentage_->setDecimals(2);
@@ -475,89 +494,167 @@ void ProductWindow::build_ui() {
   rake_cap_ = new QDoubleSpinBox(preflop_tab);
   rake_cap_->setRange(0.0, 1'000'000.0);
   rake_cap_->setDecimals(2);
-  rake_cap_->setSuffix(tr_text(" ante"));
   preflop_form->addRow(tr_text("Starting pot"), starting_pot_);
   preflop_form->addRow(tr_text("Stack effettivo"), effective_stack_);
-  preflop_form->addRow(tr_text("Rake"), rake_enabled_);
-  preflop_form->addRow(tr_text("Percentuale rake"), rake_percentage_);
+  preflop_form->addRow(tr_text("Rake"), rake_percentage_);
   preflop_form->addRow(tr_text("Rake cap"), rake_cap_);
   builder_tabs->addTab(preflop_tab, tr_text("Preflop setting"));
 
   auto *const postflop_tab = new QWidget(builder_tabs);
   auto *const postflop_layout = new QVBoxLayout(postflop_tab);
-  postflop_layout->addWidget(new QLabel(
-      tr_text("Size espresse come percentuale del pot, separate per street, giocatore e scenario."),
-      postflop_tab));
-  postflop_settings_ = new QTableWidget(18, 8, postflop_tab);
-  postflop_settings_->setObjectName(QStringLiteral("postflopSettings"));
-  postflop_settings_->setHorizontalHeaderLabels(
-      {tr_text("Street"), tr_text("Giocatore"), tr_text("Scenario"), tr_text("Size %"),
-       tr_text("Raise"), tr_text("All-in"), tr_text("Soglia %"), tr_text("Min bet")});
-  postflop_settings_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  postflop_layout->addWidget(
+      new QLabel(tr_text("Le bet sono separate per posizione. Le size di raise si applicano "
+                         "quando il giocatore affronta una puntata o un rilancio."),
+                 postflop_tab));
+  auto *const player_panels = new QHBoxLayout();
   constexpr std::array<const char *, 3> street_labels{"Flop", "Turn", "River"};
-  constexpr std::array<const char *, 2> player_labels{"CO", "BTN"};
-  constexpr std::array<const char *, 3> scenario_labels{"Lead", "After check", "Facing bet"};
-  int scenario_row = 0;
-  for (std::size_t street = 0; street < 3U; ++street) {
-    for (std::size_t player = 0; player < 2U; ++player) {
-      for (std::size_t scenario = 0; scenario < 3U; ++scenario, ++scenario_row) {
-        postflop_settings_->setItem(scenario_row, 0,
-                                    new QTableWidgetItem(tr_text(street_labels[street])));
-        postflop_settings_->setItem(scenario_row, 1,
-                                    new QTableWidgetItem(tr_text(player_labels[player])));
-        postflop_settings_->setItem(scenario_row, 2,
-                                    new QTableWidgetItem(tr_text(scenario_labels[scenario])));
-        auto &widgets = scenario_widgets_[street][player][scenario];
-        widgets.sizes = new QLineEdit(postflop_settings_);
-        widgets.sizes->setPlaceholderText(QStringLiteral("25, 50, 100"));
-        widgets.raise_depth = new QSpinBox(postflop_settings_);
-        widgets.raise_depth->setRange(0, 4);
-        widgets.all_in_mode = new QComboBox(postflop_settings_);
-        widgets.all_in_mode->addItem(tr_text("Disabilitato"),
-                                     static_cast<int>(AllInMode::Disabled));
-        widgets.all_in_mode->addItem(tr_text("Aggiungi"), static_cast<int>(AllInMode::Add));
-        widgets.all_in_mode->addItem(tr_text("Sostituisci"), static_cast<int>(AllInMode::Go));
-        widgets.all_in_threshold = new QDoubleSpinBox(postflop_settings_);
-        widgets.all_in_threshold->setRange(0.0, 1000.0);
-        widgets.all_in_threshold->setDecimals(2);
-        widgets.minimum_bet = new QDoubleSpinBox(postflop_settings_);
-        widgets.minimum_bet->setRange(0.01, 1'000'000.0);
-        widgets.minimum_bet->setDecimals(2);
-        postflop_settings_->setCellWidget(scenario_row, 3, widgets.sizes);
-        postflop_settings_->setCellWidget(scenario_row, 4, widgets.raise_depth);
-        postflop_settings_->setCellWidget(scenario_row, 5, widgets.all_in_mode);
-        postflop_settings_->setCellWidget(scenario_row, 6, widgets.all_in_threshold);
-        postflop_settings_->setCellWidget(scenario_row, 7, widgets.minimum_bet);
-      }
+  constexpr std::array<const char *, 2> player_labels{"CO / OOP", "BTN / IP"};
+  for (std::size_t player = 0; player < 2U; ++player) {
+    auto *const panel = new QGroupBox(tr_text(player_labels[player]), postflop_tab);
+    panel->setObjectName(QStringLiteral("bettingPanel%1").arg(static_cast<qulonglong>(player)));
+    auto *const panel_layout = new QVBoxLayout(panel);
+    auto *const defaults = new QFormLayout();
+    auto &player_widgets = player_betting_[player];
+    player_widgets.default_bet = new QDoubleSpinBox(panel);
+    player_widgets.default_bet->setRange(0.01, 1000.0);
+    player_widgets.default_bet->setDecimals(2);
+    player_widgets.default_bet->setSuffix(QStringLiteral("%"));
+    player_widgets.default_bet->setValue(50.0);
+    player_widgets.all_in_policy = new QCheckBox(panel);
+    player_widgets.all_in_policy->setTristate(true);
+    player_widgets.all_in_threshold = new QDoubleSpinBox(panel);
+    player_widgets.all_in_threshold->setRange(0.01, 1000.0);
+    player_widgets.all_in_threshold->setDecimals(2);
+    player_widgets.all_in_threshold->setSuffix(QStringLiteral("% pot"));
+    player_widgets.all_in_threshold->setValue(150.0);
+    const auto refresh_policy_text =
+        [policy = player_widgets.all_in_policy,
+         threshold = player_widgets.all_in_threshold](const Qt::CheckState state) {
+          if (state == Qt::Unchecked) {
+            policy->setText(tr_text("All-in automatico disabilitato"));
+            threshold->setEnabled(false);
+          } else if (state == Qt::PartiallyChecked) {
+            policy->setText(tr_text("Add all-in if push <"));
+            threshold->setEnabled(true);
+          } else {
+            policy->setText(tr_text("Go all-in if push <"));
+            threshold->setEnabled(true);
+          }
+        };
+    connect(player_widgets.all_in_policy, &QCheckBox::checkStateChanged, this, refresh_policy_text);
+    refresh_policy_text(Qt::Unchecked);
+    defaults->addRow(tr_text("Default bet"), player_widgets.default_bet);
+    defaults->addRow(player_widgets.all_in_policy, player_widgets.all_in_threshold);
+    panel_layout->addLayout(defaults);
+
+    for (std::size_t street = 0; street < 3U; ++street) {
+      auto &street_widgets = player_widgets.streets[street];
+      auto *const street_box = new QGroupBox(tr_text(street_labels[street]), panel);
+      auto *const street_form = new QFormLayout(street_box);
+      street_widgets.custom = new QCheckBox(tr_text("Usa size personalizzate"), street_box);
+      street_widgets.bet_sizes = new QLineEdit(street_box);
+      street_widgets.bet_sizes->setPlaceholderText(QStringLiteral("25, 50, 100"));
+      street_widgets.raise_sizes = new QLineEdit(street_box);
+      street_widgets.raise_sizes->setPlaceholderText(QStringLiteral("50, 100"));
+      street_widgets.maximum_raises = new QSpinBox(street_box);
+      street_widgets.maximum_raises->setRange(0, 4);
+      street_widgets.maximum_raises->setToolTip(
+          tr_text("Numero massimo di raise e re-raise consentiti nella street."));
+      street_form->addRow(street_widgets.custom);
+      street_form->addRow(player == 0U ? tr_text("Bet OOP %") : tr_text("Bet dopo check %"),
+                          street_widgets.bet_sizes);
+      street_form->addRow(tr_text("Raise sizes %"), street_widgets.raise_sizes);
+      street_form->addRow(tr_text("Max raise"), street_widgets.maximum_raises);
+      const auto set_custom_enabled = [street_widgets](const bool enabled) {
+        street_widgets.bet_sizes->setEnabled(enabled);
+        street_widgets.raise_sizes->setEnabled(enabled);
+        street_widgets.maximum_raises->setEnabled(enabled);
+      };
+      connect(street_widgets.custom, &QCheckBox::toggled, this, set_custom_enabled);
+      set_custom_enabled(false);
+      panel_layout->addWidget(street_box);
     }
+    panel_layout->addStretch(1);
+    player_panels->addWidget(panel, 1);
   }
-  postflop_layout->addWidget(postflop_settings_, 1);
+  postflop_layout->addLayout(player_panels, 1);
   builder_tabs->addTab(postflop_tab, tr_text("Postflop setting"));
 
   auto *const board_tab = new QWidget(builder_tabs);
-  auto *const board_layout = new QGridLayout(board_tab);
-  constexpr std::array<const char *, 5> board_labels{"Flop 1", "Flop 2", "Flop 3", "Turn", "River"};
-  const auto deck = short_deck();
-  for (std::size_t index = 0; index < board_cards_.size(); ++index) {
-    board_layout->addWidget(new QLabel(tr_text(board_labels[index]), board_tab),
-                            static_cast<int>(index), 0);
-    board_cards_[index] = new QComboBox(board_tab);
-    board_cards_[index]->setObjectName(
-        QStringLiteral("boardCard%1").arg(static_cast<qulonglong>(index)));
-    if (index >= 3U) {
-      board_cards_[index]->addItem(tr_text("Non fissata"), -1);
+  auto *const board_layout = new QHBoxLayout(board_tab);
+  auto *const card_grid = new QGridLayout();
+  constexpr std::array<Rank, 9> board_ranks{Rank::Ace,   Rank::King,  Rank::Queen,
+                                            Rank::Jack,  Rank::Ten,   Rank::Nine,
+                                            Rank::Eight, Rank::Seven, Rank::Six};
+  constexpr std::array<Suit, 4> board_suits{Suit::Hearts, Suit::Clubs, Suit::Diamonds,
+                                            Suit::Spades};
+  constexpr std::array<const char *, 4> suit_styles{
+      "QToolButton{background:#f6b7b7;color:#7a2020;} QToolButton:checked{background:#d9534f;"
+      "color:white;}",
+      "QToolButton{background:#c8e6c9;color:#1b5e20;} QToolButton:checked{background:#43a047;"
+      "color:white;}",
+      "QToolButton{background:#bbdefb;color:#0d47a1;} QToolButton:checked{background:#1e88e5;"
+      "color:white;}",
+      "QToolButton{background:#e0e0e0;color:#263238;} QToolButton:checked{background:#616161;"
+      "color:white;}"};
+  for (std::size_t row = 0; row < board_ranks.size(); ++row) {
+    for (std::size_t column = 0; column < board_suits.size(); ++column) {
+      const auto card = CardId::from_parts(board_ranks[row], board_suits[column]);
+      auto *const button = new QToolButton(board_tab);
+      button->setText(QString::fromStdString(format_card(card)));
+      button->setCheckable(true);
+      button->setFixedSize(58, 42);
+      button->setStyleSheet(QString::fromLatin1(suit_styles[column]));
+      button->setObjectName(QStringLiteral("boardCard%1").arg(card.value()));
+      board_buttons_[card.value()] = button;
+      connect(button, &QToolButton::clicked, this, [this, card](const bool checked) {
+        if (checked) {
+          if (selected_board_.size() >= 5U) {
+            board_buttons_[card.value()]->setChecked(false);
+            statusBar()->showMessage(tr_text("Il board può contenere al massimo cinque carte."));
+            return;
+          }
+          selected_board_.push_back(card);
+        } else {
+          std::erase(selected_board_, card);
+        }
+        refresh_board_picker();
+      });
+      card_grid->addWidget(button, static_cast<int>(row), static_cast<int>(column));
     }
-    for (const auto card : deck) {
-      board_cards_[index]->addItem(QString::fromStdString(format_card(card)), card.value());
-    }
-    board_layout->addWidget(board_cards_[index], static_cast<int>(index), 1);
   }
-  board_layout->addWidget(
-      new QLabel(tr_text("Con 3 carte il solve parte dal flop; aggiungendo turn o river parte "
-                         "direttamente dalla street corrispondente."),
-                 board_tab),
-      5, 0, 1, 2);
-  builder_tabs->addTab(board_tab, tr_text("Flop / Turn / River"));
+  board_layout->addLayout(card_grid);
+  auto *const board_actions = new QVBoxLayout();
+  board_selection_ = new QLabel(board_tab);
+  board_selection_->setObjectName(QStringLiteral("boardSelection"));
+  board_selection_->setWordWrap(true);
+  auto *const clear_board = new QPushButton(tr_text("Clear"), board_tab);
+  auto *const random_board = new QPushButton(tr_text("Random"), board_tab);
+  auto *const done_board = new QPushButton(tr_text("Done"), board_tab);
+  connect(clear_board, &QPushButton::clicked, this, [this] {
+    selected_board_.clear();
+    refresh_board_picker();
+  });
+  connect(random_board, &QPushButton::clicked, this, [this] {
+    auto deck = short_deck();
+    std::mt19937 engine(std::random_device{}());
+    std::shuffle(deck.begin(), deck.end(), engine);
+    const auto count = selected_board_.size() >= 3U ? selected_board_.size() : std::size_t{3};
+    selected_board_.assign(deck.begin(), deck.begin() + static_cast<std::ptrdiff_t>(count));
+    refresh_board_picker();
+  });
+  connect(done_board, &QPushButton::clicked, this, [this, builder_tabs] {
+    if (sync_visual_config()) {
+      builder_tabs->setCurrentIndex(3);
+    }
+  });
+  board_actions->addWidget(board_selection_);
+  board_actions->addWidget(clear_board);
+  board_actions->addWidget(random_board);
+  board_actions->addStretch(1);
+  board_actions->addWidget(done_board);
+  board_layout->addLayout(board_actions, 1);
+  builder_tabs->addTab(board_tab, tr_text("Board"));
 
   auto *const range_tab = new QWidget(builder_tabs);
   auto *const range_layout = new QVBoxLayout(range_tab);
@@ -572,19 +669,39 @@ void ProductWindow::build_ui() {
   range_matrix_ = new QTableWidget(9, 9, range_tab);
   range_matrix_->setObjectName(QStringLiteral("rangeMatrixEditor"));
   range_matrix_->setSelectionMode(QAbstractItemView::NoSelection);
-  range_matrix_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  range_matrix_->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  range_matrix_->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+  range_matrix_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
+  range_matrix_->horizontalHeader()->setDefaultSectionSize(68);
+  range_matrix_->verticalHeader()->setDefaultSectionSize(68);
+  range_matrix_->setFixedSize(9 * 68 + 36, 9 * 68 + 36);
   range_matrix_->viewport()->installEventFilter(this);
   range_matrix_->viewport()->setMouseTracking(true);
-  range_layout->addWidget(range_matrix_, 1);
+  auto *const range_center = new QHBoxLayout();
+  range_center->addStretch(1);
+  range_center->addWidget(range_matrix_);
+  range_center->addStretch(1);
+  range_layout->addLayout(range_center, 1);
   auto *const weight_row = new QHBoxLayout();
   range_weight_ = new QDoubleSpinBox(range_tab);
   range_weight_->setRange(0.0, 100.0);
   range_weight_->setDecimals(2);
   range_weight_->setSingleStep(0.25);
   range_weight_->setValue(100.0);
+  range_slider_ = new QSlider(Qt::Horizontal, range_tab);
+  range_slider_->setRange(0, 10'000);
+  range_slider_->setValue(10'000);
+  range_slider_->setMinimumWidth(320);
+  connect(range_weight_, &QDoubleSpinBox::valueChanged, this, [this](const double value) {
+    const QSignalBlocker blocker(range_slider_);
+    range_slider_->setValue(static_cast<int>(std::llround(value * 100.0)));
+  });
+  connect(range_slider_, &QSlider::valueChanged, this, [this](const int value) {
+    const QSignalBlocker blocker(range_weight_);
+    range_weight_->setValue(value / 100.0);
+  });
   weight_row->addWidget(new QLabel(tr_text("Pennello %"), range_tab));
   weight_row->addWidget(range_weight_);
+  weight_row->addWidget(range_slider_, 1);
   weight_row->addStretch(1);
   range_layout->addLayout(weight_row);
   builder_tabs->addTab(range_tab, tr_text("Range"));
@@ -595,40 +712,21 @@ void ProductWindow::build_ui() {
   });
   builder_layout->addWidget(builder_tabs, 1);
 
-  auto *const settings = new QGroupBox(tr_text("Calcolo e risorse"), builder);
+  auto *const settings = new QGroupBox(tr_text("Criterio di convergenza"), builder);
   auto *const settings_form = new QFormLayout(settings);
-  iterations_ = new QSpinBox(settings);
-  iterations_->setToolTip(
-      tr_text("Numero di aggiornamenti CFR+: più iterazioni migliorano normalmente la "
-              "convergenza ma aumentano il tempo."));
-  iterations_->setRange(1, 1'000'000'000);
-  certification_interval_ = new QSpinBox(settings);
-  certification_interval_->setToolTip(
-      tr_text("Ogni quante iterazioni calcolare best response e NashConv. Un intervallo basso "
-              "misura più spesso ma rallenta il solve."));
-  certification_interval_->setRange(1, 1'000'000'000);
-  ram_budget_gib_ = new QDoubleSpinBox(settings);
-  ram_budget_gib_->setToolTip(
-      tr_text("Limite dichiarato per il preflight: il solve non parte se la stima RAM lo supera."));
-  ram_budget_gib_->setRange(0.25, 1024.0);
-  disk_budget_gib_ = new QDoubleSpinBox(settings);
-  disk_budget_gib_->setToolTip(
-      tr_text("Limite dichiarato per file out-of-core, checkpoint e dati temporanei stimati."));
-  disk_budget_gib_->setRange(0.25, 8192.0);
-  memory_backend_ = new QComboBox(settings);
-  memory_backend_->setToolTip(
-      tr_text("RAM lazy mantiene i dati allocati su richiesta in memoria; Out-of-core sposta "
-              "parte dello storage su disco ed è più lento."));
-  memory_backend_->addItem(tr_text("RAM lazy"), static_cast<int>(MemoryPrototype::LazyInRam));
-  memory_backend_->addItem(tr_text("Out-of-core"), static_cast<int>(MemoryPrototype::OutOfCore));
-  settings_form->addRow(tr_text("Iterazioni target"), iterations_);
-  settings_form->addRow(tr_text("Calcola convergenza ogni"), certification_interval_);
-  settings_form->addRow(tr_text("Limite RAM GiB"), ram_budget_gib_);
-  settings_form->addRow(tr_text("Limite disco GiB"), disk_budget_gib_);
-  settings_form->addRow(tr_text("Modalità memoria"), memory_backend_);
+  target_dev_ = new QDoubleSpinBox(settings);
+  target_dev_->setObjectName(QStringLiteral("targetDev"));
+  target_dev_->setRange(0.0001, 100.0);
+  target_dev_->setDecimals(4);
+  target_dev_->setValue(1.0);
+  target_dev_->setSuffix(QStringLiteral("%"));
+  target_dev_->setToolTip(
+      tr_text("Target dEV misurato come NashConv/Pot. Il solve certifica ogni iterazione e "
+              "si arresta automaticamente quando raggiunge la soglia."));
+  settings_form->addRow(tr_text("Target dEV"), target_dev_);
   settings_form->addRow(
-      new QLabel(tr_text("I limiti RAM/disco sono soglie di sicurezza del preflight, non "
-                         "prenotazioni di memoria. I log sono disponibili dalla toolbar Log…"),
+      new QLabel(tr_text("RAM, disco e modalità memoria vengono scelti automaticamente dal "
+                         "preflight. I log sono disponibili dalla toolbar Log…"),
                  settings));
   builder_layout->addWidget(settings);
   estimate_summary_ = new QLabel(tr_text("Eseguire la stima prima del solve."), builder);
@@ -663,20 +761,24 @@ void ProductWindow::build_ui() {
   convergence_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   convergence_chart_ = new ConvergenceChart(monitor);
   auto *const monitor_buttons = new QHBoxLayout();
-  auto *const pause_button = new QPushButton(tr_text("Pausa"), monitor);
-  auto *const cancel_button = new QPushButton(tr_text("Annulla"), monitor);
-  connect(pause_button, &QPushButton::clicked, this, [this] {
+  pause_button_ = new QPushButton(tr_text("Pausa"), monitor);
+  cancel_button_ = new QPushButton(tr_text("Annulla"), monitor);
+  connect(pause_button_, &QPushButton::clicked, this, [this] {
     if (session_) {
       session_->command.store(PostflopControlCommand::Pause);
+      solve_status_->setText(tr_text("Pausa richiesta…"));
     }
   });
-  connect(cancel_button, &QPushButton::clicked, this, [this] {
+  connect(cancel_button_, &QPushButton::clicked, this, [this] {
     if (session_) {
       session_->command.store(PostflopControlCommand::Cancel);
+      solve_status_->setText(tr_text("Annullamento richiesto…"));
     }
   });
-  monitor_buttons->addWidget(pause_button);
-  monitor_buttons->addWidget(cancel_button);
+  monitor_buttons->addWidget(pause_button_);
+  monitor_buttons->addWidget(cancel_button_);
+  pause_button_->setEnabled(false);
+  cancel_button_->setEnabled(false);
   monitor_layout->addWidget(solve_status_);
   monitor_layout->addWidget(solve_progress_);
   monitor_layout->addWidget(solve_metrics_);
@@ -745,12 +847,23 @@ void ProductWindow::load_default_project() {
     return;
   }
   project_.config = config.value();
-  project_.ranges = make_uniform_postflop_ranges();
+  project_.config.initial_pot = Money::from_antes(40).value();
+  project_.config.effective_stack = Money::from_antes(100).value();
+  project_.config.rake.enabled = true;
+  project_.config.rake.percentage = RangeWeight::from_basis_points(0).value();
+  project_.config.rake.cap = Money{};
+  const auto zero = RangeWeight::from_basis_points(0).value();
+  for (auto &range : project_.ranges.players) {
+    range.fill(zero);
+  }
   refresh_config_controls();
-  iterations_->setValue(static_cast<int>(project_.iterations));
-  certification_interval_->setValue(static_cast<int>(project_.certification_interval));
-  ram_budget_gib_->setValue(8.0);
-  disk_budget_gib_->setValue(16.0);
+  target_dev_->setValue(project_.target_normalized_nash_conv * 100.0);
+  for (auto &player : player_betting_) {
+    player.default_bet->setValue(50.0);
+    for (auto &street : player.streets) {
+      street.custom->setChecked(false);
+    }
+  }
   refresh_range_matrix();
 
   QSettings settings;
@@ -805,38 +918,69 @@ void ProductWindow::refresh_config_controls() {
                           units_per_ante);
   effective_stack_->setValue(static_cast<double>(project_.config.effective_stack.units()) /
                              units_per_ante);
-  rake_enabled_->setChecked(project_.config.rake.enabled);
   rake_percentage_->setValue(project_.config.rake.percentage.basis_points() / 100.0);
   rake_cap_->setValue(static_cast<double>(project_.config.rake.cap.units()) / units_per_ante);
 
-  const auto set_card = [](QComboBox *const control, const std::optional<CardId> card) {
-    const auto index = card ? control->findData(card->value()) : control->findData(-1);
-    control->setCurrentIndex(std::max(0, index));
-  };
-  for (std::size_t index = 0; index < 3U; ++index) {
-    set_card(board_cards_[index], project_.config.flop[index]);
-  }
-  set_card(board_cards_[3], project_.config.turn);
-  set_card(board_cards_[4], project_.config.river);
+  selected_board_ = configured_board(project_.config);
+  refresh_board_picker();
 
-  for (std::size_t street = 0; street < 3U; ++street) {
-    for (std::size_t player = 0; player < 2U; ++player) {
-      for (std::size_t scenario = 0; scenario < 3U; ++scenario) {
-        const auto &source = project_.config.streets[street].players[player][scenario];
-        auto &widgets = scenario_widgets_[street][player][scenario];
-        QStringList sizes;
-        for (const auto size : source.aggressive_sizes) {
-          sizes.push_back(QString::number(size.basis_points() / 100.0, 'f', 2));
-        }
-        widgets.sizes->setText(sizes.join(QStringLiteral(", ")));
-        widgets.raise_depth->setValue(source.raise_depth);
-        widgets.all_in_mode->setCurrentIndex(
-            std::max(0, widgets.all_in_mode->findData(static_cast<int>(source.all_in_mode))));
-        widgets.all_in_threshold->setValue(source.all_in_threshold.basis_points() / 100.0);
-        widgets.minimum_bet->setValue(static_cast<double>(source.minimum_bet.units()) /
-                                      units_per_ante);
-      }
+  const auto sizes_text = [](const std::vector<PotPercentage> &source) {
+    QStringList sizes;
+    for (const auto size : source) {
+      sizes.push_back(QString::number(size.basis_points() / 100.0, 'f', 2));
     }
+    return sizes.join(QStringLiteral(", "));
+  };
+
+  for (std::size_t player = 0; player < 2U; ++player) {
+    auto &widgets = player_betting_[player];
+    const auto bet_scenario = player == 0U ? BettingScenario::Lead : BettingScenario::AfterCheck;
+    const auto &first_bet =
+        project_.config.streets[0].players[player][static_cast<std::size_t>(bet_scenario)];
+    if (!first_bet.aggressive_sizes.empty()) {
+      widgets.default_bet->setValue(first_bet.aggressive_sizes.front().basis_points() / 100.0);
+    }
+    const auto policy = first_bet.all_in_mode == AllInMode::Add  ? Qt::PartiallyChecked
+                        : first_bet.all_in_mode == AllInMode::Go ? Qt::Checked
+                                                                 : Qt::Unchecked;
+    widgets.all_in_policy->setCheckState(policy);
+    widgets.all_in_threshold->setValue(first_bet.all_in_threshold.basis_points() / 100.0);
+    for (std::size_t street = 0; street < 3U; ++street) {
+      const auto &bet =
+          project_.config.streets[street].players[player][static_cast<std::size_t>(bet_scenario)];
+      const auto &raise =
+          project_.config.streets[street]
+              .players[player][static_cast<std::size_t>(BettingScenario::FacingBet)];
+      auto &street_widgets = widgets.streets[street];
+      street_widgets.bet_sizes->setText(sizes_text(bet.aggressive_sizes));
+      street_widgets.raise_sizes->setText(sizes_text(raise.aggressive_sizes));
+      street_widgets.maximum_raises->setValue(raise.raise_depth);
+      street_widgets.custom->setChecked(!bet.aggressive_sizes.empty() ||
+                                        !raise.aggressive_sizes.empty());
+    }
+  }
+}
+
+void ProductWindow::refresh_board_picker() {
+  for (std::size_t index = 0; index < board_buttons_.size(); ++index) {
+    if (board_buttons_[index] == nullptr) {
+      continue;
+    }
+    const auto card = CardId::from_index(static_cast<std::uint8_t>(index)).value();
+    const QSignalBlocker blocker(board_buttons_[index]);
+    board_buttons_[index]->setChecked(std::ranges::find(selected_board_, card) !=
+                                      selected_board_.end());
+  }
+  if (board_selection_ != nullptr) {
+    QStringList cards;
+    for (const auto card : selected_board_) {
+      cards.push_back(QString::fromStdString(format_card(card)));
+    }
+    const auto street = selected_board_.size() == 3U   ? tr_text("Flop")
+                        : selected_board_.size() == 4U ? tr_text("Turn")
+                        : selected_board_.size() == 5U ? tr_text("River")
+                                                       : tr_text("Seleziona 3–5 carte");
+    board_selection_->setText(tr_text("%1\n%2").arg(street, cards.join(QStringLiteral(" "))));
   }
 }
 
@@ -857,70 +1001,95 @@ bool ProductWindow::sync_visual_config() {
   }
   config.initial_pot = pot.value();
   config.effective_stack = stack.value();
-  config.rake.enabled = rake_enabled_->isChecked();
+  config.rake.enabled = true;
   config.rake.percentage = rake_percentage.value();
   config.rake.cap = rake_cap.value();
 
+  if (selected_board_.size() < 3U || selected_board_.size() > 5U) {
+    statusBar()->showMessage(tr_text("Seleziona da tre a cinque carte per il board."));
+    return false;
+  }
   for (std::size_t index = 0; index < 3U; ++index) {
-    const auto card =
-        CardId::from_index(static_cast<std::uint8_t>(board_cards_[index]->currentData().toInt()));
-    if (!card) {
-      statusBar()->showMessage(tr_text("Il flop deve contenere tre carte valide."));
-      return false;
-    }
-    config.flop[index] = card.value();
+    config.flop[index] = selected_board_[index];
   }
   config.turn.reset();
   config.river.reset();
-  if (board_cards_[3]->currentData().toInt() >= 0) {
-    config.turn =
-        CardId::from_index(static_cast<std::uint8_t>(board_cards_[3]->currentData().toInt()))
-            .value();
+  if (selected_board_.size() >= 4U) {
+    config.turn = selected_board_[3];
   }
-  if (board_cards_[4]->currentData().toInt() >= 0) {
-    if (!config.turn) {
-      statusBar()->showMessage(tr_text("Per fissare il river devi prima fissare il turn."));
-      return false;
-    }
-    config.river =
-        CardId::from_index(static_cast<std::uint8_t>(board_cards_[4]->currentData().toInt()))
-            .value();
+  if (selected_board_.size() == 5U) {
+    config.river = selected_board_[4];
   }
 
-  for (std::size_t street = 0; street < 3U; ++street) {
-    for (std::size_t player = 0; player < 2U; ++player) {
-      for (std::size_t scenario = 0; scenario < 3U; ++scenario) {
-        auto &target = config.streets[street].players[player][scenario];
-        const auto &widgets = scenario_widgets_[street][player][scenario];
-        target.aggressive_sizes.clear();
-        const auto values = widgets.sizes->text().split(
-            QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
-        if (values.size() > 3) {
-          statusBar()->showMessage(tr_text("Sono consentite al massimo tre size per scenario."));
+  const auto parse_sizes =
+      [this](const QString &text) -> std::optional<std::vector<PotPercentage>> {
+    std::vector<PotPercentage> result;
+    const auto values =
+        text.split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
+    if (values.size() > 3) {
+      statusBar()->showMessage(tr_text("Sono consentite al massimo tre size per campo."));
+      return std::nullopt;
+    }
+    for (const auto &value : values) {
+      bool ok = false;
+      const auto percentage = value.toDouble(&ok);
+      const auto parsed = PotPercentage::from_basis_points(
+          static_cast<std::int64_t>(std::llround(percentage * 100.0)));
+      if (!ok || !parsed) {
+        statusBar()->showMessage(tr_text("Size postflop non valida: %1").arg(value));
+        return std::nullopt;
+      }
+      result.push_back(parsed.value());
+    }
+    return result;
+  };
+  const auto minimum_bet = Money::from_antes(1).value();
+  for (std::size_t player = 0; player < 2U; ++player) {
+    const auto &player_widgets = player_betting_[player];
+    const auto default_bet = PotPercentage::from_basis_points(
+        static_cast<std::int64_t>(std::llround(player_widgets.default_bet->value() * 100.0)));
+    const auto threshold = PotPercentage::from_basis_points(
+        static_cast<std::int64_t>(std::llround(player_widgets.all_in_threshold->value() * 100.0)));
+    if (!default_bet || !threshold) {
+      statusBar()->showMessage(tr_text("Default bet o soglia all-in non validi."));
+      return false;
+    }
+    const auto policy = player_widgets.all_in_policy->checkState();
+    const auto all_in_mode = policy == Qt::PartiallyChecked ? AllInMode::Add
+                             : policy == Qt::Checked        ? AllInMode::Go
+                                                            : AllInMode::Disabled;
+    const auto bet_scenario = player == 0U ? BettingScenario::Lead : BettingScenario::AfterCheck;
+    const auto unused_scenario = player == 0U ? BettingScenario::AfterCheck : BettingScenario::Lead;
+    for (std::size_t street = 0; street < 3U; ++street) {
+      const auto &widgets = player_widgets.streets[street];
+      std::vector<PotPercentage> bet_sizes{default_bet.value()};
+      std::vector<PotPercentage> raise_sizes;
+      std::uint8_t maximum_raises = 0U;
+      if (widgets.custom->isChecked()) {
+        const auto parsed_bets = parse_sizes(widgets.bet_sizes->text());
+        const auto parsed_raises = parse_sizes(widgets.raise_sizes->text());
+        if (!parsed_bets || !parsed_raises || parsed_bets->empty()) {
+          statusBar()->showMessage(
+              tr_text("Una street personalizzata deve contenere almeno una bet size."));
           return false;
         }
-        for (const auto &value : values) {
-          bool ok = false;
-          const auto percentage = value.toDouble(&ok);
-          const auto parsed = PotPercentage::from_basis_points(
-              static_cast<std::int64_t>(std::llround(percentage * 100.0)));
-          if (!ok || !parsed) {
-            statusBar()->showMessage(tr_text("Size postflop non valida: %1").arg(value));
-            return false;
-          }
-          target.aggressive_sizes.push_back(parsed.value());
-        }
-        target.raise_depth = static_cast<std::uint8_t>(widgets.raise_depth->value());
-        target.all_in_mode = static_cast<AllInMode>(widgets.all_in_mode->currentData().toInt());
-        target.all_in_threshold =
-            PotPercentage::from_basis_points(
-                static_cast<std::int64_t>(std::llround(widgets.all_in_threshold->value() * 100.0)))
-                .value();
-        target.minimum_bet =
-            Money::from_units(static_cast<std::int64_t>(std::llround(widgets.minimum_bet->value() *
-                                                                     Money::units_per_ante)))
-                .value();
+        bet_sizes = *parsed_bets;
+        raise_sizes = *parsed_raises;
+        maximum_raises = static_cast<std::uint8_t>(widgets.maximum_raises->value());
       }
+      auto configure = [&](ScenarioConfig &target, std::vector<PotPercentage> sizes,
+                           const std::uint8_t raise_depth) {
+        target.aggressive_sizes = std::move(sizes);
+        target.raise_depth = raise_depth;
+        target.all_in_mode = all_in_mode;
+        target.all_in_threshold = threshold.value();
+        target.minimum_bet = minimum_bet;
+      };
+      auto &street_config = config.streets[street].players[player];
+      configure(street_config[static_cast<std::size_t>(bet_scenario)], bet_sizes, 0U);
+      configure(street_config[static_cast<std::size_t>(unused_scenario)], bet_sizes, 0U);
+      configure(street_config[static_cast<std::size_t>(BettingScenario::FacingBet)],
+                std::move(raise_sizes), maximum_raises);
     }
   }
   const auto valid = validate_tree_config(config);
@@ -942,13 +1111,17 @@ bool ProductWindow::sync_visual_config() {
 }
 
 void ProductWindow::sync_project_settings() {
-  project_.iterations = static_cast<std::uint64_t>(iterations_->value());
-  project_.certification_interval = static_cast<std::uint64_t>(certification_interval_->value());
-  constexpr double bytes_per_gib = 1024.0 * 1024.0 * 1024.0;
-  project_.ram_budget_bytes = static_cast<std::uint64_t>(ram_budget_gib_->value() * bytes_per_gib);
-  project_.disk_budget_bytes =
-      static_cast<std::uint64_t>(disk_budget_gib_->value() * bytes_per_gib);
-  project_.memory_backend = static_cast<MemoryPrototype>(memory_backend_->currentData().toInt());
+  project_.certification_interval = 1U;
+  project_.target_normalized_nash_conv = target_dev_->value() / 100.0;
+  const auto host = query_gui_benchmark_host();
+  project_.ram_budget_bytes =
+      host.total_physical_memory_bytes > 0U
+          ? static_cast<std::uint64_t>(host.total_physical_memory_bytes * 0.8)
+          : 8ULL * 1024ULL * 1024ULL * 1024ULL;
+  std::error_code space_error;
+  const auto space = std::filesystem::space(std::filesystem::temp_directory_path(), space_error);
+  project_.disk_budget_bytes = !space_error ? static_cast<std::uint64_t>(space.available * 0.8)
+                                            : 16ULL * 1024ULL * 1024ULL * 1024ULL;
 }
 
 bool ProductWindow::estimate_current_project() {
@@ -960,22 +1133,38 @@ bool ProductWindow::estimate_current_project() {
     estimate_summary_->setText(tr_text("Range non valido: nessun deal privato compatibile."));
     return false;
   }
-  const auto report = analyze_postflop_config(project_.config, project_.memory_backend);
+  auto report = analyze_postflop_config(project_.config, MemoryPrototype::LazyInRam);
   if (!report) {
     estimate_summary_->setText(
         tr_text("Stima fallita: %1").arg(QString::fromLatin1(memory_error_name(report.error()))));
     return false;
   }
+  project_.memory_backend = MemoryPrototype::LazyInRam;
+  if (report.value().memory.peak_resident_bytes > project_.ram_budget_bytes) {
+    auto out_of_core = analyze_postflop_config(project_.config, MemoryPrototype::OutOfCore);
+    if (!out_of_core) {
+      estimate_summary_->setText(
+          tr_text("Stima out-of-core fallita: %1")
+              .arg(QString::fromLatin1(memory_error_name(out_of_core.error()))));
+      return false;
+    }
+    project_.memory_backend = MemoryPrototype::OutOfCore;
+    report = std::move(out_of_core);
+  }
   const auto &memory = report.value().memory;
   const bool ram_ok = memory.peak_resident_bytes <= project_.ram_budget_bytes;
   const bool disk_ok = memory.backing_store_bytes <= project_.disk_budget_bytes;
+  const auto mode = project_.memory_backend == MemoryPrototype::LazyInRam
+                        ? tr_text("RAM automatica")
+                        : tr_text("Out-of-core automatico");
   estimate_summary_->setText(
-      tr_text("%1 nodi · %2 infoset · %3 azioni · picco RAM %4 MiB · disco %5 MiB · %6")
+      tr_text("%1 nodi · %2 infoset · %3 azioni · picco RAM %4 MiB · disco %5 MiB · %6 · %7")
           .arg(static_cast<qulonglong>(report.value().public_tree.node_count))
           .arg(static_cast<qulonglong>(report.value().information_sets))
           .arg(static_cast<qulonglong>(report.value().actions))
           .arg(static_cast<qulonglong>(memory.peak_resident_bytes / (1024U * 1024U)))
           .arg(static_cast<qulonglong>(memory.backing_store_bytes / (1024U * 1024U)))
+          .arg(mode)
           .arg(ram_ok && disk_ok ? tr_text("risorse sufficienti")
                                  : tr_text("RISORSE INSUFFICIENTI")));
   return ram_ok && disk_ok;
@@ -1010,21 +1199,22 @@ bool ProductWindow::start_current_solve() {
   const auto resume = session->resume;
   QSettings().setValue(QStringLiteral("recoveryKey"),
                        QString::fromStdString(storage_key_to_hex(recovery_key)));
-  solve_progress_->setRange(
-      0, static_cast<int>(std::min<std::uint64_t>(
-             project.iterations, static_cast<std::uint64_t>(std::numeric_limits<int>::max()))));
-  solve_progress_->setValue(0);
+  solve_progress_->setRange(0, 0);
   solve_status_->setText(tr_text("Solving exact CFR+…"));
   append_log(QStringLiteral("info"), QStringLiteral("solve_started"),
-             tr_text("iterazioni=%1 backend=%2")
-                 .arg(static_cast<qulonglong>(project.iterations))
-                 .arg(memory_backend_->currentText()));
+             tr_text("target_dev=%1% backend=%2")
+                 .arg(project.target_normalized_nash_conv * 100.0, 0, 'f', 4)
+                 .arg(project.memory_backend == MemoryPrototype::LazyInRam
+                          ? QStringLiteral("ram")
+                          : QStringLiteral("disk")));
   convergence_->setRowCount(0);
   pages_->setCurrentIndex(2);
+  set_solve_controls_enabled(true);
   worker_ = std::jthread([session, project, recovery_key, resume] {
     PostflopSolveOptions options;
     options.iterations = project.iterations;
     options.certification_interval = project.certification_interval;
+    options.target_normalized_nash_conv = project.target_normalized_nash_conv;
     options.memory_backend = project.memory_backend;
     if (project.memory_backend == MemoryPrototype::OutOfCore) {
       options.backing_file =
@@ -1104,6 +1294,9 @@ void ProductWindow::finish_worker() {
   if (worker_.joinable()) {
     worker_.join();
   }
+  set_solve_controls_enabled(false);
+  solve_progress_->setRange(0, 1);
+  solve_progress_->setValue(result ? 1 : 0);
   maximum_solve_heartbeat_gap_ms_ = maximum_ui_heartbeat_gap_ms_;
   if (!result) {
     if (session_->resume) {
@@ -1137,8 +1330,10 @@ void ProductWindow::finish_worker() {
   }
   convergence_chart_->set_points(result->convergence);
   const auto reason = result->stop_reason == PostflopStopReason::Completed ? tr_text("Completato")
-                      : result->stop_reason == PostflopStopReason::Paused  ? tr_text("In pausa")
-                                                                           : tr_text("Annullato");
+                      : result->stop_reason == PostflopStopReason::Converged
+                          ? tr_text("Target dEV raggiunto")
+                      : result->stop_reason == PostflopStopReason::Paused ? tr_text("In pausa")
+                                                                          : tr_text("Annullato");
   solve_status_->setText(reason);
   append_log(QStringLiteral("info"), QStringLiteral("solve_finished"), reason);
   session_.reset();
@@ -1210,9 +1405,7 @@ bool ProductWindow::open_saved_solution(const std::filesystem::path &path, const
   project_.ranges = std::move(restored.value().ranges);
   checkpoint_ = std::move(restored.value().checkpoint);
   certification_ = restored.value().certification;
-  iterations_->setValue(static_cast<int>(std::min<std::uint64_t>(
-      std::max<std::uint64_t>(project_.iterations, certification_->iteration),
-      static_cast<std::uint64_t>(std::numeric_limits<int>::max()))));
+  project_.iterations = std::max(project_.iterations, certification_->iteration);
   current_solution_path_ = path;
   current_key_ = key;
   store_solution_key(path, key);
@@ -1442,6 +1635,21 @@ bool ProductWindow::eventFilter(QObject *const watched, QEvent *const event) {
 void ProductWindow::show_builder() { pages_->setCurrentIndex(1); }
 void ProductWindow::show_browser() { pages_->setCurrentIndex(3); }
 
+void ProductWindow::set_solve_controls_enabled(const bool solving) {
+  if (pause_button_ != nullptr) {
+    pause_button_->setEnabled(solving);
+  }
+  if (cancel_button_ != nullptr) {
+    cancel_button_->setEnabled(solving);
+  }
+  if (pause_action_ != nullptr) {
+    pause_action_->setEnabled(solving);
+  }
+  if (cancel_action_ != nullptr) {
+    cancel_action_->setEnabled(solving);
+  }
+}
+
 void ProductWindow::invalidate_solution() {
   checkpoint_.reset();
   certification_.reset();
@@ -1535,8 +1743,9 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
              "create/configure failed")) {
     return false;
   }
-  if (!check(postflop_settings_ != nullptr && postflop_settings_->rowCount() == 18 &&
-                 board_cards_[0] != nullptr && board_cards_[4] != nullptr,
+  if (!check(player_betting_[0].default_bet != nullptr &&
+                 player_betting_[1].default_bet != nullptr && board_buttons_[0] != nullptr &&
+                 board_buttons_[35] != nullptr && target_dev_ != nullptr,
              "visual tree controls unavailable")) {
     return false;
   }
@@ -1558,17 +1767,19 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
   for (std::size_t combo = 0; combo < combos.size(); ++combo) {
     if (!combo_blocked(combos[combo], project_.config) && combo % 7U == 0U) {
       project_.ranges.players[0][combo] = half;
+      project_.ranges.players[1][combo] = half;
     }
   }
-  iterations_->setValue(2);
-  certification_interval_->setValue(1);
-  ram_budget_gib_->setValue(16.0);
-  disk_budget_gib_->setValue(16.0);
+  project_.iterations = 2;
+  target_dev_->setValue(0.0001);
   if (!check(estimate_current_project(), "estimate failed")) {
     return false;
   }
   const auto heartbeat_before = ui_heartbeat_count_;
   if (!check(start_current_solve(), "solve did not start") ||
+      !check(pause_button_->isEnabled() && cancel_button_->isEnabled() &&
+                 pause_action_->isEnabled() && cancel_action_->isEnabled(),
+             "pause/cancel controls are not available during solve") ||
       !check(wait_for_solve(std::chrono::seconds(90)), "solve did not complete") ||
       !check(ui_heartbeat_count_ > heartbeat_before + 5U, "UI heartbeat stopped during solve") ||
       !check(maximum_solve_heartbeat_gap_ms_ < 100.0,
@@ -1612,7 +1823,7 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
              "physical range did not round-trip")) {
     return false;
   }
-  iterations_->setValue(3);
+  project_.iterations = 3;
   const auto resume_heartbeat = ui_heartbeat_count_;
   if (!check(start_current_solve(), "resume did not start") ||
       !check(wait_for_solve(std::chrono::seconds(90)), "resume did not complete") ||
