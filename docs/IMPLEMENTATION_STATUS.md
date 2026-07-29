@@ -16,7 +16,7 @@ Aggiornato: 2026-07-29
 | F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query e PF-F1 a 0,741405% | Nessun residuo del gate locale; confronto numerico GTO+ attende un export equivalente |
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e 309 asserzioni | La quantizzazione resta sperimentale; la misura PF-F1 storage usa una iterazione e non sostituisce la certificazione F7 |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
-| F10 | **Completata localmente** | `gto_gui` Qt, configurazione visuale, board iniziale flop/turn/river, range paint-on-click, chiavi locali trasparenti, log persistenti, worker non bloccante, recovery cifrato, heatmap 9×9 ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti; action EV e node reach non sono ancora viste per-combo |
+| F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, risorse automatiche, chiavi locali trasparenti, log persistenti, recovery cifrato, heatmap 9×9 ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti; action EV e node reach non sono ancora viste per-combo |
 | F11+ | Non iniziata | — | Nodelock globale e milestone successive |
 
 ## Fase 0 — Fondazioni del repository
@@ -468,9 +468,11 @@ Il dettaglio è in
 ### Esito
 
 Il gate automatico locale F10 è completato. L'eseguibile prodotto `gto_gui`
-integra configurazione visuale completa, board iniziale da tre a cinque carte,
-editor range CO/BTN paint-on-click a basis point,
-preflight risorse, solve CFR+ in worker separato, progresso per iterazione,
+integra configurazione visuale completa, board Short Deck visuale da tre a cinque
+carte, pannelli di sizing separati CO/OOP e BTN/IP, editor range CO/BTN
+paint-on-click/slider a basis point, Target dEV certificato a ogni iterazione,
+preflight e backend memoria automatici, solve CFR+ in worker separato, pausa,
+annullamento e progresso per iterazione,
 checkpoint/recovery `.gtsd`, save/open autenticato, albero fisico e strategy
 matrix per classe e combo.
 

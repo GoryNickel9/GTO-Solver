@@ -22,27 +22,28 @@ autenticato. Il timer UI è rimasto attivo per l'intero solve E2E.
 | Attività F10 | Implementazione |
 |---|---|
 | Home/recenti | Nuovo progetto, lista persistente degli ultimi dieci `.gtsd`, apertura con chiave locale automatica |
-| Tree builder | Controlli visuali per pot/stack/rake, 18 scenari postflop e board iniziale flop/turn/river |
-| Range editor | Matrice 9×9 paint-on-click/drag, peso 0,01%, blocker applicati alle combo fisiche |
-| Estimate dialog | Nodi, infoset, azioni, picco RAM, backing store e hard preflight budget |
+| Tree builder | Pot/stack/rake, pannelli separati CO/OOP e BTN/IP, override per street e board Short Deck visuale da 3 a 5 carte |
+| Range editor | Matrice quadrata 9×9 paint-on-click/drag, slider 0,01%, default 0%, blocker applicati alle combo fisiche |
+| Estimate dialog | Nodi, infoset, azioni, picco RAM, backing store e selezione automatica RAM/out-of-core |
 | Solve monitor | Iterazione continua, EV CO/BTN, NashConv, chart, pausa e cancel |
 | Solution browser | Public tree fisico, heatmap strategy per classe e frequenze per combo |
 | Save/open | Container `.gtsd` 1.0 cifrato, chiave locale trasparente, import con chiave solo da altro PC |
-| Settings hardware | Budget RAM/disco e backend lazy/out-of-core |
+| Settings solve | Target dEV 1% (NashConv/Pot); certificazione a ogni iterazione; budget e backend automatici |
 | Errori/recovery | Errori tipizzati visibili; recovery `.gtsd` atomico riapribile all'avvio |
 | Localizzazione | UI italiana; catalogo sorgente `gtosd_en.ts` predisposto |
 | Diagnostica | Log JSONL persistente e cartella apribile dalla toolbar |
 
 ### Semantica dei controlli di calcolo
 
-- **Iterazioni target**: numero massimo di aggiornamenti CFR+; non costituisce
-  da solo prova di convergenza.
-- **Calcola convergenza ogni**: frequenza del calcolo più costoso di best
-  response e NashConv.
-- **Limite RAM/disco**: soglie di sicurezza del preflight, non memoria
-  prenotata in anticipo.
-- **Modalità memoria**: `RAM lazy` alloca in memoria su richiesta;
-  `Out-of-core` usa backing storage su disco con un costo prestazionale.
+- **Target dEV**: soglia di arresto esposta come percentuale e misurata
+  esattamente come `NashConv / starting pot`; il default è 1%.
+- **Certificazione**: best response e NashConv sono calcolati a ogni iterazione;
+  l'utente non può ridurne la frequenza.
+- **Risorse**: il preflight usa automaticamente l'80% della RAM fisica e dello
+  spazio temporaneo disponibile, passando da lazy RAM a out-of-core quando
+  necessario.
+- **Pausa/annulla**: entrambi restano disponibili nella toolbar e nel monitor
+  durante il worker; il controllo avviene al confine sicuro di iterazione.
 
 ## 3. Correzione del contratto range
 

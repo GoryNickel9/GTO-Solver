@@ -155,10 +155,14 @@ connects weighted physical CO/BTN ranges to exact CFR+/BR, performs resource
 preflight, solves on a worker thread, writes authenticated crash-recovery
 checkpoints, saves/opens `.gtsd`, and navigates real strategy data by 9×9 hand
 class and physical combo. Configuration is visual: starting pot/stack/rake,
-per-street action settings and a three-to-five-card board; the versioned JSON
-remains an internal persistence/API format. Range classes are painted directly
-with click/drag, local solution keys are managed transparently, and diagnostic
-logs are available from the application toolbar.
+separate CO/OOP and BTN/IP betting panels, street overrides and a visual
+three-to-five-card Short Deck board picker; the versioned JSON remains an
+internal persistence/API format. The solve target is NashConv/Pot (`Target
+dEV`, default 1%) and is certified every iteration. RAM, disk and backing mode
+are selected automatically by preflight. Range classes start at 0% and are
+painted directly with click/drag or a percentage slider. Pause and cancel
+remain available during solving; local solution keys are managed transparently
+and diagnostic logs are available from the application toolbar.
 
 ```powershell
 cmake --preset windows-gui-release
