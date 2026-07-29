@@ -4,12 +4,20 @@
 #include "gtosd/memory/memory.hpp"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QDir>
 #include <QDoubleSpinBox>
+#include <QEvent>
+#include <QFile>
 #include <QFileDialog>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
 #include <QInputDialog>
@@ -17,21 +25,24 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
-#include <QPlainTextEdit>
 #include <QProgressBar>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStackedWidget>
+#include <QStandardPaths>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
 #include <QToolBar>
 #include <QTreeView>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -111,8 +122,11 @@ std::optional<HandClassId> matrix_class(const int row, const int column) {
 }
 
 bool combo_blocked(const Combo &combo, const PostflopTreeConfig &config) {
-  const auto board = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask();
-  return ((combo.first.mask() | combo.second.mask()) & board) != 0U;
+  std::uint64_t board_mask = 0U;
+  for (const auto card : configured_board(config)) {
+    board_mask |= card.mask();
+  }
+  return ((combo.first.mask() | combo.second.mask()) & board_mask) != 0U;
 }
 
 QString combo_name(const Combo &combo) {
@@ -121,6 +135,32 @@ QString combo_name(const Combo &combo) {
 
 std::filesystem::path recovery_checkpoint_path() {
   return std::filesystem::temp_directory_path() / "gtosd_phase10_recovery.gtsd";
+}
+
+QString log_directory_path() {
+  return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+         QStringLiteral("/logs");
+}
+
+QString log_file_path() { return log_directory_path() + QStringLiteral("/gtosd.log"); }
+
+void append_log(const QString &level, const QString &event, const QString &details = {}) {
+  QDir().mkpath(log_directory_path());
+  QFile file(log_file_path());
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+    return;
+  }
+  const auto clean = QString(details).replace('\n', QStringLiteral("\\n")).replace('"', '\'');
+  const auto line =
+      QStringLiteral("{\"time\":\"%1\",\"level\":\"%2\",\"event\":\"%3\",\"details\":\"%4\"}\n")
+          .arg(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs), level, event, clean);
+  static_cast<void>(file.write(line.toUtf8()));
+}
+
+QString solution_key_setting(const std::filesystem::path &path) {
+  const auto normalized = QFileInfo(QString::fromStdWString(path.wstring())).absoluteFilePath();
+  const auto digest = QCryptographicHash::hash(normalized.toUtf8(), QCryptographicHash::Sha256);
+  return QStringLiteral("solutionKeys/") + QString::fromLatin1(digest.toHex());
 }
 
 } // namespace
@@ -300,6 +340,8 @@ ProductWindow::ProductWindow(QWidget *const parent) : QMainWindow(parent) {
   resize(1440, 900);
   build_ui();
   load_default_project();
+  append_log(QStringLiteral("info"), QStringLiteral("application_started"),
+             QStringLiteral("version=0.10.0"));
   auto *const heartbeat = new QTimer(this);
   heartbeat->setInterval(10);
   connect(heartbeat, &QTimer::timeout, this, [this] {
@@ -338,15 +380,22 @@ void ProductWindow::build_ui() {
     if (path.isEmpty()) {
       return;
     }
-    bool accepted = false;
-    const auto key_text = QInputDialog::getText(this, tr_text("Chiave soluzione"),
-                                                tr_text("Chiave esadecimale a 64 caratteri"),
-                                                QLineEdit::Normal, {}, &accepted);
-    if (!accepted) {
-      return;
+    const auto solution_path = std::filesystem::path(path.toStdWString());
+    auto key = stored_solution_key(solution_path);
+    if (!key) {
+      bool accepted = false;
+      const auto key_text = QInputDialog::getText(
+          this, tr_text("Importazione soluzione protetta"),
+          tr_text("Questa soluzione non è stata salvata su questo PC. Inserisci la chiave "
+                  "di esportazione a 64 caratteri."),
+          QLineEdit::Normal, {}, &accepted);
+      const auto parsed = storage_key_from_hex(key_text.toStdString());
+      if (!accepted || !parsed) {
+        return;
+      }
+      key = parsed.value();
     }
-    const auto key = storage_key_from_hex(key_text.toStdString());
-    if (!key || !open_saved_solution(std::filesystem::path(path.toStdWString()), key.value())) {
+    if (!open_saved_solution(solution_path, *key)) {
       QMessageBox::critical(this, tr_text("Apertura fallita"),
                             tr_text("Chiave errata, file corrotto o versione incompatibile."));
     }
@@ -366,9 +415,18 @@ void ProductWindow::build_ui() {
                             tr_text("La soluzione non è stata salvata."));
       return;
     }
-    QMessageBox::information(this, tr_text("Soluzione salvata"),
-                             tr_text("Conserva questa chiave separatamente dal file:\n%1")
-                                 .arg(QString::fromStdString(storage_key_to_hex(current_key_))));
+    QMessageBox::information(
+        this, tr_text("Soluzione salvata"),
+        tr_text("La soluzione è stata salvata e protetta. La chiave locale viene gestita "
+                "automaticamente dall'applicazione."));
+  });
+  auto *const logs_action = toolbar->addAction(tr_text("Log…"));
+  connect(logs_action, &QAction::triggered, this, [this] {
+    QDir().mkpath(log_directory_path());
+    append_log(QStringLiteral("info"), QStringLiteral("log_folder_opened"));
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(log_directory_path()))) {
+      QMessageBox::information(this, tr_text("Log diagnostici"), log_file_path());
+    }
   });
 
   pages_ = new QStackedWidget(this);
@@ -396,18 +454,110 @@ void ProductWindow::build_ui() {
   auto *const builder = new QWidget(pages_);
   auto *const builder_layout = new QVBoxLayout(builder);
   auto *const builder_tabs = new QTabWidget(builder);
-  auto *const tree_tab = new QWidget(builder_tabs);
-  auto *const tree_layout = new QVBoxLayout(tree_tab);
-  tree_layout->addWidget(
-      new QLabel(tr_text("Configurazione dichiarativa completa: flop, pot, stack, rake, "
-                         "size per scenario, raise depth e all-in."),
-                 tree_tab));
-  config_editor_ = new QPlainTextEdit(tree_tab);
-  config_editor_->setObjectName(QStringLiteral("treeConfigEditor"));
-  config_editor_->setAccessibleName(tr_text("Configurazione JSON dell'albero"));
-  config_editor_->setLineWrapMode(QPlainTextEdit::NoWrap);
-  tree_layout->addWidget(config_editor_, 1);
-  builder_tabs->addTab(tree_tab, tr_text("Albero"));
+
+  auto *const preflop_tab = new QWidget(builder_tabs);
+  auto *const preflop_form = new QFormLayout(preflop_tab);
+  starting_pot_ = new QDoubleSpinBox(preflop_tab);
+  starting_pot_->setObjectName(QStringLiteral("startingPot"));
+  starting_pot_->setRange(0.01, 1'000'000.0);
+  starting_pot_->setDecimals(2);
+  starting_pot_->setSuffix(tr_text(" ante"));
+  effective_stack_ = new QDoubleSpinBox(preflop_tab);
+  effective_stack_->setObjectName(QStringLiteral("effectiveStack"));
+  effective_stack_->setRange(0.01, 1'000'000.0);
+  effective_stack_->setDecimals(2);
+  effective_stack_->setSuffix(tr_text(" ante"));
+  rake_enabled_ = new QCheckBox(tr_text("Applica rake"), preflop_tab);
+  rake_percentage_ = new QDoubleSpinBox(preflop_tab);
+  rake_percentage_->setRange(0.0, 100.0);
+  rake_percentage_->setDecimals(2);
+  rake_percentage_->setSuffix(QStringLiteral("%"));
+  rake_cap_ = new QDoubleSpinBox(preflop_tab);
+  rake_cap_->setRange(0.0, 1'000'000.0);
+  rake_cap_->setDecimals(2);
+  rake_cap_->setSuffix(tr_text(" ante"));
+  preflop_form->addRow(tr_text("Starting pot"), starting_pot_);
+  preflop_form->addRow(tr_text("Stack effettivo"), effective_stack_);
+  preflop_form->addRow(tr_text("Rake"), rake_enabled_);
+  preflop_form->addRow(tr_text("Percentuale rake"), rake_percentage_);
+  preflop_form->addRow(tr_text("Rake cap"), rake_cap_);
+  builder_tabs->addTab(preflop_tab, tr_text("Preflop setting"));
+
+  auto *const postflop_tab = new QWidget(builder_tabs);
+  auto *const postflop_layout = new QVBoxLayout(postflop_tab);
+  postflop_layout->addWidget(new QLabel(
+      tr_text("Size espresse come percentuale del pot, separate per street, giocatore e scenario."),
+      postflop_tab));
+  postflop_settings_ = new QTableWidget(18, 8, postflop_tab);
+  postflop_settings_->setObjectName(QStringLiteral("postflopSettings"));
+  postflop_settings_->setHorizontalHeaderLabels(
+      {tr_text("Street"), tr_text("Giocatore"), tr_text("Scenario"), tr_text("Size %"),
+       tr_text("Raise"), tr_text("All-in"), tr_text("Soglia %"), tr_text("Min bet")});
+  postflop_settings_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+  constexpr std::array<const char *, 3> street_labels{"Flop", "Turn", "River"};
+  constexpr std::array<const char *, 2> player_labels{"CO", "BTN"};
+  constexpr std::array<const char *, 3> scenario_labels{"Lead", "After check", "Facing bet"};
+  int scenario_row = 0;
+  for (std::size_t street = 0; street < 3U; ++street) {
+    for (std::size_t player = 0; player < 2U; ++player) {
+      for (std::size_t scenario = 0; scenario < 3U; ++scenario, ++scenario_row) {
+        postflop_settings_->setItem(scenario_row, 0,
+                                    new QTableWidgetItem(tr_text(street_labels[street])));
+        postflop_settings_->setItem(scenario_row, 1,
+                                    new QTableWidgetItem(tr_text(player_labels[player])));
+        postflop_settings_->setItem(scenario_row, 2,
+                                    new QTableWidgetItem(tr_text(scenario_labels[scenario])));
+        auto &widgets = scenario_widgets_[street][player][scenario];
+        widgets.sizes = new QLineEdit(postflop_settings_);
+        widgets.sizes->setPlaceholderText(QStringLiteral("25, 50, 100"));
+        widgets.raise_depth = new QSpinBox(postflop_settings_);
+        widgets.raise_depth->setRange(0, 4);
+        widgets.all_in_mode = new QComboBox(postflop_settings_);
+        widgets.all_in_mode->addItem(tr_text("Disabilitato"),
+                                     static_cast<int>(AllInMode::Disabled));
+        widgets.all_in_mode->addItem(tr_text("Aggiungi"), static_cast<int>(AllInMode::Add));
+        widgets.all_in_mode->addItem(tr_text("Sostituisci"), static_cast<int>(AllInMode::Go));
+        widgets.all_in_threshold = new QDoubleSpinBox(postflop_settings_);
+        widgets.all_in_threshold->setRange(0.0, 1000.0);
+        widgets.all_in_threshold->setDecimals(2);
+        widgets.minimum_bet = new QDoubleSpinBox(postflop_settings_);
+        widgets.minimum_bet->setRange(0.01, 1'000'000.0);
+        widgets.minimum_bet->setDecimals(2);
+        postflop_settings_->setCellWidget(scenario_row, 3, widgets.sizes);
+        postflop_settings_->setCellWidget(scenario_row, 4, widgets.raise_depth);
+        postflop_settings_->setCellWidget(scenario_row, 5, widgets.all_in_mode);
+        postflop_settings_->setCellWidget(scenario_row, 6, widgets.all_in_threshold);
+        postflop_settings_->setCellWidget(scenario_row, 7, widgets.minimum_bet);
+      }
+    }
+  }
+  postflop_layout->addWidget(postflop_settings_, 1);
+  builder_tabs->addTab(postflop_tab, tr_text("Postflop setting"));
+
+  auto *const board_tab = new QWidget(builder_tabs);
+  auto *const board_layout = new QGridLayout(board_tab);
+  constexpr std::array<const char *, 5> board_labels{"Flop 1", "Flop 2", "Flop 3", "Turn", "River"};
+  const auto deck = short_deck();
+  for (std::size_t index = 0; index < board_cards_.size(); ++index) {
+    board_layout->addWidget(new QLabel(tr_text(board_labels[index]), board_tab),
+                            static_cast<int>(index), 0);
+    board_cards_[index] = new QComboBox(board_tab);
+    board_cards_[index]->setObjectName(
+        QStringLiteral("boardCard%1").arg(static_cast<qulonglong>(index)));
+    if (index >= 3U) {
+      board_cards_[index]->addItem(tr_text("Non fissata"), -1);
+    }
+    for (const auto card : deck) {
+      board_cards_[index]->addItem(QString::fromStdString(format_card(card)), card.value());
+    }
+    board_layout->addWidget(board_cards_[index], static_cast<int>(index), 1);
+  }
+  board_layout->addWidget(
+      new QLabel(tr_text("Con 3 carte il solve parte dal flop; aggiungendo turn o river parte "
+                         "direttamente dalla street corrispondente."),
+                 board_tab),
+      5, 0, 1, 2);
+  builder_tabs->addTab(board_tab, tr_text("Flop / Turn / River"));
 
   auto *const range_tab = new QWidget(builder_tabs);
   auto *const range_layout = new QVBoxLayout(range_tab);
@@ -415,58 +565,71 @@ void ProductWindow::build_ui() {
   range_player_->addItems({QStringLiteral("CO"), QStringLiteral("BTN")});
   connect(range_player_, &QComboBox::currentIndexChanged, this, [this] { refresh_range_matrix(); });
   range_layout->addWidget(range_player_);
-  auto *const range_splitter = new QSplitter(range_tab);
-  range_matrix_ = new QTableWidget(9, 9, range_splitter);
+  range_layout->addWidget(new QLabel(
+      tr_text("Scegli il peso e dipingi il range: click o trascinamento sinistro applica il "
+              "peso, il tasto destro azzera."),
+      range_tab));
+  range_matrix_ = new QTableWidget(9, 9, range_tab);
   range_matrix_->setObjectName(QStringLiteral("rangeMatrixEditor"));
-  range_matrix_->setSelectionMode(QAbstractItemView::ExtendedSelection);
-  range_matrix_->setSelectionBehavior(QAbstractItemView::SelectItems);
+  range_matrix_->setSelectionMode(QAbstractItemView::NoSelection);
   range_matrix_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   range_matrix_->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  connect(range_matrix_, &QTableWidget::itemSelectionChanged, this,
-          [this] { refresh_combo_table(); });
-  combo_table_ = new QTableWidget(0, 3, range_splitter);
-  combo_table_->setObjectName(QStringLiteral("comboRangeEditor"));
-  combo_table_->setHorizontalHeaderLabels({tr_text("Combo"), tr_text("Peso %"), tr_text("Stato")});
-  combo_table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  combo_table_->setSelectionMode(QAbstractItemView::ExtendedSelection);
-  range_splitter->addWidget(range_matrix_);
-  range_splitter->addWidget(combo_table_);
-  range_layout->addWidget(range_splitter, 1);
+  range_matrix_->viewport()->installEventFilter(this);
+  range_matrix_->viewport()->setMouseTracking(true);
+  range_layout->addWidget(range_matrix_, 1);
   auto *const weight_row = new QHBoxLayout();
   range_weight_ = new QDoubleSpinBox(range_tab);
   range_weight_->setRange(0.0, 100.0);
   range_weight_->setDecimals(2);
   range_weight_->setSingleStep(0.25);
   range_weight_->setValue(100.0);
-  auto *const apply_class = new QPushButton(tr_text("Applica alle classi selezionate"), range_tab);
-  auto *const apply_combo = new QPushButton(tr_text("Applica alle combo selezionate"), range_tab);
-  connect(apply_class, &QPushButton::clicked, this, [this] { apply_class_weight(); });
-  connect(apply_combo, &QPushButton::clicked, this, [this] { apply_combo_weights(); });
+  weight_row->addWidget(new QLabel(tr_text("Pennello %"), range_tab));
   weight_row->addWidget(range_weight_);
-  weight_row->addWidget(apply_class);
-  weight_row->addWidget(apply_combo);
+  weight_row->addStretch(1);
   range_layout->addLayout(weight_row);
   builder_tabs->addTab(range_tab, tr_text("Range"));
+  connect(builder_tabs, &QTabWidget::currentChanged, this, [this](const int index) {
+    if (index == 3) {
+      static_cast<void>(sync_visual_config());
+    }
+  });
   builder_layout->addWidget(builder_tabs, 1);
 
   auto *const settings = new QGroupBox(tr_text("Calcolo e risorse"), builder);
   auto *const settings_form = new QFormLayout(settings);
   iterations_ = new QSpinBox(settings);
+  iterations_->setToolTip(
+      tr_text("Numero di aggiornamenti CFR+: più iterazioni migliorano normalmente la "
+              "convergenza ma aumentano il tempo."));
   iterations_->setRange(1, 1'000'000'000);
   certification_interval_ = new QSpinBox(settings);
+  certification_interval_->setToolTip(
+      tr_text("Ogni quante iterazioni calcolare best response e NashConv. Un intervallo basso "
+              "misura più spesso ma rallenta il solve."));
   certification_interval_->setRange(1, 1'000'000'000);
   ram_budget_gib_ = new QDoubleSpinBox(settings);
+  ram_budget_gib_->setToolTip(
+      tr_text("Limite dichiarato per il preflight: il solve non parte se la stima RAM lo supera."));
   ram_budget_gib_->setRange(0.25, 1024.0);
   disk_budget_gib_ = new QDoubleSpinBox(settings);
+  disk_budget_gib_->setToolTip(
+      tr_text("Limite dichiarato per file out-of-core, checkpoint e dati temporanei stimati."));
   disk_budget_gib_->setRange(0.25, 8192.0);
   memory_backend_ = new QComboBox(settings);
+  memory_backend_->setToolTip(
+      tr_text("RAM lazy mantiene i dati allocati su richiesta in memoria; Out-of-core sposta "
+              "parte dello storage su disco ed è più lento."));
   memory_backend_->addItem(tr_text("RAM lazy"), static_cast<int>(MemoryPrototype::LazyInRam));
   memory_backend_->addItem(tr_text("Out-of-core"), static_cast<int>(MemoryPrototype::OutOfCore));
-  settings_form->addRow(tr_text("Iterazioni"), iterations_);
-  settings_form->addRow(tr_text("Intervallo certificazione"), certification_interval_);
-  settings_form->addRow(tr_text("Budget RAM GiB"), ram_budget_gib_);
-  settings_form->addRow(tr_text("Budget disco GiB"), disk_budget_gib_);
-  settings_form->addRow(tr_text("Backend memoria"), memory_backend_);
+  settings_form->addRow(tr_text("Iterazioni target"), iterations_);
+  settings_form->addRow(tr_text("Calcola convergenza ogni"), certification_interval_);
+  settings_form->addRow(tr_text("Limite RAM GiB"), ram_budget_gib_);
+  settings_form->addRow(tr_text("Limite disco GiB"), disk_budget_gib_);
+  settings_form->addRow(tr_text("Modalità memoria"), memory_backend_);
+  settings_form->addRow(
+      new QLabel(tr_text("I limiti RAM/disco sono soglie di sicurezza del preflight, non "
+                         "prenotazioni di memoria. I log sono disponibili dalla toolbar Log…"),
+                 settings));
   builder_layout->addWidget(settings);
   estimate_summary_ = new QLabel(tr_text("Eseguire la stima prima del solve."), builder);
   estimate_summary_->setObjectName(QStringLiteral("estimateSummary"));
@@ -583,7 +746,7 @@ void ProductWindow::load_default_project() {
   }
   project_.config = config.value();
   project_.ranges = make_uniform_postflop_ranges();
-  config_editor_->setPlainText(QString::fromStdString(serialize_tree_config_json(project_.config)));
+  refresh_config_controls();
   iterations_->setValue(static_cast<int>(project_.iterations));
   certification_interval_->setValue(static_cast<int>(project_.certification_interval));
   ram_budget_gib_->setValue(8.0);
@@ -595,14 +758,13 @@ void ProductWindow::load_default_project() {
     recent_->addItem(path);
   }
   connect(recent_, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *const item) {
-    bool accepted = false;
-    const auto key_text = QInputDialog::getText(this, tr_text("Chiave soluzione"),
-                                                tr_text("Chiave esadecimale a 64 caratteri"),
-                                                QLineEdit::Normal, {}, &accepted);
-    const auto key = storage_key_from_hex(key_text.toStdString());
-    if (accepted && key) {
-      static_cast<void>(
-          open_saved_solution(std::filesystem::path(item->text().toStdWString()), key.value()));
+    const auto path = std::filesystem::path(item->text().toStdWString());
+    const auto key = stored_solution_key(path);
+    if (key) {
+      static_cast<void>(open_saved_solution(path, *key));
+    } else {
+      statusBar()->showMessage(
+          tr_text("Chiave locale non trovata: usa Apri… per importare la soluzione."));
     }
   });
   const auto recovery_key =
@@ -632,7 +794,149 @@ bool ProductWindow::load_config_text(const std::string &json) {
   if (changed) {
     invalidate_solution();
   }
-  config_editor_->setPlainText(QString::fromStdString(serialize_tree_config_json(project_.config)));
+  refresh_config_controls();
+  refresh_range_matrix();
+  return true;
+}
+
+void ProductWindow::refresh_config_controls() {
+  constexpr double units_per_ante = static_cast<double>(Money::units_per_ante);
+  starting_pot_->setValue(static_cast<double>(project_.config.initial_pot.units()) /
+                          units_per_ante);
+  effective_stack_->setValue(static_cast<double>(project_.config.effective_stack.units()) /
+                             units_per_ante);
+  rake_enabled_->setChecked(project_.config.rake.enabled);
+  rake_percentage_->setValue(project_.config.rake.percentage.basis_points() / 100.0);
+  rake_cap_->setValue(static_cast<double>(project_.config.rake.cap.units()) / units_per_ante);
+
+  const auto set_card = [](QComboBox *const control, const std::optional<CardId> card) {
+    const auto index = card ? control->findData(card->value()) : control->findData(-1);
+    control->setCurrentIndex(std::max(0, index));
+  };
+  for (std::size_t index = 0; index < 3U; ++index) {
+    set_card(board_cards_[index], project_.config.flop[index]);
+  }
+  set_card(board_cards_[3], project_.config.turn);
+  set_card(board_cards_[4], project_.config.river);
+
+  for (std::size_t street = 0; street < 3U; ++street) {
+    for (std::size_t player = 0; player < 2U; ++player) {
+      for (std::size_t scenario = 0; scenario < 3U; ++scenario) {
+        const auto &source = project_.config.streets[street].players[player][scenario];
+        auto &widgets = scenario_widgets_[street][player][scenario];
+        QStringList sizes;
+        for (const auto size : source.aggressive_sizes) {
+          sizes.push_back(QString::number(size.basis_points() / 100.0, 'f', 2));
+        }
+        widgets.sizes->setText(sizes.join(QStringLiteral(", ")));
+        widgets.raise_depth->setValue(source.raise_depth);
+        widgets.all_in_mode->setCurrentIndex(
+            std::max(0, widgets.all_in_mode->findData(static_cast<int>(source.all_in_mode))));
+        widgets.all_in_threshold->setValue(source.all_in_threshold.basis_points() / 100.0);
+        widgets.minimum_bet->setValue(static_cast<double>(source.minimum_bet.units()) /
+                                      units_per_ante);
+      }
+    }
+  }
+}
+
+bool ProductWindow::sync_visual_config() {
+  auto config = project_.config;
+  const auto pot = Money::from_units(
+      static_cast<std::int64_t>(std::llround(starting_pot_->value() * Money::units_per_ante)));
+  const auto stack = Money::from_units(
+      static_cast<std::int64_t>(std::llround(effective_stack_->value() * Money::units_per_ante)));
+  const auto rake_percentage = RangeWeight::from_basis_points(
+      static_cast<std::int64_t>(std::llround(rake_percentage_->value() * 100.0)));
+  const auto rake_cap = Money::from_units(
+      static_cast<std::int64_t>(std::llround(rake_cap_->value() * Money::units_per_ante)));
+  if (!pot || !stack || !rake_percentage || !rake_cap) {
+    statusBar()->showMessage(tr_text("Pot, stack o rake non validi."));
+    append_log(QStringLiteral("error"), QStringLiteral("visual_config_invalid_money"));
+    return false;
+  }
+  config.initial_pot = pot.value();
+  config.effective_stack = stack.value();
+  config.rake.enabled = rake_enabled_->isChecked();
+  config.rake.percentage = rake_percentage.value();
+  config.rake.cap = rake_cap.value();
+
+  for (std::size_t index = 0; index < 3U; ++index) {
+    const auto card =
+        CardId::from_index(static_cast<std::uint8_t>(board_cards_[index]->currentData().toInt()));
+    if (!card) {
+      statusBar()->showMessage(tr_text("Il flop deve contenere tre carte valide."));
+      return false;
+    }
+    config.flop[index] = card.value();
+  }
+  config.turn.reset();
+  config.river.reset();
+  if (board_cards_[3]->currentData().toInt() >= 0) {
+    config.turn =
+        CardId::from_index(static_cast<std::uint8_t>(board_cards_[3]->currentData().toInt()))
+            .value();
+  }
+  if (board_cards_[4]->currentData().toInt() >= 0) {
+    if (!config.turn) {
+      statusBar()->showMessage(tr_text("Per fissare il river devi prima fissare il turn."));
+      return false;
+    }
+    config.river =
+        CardId::from_index(static_cast<std::uint8_t>(board_cards_[4]->currentData().toInt()))
+            .value();
+  }
+
+  for (std::size_t street = 0; street < 3U; ++street) {
+    for (std::size_t player = 0; player < 2U; ++player) {
+      for (std::size_t scenario = 0; scenario < 3U; ++scenario) {
+        auto &target = config.streets[street].players[player][scenario];
+        const auto &widgets = scenario_widgets_[street][player][scenario];
+        target.aggressive_sizes.clear();
+        const auto values = widgets.sizes->text().split(
+            QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
+        if (values.size() > 3) {
+          statusBar()->showMessage(tr_text("Sono consentite al massimo tre size per scenario."));
+          return false;
+        }
+        for (const auto &value : values) {
+          bool ok = false;
+          const auto percentage = value.toDouble(&ok);
+          const auto parsed = PotPercentage::from_basis_points(
+              static_cast<std::int64_t>(std::llround(percentage * 100.0)));
+          if (!ok || !parsed) {
+            statusBar()->showMessage(tr_text("Size postflop non valida: %1").arg(value));
+            return false;
+          }
+          target.aggressive_sizes.push_back(parsed.value());
+        }
+        target.raise_depth = static_cast<std::uint8_t>(widgets.raise_depth->value());
+        target.all_in_mode = static_cast<AllInMode>(widgets.all_in_mode->currentData().toInt());
+        target.all_in_threshold =
+            PotPercentage::from_basis_points(
+                static_cast<std::int64_t>(std::llround(widgets.all_in_threshold->value() * 100.0)))
+                .value();
+        target.minimum_bet =
+            Money::from_units(static_cast<std::int64_t>(std::llround(widgets.minimum_bet->value() *
+                                                                     Money::units_per_ante)))
+                .value();
+      }
+    }
+  }
+  const auto valid = validate_tree_config(config);
+  if (!valid) {
+    statusBar()->showMessage(tr_text("Configurazione non valida: %1")
+                                 .arg(QString::fromLatin1(tree_config_error_name(valid.error()))));
+    append_log(QStringLiteral("error"), QStringLiteral("visual_config_invalid"),
+               QString::fromLatin1(tree_config_error_name(valid.error())));
+    return false;
+  }
+  const bool changed =
+      serialize_tree_config_json(project_.config) != serialize_tree_config_json(config);
+  project_.config = std::move(config);
+  if (changed) {
+    invalidate_solution();
+  }
   refresh_range_matrix();
   return true;
 }
@@ -648,7 +952,7 @@ void ProductWindow::sync_project_settings() {
 }
 
 bool ProductWindow::estimate_current_project() {
-  if (!load_config_text(config_editor_->toPlainText().toStdString())) {
+  if (!sync_visual_config()) {
     return false;
   }
   sync_project_settings();
@@ -711,6 +1015,10 @@ bool ProductWindow::start_current_solve() {
              project.iterations, static_cast<std::uint64_t>(std::numeric_limits<int>::max()))));
   solve_progress_->setValue(0);
   solve_status_->setText(tr_text("Solving exact CFR+…"));
+  append_log(QStringLiteral("info"), QStringLiteral("solve_started"),
+             tr_text("iterazioni=%1 backend=%2")
+                 .arg(static_cast<qulonglong>(project.iterations))
+                 .arg(memory_backend_->currentText()));
   convergence_->setRowCount(0);
   pages_->setCurrentIndex(2);
   worker_ = std::jthread([session, project, recovery_key, resume] {
@@ -803,6 +1111,8 @@ void ProductWindow::finish_worker() {
     }
     if (!error.empty()) {
       solve_status_->setText(tr_text("Solve fallito: %1").arg(QString::fromStdString(error)));
+      append_log(QStringLiteral("error"), QStringLiteral("solve_failed"),
+                 QString::fromStdString(error));
     }
     session_.reset();
     return;
@@ -830,6 +1140,7 @@ void ProductWindow::finish_worker() {
                       : result->stop_reason == PostflopStopReason::Paused  ? tr_text("In pausa")
                                                                            : tr_text("Annullato");
   solve_status_->setText(reason);
+  append_log(QStringLiteral("info"), QStringLiteral("solve_finished"), reason);
   session_.reset();
   if (certification_) {
     solve_progress_->setValue(static_cast<int>(std::min<std::uint64_t>(
@@ -868,11 +1179,14 @@ bool ProductWindow::save_current_solution(const std::filesystem::path &path,
   }
   current_solution_path_ = path;
   current_key_ = key;
+  store_solution_key(path, key);
   update_recent(path);
   std::error_code ignored;
   std::filesystem::remove(recovery_checkpoint_path(), ignored);
   QSettings().remove(QStringLiteral("recoveryKey"));
   statusBar()->showMessage(tr_text("Soluzione salvata e verificata atomicamente."));
+  append_log(QStringLiteral("info"), QStringLiteral("solution_saved"),
+             QString::fromStdWString(path.wstring()));
   return true;
 }
 
@@ -901,11 +1215,14 @@ bool ProductWindow::open_saved_solution(const std::filesystem::path &path, const
       static_cast<std::uint64_t>(std::numeric_limits<int>::max()))));
   current_solution_path_ = path;
   current_key_ = key;
-  config_editor_->setPlainText(QString::fromStdString(serialize_tree_config_json(project_.config)));
+  store_solution_key(path, key);
+  refresh_config_controls();
   refresh_range_matrix();
   update_recent(path);
   update_browser_tree();
   show_browser();
+  append_log(QStringLiteral("info"), QStringLiteral("solution_opened"),
+             QString::fromStdWString(path.wstring()));
   return browser_tree_ != nullptr;
 }
 
@@ -1032,14 +1349,6 @@ void ProductWindow::refresh_strategy_matrix() {
   }
 }
 
-std::optional<HandClassId> ProductWindow::selected_class() const {
-  const auto items = range_matrix_->selectedItems();
-  if (items.empty()) {
-    return std::nullopt;
-  }
-  return static_cast<HandClassId>(items.front()->data(Qt::UserRole).toUInt());
-}
-
 void ProductWindow::refresh_range_matrix() {
   const auto player = static_cast<std::size_t>(range_player_->currentIndex());
   const auto combos = all_combos();
@@ -1078,61 +1387,27 @@ void ProductWindow::refresh_range_matrix() {
                            .arg(static_cast<qulonglong>(available)));
     }
   }
-  refresh_combo_table();
 }
 
-void ProductWindow::refresh_combo_table() {
-  const auto class_id = selected_class();
-  combo_table_->setRowCount(0);
-  if (!class_id) {
+void ProductWindow::paint_range_cell(const int row, const int column, const bool erase) {
+  if (row < 0 || row >= range_matrix_->rowCount() || column < 0 ||
+      column >= range_matrix_->columnCount()) {
     return;
   }
+  const auto *const item = range_matrix_->item(row, column);
+  if (item == nullptr || !(item->flags() & Qt::ItemIsEnabled)) {
+    return;
+  }
+  const auto class_id = static_cast<HandClassId>(item->data(Qt::UserRole).toUInt());
   const auto player = static_cast<std::size_t>(range_player_->currentIndex());
-  const auto combos = all_combos();
-  for (std::size_t combo = 0; combo < combos.size(); ++combo) {
-    if (hand_class(combos[combo]) != *class_id) {
-      continue;
-    }
-    const auto row = combo_table_->rowCount();
-    combo_table_->insertRow(row);
-    auto *const name = new QTableWidgetItem(combo_name(combos[combo]));
-    name->setData(Qt::UserRole, static_cast<unsigned int>(combo));
-    auto *const weight = new QTableWidgetItem(
-        QString::number(project_.ranges.players[player][combo].basis_points() / 100.0, 'f', 2));
-    weight->setData(Qt::UserRole, static_cast<unsigned int>(combo));
-    const bool blocked = combo_blocked(combos[combo], project_.config);
-    auto *const state =
-        new QTableWidgetItem(blocked ? tr_text("Bloccata") : tr_text("Disponibile"));
-    if (blocked) {
-      name->setFlags(Qt::NoItemFlags);
-      weight->setFlags(Qt::NoItemFlags);
-      state->setFlags(Qt::NoItemFlags);
-    }
-    combo_table_->setItem(row, 0, name);
-    combo_table_->setItem(row, 1, weight);
-    combo_table_->setItem(row, 2, state);
-  }
-}
-
-void ProductWindow::apply_class_weight() {
-  const auto selected = range_matrix_->selectedItems();
-  if (selected.empty()) {
-    return;
-  }
-  std::set<HandClassId> classes;
-  for (const auto *item : selected) {
-    classes.insert(static_cast<HandClassId>(item->data(Qt::UserRole).toUInt()));
-  }
   const auto parsed = RangeWeight::from_basis_points(
-      static_cast<std::int64_t>(std::llround(range_weight_->value() * 100.0)));
+      erase ? 0 : static_cast<std::int64_t>(std::llround(range_weight_->value() * 100.0)));
   if (!parsed) {
     return;
   }
-  const auto player = static_cast<std::size_t>(range_player_->currentIndex());
   const auto combos = all_combos();
   for (std::size_t combo = 0; combo < combos.size(); ++combo) {
-    if (classes.contains(hand_class(combos[combo])) &&
-        !combo_blocked(combos[combo], project_.config)) {
+    if (hand_class(combos[combo]) == class_id && !combo_blocked(combos[combo], project_.config)) {
       project_.ranges.players[player][combo] = parsed.value();
     }
   }
@@ -1140,23 +1415,28 @@ void ProductWindow::apply_class_weight() {
   refresh_range_matrix();
 }
 
-void ProductWindow::apply_combo_weights() {
-  const auto parsed = RangeWeight::from_basis_points(
-      static_cast<std::int64_t>(std::llround(range_weight_->value() * 100.0)));
-  if (!parsed) {
-    return;
-  }
-  const auto player = static_cast<std::size_t>(range_player_->currentIndex());
-  const auto combos = all_combos();
-  for (auto *const item : combo_table_->selectedItems()) {
-    const auto combo =
-        static_cast<std::size_t>(combo_table_->item(item->row(), 0)->data(Qt::UserRole).toUInt());
-    if (combo < combos.size() && !combo_blocked(combos[combo], project_.config)) {
-      project_.ranges.players[player][combo] = parsed.value();
+bool ProductWindow::eventFilter(QObject *const watched, QEvent *const event) {
+  if (range_matrix_ != nullptr && watched == range_matrix_->viewport()) {
+    if (event->type() == QEvent::MouseButtonPress) {
+      const auto *const mouse = static_cast<QMouseEvent *>(event);
+      if (mouse->button() == Qt::LeftButton || mouse->button() == Qt::RightButton) {
+        range_painting_ = true;
+        range_erasing_ = mouse->button() == Qt::RightButton;
+        const auto index = range_matrix_->indexAt(mouse->position().toPoint());
+        paint_range_cell(index.row(), index.column(), range_erasing_);
+        return true;
+      }
+    } else if (event->type() == QEvent::MouseMove && range_painting_) {
+      const auto *const mouse = static_cast<QMouseEvent *>(event);
+      const auto index = range_matrix_->indexAt(mouse->position().toPoint());
+      paint_range_cell(index.row(), index.column(), range_erasing_);
+      return true;
+    } else if (event->type() == QEvent::MouseButtonRelease) {
+      range_painting_ = false;
+      return true;
     }
   }
-  invalidate_solution();
-  refresh_range_matrix();
+  return QMainWindow::eventFilter(watched, event);
 }
 
 void ProductWindow::show_builder() { pages_->setCurrentIndex(1); }
@@ -1189,6 +1469,22 @@ void ProductWindow::update_recent(const std::filesystem::path &path) {
   recent_->addItems(recent);
   QSettings settings;
   settings.setValue(QStringLiteral("recentSolutions"), recent);
+}
+
+void ProductWindow::store_solution_key(const std::filesystem::path &path, const StorageKey &key) {
+  QSettings settings;
+  settings.setValue(solution_key_setting(path), QString::fromStdString(storage_key_to_hex(key)));
+  settings.sync();
+}
+
+std::optional<StorageKey>
+ProductWindow::stored_solution_key(const std::filesystem::path &path) const {
+  const auto key =
+      storage_key_from_hex(QSettings().value(solution_key_setting(path)).toString().toStdString());
+  if (!key) {
+    return std::nullopt;
+  }
+  return key.value();
 }
 
 std::optional<PostflopCheckpoint> ProductWindow::snapshot_checkpoint() const { return checkpoint_; }
@@ -1239,6 +1535,24 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
              "create/configure failed")) {
     return false;
   }
+  if (!check(postflop_settings_ != nullptr && postflop_settings_->rowCount() == 18 &&
+                 board_cards_[0] != nullptr && board_cards_[4] != nullptr,
+             "visual tree controls unavailable")) {
+    return false;
+  }
+  range_weight_->setValue(25.0);
+  paint_range_cell(0, 0, false);
+  const auto painted_class = matrix_class(0, 0).value();
+  const auto painted = std::ranges::any_of(all_combos(), [this, painted_class](const Combo &combo) {
+    const auto combos = all_combos();
+    const auto iterator = std::ranges::find(combos, combo);
+    const auto index = static_cast<std::size_t>(std::distance(combos.begin(), iterator));
+    return hand_class(combo) == painted_class && !combo_blocked(combo, project_.config) &&
+           project_.ranges.players[0][index].basis_points() == 2'500U;
+  });
+  if (!check(painted, "click-to-paint range failed")) {
+    return false;
+  }
   const auto half = RangeWeight::from_basis_points(5'000).value();
   const auto combos = all_combos();
   for (std::size_t combo = 0; combo < combos.size(); ++combo) {
@@ -1270,6 +1584,9 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
   const auto solution_path = workspace / "phase10-e2e.gtsd";
   const auto key = generate_storage_key();
   if (!check(save_current_solution(solution_path, key), "save failed")) {
+    return false;
+  }
+  if (!check(stored_solution_key(solution_path) == key, "local solution key was not retained")) {
     return false;
   }
   checkpoint_.reset();

@@ -21,16 +21,28 @@ autenticato. Il timer UI è rimasto attivo per l'intero solve E2E.
 
 | Attività F10 | Implementazione |
 |---|---|
-| Home/recenti | Nuovo progetto, lista persistente degli ultimi dieci `.gtsd`, apertura con key |
-| Tree builder | Editor JSON dichiarativo completo con parser/validator production |
-| Range editor | Matrice 9×9, selezione multipla, peso 0,01%, espansione combo, blocker disabilitati |
+| Home/recenti | Nuovo progetto, lista persistente degli ultimi dieci `.gtsd`, apertura con chiave locale automatica |
+| Tree builder | Controlli visuali per pot/stack/rake, 18 scenari postflop e board iniziale flop/turn/river |
+| Range editor | Matrice 9×9 paint-on-click/drag, peso 0,01%, blocker applicati alle combo fisiche |
 | Estimate dialog | Nodi, infoset, azioni, picco RAM, backing store e hard preflight budget |
 | Solve monitor | Iterazione continua, EV CO/BTN, NashConv, chart, pausa e cancel |
 | Solution browser | Public tree fisico, heatmap strategy per classe e frequenze per combo |
-| Save/open | Container `.gtsd` 1.0 cifrato, key esplicita, round-trip verificato |
+| Save/open | Container `.gtsd` 1.0 cifrato, chiave locale trasparente, import con chiave solo da altro PC |
 | Settings hardware | Budget RAM/disco e backend lazy/out-of-core |
 | Errori/recovery | Errori tipizzati visibili; recovery `.gtsd` atomico riapribile all'avvio |
 | Localizzazione | UI italiana; catalogo sorgente `gtosd_en.ts` predisposto |
+| Diagnostica | Log JSONL persistente e cartella apribile dalla toolbar |
+
+### Semantica dei controlli di calcolo
+
+- **Iterazioni target**: numero massimo di aggiornamenti CFR+; non costituisce
+  da solo prova di convergenza.
+- **Calcola convergenza ogni**: frequenza del calcolo più costoso di best
+  response e NashConv.
+- **Limite RAM/disco**: soglie di sicurezza del preflight, non memoria
+  prenotata in anticipo.
+- **Modalità memoria**: `RAM lazy` alloca in memoria su richiesta;
+  `Out-of-core` usa backing storage su disco con un costo prestazionale.
 
 ## 3. Correzione del contratto range
 
@@ -130,6 +142,8 @@ Start-Process C:\absolute\path\to\gtosd-f10\bin\gto_gui.exe `
   come `.qm`;
 - la key recovery è conservata nelle impostazioni locali Qt; una release
   commerciale deve delegarla al license/key layer o al keystore di sistema;
+- il collaudo automatico non sostituisce il collaudo personale del workflow e
+  dell'ergonomia da parte dell'utente;
 - F11 nodelock, F12 trainer e F13 database non fanno parte di F10;
 - la qualifica 4-core/2 GHz/16 GB esatta resta esterna a questo host.
 

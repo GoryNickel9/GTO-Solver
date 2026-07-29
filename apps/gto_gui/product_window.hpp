@@ -8,6 +8,7 @@
 #include <QMainWindow>
 #include <QWidget>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -19,11 +20,14 @@
 #include <vector>
 
 class QComboBox;
+class QCheckBox;
 class QDoubleSpinBox;
+class QEvent;
 class QLabel;
+class QLineEdit;
 class QListWidget;
 class QModelIndex;
-class QPlainTextEdit;
+class QObject;
 class QProgressBar;
 class QSpinBox;
 class QStackedWidget;
@@ -108,14 +112,23 @@ public:
 
 protected:
   void closeEvent(QCloseEvent *event) override;
+  bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
+  struct ScenarioWidgets {
+    QLineEdit *sizes{nullptr};
+    QSpinBox *raise_depth{nullptr};
+    QComboBox *all_in_mode{nullptr};
+    QDoubleSpinBox *all_in_threshold{nullptr};
+    QDoubleSpinBox *minimum_bet{nullptr};
+  };
+
   void build_ui();
   void load_default_project();
+  void refresh_config_controls();
+  [[nodiscard]] bool sync_visual_config();
   void refresh_range_matrix();
-  void refresh_combo_table();
-  void apply_class_weight();
-  void apply_combo_weights();
+  void paint_range_cell(int row, int column, bool erase);
   void sync_project_settings();
   void poll_worker();
   void finish_worker();
@@ -125,7 +138,9 @@ private:
   void refresh_strategy_matrix();
   void invalidate_solution();
   void update_recent(const std::filesystem::path &path);
-  [[nodiscard]] std::optional<HandClassId> selected_class() const;
+  void store_solution_key(const std::filesystem::path &path, const StorageKey &key);
+  [[nodiscard]] std::optional<StorageKey>
+  stored_solution_key(const std::filesystem::path &path) const;
   [[nodiscard]] std::optional<PostflopCheckpoint> snapshot_checkpoint() const;
   [[nodiscard]] std::optional<PostflopCertification> snapshot_certification() const;
 
@@ -140,11 +155,19 @@ private:
 
   QStackedWidget *pages_{nullptr};
   QListWidget *recent_{nullptr};
-  QPlainTextEdit *config_editor_{nullptr};
+  QDoubleSpinBox *starting_pot_{nullptr};
+  QDoubleSpinBox *effective_stack_{nullptr};
+  QCheckBox *rake_enabled_{nullptr};
+  QDoubleSpinBox *rake_percentage_{nullptr};
+  QDoubleSpinBox *rake_cap_{nullptr};
+  std::array<QComboBox *, 5> board_cards_{};
+  QTableWidget *postflop_settings_{nullptr};
+  std::array<std::array<std::array<ScenarioWidgets, 3>, 2>, 3> scenario_widgets_{};
   QComboBox *range_player_{nullptr};
   QTableWidget *range_matrix_{nullptr};
-  QTableWidget *combo_table_{nullptr};
   QDoubleSpinBox *range_weight_{nullptr};
+  bool range_painting_{false};
+  bool range_erasing_{false};
   QSpinBox *iterations_{nullptr};
   QSpinBox *certification_interval_{nullptr};
   QDoubleSpinBox *ram_budget_gib_{nullptr};

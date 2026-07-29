@@ -154,7 +154,11 @@ Phase 10 is complete locally: `gto_gui` is the Qt 6 product application. It
 connects weighted physical CO/BTN ranges to exact CFR+/BR, performs resource
 preflight, solves on a worker thread, writes authenticated crash-recovery
 checkpoints, saves/opens `.gtsd`, and navigates real strategy data by 9×9 hand
-class and physical combo.
+class and physical combo. Configuration is visual: starting pot/stack/rake,
+per-street action settings and a three-to-five-card board; the versioned JSON
+remains an internal persistence/API format. Range classes are painted directly
+with click/drag, local solution keys are managed transparently, and diagnostic
+logs are available from the application toolbar.
 
 ```powershell
 cmake --preset windows-gui-release

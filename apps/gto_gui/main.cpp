@@ -10,6 +10,8 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
+#include <QStandardPaths>
 
 #include <filesystem>
 #include <string>
@@ -68,8 +70,16 @@ int main(int argc, char **argv) {
   application.setApplicationName(QStringLiteral("GTOSD"));
   application.setApplicationVersion(QStringLiteral("0.10.0"));
   application.setOrganizationName(QStringLiteral("GTOSD"));
-  gtosd::desktop::ProductWindow window;
   const auto arguments = application.arguments();
+  const auto settings_root =
+      arguments.size() == 3 && arguments[1] == QStringLiteral("--e2e")
+          ? QFileInfo(arguments[2]).absoluteDir().absoluteFilePath(QStringLiteral("settings"))
+          : QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation) +
+                QStringLiteral("/settings");
+  QDir().mkpath(settings_root);
+  QSettings::setDefaultFormat(QSettings::IniFormat);
+  QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settings_root);
+  gtosd::desktop::ProductWindow window;
   if (arguments.size() == 3 && arguments[1] == QStringLiteral("--e2e")) {
     return run_e2e(window, arguments[2]);
   }
