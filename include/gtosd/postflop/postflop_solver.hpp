@@ -30,20 +30,13 @@ enum class PostflopStopReason : std::uint8_t { Completed, Converged, Paused, Can
 struct PostflopCertification;
 struct PostflopCheckpoint;
 
-using PostflopRange = std::array<RangeWeight, 630>;
-
-struct PostflopRanges {
-  std::array<PostflopRange, 2> players{};
-
-  friend bool operator==(const PostflopRanges &, const PostflopRanges &) = default;
-};
-
 struct PostflopSolveOptions {
   std::uint64_t iterations{1};
   std::uint64_t averaging_delay{0};
   std::uint64_t certification_interval{1};
   std::optional<double> target_normalized_nash_conv;
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
+  bool enable_lossless_isomorphism{true};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>

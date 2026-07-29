@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gtosd/core/cards.hpp"
+#include "gtosd/core/money.hpp"
 
 #include <array>
 #include <cstdint>
@@ -10,6 +11,13 @@ namespace gtosd {
 
 using ComboId = std::uint16_t;
 using HandClassId = std::uint8_t;
+using PostflopRange = std::array<RangeWeight, 630>;
+
+struct PostflopRanges {
+  std::array<PostflopRange, 2> players{};
+
+  friend bool operator==(const PostflopRanges &, const PostflopRanges &) = default;
+};
 
 struct Combo {
   CardId first;

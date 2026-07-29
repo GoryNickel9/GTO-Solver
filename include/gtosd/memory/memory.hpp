@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gtosd/core/ranges.hpp"
 #include "gtosd/solver/solver.hpp"
 #include "gtosd/tree/tree.hpp"
 
@@ -86,6 +87,10 @@ analyze_memory_prototype(PostflopBenchmark benchmark, MemoryPrototype prototype,
 [[nodiscard]] Result<MemoryPrototypeReport, MemoryError>
 analyze_postflop_config(const PostflopTreeConfig &config, MemoryPrototype prototype,
                         const MemoryPrototypeOptions &options = {});
+
+[[nodiscard]] Result<MemoryPrototypeReport, MemoryError>
+analyze_postflop_config(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                        MemoryPrototype prototype, const MemoryPrototypeOptions &options = {});
 
 [[nodiscard]] Result<MemoryRoundTripResult, MemoryError>
 round_trip_checkpoint_memory(const SolverCheckpoint &checkpoint, MemoryPrototype prototype,

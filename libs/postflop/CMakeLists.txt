@@ -11,6 +11,7 @@ target_compile_features(gtosd_postflop PUBLIC cxx_std_20)
 target_link_libraries(gtosd_postflop
   PUBLIC
     gtosd::memory
-    gtosd::equity)
+    gtosd::equity
+    gtosd::isomorphism)
 set_target_properties(gtosd_postflop PROPERTIES EXPORT_NAME postflop)
 gtosd_set_warnings(gtosd_postflop)

@@ -1133,7 +1133,8 @@ bool ProductWindow::estimate_current_project() {
     estimate_summary_->setText(tr_text("Range non valido: nessun deal privato compatibile."));
     return false;
   }
-  auto report = analyze_postflop_config(project_.config, MemoryPrototype::LazyInRam);
+  auto report =
+      analyze_postflop_config(project_.config, project_.ranges, MemoryPrototype::LazyInRam);
   if (!report) {
     estimate_summary_->setText(
         tr_text("Stima fallita: %1").arg(QString::fromLatin1(memory_error_name(report.error()))));
@@ -1141,7 +1142,8 @@ bool ProductWindow::estimate_current_project() {
   }
   project_.memory_backend = MemoryPrototype::LazyInRam;
   if (report.value().memory.peak_resident_bytes > project_.ram_budget_bytes) {
-    auto out_of_core = analyze_postflop_config(project_.config, MemoryPrototype::OutOfCore);
+    auto out_of_core =
+        analyze_postflop_config(project_.config, project_.ranges, MemoryPrototype::OutOfCore);
     if (!out_of_core) {
       estimate_summary_->setText(
           tr_text("Stima out-of-core fallita: %1")

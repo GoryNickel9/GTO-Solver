@@ -135,6 +135,13 @@ gtosd_set_warnings(gtosd_phase10_tests)
 add_test(NAME gtosd_phase10_tests COMMAND gtosd_phase10_tests)
 set_tests_properties(gtosd_phase10_tests
   PROPERTIES LABELS "phase10;postflop;ranges;storage;regression")
+
+add_executable(gtosd_gto_plus_reference_tests gto_plus_reference_tests.cpp)
+target_link_libraries(gtosd_gto_plus_reference_tests PRIVATE gtosd::postflop)
+gtosd_set_warnings(gtosd_gto_plus_reference_tests)
+add_test(NAME gtosd_gto_plus_reference_tests COMMAND gtosd_gto_plus_reference_tests)
+set_tests_properties(gtosd_gto_plus_reference_tests
+  PROPERTIES LABELS "phase10;postflop;ranges;memory;gto-plus;regression")
 if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_phase10_tests PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")

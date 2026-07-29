@@ -38,6 +38,37 @@ constexpr std::uint64_t scalar_bytes = sizeof(double);
 constexpr std::uint64_t best_response_entry_bytes = 16U;
 constexpr std::uint64_t physical_flop_count = 7'140U;
 constexpr std::array<std::uint64_t, 3> private_combos_by_street{528U, 496U, 465U};
+constexpr std::uint64_t postflop_combo_count = 630U;
+constexpr std::uint64_t maximum_postflop_actions = 8U;
+
+struct DenseDecisionLayoutModel {
+  std::uint64_t action_base;
+  std::uint32_t board_index;
+  std::uint16_t action_count;
+  std::uint8_t player;
+  bool present;
+};
+
+struct DenseBoardLayoutModel {
+  std::uint64_t mask;
+  std::array<std::int16_t, postflop_combo_count> local_index;
+  std::vector<ComboId> legal_combos;
+  std::array<std::int16_t, postflop_combo_count> rank_index;
+  std::uint16_t rank_count;
+  bool ranks_ready;
+};
+
+constexpr std::uint64_t dense_decision_layout_bytes = sizeof(DenseDecisionLayoutModel);
+constexpr std::uint64_t dense_node_board_index_bytes = sizeof(std::uint32_t);
+constexpr std::uint64_t dense_board_metadata_bytes = sizeof(DenseBoardLayoutModel);
+constexpr std::uint64_t dense_combo_id_bytes = sizeof(ComboId);
+constexpr std::uint64_t combo_vector_bytes = postflop_combo_count * scalar_bytes;
+constexpr std::uint64_t traversal_frame_bytes =
+    maximum_postflop_actions * combo_vector_bytes +
+    postflop_combo_count * maximum_postflop_actions * scalar_bytes + 3U * combo_vector_bytes;
+constexpr std::uint64_t showdown_scratch_bytes =
+    postflop_combo_count * scalar_bytes + 36U * postflop_combo_count * scalar_bytes +
+    (postflop_combo_count + 1U) * scalar_bytes + 36U * (postflop_combo_count + 1U) * scalar_bytes;
 constexpr std::array<char, 8> backing_magic{'G', 'T', 'S', 'D', 'M', 'E', 'M', '1'};
 
 struct FlatInformationSet {
@@ -429,6 +460,92 @@ Result<std::uint64_t, MemoryError> sum_memory(const MemoryBreakdown &memory,
   return Result<std::uint64_t, MemoryError>::success(total);
 }
 
+struct RangeBoardSummary {
+  std::array<std::uint64_t, 3> physical_boards{};
+  std::array<std::uint64_t, 3> active_combo_sum{};
+  std::uint64_t unique_boards{0};
+  std::uint64_t unique_active_combo_sum{0};
+};
+
+Result<RangeBoardSummary, MemoryError> summarize_range_boards(const PostflopTreeConfig &config,
+                                                              const PostflopRanges &ranges) {
+  const auto board_cards = configured_board(config);
+  const auto initial_mask = card_mask(board_cards);
+  if (!initial_mask || board_cards.size() < 3U || board_cards.size() > 5U) {
+    return Result<RangeBoardSummary, MemoryError>::failure(MemoryError::InvalidConfiguration);
+  }
+
+  const auto combos = all_combos();
+  std::array<std::uint64_t, 630> combo_masks{};
+  std::array<bool, 630> active_union{};
+  for (std::size_t combo = 0; combo < combos.size(); ++combo) {
+    combo_masks[combo] = combos[combo].first.mask() | combos[combo].second.mask();
+    active_union[combo] = ranges.players[0][combo].basis_points() != 0U ||
+                          ranges.players[1][combo].basis_points() != 0U;
+  }
+
+  bool compatible_deal = false;
+  for (std::size_t first = 0; first < combos.size() && !compatible_deal; ++first) {
+    if (ranges.players[0][first].basis_points() == 0U ||
+        (combo_masks[first] & initial_mask.value()) != 0U) {
+      continue;
+    }
+    for (std::size_t second = 0; second < combos.size(); ++second) {
+      if (ranges.players[1][second].basis_points() != 0U &&
+          (combo_masks[second] & initial_mask.value()) == 0U &&
+          (combo_masks[first] & combo_masks[second]) == 0U) {
+        compatible_deal = true;
+        break;
+      }
+    }
+  }
+  if (!compatible_deal) {
+    return Result<RangeBoardSummary, MemoryError>::failure(MemoryError::InvalidConfiguration);
+  }
+
+  RangeBoardSummary summary;
+  std::map<std::uint64_t, std::uint64_t> unique_boards;
+  const auto visit = [&](const auto &self, const std::uint64_t board_mask) -> bool {
+    const auto card_count = static_cast<std::size_t>(std::popcount(board_mask));
+    if (card_count < 3U || card_count > 5U) {
+      return false;
+    }
+    const auto street = card_count - 3U;
+    std::uint64_t active_count = 0;
+    for (std::size_t combo = 0; combo < combos.size(); ++combo) {
+      if (active_union[combo] && (combo_masks[combo] & board_mask) == 0U) {
+        ++active_count;
+      }
+    }
+    if (!checked_add(summary.physical_boards[street], 1U) ||
+        !checked_add(summary.active_combo_sum[street], active_count)) {
+      return false;
+    }
+    unique_boards.emplace(board_mask, active_count);
+    if (card_count == 5U) {
+      return true;
+    }
+    for (std::uint8_t card_index = 0; card_index < 36U; ++card_index) {
+      const auto card = CardId::from_index(card_index).value();
+      if ((board_mask & card.mask()) == 0U && !self(self, board_mask | card.mask())) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (!visit(visit, initial_mask.value())) {
+    return Result<RangeBoardSummary, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+  }
+  summary.unique_boards = unique_boards.size();
+  for (const auto &[mask, active_count] : unique_boards) {
+    static_cast<void>(mask);
+    if (!checked_add(summary.unique_active_combo_sum, active_count)) {
+      return Result<RangeBoardSummary, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+    }
+  }
+  return Result<RangeBoardSummary, MemoryError>::success(summary);
+}
+
 } // namespace
 
 Result<PostflopTreeConfig, MemoryError>
@@ -668,6 +785,111 @@ analyze_memory_prototype(const PostflopBenchmark benchmark, const MemoryPrototyp
     report.value().benchmark = benchmark;
   }
   return report;
+}
+
+Result<MemoryPrototypeReport, MemoryError>
+analyze_postflop_config(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                        const MemoryPrototype prototype, const MemoryPrototypeOptions &options) {
+  if (!valid_options(options) || !validate_tree_config(config)) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::InvalidConfiguration);
+  }
+  TreeBuildOptions tree_options;
+  tree_options.maximum_nodes = std::numeric_limits<std::uint64_t>::max();
+  const auto tree = estimate_public_tree(config, tree_options);
+  const auto boards = summarize_range_boards(config, ranges);
+  if (!tree || !boards) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(
+        !tree ? (tree.error() == TreeError::NodeOverflow ? MemoryError::ArithmeticOverflow
+                                                         : MemoryError::TreeFailure)
+              : boards.error());
+  }
+
+  MemoryPrototypeReport report;
+  report.prototype = prototype;
+  report.public_tree = tree.value();
+  for (std::size_t street = 0; street < 3U; ++street) {
+    const auto physical_boards = boards.value().physical_boards[street];
+    const auto decision_nodes = tree.value().decision_nodes_by_street[street];
+    const auto action_edges = tree.value().action_edges_by_street[street];
+    if (physical_boards == 0U) {
+      if (decision_nodes != 0U || action_edges != 0U) {
+        return Result<MemoryPrototypeReport, MemoryError>::failure(
+            MemoryError::InvalidConfiguration);
+      }
+      continue;
+    }
+    if (decision_nodes % physical_boards != 0U || action_edges % physical_boards != 0U ||
+        !checked_multiply(decision_nodes / physical_boards, boards.value().active_combo_sum[street],
+                          report.information_sets_by_street[street]) ||
+        !checked_multiply(action_edges / physical_boards, boards.value().active_combo_sum[street],
+                          report.actions_by_street[street]) ||
+        !checked_add(report.information_sets, report.information_sets_by_street[street]) ||
+        !checked_add(report.actions, report.actions_by_street[street])) {
+      return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+    }
+  }
+
+  auto &memory = report.memory;
+  memory.public_tree_bytes = tree.value().estimated_eager_bytes;
+  if (!add_product(memory.infoset_index_bytes, tree.value().node_count,
+                   dense_decision_layout_bytes + dense_node_board_index_bytes) ||
+      !add_product(memory.infoset_index_bytes, boards.value().unique_boards,
+                   dense_board_metadata_bytes) ||
+      !add_product(memory.infoset_index_bytes, boards.value().unique_active_combo_sum,
+                   dense_combo_id_bytes) ||
+      !add_product(memory.infoset_index_bytes, 630U, sizeof(Combo) + sizeof(std::uint64_t)) ||
+      !add_product(memory.infoset_index_bytes, 2U * 630U, scalar_bytes) ||
+      !checked_multiply(report.actions, scalar_bytes, memory.regret_bytes) ||
+      !checked_multiply(report.actions, scalar_bytes, memory.strategy_bytes) ||
+      !checked_multiply(static_cast<std::uint64_t>(tree.value().maximum_depth) + 1U,
+                        traversal_frame_bytes, memory.reach_bytes) ||
+      !checked_add(memory.reach_bytes, showdown_scratch_bytes)) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+  }
+
+  if (prototype == MemoryPrototype::OutOfCore) {
+    if (!checked_add(memory.backing_store_bytes, memory.regret_bytes) ||
+        !checked_add(memory.backing_store_bytes, memory.strategy_bytes) ||
+        !checked_multiply(options.page_size_bytes, options.resident_page_count,
+                          memory.action_bytes)) {
+      return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+    }
+    memory.checkpoint_staging_bytes = options.page_size_bytes;
+    std::uint64_t peak = memory.public_tree_bytes;
+    if (!checked_add(peak, memory.infoset_index_bytes) || !checked_add(peak, memory.action_bytes) ||
+        !checked_add(peak, memory.reach_bytes) ||
+        !checked_add(peak, memory.checkpoint_staging_bytes)) {
+      return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+    }
+    memory.peak_resident_bytes = peak;
+  } else {
+    const auto peak = sum_memory(memory, false);
+    if (!peak) {
+      return Result<MemoryPrototypeReport, MemoryError>::failure(peak.error());
+    }
+    memory.peak_resident_bytes = peak.value();
+  }
+
+  report.bytes_per_public_node = report.public_tree.node_count == 0U
+                                     ? 0.0
+                                     : static_cast<double>(memory.public_tree_bytes) /
+                                           static_cast<double>(report.public_tree.node_count);
+  std::uint64_t logical_solver_bytes = memory.infoset_index_bytes;
+  if (!checked_add(logical_solver_bytes, memory.regret_bytes) ||
+      !checked_add(logical_solver_bytes, memory.strategy_bytes) ||
+      !checked_add(logical_solver_bytes, memory.reach_bytes)) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+  }
+  report.bytes_per_information_set = report.information_sets == 0U
+                                         ? 0.0
+                                         : static_cast<double>(logical_solver_bytes) /
+                                               static_cast<double>(report.information_sets);
+  if (!checked_multiply(memory.backing_store_bytes > 0U ? memory.backing_store_bytes
+                                                        : memory.peak_resident_bytes,
+                        physical_flop_count, report.preflop_full_projection_bytes)) {
+    return Result<MemoryPrototypeReport, MemoryError>::failure(MemoryError::ArithmeticOverflow);
+  }
+  return Result<MemoryPrototypeReport, MemoryError>::success(report);
 }
 
 Result<MemoryRoundTripResult, MemoryError>
