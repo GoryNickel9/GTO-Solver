@@ -42,7 +42,7 @@ Test dedicato: `gtosd_gto_plus_reference_tests`.
 
 | Metrica | Prima | Range-aware fisico | Canonico lossless |
 |---|---:|---:|---:|
-| Nodi pubblici | 52.644 | 52.644 | 52.644 |
+| Nodi pubblici attraversati | 52.644 | 52.644 | 14.673 |
 | Infoset | 10.019.328 | 683.136 | 125.352 |
 | Action entry | 20.038.656 | 1.366.272 | 250.704 |
 | Buffer CFR float64 | 320.618.496 B | 21.860.352 B | 4.011.264 B |
@@ -77,11 +77,13 @@ con certificazione exact BR/NashConv:
 | 4 | 2,296 |
 | 5 | 2,198 |
 
-Mediana: 2,221 s. Il valore non è direttamente confrontabile con gli 0,85 s
-di GTO+ finché non sono allineati algoritmo, numero di iterazioni, stopping
-criterion e inclusione della best response. La memoria persistente diminuisce,
-ma la costruzione della mappa canonica aggiunge costo fisso e il traversal
-continua a visitare i 52.644 nodi pubblici fisici.
+Mediana F10.1: 2,221 s. Con F10.2, cinque ulteriori processi Release hanno
+prodotto una mediana di 2,192 s e 29.346 visite CFR per iterazione a due
+giocatori. Il valore non è direttamente confrontabile con gli 0,85 s di GTO+
+finché non sono allineati algoritmo, numero di iterazioni, stopping criterion e
+inclusione della best response. La costruzione della mappa canonica e del DAG
+aggiunge ancora un costo fisso, ma il traversal non visita più tutti i 52.644
+nodi fisici.
 
 ## 5. Gap residuo rispetto a GTO+
 
@@ -97,15 +99,16 @@ range-aware è:
 | Scratch conservativo | 1.426.616 |
 
 La dicitura GTO+ è quindi più vicina al solo storage persistente del solving
-che al peak RSS dell'intero processo. Il target 2,6 MB non è ancora raggiunto:
-il prossimo salto richiede un public DAG canonico con molteplicità fisiche,
-così da non materializzare e attraversare tutti i runout equivalenti. Solo
-dopo un confronto numerico dedicato è lecito valutare storage `float32`;
-checkpoint e modalità di precisione dovranno essere versionati.
+che al peak RSS dell'intero processo. Il target 2,6 MB non è ancora raggiunto.
+F10.2 evita di attraversare tutti i runout equivalenti, ma la costruzione parte
+ancora dal tree fisico e i buffer persistenti restano `float64`. Solo dopo un
+confronto numerico dedicato è lecito valutare storage `float32`; checkpoint e
+modalità di precisione dovranno essere versionati.
 
 ## 6. Controllo delle fasi
 
 F0-F10 risultano completate. F10.1 integra nel solver production lo
 stabilizzatore globale lossless di F4, mapping inverso implicito nelle query e
-checkpoint separati tramite fingerprint `iso-infosets-v1`. F11 nodelock e le
-fasi successive non sono prerequisiti di questa ottimizzazione.
+checkpoint separati tramite fingerprint `iso-infosets-v1`. F10.2 aggiunge il
+public DAG canonico e conserva carta, molteplicità e mapping inverso per ogni
+outcome chance. F11 nodelock e le fasi successive non sono prerequisiti.

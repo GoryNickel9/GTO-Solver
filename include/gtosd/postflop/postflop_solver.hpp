@@ -37,6 +37,7 @@ struct PostflopSolveOptions {
   std::optional<double> target_normalized_nash_conv;
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   bool enable_lossless_isomorphism{true};
+  bool enable_canonical_public_dag{true};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>
@@ -72,6 +73,7 @@ struct PostflopSolveResult {
   PostflopCheckpoint checkpoint;
   std::vector<PostflopCertification> convergence;
   PublicTreeStats public_tree;
+  std::uint64_t canonical_public_nodes{0};
   std::uint64_t information_sets{0};
   std::uint64_t actions{0};
   std::uint64_t traversed_nodes{0};
