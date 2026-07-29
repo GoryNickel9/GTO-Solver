@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -66,6 +67,13 @@ void test_invalid_solver_options_are_rejected() {
   const auto unsupported = gtosd::solve_postflop_exact(config.value(), options);
   require(!unsupported && unsupported.error() == gtosd::PostflopSolverError::InvalidConfiguration,
           "street decomposition is rejected by the production traversal");
+
+  options.memory_backend = gtosd::MemoryPrototype::LazyInRam;
+  options.target_normalized_nash_conv = std::numeric_limits<double>::quiet_NaN();
+  const auto invalid_target = gtosd::solve_postflop_exact(config.value(), options);
+  require(!invalid_target &&
+              invalid_target.error() == gtosd::PostflopSolverError::InvalidConfiguration,
+          "a non-finite dEV target is rejected");
 }
 
 void test_exact_check_only_solve_and_resume() {
@@ -234,6 +242,14 @@ void test_nontrivial_zero_sum_certification() {
           "zero-rake profile remains zero-sum");
   require(point.nash_conv_antes >= -1e-12 && point.normalized_nash_conv >= -1e-12,
           "exact best responses produce nonnegative NashConv");
+
+  options.iterations = 5;
+  options.target_normalized_nash_conv = 1'000.0;
+  const auto target_stopped = gtosd::solve_postflop_exact(config.value(), options);
+  require(target_stopped.has_value() &&
+              target_stopped.value().stop_reason == gtosd::PostflopStopReason::Converged &&
+              target_stopped.value().checkpoint.completed_iterations == 1U,
+          "the exact solver stops at the first certified dEV below the requested target");
 }
 
 } // namespace

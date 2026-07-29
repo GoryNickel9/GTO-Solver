@@ -6,6 +6,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,7 @@ enum class PostflopSolverError : std::uint8_t {
 };
 
 enum class PostflopControlCommand : std::uint8_t { Continue, Pause, Cancel };
-enum class PostflopStopReason : std::uint8_t { Completed, Paused, Cancelled };
+enum class PostflopStopReason : std::uint8_t { Completed, Converged, Paused, Cancelled };
 struct PostflopCertification;
 struct PostflopCheckpoint;
 
@@ -41,6 +42,7 @@ struct PostflopSolveOptions {
   std::uint64_t iterations{1};
   std::uint64_t averaging_delay{0};
   std::uint64_t certification_interval{1};
+  std::optional<double> target_normalized_nash_conv;
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;

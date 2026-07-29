@@ -967,6 +967,9 @@ Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                      const PostflopSolveOptions &options, const PostflopCheckpoint *resume_from) {
   if (options.iterations == 0U || options.certification_interval == 0U ||
+      (options.target_normalized_nash_conv &&
+       (!std::isfinite(*options.target_normalized_nash_conv) ||
+        *options.target_normalized_nash_conv < 0.0)) ||
       options.memory_backend == MemoryPrototype::StreetDecomposition) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
@@ -1081,6 +1084,7 @@ solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ran
     const auto control = options.control_callback ? options.control_callback(iteration)
                                                   : PostflopControlCommand::Continue;
     const bool stopping = control != PostflopControlCommand::Continue;
+    bool converged = false;
     if (iteration % options.certification_interval == 0U || iteration == options.iterations ||
         stopping) {
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations);
@@ -1088,6 +1092,9 @@ solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ran
         return Result<PostflopSolveResult, PostflopSolverError>::failure(certification.error());
       }
       result.convergence.push_back(certification.value());
+      converged =
+          options.target_normalized_nash_conv &&
+          certification.value().normalized_nash_conv <= *options.target_normalized_nash_conv;
       if (options.progress_callback) {
         options.progress_callback(certification.value());
       }
@@ -1100,6 +1107,10 @@ solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ran
         return Result<PostflopSolveResult, PostflopSolverError>::failure(
             PostflopSolverError::IoFailure);
       }
+    }
+    if (converged) {
+      result.stop_reason = PostflopStopReason::Converged;
+      break;
     }
     if (stopping) {
       result.stop_reason = control == PostflopControlCommand::Pause ? PostflopStopReason::Paused
