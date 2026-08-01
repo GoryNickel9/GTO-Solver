@@ -15,3 +15,13 @@ target_link_libraries(gtosd_postflop
     gtosd::isomorphism)
 set_target_properties(gtosd_postflop PROPERTIES EXPORT_NAME postflop)
 gtosd_set_warnings(gtosd_postflop)
+
+# The desktop performance target is x86-64 with AVX2. Keep strict IEEE
+# semantics (no /fp:fast), while enabling whole-program optimization and the
+# native vector instruction set for the exact postflop hot path.
+if(MSVC)
+  target_compile_options(gtosd_postflop PRIVATE
+    $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2>)
+  target_link_options(gtosd_postflop INTERFACE
+    $<$<CONFIG:Release>:/LTCG>)
+endif()

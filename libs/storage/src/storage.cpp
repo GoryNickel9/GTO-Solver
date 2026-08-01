@@ -364,6 +364,27 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
     return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
   }
 
+  if (!checkpoint.cumulative_regret_float32.empty() ||
+      !checkpoint.cumulative_strategy_float32.empty()) {
+    if (checkpoint.cumulative_regret_float32.size() != expected_values ||
+        checkpoint.cumulative_strategy_float32.size() != expected_values) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+    }
+    for (const auto value : checkpoint.cumulative_regret_float32) {
+      if (!std::isfinite(value)) {
+        return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
+      }
+      append_double(result, static_cast<double>(value));
+    }
+    for (const auto value : checkpoint.cumulative_strategy_float32) {
+      if (!std::isfinite(value)) {
+        return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
+      }
+      append_double(result, static_cast<double>(value));
+    }
+    return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
+  }
+
   if (checkpoint.external_buffer_file.empty()) {
     return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
   }

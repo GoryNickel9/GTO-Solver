@@ -73,7 +73,21 @@ void test_invalid_solver_options_are_rejected() {
   const auto invalid_target = gtosd::solve_postflop_exact(config.value(), options);
   require(!invalid_target &&
               invalid_target.error() == gtosd::PostflopSolverError::InvalidConfiguration,
-          "a non-finite dEV target is rejected");
+          "a non-finite NashConv target is rejected");
+
+  options.target_normalized_nash_conv.reset();
+  options.target_normalized_max_deviation = std::numeric_limits<double>::infinity();
+  const auto invalid_max_deviation = gtosd::solve_postflop_exact(config.value(), options);
+  require(!invalid_max_deviation &&
+              invalid_max_deviation.error() == gtosd::PostflopSolverError::InvalidConfiguration,
+          "a non-finite maximum-deviation target is rejected");
+
+  options.target_normalized_max_deviation = 0.01;
+  options.target_normalized_nash_conv = 0.01;
+  const auto ambiguous_target = gtosd::solve_postflop_exact(config.value(), options);
+  require(!ambiguous_target &&
+              ambiguous_target.error() == gtosd::PostflopSolverError::InvalidConfiguration,
+          "NashConv and GTO+ dEV stopping targets cannot be mixed");
 }
 
 void test_exact_check_only_solve_and_resume() {
@@ -236,6 +250,20 @@ void test_nontrivial_zero_sum_certification() {
   const auto solved = gtosd::solve_postflop_exact(config.value(), options);
   require(solved.has_value() && solved.value().convergence.size() == 1U,
           "nontrivial exact river betting solve certifies");
+  auto prepared = gtosd::prepare_postflop_tree(
+      config.value(), gtosd::make_uniform_postflop_ranges(), true, true, true);
+  require(prepared.has_value(), "prepared solver and browser layout builds once");
+  const auto prepared_estimate = gtosd::prepared_postflop_layout_estimate(*prepared.value());
+  const auto prepared_tree = gtosd::prepared_postflop_public_tree(prepared.value());
+  const auto prepared_solved = gtosd::solve_postflop_exact(*prepared.value(), options);
+  require(prepared_solved.has_value() && prepared_solved.value().timings.layout_seconds == 0.0 &&
+              prepared_estimate.actions == prepared_solved.value().actions && prepared_tree &&
+              prepared_tree->stats.node_count == prepared_solved.value().public_tree.node_count,
+          "prepared solve excludes tree construction and exposes the same physical browser tree");
+  const auto prepared_analysis = gtosd::analyze_postflop_node(
+      *prepared.value(), prepared_solved.value().checkpoint, prepared_tree->root);
+  require(prepared_analysis.has_value() && !prepared_analysis.value().combos.empty(),
+          "prepared browser analysis reuses its physical layout");
   const auto &point = solved.value().convergence.front();
   require(std::abs(point.expected_payoff_sum_antes) < 1e-10 &&
               std::abs(point.profile_value_antes[0] + point.profile_value_antes[1]) < 1e-10,
@@ -250,6 +278,14 @@ void test_nontrivial_zero_sum_certification() {
               target_stopped.value().stop_reason == gtosd::PostflopStopReason::Converged &&
               target_stopped.value().checkpoint.completed_iterations == 1U,
           "the exact solver stops at the first certified dEV below the requested target");
+
+  options.target_normalized_nash_conv.reset();
+  options.target_normalized_max_deviation = 1'000.0;
+  const auto gto_plus_target_stopped = gtosd::solve_postflop_exact(config.value(), options);
+  require(gto_plus_target_stopped.has_value() &&
+              gto_plus_target_stopped.value().stop_reason == gtosd::PostflopStopReason::Converged &&
+              gto_plus_target_stopped.value().checkpoint.completed_iterations == 1U,
+          "the exact solver stops on the first certified GTO+ maximum-deviation target");
 }
 
 } // namespace
