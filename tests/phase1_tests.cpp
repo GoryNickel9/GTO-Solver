@@ -222,6 +222,29 @@ void test_fixed_point_section_22_4() {
               has_type(go_facing, gtosd::ActionType::Call),
           "Go all-in preserves fold and call");
 
+  auto gto_plus_root =
+      gtosd::make_hu_postflop_state(gtosd::Street::Flop, antes(40), antes(100)).value();
+  const auto gto_plus_go = config({5'000}, 1, gtosd::AllInMode::Go, 15'000);
+  const auto root_actions = gtosd::legal_actions(gto_plus_root, gto_plus_go).value();
+  const auto root_bet = std::ranges::find_if(root_actions, [](const auto &action) {
+    return action.type == gtosd::ActionType::Bet && action.amount == antes(20);
+  });
+  require(root_bet != root_actions.end(), "GTO+ reference root exposes bet 20");
+  const auto after_bet = gtosd::apply_action(gto_plus_root, *root_bet, gto_plus_go).value();
+  const auto facing_bet = gtosd::legal_actions(after_bet, gto_plus_go).value();
+  const auto raise_60 = std::ranges::find_if(facing_bet, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == antes(60);
+  });
+  require(raise_60 != facing_bet.end() && !has_type(facing_bet, gtosd::ActionType::AllIn),
+          "150% GTO+ threshold keeps raise 60 when push 100 is 166.67% of pot 60");
+  const auto after_raise = gtosd::apply_action(after_bet, *raise_60, gto_plus_go).value();
+  const auto facing_raise = gtosd::legal_actions(after_raise, gto_plus_go).value();
+  const auto all_in_80 = std::ranges::find_if(facing_raise, [](const auto &action) {
+    return action.type == gtosd::ActionType::AllIn && action.amount == antes(80);
+  });
+  require(all_in_80 != facing_raise.end() && !has_type(facing_raise, gtosd::ActionType::Raise),
+          "150% GTO+ threshold replaces regular aggression when push 80 is below 150% of pot 120");
+
   const auto below_min_raise = gtosd::legal_actions(raise_state, config({1'000}, 1)).value();
   require(!has_type(below_min_raise, gtosd::ActionType::Raise),
           "raise increment below last full raise is discarded");

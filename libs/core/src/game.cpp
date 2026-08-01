@@ -347,13 +347,16 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
   const auto push_increment =
       Money::from_units(stack.units() - std::min(stack.units(), to_call.units())).value();
   bool threshold_triggered = false;
-  if (config.all_in_threshold.basis_points() > 0U && pot_after_call.units() > 0) {
+  if (config.all_in_threshold.basis_points() > 0U && state.pot.units() > 0) {
     const auto threshold_amount =
-        percent_of(pot_after_call, config.all_in_threshold.basis_points(), 100'000U);
+        percent_of(state.pot, config.all_in_threshold.basis_points(), 100'000U);
     if (!threshold_amount) {
       return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
     }
-    threshold_triggered = push_increment < threshold_amount.value();
+    // GTO+ defines "push X% pot" as the actor's complete remaining stack relative to the
+    // pot visible before that actor acts.  The call is part of the push; subtracting it and
+    // simultaneously adding it to the denominator changes the tree at facing-bet nodes.
+    threshold_triggered = stack < threshold_amount.value();
   }
   const bool allow_regular = !(config.all_in_mode == AllInMode::Go && threshold_triggered);
   const bool regular_aggression_allowed =
