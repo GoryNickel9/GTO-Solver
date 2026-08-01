@@ -14,6 +14,19 @@ target_link_libraries(gto_gui
 target_compile_features(gto_gui PRIVATE cxx_std_20)
 gtosd_set_warnings(gto_gui)
 
+if(WIN32)
+  set(GTOSD_QT_PLATFORM_PLUGIN_DIR
+    "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins/platforms")
+  add_custom_command(TARGET gto_gui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "$<TARGET_FILE_DIR:gto_gui>/platforms"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${GTOSD_QT_PLATFORM_PLUGIN_DIR}/qwindows.dll"
+      "${GTOSD_QT_PLATFORM_PLUGIN_DIR}/qminimal.dll"
+      "$<TARGET_FILE_DIR:gto_gui>/platforms"
+    COMMENT "Deploying Qt platform plugins for the build-tree GUI")
+endif()
+
 install(TARGETS gto_gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 qt_generate_deploy_app_script(
   TARGET gto_gui
@@ -39,7 +52,5 @@ if(GTOSD_BUILD_TESTS)
     PROPERTIES
       LABELS "phase10;gui;qt;e2e;product"
       TIMEOUT 120
-      ENVIRONMENT "QT_QPA_PLATFORM=minimal"
-      ENVIRONMENT_MODIFICATION
-        "PATH=path_list_prepend:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin;QT_PLUGIN_PATH=set:${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/Qt6/plugins")
+      ENVIRONMENT "QT_QPA_PLATFORM=minimal;QT_PLUGIN_PATH=")
 endif()

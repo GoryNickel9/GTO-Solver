@@ -3,6 +3,7 @@
 #include "gtosd/gui_prototype/gui_prototype.hpp"
 #include "gtosd/memory/memory.hpp"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -22,6 +23,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QInputDialog>
+#include <QItemSelectionModel>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -40,6 +42,7 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
@@ -53,6 +56,7 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <numeric>
 #include <random>
 #include <set>
 #include <thread>
@@ -136,6 +140,48 @@ bool combo_blocked(const Combo &combo, const PostflopTreeConfig &config) {
 
 QString combo_name(const Combo &combo) {
   return QString::fromStdString(format_card(combo.first) + format_card(combo.second));
+}
+
+QString hand_category_name(const HandCategory category) {
+  switch (category) {
+  case HandCategory::HighCard:
+    return tr_text("Carta alta");
+  case HandCategory::Pair:
+    return tr_text("Coppia");
+  case HandCategory::TwoPair:
+    return tr_text("Doppia coppia");
+  case HandCategory::ThreeOfAKind:
+    return tr_text("Tris");
+  case HandCategory::Straight:
+    return tr_text("Scala");
+  case HandCategory::FullHouse:
+    return tr_text("Full house");
+  case HandCategory::Flush:
+    return tr_text("Colore");
+  case HandCategory::FourOfAKind:
+    return tr_text("Poker");
+  case HandCategory::StraightFlush:
+    return tr_text("Scala colore");
+  }
+  return tr_text("Sconosciuto");
+}
+
+QColor action_color(const std::size_t action) {
+  const std::array colors{QColor(0, 145, 215), QColor(112, 198, 58), QColor(242, 154, 36),
+                          QColor(210, 66, 66)};
+  return colors[action % colors.size()];
+}
+
+std::string preflight_fingerprint(const PostflopTreeConfig &config, const PostflopRanges &ranges) {
+  std::string fingerprint = serialize_tree_config_json(config);
+  fingerprint.reserve(fingerprint.size() + 2U * 630U * 6U);
+  for (const auto &range : ranges.players) {
+    for (const auto weight : range) {
+      fingerprint += std::to_string(weight.basis_points());
+      fingerprint.push_back(',');
+    }
+  }
+  return fingerprint;
 }
 
 std::filesystem::path recovery_checkpoint_path() {
@@ -230,6 +276,102 @@ void ConvergenceChart::paintEvent(QPaintEvent *) {
   painter.setPen(Qt::white);
   painter.drawText(QRectF(plot.left(), plot.bottom() + 5.0, plot.width(), 22.0), Qt::AlignCenter,
                    tr_text("Iterazioni · blu EV CO · arancio EV BTN · verde NashConv/Pot"));
+}
+
+ActionTreeWidget::ActionTreeWidget(QWidget *const parent) : QWidget(parent) {
+  setObjectName(QStringLiteral("actionTree"));
+  setAccessibleName(tr_text("Albero delle azioni"));
+  setMinimumHeight(112);
+}
+
+void ActionTreeWidget::set_path(std::vector<Column> columns) {
+  columns_ = std::move(columns);
+  update();
+}
+
+void ActionTreeWidget::set_selection_callback(std::function<void(NodeId)> callback) {
+  selection_callback_ = std::move(callback);
+}
+
+void ActionTreeWidget::paintEvent(QPaintEvent *) {
+  QPainter painter(this);
+  painter.fillRect(rect(), QColor(91, 91, 91));
+  painter.setRenderHint(QPainter::Antialiasing);
+  painter.setPen(QColor(205, 205, 205));
+  painter.drawRect(rect().adjusted(1, 1, -2, -2));
+  click_targets_.clear();
+  if (columns_.empty()) {
+    painter.setPen(Qt::white);
+    painter.drawText(rect(), Qt::AlignCenter, tr_text("Seleziona un nodo decisionale"));
+    return;
+  }
+  const int column_width = std::clamp((width() - 16) / static_cast<int>(columns_.size()), 135, 260);
+  int column_left = 8;
+  for (std::size_t column_index = 0; column_index < columns_.size(); ++column_index) {
+    const auto &column = columns_[column_index];
+    const QColor player_color = column.player == 0U ? QColor(0, 174, 239) : QColor(112, 198, 58);
+    const int circle_x = column_left + 14;
+    const int circle_y = 23;
+    const QRect circle_rect(circle_x - 14, circle_y - 14, 28, 28);
+    painter.setBrush(Qt::white);
+    painter.setPen(QPen(player_color, 3));
+    painter.drawEllipse(circle_rect);
+    painter.setPen(QColor(35, 35, 35));
+    painter.drawText(circle_rect, Qt::AlignCenter, QString::number(column.player + 1U));
+    click_targets_.push_back({circle_rect, column.node});
+
+    std::vector<std::size_t> visible_actions;
+    if (column.selected_action && *column.selected_action < column.actions.size()) {
+      visible_actions.push_back(*column.selected_action);
+    } else {
+      visible_actions.resize(column.actions.size());
+      std::iota(visible_actions.begin(), visible_actions.end(), 0U);
+    }
+    const int row_height =
+        std::max(25, (height() - 14) / std::max(1, static_cast<int>(visible_actions.size())));
+    for (std::size_t visible = 0; visible < visible_actions.size(); ++visible) {
+      const auto action_index = visible_actions[visible];
+      const int y = 7 + static_cast<int>(visible) * row_height;
+      const QRect branch(column_left + 35, y, column_width - 43, row_height - 3);
+      const QColor action_colour = action_index == 0U   ? QColor(0, 145, 215)
+                                   : action_index == 1U ? QColor(112, 198, 58)
+                                   : action_index == 2U ? QColor(242, 154, 36)
+                                                        : QColor(210, 66, 66);
+      const double frequency =
+          action_index < column.frequencies.size() ? column.frequencies[action_index] : 0.0;
+      painter.fillRect(branch, QColor(76, 76, 76));
+      painter.fillRect(QRect(branch.left(), branch.top(),
+                             static_cast<int>(branch.width() * std::clamp(frequency, 0.0, 1.0)),
+                             branch.height()),
+                       action_colour.darker(120));
+      painter.setPen(QPen(action_colour, 3));
+      painter.drawLine(circle_x + 14, circle_y, branch.left(), branch.center().y());
+      painter.drawLine(branch.left(), branch.bottom(), branch.right(), branch.bottom());
+      const auto amount = column.actions[action_index].amount.units() > 0
+                              ? QStringLiteral(" %1").arg(QString::fromStdString(
+                                    format_money(column.actions[action_index].amount)))
+                              : QString{};
+      painter.setPen(Qt::white);
+      painter.drawText(branch.adjusted(7, 0, -7, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                       action_name(column.actions[action_index].type) + amount);
+      painter.drawText(branch.adjusted(7, 0, -7, 0), Qt::AlignVCenter | Qt::AlignRight,
+                       QString::number(frequency * 100.0, 'f', 1) + QStringLiteral("%"));
+      if (action_index < column.children.size()) {
+        click_targets_.push_back({branch, column.children[action_index]});
+      }
+    }
+    column_left += column_width;
+  }
+}
+
+void ActionTreeWidget::mousePressEvent(QMouseEvent *const event) {
+  for (const auto &target : click_targets_) {
+    if (target.rectangle.contains(event->position().toPoint()) && selection_callback_) {
+      selection_callback_(target.node);
+      return;
+    }
+  }
+  QWidget::mousePressEvent(event);
 }
 
 PublicTreeModel::PublicTreeModel(QObject *const parent) : QAbstractItemModel(parent) {}
@@ -668,6 +810,7 @@ void ProductWindow::build_ui() {
       range_tab));
   range_matrix_ = new QTableWidget(9, 9, range_tab);
   range_matrix_->setObjectName(QStringLiteral("rangeMatrixEditor"));
+  range_matrix_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   range_matrix_->setSelectionMode(QAbstractItemView::NoSelection);
   range_matrix_->horizontalHeader()->setSectionResizeMode(QHeaderView::Fixed);
   range_matrix_->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
@@ -721,9 +864,9 @@ void ProductWindow::build_ui() {
   target_dev_->setValue(1.0);
   target_dev_->setSuffix(QStringLiteral("%"));
   target_dev_->setToolTip(
-      tr_text("Target dEV misurato come NashConv/Pot. Il solve certifica ogni iterazione e "
-              "si arresta automaticamente quando raggiunge la soglia."));
-  settings_form->addRow(tr_text("Target dEV"), target_dev_);
+      tr_text("Target dEV GTO+: massimo guadagno da deviazione unilaterale diviso per il pot "
+              "iniziale. La certificazione resta exact e non campionata."));
+  settings_form->addRow(tr_text("Target dEV GTO+"), target_dev_);
   settings_form->addRow(
       new QLabel(tr_text("RAM, disco e modalità memoria vengono scelti automaticamente dal "
                          "preflight. I log sono disponibili dalla toolbar Log…"),
@@ -754,10 +897,11 @@ void ProductWindow::build_ui() {
   solve_progress_->setObjectName(QStringLiteral("solveProgress"));
   solve_metrics_ = new QLabel(monitor);
   solve_metrics_->setObjectName(QStringLiteral("solveMetrics"));
-  convergence_ = new QTableWidget(0, 5, monitor);
+  convergence_ = new QTableWidget(0, 6, monitor);
   convergence_->setHorizontalHeaderLabels({tr_text("Iterazione"), tr_text("EV CO"),
                                            tr_text("EV BTN"), tr_text("NashConv"),
-                                           tr_text("NashConv/Pot")});
+                                           tr_text("NashConv/Pot"), tr_text("dEV GTO+")});
+  convergence_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   convergence_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   convergence_chart_ = new ConvergenceChart(monitor);
   auto *const monitor_buttons = new QHBoxLayout();
@@ -791,47 +935,78 @@ void ProductWindow::build_ui() {
   auto *const browser_layout = new QVBoxLayout(browser);
   browser_summary_ = new QLabel(browser);
   browser_summary_->setObjectName(QStringLiteral("browserSummary"));
-  auto *const browser_splitter = new QSplitter(browser);
-  tree_view_ = new QTreeView(browser_splitter);
+  chance_card_selector_ = new QComboBox(browser);
+  chance_card_selector_->setObjectName(QStringLiteral("chanceCardSelector"));
+  chance_card_selector_->setAccessibleName(tr_text("Selezione carta pubblica successiva"));
+  chance_card_selector_->setVisible(false);
+  connect(chance_card_selector_, &QComboBox::currentIndexChanged, this, [this](const int index) {
+    if (index <= 0) {
+      return;
+    }
+    bool valid = false;
+    const auto child = chance_card_selector_->itemData(index).toULongLong(&valid);
+    if (valid) {
+      navigate_browser_node(static_cast<NodeId>(child));
+    }
+  });
+  auto *const tree_splitter = new QSplitter(Qt::Horizontal, browser);
+  action_tree_ = new ActionTreeWidget(tree_splitter);
+  tree_view_ = new QTreeView(tree_splitter);
   tree_view_->setObjectName(QStringLiteral("solutionTree"));
   tree_view_->setUniformRowHeights(true);
   tree_model_ = new PublicTreeModel(tree_view_);
   tree_view_->setModel(tree_model_);
-  auto *const strategy_tabs = new QTabWidget(browser_splitter);
-  strategy_matrix_ = new QTableWidget(9, 9, strategy_tabs);
+  tree_view_->setVisible(false);
+  tree_splitter->addWidget(action_tree_);
+  tree_splitter->addWidget(tree_view_);
+  tree_splitter->setStretchFactor(0, 4);
+  tree_splitter->setStretchFactor(1, 1);
+  tree_splitter->setSizes({1000, 250});
+
+  auto *const analysis_splitter = new QSplitter(Qt::Horizontal, browser);
+  combo_analysis_table_ = new QTableWidget(0, 4, analysis_splitter);
+  combo_analysis_table_->setObjectName(QStringLiteral("comboAnalysisTable"));
+  combo_analysis_table_->setHorizontalHeaderLabels(
+      {tr_text("Mano"), tr_text("Distribuzione azioni"), tr_text("Equity"), tr_text("Combo")});
+  combo_analysis_table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+  combo_analysis_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  combo_analysis_table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+  combo_analysis_table_->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
+  combo_analysis_table_->setAlternatingRowColors(true);
+  combo_analysis_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  strategy_matrix_ = new QTableWidget(9, 9, analysis_splitter);
   strategy_matrix_->setObjectName(QStringLiteral("strategyMatrix"));
+  strategy_matrix_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  strategy_matrix_->setSelectionMode(QAbstractItemView::NoSelection);
   strategy_matrix_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
   strategy_matrix_->verticalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  strategy_table_ = new QTableWidget(0, 3, browser_splitter);
-  strategy_table_->setObjectName(QStringLiteral("strategyTable"));
-  strategy_table_->setHorizontalHeaderLabels(
-      {tr_text("Azione"), tr_text("Importo"), tr_text("Frequenza")});
-  strategy_table_->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-  strategy_tabs->addTab(strategy_matrix_, tr_text("Strategia per classe"));
-  strategy_tabs->addTab(strategy_table_, tr_text("Dettaglio combo"));
-  browser_splitter->addWidget(tree_view_);
-  browser_splitter->addWidget(strategy_tabs);
-  auto *const query_row = new QHBoxLayout();
-  combo_selector_ = new QSpinBox(browser);
-  combo_selector_->setRange(0, 629);
-  browser_action_ = new QComboBox(browser);
-  connect(browser_action_, &QComboBox::currentIndexChanged, this,
-          [this] { refresh_strategy_matrix(); });
-  auto *const query_button = new QPushButton(tr_text("Mostra classe/combo"), browser);
-  connect(query_button, &QPushButton::clicked, this, [this] {
-    const auto index = tree_view_->currentIndex().isValid() ? tree_view_->currentIndex()
-                                                            : tree_model_->index(0, 0);
-    static_cast<void>(
-        browse(tree_model_->node_id(index), static_cast<ComboId>(combo_selector_->value())));
-  });
-  query_row->addWidget(new QLabel(tr_text("Combo fisica 0–629"), browser));
-  query_row->addWidget(combo_selector_);
-  query_row->addWidget(new QLabel(tr_text("Heatmap azione"), browser));
-  query_row->addWidget(browser_action_);
-  query_row->addWidget(query_button);
+  hand_value_table_ = new QTableWidget(0, 3, analysis_splitter);
+  hand_value_table_->setObjectName(QStringLiteral("handValueTable"));
+  hand_value_table_->setHorizontalHeaderLabels(
+      {tr_text("Valore mano"), tr_text("Combo"), tr_text("Distribuzione")});
+  hand_value_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  hand_value_table_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  hand_value_table_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+  hand_value_table_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+  analysis_splitter->addWidget(combo_analysis_table_);
+  analysis_splitter->addWidget(strategy_matrix_);
+  analysis_splitter->addWidget(hand_value_table_);
+  analysis_splitter->setStretchFactor(0, 4);
+  analysis_splitter->setStretchFactor(1, 3);
+  analysis_splitter->setStretchFactor(2, 2);
+  analysis_splitter->setSizes({600, 450, 300});
+  connect(tree_view_->selectionModel(), &QItemSelectionModel::currentChanged, this,
+          [this](const QModelIndex &current) {
+            if (current.isValid() && tree_model_) {
+              populate_solution_analysis(tree_model_->node_id(current));
+            }
+          });
+  action_tree_->set_selection_callback(
+      [this](const NodeId child) { navigate_browser_node(child); });
   browser_layout->addWidget(browser_summary_);
-  browser_layout->addWidget(browser_splitter, 1);
-  browser_layout->addLayout(query_row);
+  browser_layout->addWidget(chance_card_selector_);
+  browser_layout->addWidget(tree_splitter);
+  browser_layout->addWidget(analysis_splitter, 1);
   pages_->addWidget(browser);
 
   add_page_action(tr_text("Home"), 0);
@@ -852,17 +1027,29 @@ void ProductWindow::load_default_project() {
   project_.config.rake.enabled = true;
   project_.config.rake.percentage = RangeWeight::from_basis_points(0).value();
   project_.config.rake.cap = Money{};
+  const auto half_pot = PotPercentage::from_basis_points(5'000).value();
+  const auto go_all_in_threshold = PotPercentage::from_basis_points(15'000).value();
+  for (auto &street : project_.config.streets) {
+    for (auto &player : street.players) {
+      player[static_cast<std::size_t>(BettingScenario::Lead)].aggressive_sizes = {half_pot};
+      player[static_cast<std::size_t>(BettingScenario::AfterCheck)].aggressive_sizes = {half_pot};
+      auto &facing = player[static_cast<std::size_t>(BettingScenario::FacingBet)];
+      facing.aggressive_sizes = {half_pot};
+      facing.raise_depth = 1U;
+      for (auto &scenario : player) {
+        scenario.all_in_mode = AllInMode::Go;
+        scenario.all_in_threshold = go_all_in_threshold;
+      }
+    }
+  }
   const auto zero = RangeWeight::from_basis_points(0).value();
   for (auto &range : project_.ranges.players) {
     range.fill(zero);
   }
   refresh_config_controls();
-  target_dev_->setValue(project_.target_normalized_nash_conv * 100.0);
+  target_dev_->setValue(project_.target_normalized_max_deviation * 100.0);
   for (auto &player : player_betting_) {
     player.default_bet->setValue(50.0);
-    for (auto &street : player.streets) {
-      street.custom->setChecked(false);
-    }
   }
   refresh_range_matrix();
 
@@ -1111,8 +1298,8 @@ bool ProductWindow::sync_visual_config() {
 }
 
 void ProductWindow::sync_project_settings() {
-  project_.certification_interval = 1U;
-  project_.target_normalized_nash_conv = target_dev_->value() / 100.0;
+  project_.certification_interval = 20U;
+  project_.target_normalized_max_deviation = target_dev_->value() / 100.0;
   const auto host = query_gui_benchmark_host();
   project_.ram_budget_bytes =
       host.total_physical_memory_bytes > 0U
@@ -1125,6 +1312,7 @@ void ProductWindow::sync_project_settings() {
 }
 
 bool ProductWindow::estimate_current_project() {
+  preflight_resources_ok_ = false;
   if (!sync_visual_config()) {
     return false;
   }
@@ -1140,8 +1328,17 @@ bool ProductWindow::estimate_current_project() {
         tr_text("Stima fallita: %1").arg(QString::fromLatin1(memory_error_name(report.error()))));
     return false;
   }
+  auto prepared = prepare_postflop_tree(project_.config, project_.ranges, true, true, true);
+  if (!prepared) {
+    estimate_summary_->setText(
+        tr_text("Layout solver fallito: %1")
+            .arg(QString::fromLatin1(postflop_solver_error_name(prepared.error()))));
+    return false;
+  }
+  const auto layout = prepared_postflop_layout_estimate(*prepared.value());
+  const auto solver_state_bytes = layout.regret_bytes + layout.strategy_bytes;
   project_.memory_backend = MemoryPrototype::LazyInRam;
-  if (report.value().memory.peak_resident_bytes > project_.ram_budget_bytes) {
+  if (solver_state_bytes > project_.ram_budget_bytes) {
     auto out_of_core =
         analyze_postflop_config(project_.config, project_.ranges, MemoryPrototype::OutOfCore);
     if (!out_of_core) {
@@ -1154,21 +1351,32 @@ bool ProductWindow::estimate_current_project() {
     report = std::move(out_of_core);
   }
   const auto &memory = report.value().memory;
-  const bool ram_ok = memory.peak_resident_bytes <= project_.ram_budget_bytes;
-  const bool disk_ok = memory.backing_store_bytes <= project_.disk_budget_bytes;
+  const bool ram_ok = solver_state_bytes <= project_.ram_budget_bytes;
+  const bool disk_ok = project_.memory_backend != MemoryPrototype::OutOfCore ||
+                       solver_state_bytes <= project_.disk_budget_bytes;
   const auto mode = project_.memory_backend == MemoryPrototype::LazyInRam
                         ? tr_text("RAM automatica")
                         : tr_text("Out-of-core automatico");
   estimate_summary_->setText(
-      tr_text("%1 nodi · %2 infoset · %3 azioni · picco RAM %4 MiB · disco %5 MiB · %6 · %7")
-          .arg(static_cast<qulonglong>(report.value().public_tree.node_count))
-          .arg(static_cast<qulonglong>(report.value().information_sets))
-          .arg(static_cast<qulonglong>(report.value().actions))
-          .arg(static_cast<qulonglong>(memory.peak_resident_bytes / (1024U * 1024U)))
-          .arg(static_cast<qulonglong>(memory.backing_store_bytes / (1024U * 1024U)))
+      tr_text("%1 nodi fisici → %2 canonici · %3 infoset · %4 azioni · memoria solver %5 MB "
+              "(regret + strategia, float64) · %6 · %7")
+          .arg(static_cast<qulonglong>(layout.physical_public_tree.node_count))
+          .arg(static_cast<qulonglong>(layout.canonical_public_nodes))
+          .arg(static_cast<qulonglong>(layout.information_sets))
+          .arg(static_cast<qulonglong>(layout.actions))
+          .arg(static_cast<double>(solver_state_bytes) / 1'000'000.0, 0, 'f', 2)
           .arg(mode)
           .arg(ram_ok && disk_ok ? tr_text("risorse sufficienti")
                                  : tr_text("RISORSE INSUFFICIENTI")));
+  estimate_summary_->setToolTip(
+      tr_text("La memoria solver è lo storage persistente confrontabile con “Memory needed for "
+              "solving” di GTO+. Non è il picco RSS dell'intero processo. La precedente stima "
+              "fisica conservativa era %1 MiB e non teneva conto del layout canonico.")
+          .arg(static_cast<double>(memory.peak_resident_bytes) / (1024.0 * 1024.0), 0, 'f', 1));
+  preflight_layout_ = layout;
+  prepared_tree_ = std::move(prepared.value());
+  preflight_fingerprint_ = preflight_fingerprint(project_.config, project_.ranges);
+  preflight_resources_ok_ = ram_ok && disk_ok;
   return ram_ok && disk_ok;
 }
 
@@ -1177,7 +1385,14 @@ bool ProductWindow::start_current_solve() {
     statusBar()->showMessage(tr_text("Un solve è già in esecuzione."));
     return false;
   }
-  if (!estimate_current_project()) {
+  if (!sync_visual_config()) {
+    return false;
+  }
+  sync_project_settings();
+  const bool reusable_preflight =
+      preflight_layout_.has_value() && prepared_tree_ && preflight_resources_ok_ &&
+      preflight_fingerprint_ == preflight_fingerprint(project_.config, project_.ranges);
+  if (!reusable_preflight && !estimate_current_project()) {
     statusBar()->showMessage(tr_text("Solve bloccato dal preflight risorse."));
     return false;
   }
@@ -1189,6 +1404,7 @@ bool ProductWindow::start_current_solve() {
   session_ = std::make_shared<SolveSession>();
   const auto session = session_;
   const auto project = project_;
+  const auto prepared_tree = prepared_tree_;
   if (std::all_of(current_key_.begin(), current_key_.end(),
                   [](const auto byte) { return byte == 0U; })) {
     current_key_ = generate_storage_key();
@@ -1204,20 +1420,26 @@ bool ProductWindow::start_current_solve() {
   solve_progress_->setRange(0, 0);
   solve_status_->setText(tr_text("Solving exact CFR+…"));
   append_log(QStringLiteral("info"), QStringLiteral("solve_started"),
-             tr_text("target_dev=%1% backend=%2")
-                 .arg(project.target_normalized_nash_conv * 100.0, 0, 'f', 4)
+             tr_text("target_gto_plus_dev=%1% backend=%2")
+                 .arg(project.target_normalized_max_deviation * 100.0, 0, 'f', 4)
                  .arg(project.memory_backend == MemoryPrototype::LazyInRam
                           ? QStringLiteral("ram")
                           : QStringLiteral("disk")));
   convergence_->setRowCount(0);
   pages_->setCurrentIndex(2);
   set_solve_controls_enabled(true);
-  worker_ = std::jthread([session, project, recovery_key, resume] {
+  worker_ = std::jthread([session, project, recovery_key, resume, prepared_tree] {
     PostflopSolveOptions options;
     options.iterations = project.iterations;
+    options.averaging_delay = 20U;
     options.certification_interval = project.certification_interval;
-    options.target_normalized_nash_conv = project.target_normalized_nash_conv;
+    options.target_normalized_max_deviation = project.target_normalized_max_deviation;
+    options.parallel_action_depth = 5U;
     options.memory_backend = project.memory_backend;
+    options.state_precision = resume != nullptr ? resume->state_precision
+                              : project.memory_backend == MemoryPrototype::OutOfCore
+                                  ? PostflopStatePrecision::Float64
+                                  : PostflopStatePrecision::Float32;
     if (project.memory_backend == MemoryPrototype::OutOfCore) {
       options.backing_file =
           (std::filesystem::temp_directory_path() / "gtosd_phase10_actions.bin").string();
@@ -1226,20 +1448,33 @@ bool ProductWindow::start_current_solve() {
       std::scoped_lock lock(session->mutex);
       session->latest = certification;
     };
-    options.checkpoint_callback = [project,
-                                   recovery_key](const PostflopCertification &certification,
-                                                 const PostflopCheckpoint &checkpoint) {
-      const auto archive =
-          make_postflop_solution(project.config, project.ranges, checkpoint, certification);
-      return archive &&
-             save_solution(recovery_checkpoint_path(), archive.value(), recovery_key).has_value();
-    };
+    options.checkpoint_callback =
+        [project, recovery_key, session,
+         last_checkpoint = session->started_at](const PostflopCertification &certification,
+                                                const PostflopCheckpoint &checkpoint) mutable {
+          const auto now = std::chrono::steady_clock::now();
+          const bool forced = session->command.load() != PostflopControlCommand::Continue;
+          const bool final_iteration = certification.iteration >= project.iterations;
+          if (!forced && !final_iteration && now - last_checkpoint < std::chrono::seconds(30)) {
+            return true;
+          }
+          const auto archive =
+              make_postflop_solution(project.config, project.ranges, checkpoint, certification);
+          const bool saved =
+              archive && save_solution(recovery_checkpoint_path(), archive.value(), recovery_key);
+          if (saved) {
+            last_checkpoint = now;
+          }
+          return saved;
+        };
     options.control_callback = [session](const std::uint64_t iteration) {
       session->current_iteration.store(iteration);
       return session->command.load();
     };
     const auto *const resume_pointer = resume.get();
-    auto solved = solve_postflop_exact(project.config, project.ranges, options, resume_pointer);
+    auto solved = prepared_tree ? solve_postflop_exact(*prepared_tree, options, resume_pointer)
+                                : solve_postflop_exact(project.config, project.ranges, options,
+                                                       resume_pointer);
     {
       std::scoped_lock lock(session->mutex);
       if (solved) {
@@ -1266,13 +1501,21 @@ void ProductWindow::poll_worker() {
     latest = session_->latest;
   }
   if (latest) {
+    const double elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - session_->started_at)
+            .count();
+    const auto deviation = normalized_max_deviation_gain(*latest, project_.config.initial_pot);
     solve_progress_->setValue(static_cast<int>(std::min<std::uint64_t>(
         latest->iteration, static_cast<std::uint64_t>(std::numeric_limits<int>::max()))));
-    solve_metrics_->setText(tr_text("Iterazione %1 · EV CO %2 · EV BTN %3 · NashConv/Pot %4%")
+    solve_metrics_->setText(tr_text("Trascorso %1 s · iterazione %2 · EV CO %3 · EV BTN %4 · "
+                                    "dEV GTO+ %5% · NashConv/Pot %6% · certificazione ogni %7")
+                                .arg(elapsed, 0, 'f', 3)
                                 .arg(static_cast<qulonglong>(latest->iteration))
                                 .arg(latest->profile_value_antes[0], 0, 'f', 6)
                                 .arg(latest->profile_value_antes[1], 0, 'f', 6)
-                                .arg(latest->normalized_nash_conv * 100.0, 0, 'f', 6));
+                                .arg(deviation ? deviation.value() * 100.0 : 0.0, 0, 'f', 6)
+                                .arg(latest->normalized_nash_conv * 100.0, 0, 'f', 6)
+                                .arg(static_cast<qulonglong>(project_.certification_interval)));
   }
   if (session_->done.load()) {
     finish_worker();
@@ -1300,6 +1543,9 @@ void ProductWindow::finish_worker() {
   solve_progress_->setRange(0, 1);
   solve_progress_->setValue(result ? 1 : 0);
   maximum_solve_heartbeat_gap_ms_ = maximum_ui_heartbeat_gap_ms_;
+  const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - session_->started_at)
+          .count();
   if (!result) {
     if (session_->resume) {
       checkpoint_ = std::move(*session_->resume);
@@ -1319,12 +1565,14 @@ void ProductWindow::finish_worker() {
   convergence_->setRowCount(static_cast<int>(result->convergence.size()));
   for (std::size_t row = 0; row < result->convergence.size(); ++row) {
     const auto &point = result->convergence[row];
-    const std::array<QString, 5> values{
+    const auto deviation = normalized_max_deviation_gain(point, project_.config.initial_pot);
+    const std::array<QString, 6> values{
         QString::number(static_cast<qulonglong>(point.iteration)),
         QString::number(point.profile_value_antes[0], 'f', 8),
         QString::number(point.profile_value_antes[1], 'f', 8),
         QString::number(point.nash_conv_antes, 'f', 8),
-        QString::number(point.normalized_nash_conv * 100.0, 'f', 8) + QStringLiteral("%")};
+        QString::number(point.normalized_nash_conv * 100.0, 'f', 8) + QStringLiteral("%"),
+        QString::number(deviation ? deviation.value() * 100.0 : 0.0, 'f', 8) + QStringLiteral("%")};
     for (int column = 0; column < static_cast<int>(values.size()); ++column) {
       convergence_->setItem(static_cast<int>(row), column,
                             new QTableWidgetItem(values[static_cast<std::size_t>(column)]));
@@ -1333,10 +1581,14 @@ void ProductWindow::finish_worker() {
   convergence_chart_->set_points(result->convergence);
   const auto reason = result->stop_reason == PostflopStopReason::Completed ? tr_text("Completato")
                       : result->stop_reason == PostflopStopReason::Converged
-                          ? tr_text("Target dEV raggiunto")
+                          ? tr_text("Target dEV GTO+ raggiunto")
                       : result->stop_reason == PostflopStopReason::Paused ? tr_text("In pausa")
                                                                           : tr_text("Annullato");
-  solve_status_->setText(reason);
+  solve_status_->setText(
+      tr_text("%1 in %2 s · %3 iterazioni · albero preparato riusato fino al browser.")
+          .arg(reason)
+          .arg(elapsed, 0, 'f', 3)
+          .arg(static_cast<qulonglong>(checkpoint_->completed_iterations)));
   append_log(QStringLiteral("info"), QStringLiteral("solve_finished"), reason);
   session_.reset();
   if (certification_) {
@@ -1407,6 +1659,11 @@ bool ProductWindow::open_saved_solution(const std::filesystem::path &path, const
   project_.ranges = std::move(restored.value().ranges);
   checkpoint_ = std::move(restored.value().checkpoint);
   certification_ = restored.value().certification;
+  prepared_tree_.reset();
+  preflight_layout_.reset();
+  preflight_resources_ok_ = false;
+  browser_analysis_cache_.clear();
+  browser_analysis_.reset();
   project_.iterations = std::max(project_.iterations, certification_->iteration);
   current_solution_path_ = path;
   current_key_ = key;
@@ -1422,13 +1679,23 @@ bool ProductWindow::open_saved_solution(const std::filesystem::path &path, const
 }
 
 void ProductWindow::update_browser_tree() {
-  const auto tree = build_public_tree(project_.config);
-  if (!tree) {
-    browser_summary_->setText(tr_text("Ricostruzione albero fallita: %1")
-                                  .arg(QString::fromLatin1(tree_error_name(tree.error()))));
+  if (!prepared_tree_) {
+    auto prepared = prepare_postflop_tree(project_.config, project_.ranges, true, true, true);
+    if (!prepared) {
+      browser_summary_->setText(
+          tr_text("Ricostruzione albero fallita: %1")
+              .arg(QString::fromLatin1(postflop_solver_error_name(prepared.error()))));
+      return;
+    }
+    prepared_tree_ = std::move(prepared.value());
+    preflight_layout_ = prepared_postflop_layout_estimate(*prepared_tree_);
+    preflight_fingerprint_ = preflight_fingerprint(project_.config, project_.ranges);
+  }
+  browser_tree_ = prepared_postflop_public_tree(prepared_tree_);
+  if (!browser_tree_) {
+    browser_summary_->setText(tr_text("Albero preparato non disponibile."));
     return;
   }
-  browser_tree_ = std::make_shared<PublicTree>(std::move(tree.value()));
   tree_model_->set_tree(browser_tree_);
   const auto certification = snapshot_certification();
   browser_summary_->setText(
@@ -1447,79 +1714,252 @@ bool ProductWindow::browse(const NodeId node, const ComboId combo) {
   if (!checkpoint_ || !browser_tree_ || node >= browser_tree_->nodes.size() || combo >= 630U) {
     return false;
   }
-  auto queries = query_postflop_strategies(project_.config, project_.ranges, *checkpoint_, node);
-  if (!queries) {
-    strategy_table_->setRowCount(0);
-    statusBar()->showMessage(
-        tr_text("Nodo/combo non interrogabile: %1")
-            .arg(QString::fromLatin1(postflop_solver_error_name(queries.error()))));
-    return false;
+  if (!browser_analysis_ || browser_analysis_->public_node != node) {
+    populate_solution_analysis(node);
   }
-  browser_queries_ = std::move(queries.value());
-  const auto selected = std::find_if(browser_queries_.begin(), browser_queries_.end(),
-                                     [combo](const auto &query) { return query.combo == combo; });
-  if (selected == browser_queries_.end()) {
-    return false;
+  return browser_analysis_ &&
+         std::ranges::any_of(browser_analysis_->combos,
+                             [combo](const auto &entry) { return entry.combo == combo; });
+}
+
+void ProductWindow::navigate_browser_node(const NodeId node) {
+  if (!browser_tree_ || node >= browser_tree_->nodes.size()) {
+    return;
   }
-  browser_action_->blockSignals(true);
-  browser_action_->clear();
-  for (const auto &action : selected->actions) {
-    browser_action_->addItem(action_name(action.type));
+  const auto kind = browser_tree_->nodes[static_cast<std::size_t>(node)].kind;
+  if (kind == PublicNodeKind::Decision) {
+    populate_solution_analysis(node);
+  } else if (kind == PublicNodeKind::Chance) {
+    show_chance_card_selector(node);
+  } else {
+    chance_card_selector_->setVisible(false);
+    statusBar()->showMessage(tr_text("Linea terminale raggiunta."));
   }
-  browser_action_->blockSignals(false);
-  strategy_table_->setRowCount(static_cast<int>(selected->actions.size()));
-  for (std::size_t row = 0; row < selected->actions.size(); ++row) {
-    const auto &action = selected->actions[row];
-    strategy_table_->setItem(static_cast<int>(row), 0,
-                             new QTableWidgetItem(action_name(action.type)));
-    strategy_table_->setItem(
-        static_cast<int>(row), 1,
-        new QTableWidgetItem(QString::fromStdString(format_money(action.amount))));
-    auto *const frequency = new QProgressBar(strategy_table_);
-    frequency->setRange(0, 10'000);
-    frequency->setValue(static_cast<int>(std::llround(selected->probabilities[row] * 10'000.0)));
-    frequency->setFormat(QString::number(selected->probabilities[row] * 100.0, 'f', 4) +
-                         QStringLiteral("%"));
-    strategy_table_->setCellWidget(static_cast<int>(row), 2, frequency);
+}
+
+void ProductWindow::show_chance_card_selector(const NodeId node) {
+  if (!browser_tree_ || node >= browser_tree_->nodes.size() ||
+      browser_tree_->nodes[static_cast<std::size_t>(node)].kind != PublicNodeKind::Chance) {
+    return;
+  }
+  const auto &chance = browser_tree_->nodes[static_cast<std::size_t>(node)];
+  const QSignalBlocker blocker(chance_card_selector_);
+  chance_card_selector_->clear();
+  const auto next_street =
+      chance.edges.empty()
+          ? chance.state.street
+          : browser_tree_->nodes[static_cast<std::size_t>(chance.edges[0].child)].state.street;
+  chance_card_selector_->addItem(tr_text("Seleziona carta %1 (%2 disponibili)")
+                                     .arg(street_name(next_street).toLower())
+                                     .arg(static_cast<qulonglong>(chance.edges.size())));
+  for (const auto &edge : chance.edges) {
+    chance_card_selector_->addItem(QStringLiteral("%1 - %2")
+                                       .arg(street_name(next_street))
+                                       .arg(QString::fromStdString(format_card(edge.chance_card))),
+                                   QVariant::fromValue(static_cast<qulonglong>(edge.child)));
+  }
+  chance_card_selector_->setCurrentIndex(0);
+  chance_card_selector_->setVisible(true);
+  chance_card_selector_->setFocus(Qt::OtherFocusReason);
+  browser_summary_->setText(
+      tr_text("Nodo chance %1 - scegli la carta %2 per continuare nell'albero")
+          .arg(static_cast<qulonglong>(node))
+          .arg(street_name(next_street).toLower()));
+}
+
+void ProductWindow::populate_solution_analysis(const NodeId node) {
+  if (!checkpoint_ || !browser_tree_ || node >= browser_tree_->nodes.size() ||
+      browser_tree_->nodes[static_cast<std::size_t>(node)].kind != PublicNodeKind::Decision) {
+    return;
+  }
+  chance_card_selector_->setVisible(false);
+  const auto cached = browser_analysis_cache_.find(node);
+  if (cached != browser_analysis_cache_.end()) {
+    browser_analysis_ = cached->second;
+  } else {
+    auto analysis = prepared_tree_ ? analyze_postflop_node(*prepared_tree_, *checkpoint_, node)
+                                   : analyze_postflop_node(project_.config, project_.ranges,
+                                                           *checkpoint_, node);
+    if (!analysis) {
+      combo_analysis_table_->setRowCount(0);
+      hand_value_table_->setRowCount(0);
+      statusBar()->showMessage(tr_text("Analisi esatta del nodo non disponibile."));
+      return;
+    }
+    browser_analysis_cache_.emplace(node, analysis.value());
+    browser_analysis_ = std::move(analysis.value());
+  }
+  browser_queries_.clear();
+  browser_queries_.reserve(browser_analysis_->combos.size());
+  for (const auto &entry : browser_analysis_->combos) {
+    browser_queries_.push_back(
+        {node, entry.combo, browser_analysis_->actions, entry.action_probabilities});
+  }
+  const auto &public_node = browser_tree_->nodes[static_cast<std::size_t>(node)];
+  constexpr NodeId no_parent = std::numeric_limits<NodeId>::max();
+  std::vector<NodeId> parents(browser_tree_->nodes.size(), no_parent);
+  for (const auto &candidate : browser_tree_->nodes) {
+    for (const auto &edge : candidate.edges) {
+      if (edge.child < parents.size()) {
+        parents[static_cast<std::size_t>(edge.child)] = candidate.id;
+      }
+    }
+  }
+  std::vector<NodeId> node_path;
+  for (NodeId cursor = node;; cursor = parents[static_cast<std::size_t>(cursor)]) {
+    node_path.push_back(cursor);
+    if (cursor == browser_tree_->root) {
+      break;
+    }
+    if (cursor >= parents.size() || parents[static_cast<std::size_t>(cursor)] == no_parent) {
+      node_path.clear();
+      break;
+    }
+  }
+  std::ranges::reverse(node_path);
+  std::vector<ActionTreeWidget::Column> columns;
+  for (std::size_t path_index = 0; path_index < node_path.size(); ++path_index) {
+    const auto path_node = node_path[path_index];
+    const auto &candidate = browser_tree_->nodes[static_cast<std::size_t>(path_node)];
+    if (candidate.kind != PublicNodeKind::Decision) {
+      continue;
+    }
+    const auto path_cached = browser_analysis_cache_.find(path_node);
+    if (path_cached == browser_analysis_cache_.end()) {
+      auto path_analysis =
+          prepared_tree_
+              ? analyze_postflop_node(*prepared_tree_, *checkpoint_, path_node)
+              : analyze_postflop_node(project_.config, project_.ranges, *checkpoint_, path_node);
+      if (!path_analysis) {
+        continue;
+      }
+      browser_analysis_cache_.emplace(path_node, std::move(path_analysis.value()));
+    }
+    const auto &path_analysis = browser_analysis_cache_.at(path_node);
+    ActionTreeWidget::Column column;
+    column.node = path_node;
+    column.player = path_analysis.player_to_act;
+    column.actions = path_analysis.actions;
+    column.frequencies = path_analysis.action_frequencies;
+    for (const auto &edge : candidate.edges) {
+      column.children.push_back(edge.child);
+    }
+    if (path_index + 1U < node_path.size()) {
+      const auto next_node = node_path[path_index + 1U];
+      const auto selected = std::ranges::find_if(
+          candidate.edges, [next_node](const auto &edge) { return edge.child == next_node; });
+      if (selected != candidate.edges.end()) {
+        column.selected_action = static_cast<std::size_t>(selected - candidate.edges.begin());
+      }
+    }
+    columns.push_back(std::move(column));
+  }
+  action_tree_->set_path(std::move(columns));
+
+  const auto combos = all_combos();
+  combo_analysis_table_->setRowCount(static_cast<int>(browser_analysis_->combos.size()));
+  for (std::size_t row = 0; row < browser_analysis_->combos.size(); ++row) {
+    const auto &entry = browser_analysis_->combos[row];
+    const auto query = std::ranges::find_if(browser_queries_, [&entry](const auto &candidate) {
+      return candidate.combo == entry.combo;
+    });
+    if (query == browser_queries_.end()) {
+      continue;
+    }
+    combo_analysis_table_->setItem(static_cast<int>(row), 0,
+                                   new QTableWidgetItem(combo_name(combos[entry.combo])));
+    QStringList distribution;
+    std::size_t dominant = 0U;
+    for (std::size_t action = 0; action < query->actions.size(); ++action) {
+      if (query->probabilities[action] > query->probabilities[dominant]) {
+        dominant = action;
+      }
+      distribution.push_back(QStringLiteral("%1 %2%")
+                                 .arg(action_name(query->actions[action].type))
+                                 .arg(query->probabilities[action] * 100.0, 0, 'f', 2));
+    }
+    auto *const distribution_item =
+        new QTableWidgetItem(distribution.join(QStringLiteral("  |  ")));
+    distribution_item->setBackground(action_color(dominant).darker(150));
+    combo_analysis_table_->setItem(static_cast<int>(row), 1, distribution_item);
+    combo_analysis_table_->setItem(
+        static_cast<int>(row), 2,
+        new QTableWidgetItem(QString::number(entry.equity * 100.0, 'f', 2) + QStringLiteral("%")));
+    combo_analysis_table_->setItem(
+        static_cast<int>(row), 3,
+        new QTableWidgetItem(QStringLiteral("1 (%1)").arg(entry.reach_weight, 0, 'f', 4)));
   }
   refresh_strategy_matrix();
-  const auto &physical = all_combos()[combo];
+
+  std::array<double, 9> category_weights{};
+  double category_total = 0.0;
+  for (const auto &entry : browser_analysis_->combos) {
+    const auto category = static_cast<std::size_t>(entry.hand_category);
+    category_weights[category] += entry.reach_weight;
+    category_total += entry.reach_weight;
+  }
+  const auto non_empty = static_cast<int>(
+      std::ranges::count_if(category_weights, [](const double weight) { return weight > 0.0; }));
+  hand_value_table_->setRowCount(non_empty);
+  int category_row = 0;
+  for (std::size_t category = 0; category < category_weights.size(); ++category) {
+    if (!(category_weights[category] > 0.0)) {
+      continue;
+    }
+    hand_value_table_->setItem(
+        category_row, 0,
+        new QTableWidgetItem(hand_category_name(static_cast<HandCategory>(category))));
+    hand_value_table_->setItem(
+        category_row, 1, new QTableWidgetItem(QString::number(category_weights[category], 'f', 4)));
+    auto *const bar = new QProgressBar(hand_value_table_);
+    const double share = category_total > 0.0 ? category_weights[category] / category_total : 0.0;
+    bar->setRange(0, 10'000);
+    bar->setValue(static_cast<int>(std::llround(share * 10'000.0)));
+    bar->setFormat(QString::number(share * 100.0, 'f', 2) + QStringLiteral("%"));
+    hand_value_table_->setCellWidget(category_row, 2, bar);
+    ++category_row;
+  }
+  const auto certification = snapshot_certification();
   browser_summary_->setText(
-      browser_summary_->text() +
-      tr_text(" · Nodo %1 · %2 (%3) · peso CO %4% · peso BTN %5%")
+      tr_text("Nodo %1 · giocatore %2 (%3) · pot %4 · %5 combo raggiunte · EV GTO+ CO %6 · "
+              "EV GTO+ BTN %7 · NashConv/Pot %8% · exact/no bucketing")
           .arg(static_cast<qulonglong>(node))
-          .arg(combo_name(physical))
-          .arg(QString::fromStdString(class_name(hand_class(physical))))
-          .arg(project_.ranges.players[0][combo].basis_points() / 100.0, 0, 'f', 2)
-          .arg(project_.ranges.players[1][combo].basis_points() / 100.0, 0, 'f', 2));
-  return true;
+          .arg(browser_analysis_->player_to_act + 1U)
+          .arg(browser_analysis_->player_to_act == 0U ? tr_text("CO/OOP") : tr_text("BTN/IP"))
+          .arg(QString::fromStdString(format_money(public_node.state.pot)))
+          .arg(static_cast<qulonglong>(browser_analysis_->combos.size()))
+          .arg(browser_analysis_->gto_plus_ev_antes[0], 0, 'f', 6)
+          .arg(browser_analysis_->gto_plus_ev_antes[1], 0, 'f', 6)
+          .arg(certification ? certification->normalized_nash_conv * 100.0 : 0.0, 0, 'f', 6));
 }
 
 void ProductWindow::refresh_strategy_matrix() {
-  if (browser_queries_.empty() || browser_action_ == nullptr ||
-      browser_action_->currentIndex() < 0) {
+  if (browser_queries_.empty() || !browser_analysis_) {
     return;
   }
-  const auto action = static_cast<std::size_t>(browser_action_->currentIndex());
-  const auto actor =
-      browser_tree_
-          ? static_cast<std::size_t>(
-                browser_tree_->nodes[static_cast<std::size_t>(browser_queries_.front().public_node)]
-                    .state.player_to_act)
-          : 0U;
   const auto combos = all_combos();
   for (int row = 0; row < 9; ++row) {
     for (int column = 0; column < 9; ++column) {
       const auto class_id = matrix_class(row, column).value();
-      double weighted_probability = 0.0;
+      std::vector<double> weighted_probabilities(browser_analysis_->actions.size(), 0.0);
       double total_weight = 0.0;
       for (const auto &query : browser_queries_) {
-        if (hand_class(combos[query.combo]) != class_id || action >= query.probabilities.size()) {
+        if (hand_class(combos[query.combo]) != class_id) {
           continue;
         }
-        const double weight =
-            static_cast<double>(project_.ranges.players[actor][query.combo].basis_points());
-        weighted_probability += weight * query.probabilities[action];
+        const auto entry =
+            std::ranges::find_if(browser_analysis_->combos, [&query](const auto &candidate) {
+              return candidate.combo == query.combo;
+            });
+        if (entry == browser_analysis_->combos.end()) {
+          continue;
+        }
+        const double weight = entry->reach_weight;
+        for (std::size_t action = 0;
+             action < query.probabilities.size() && action < weighted_probabilities.size();
+             ++action) {
+          weighted_probabilities[action] += weight * query.probabilities[action];
+        }
         total_weight += weight;
       }
       auto *item = strategy_matrix_->item(row, column);
@@ -1532,13 +1972,23 @@ void ProductWindow::refresh_strategy_matrix() {
         item->setBackground(QColor(45, 45, 45));
         item->setToolTip(tr_text("Classe assente dal range sorgente"));
       } else {
-        const double probability = weighted_probability / total_weight;
-        item->setText(QStringLiteral("%1\n%2%")
+        for (double &probability : weighted_probabilities) {
+          probability /= total_weight;
+        }
+        const auto dominant = static_cast<std::size_t>(std::distance(
+            weighted_probabilities.begin(), std::ranges::max_element(weighted_probabilities)));
+        QStringList tooltip;
+        for (std::size_t action = 0; action < weighted_probabilities.size(); ++action) {
+          tooltip.push_back(QStringLiteral("%1: %2%")
+                                .arg(action_name(browser_analysis_->actions[action].type))
+                                .arg(weighted_probabilities[action] * 100.0, 0, 'f', 2));
+        }
+        item->setText(QStringLiteral("%1\n%2 %3%")
                           .arg(QString::fromStdString(class_name(class_id)))
-                          .arg(probability * 100.0, 0, 'f', 2));
-        item->setBackground(QColor(35, 55 + static_cast<int>(probability * 150.0), 90));
-        item->setToolTip(
-            tr_text("Media combo-weighted; nessuna rinormalizzazione del range sorgente."));
+                          .arg(action_name(browser_analysis_->actions[dominant].type))
+                          .arg(weighted_probabilities[dominant] * 100.0, 0, 'f', 1));
+        item->setBackground(action_color(dominant));
+        item->setToolTip(tooltip.join(QStringLiteral("\n")));
       }
     }
   }
@@ -1656,12 +2106,21 @@ void ProductWindow::invalidate_solution() {
   checkpoint_.reset();
   certification_.reset();
   browser_tree_.reset();
+  prepared_tree_.reset();
+  preflight_layout_.reset();
+  preflight_fingerprint_.clear();
+  preflight_resources_ok_ = false;
   browser_queries_.clear();
+  browser_analysis_.reset();
+  browser_analysis_cache_.clear();
   if (tree_model_ != nullptr) {
     tree_model_->set_tree({});
   }
-  if (strategy_table_ != nullptr) {
-    strategy_table_->setRowCount(0);
+  if (combo_analysis_table_ != nullptr) {
+    combo_analysis_table_->setRowCount(0);
+  }
+  if (hand_value_table_ != nullptr) {
+    hand_value_table_->setRowCount(0);
   }
 }
 
@@ -1721,6 +2180,34 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
     }
     return condition;
   };
+  if (!check(strategy_matrix_->editTriggers() == QAbstractItemView::NoEditTriggers &&
+                 strategy_matrix_->selectionMode() == QAbstractItemView::NoSelection,
+             "strategy matrix is editable") ||
+      !check(tree_view_->isHidden(), "legacy vertical tree is visible")) {
+    return false;
+  }
+  const auto default_tree = build_public_tree(project_.config);
+  if (!check(default_tree.has_value(), "default GTO+ parity tree does not build")) {
+    return false;
+  }
+  const auto &default_root = default_tree.value().nodes[default_tree.value().root];
+  const auto default_bet = std::ranges::find_if(
+      default_root.edges, [](const auto &edge) { return edge.action.type == ActionType::Bet; });
+  if (!check(default_bet != default_root.edges.end(), "default tree has no bet action")) {
+    return false;
+  }
+  const auto &default_facing = default_tree.value().nodes[default_bet->child];
+  const auto default_raise = std::ranges::find_if(default_facing.edges, [](const auto &edge) {
+    return edge.action.type == ActionType::Raise &&
+           edge.action.amount == Money::from_antes(60).value();
+  });
+  const auto default_all_in = std::ranges::find_if(
+      default_facing.edges, [](const auto &edge) { return edge.action.type == ActionType::AllIn; });
+  if (!check(default_facing.edges.size() == 3U && default_raise != default_facing.edges.end() &&
+                 default_all_in == default_facing.edges.end(),
+             "default BTN response does not expose fold, call and raise 60")) {
+    return false;
+  }
   auto config = make_postflop_benchmark_config(PostflopBenchmark::PfF1);
   if (!check(config.has_value(), "default config unavailable")) {
     return false;
@@ -1811,18 +2298,48 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
   }
   ComboId legal_combo = 0U;
   for (std::size_t combo = 0; combo < combos.size(); ++combo) {
-    if (!combo_blocked(combos[combo], project_.config)) {
+    if (!combo_blocked(combos[combo], project_.config) &&
+        project_.ranges.players[0][combo].basis_points() > 0U) {
       legal_combo = static_cast<ComboId>(combo);
       break;
     }
   }
   if (!check(browse(browser_tree_->root, legal_combo), "root navigation/query failed") ||
-      !check(strategy_table_->rowCount() > 0, "strategy not visible per combo") ||
+      !check(combo_analysis_table_->rowCount() > 0, "strategy not visible per combo") ||
+      !check(hand_value_table_->rowCount() > 0, "hand values not visible") ||
       !check(strategy_matrix_->item(0, 0) != nullptr, "strategy heatmap not visible per class") ||
       !check(certification_->iteration == 2U, "certification not restored") ||
       !check(project_.ranges.players[0][7U].basis_points() == 5'000U ||
                  combo_blocked(combos[7U], project_.config),
              "physical range did not round-trip")) {
+    return false;
+  }
+  const auto &e2e_root = browser_tree_->nodes[static_cast<std::size_t>(browser_tree_->root)];
+  const auto after_root_check = std::ranges::find_if(
+      e2e_root.edges, [](const auto &edge) { return edge.action.type == ActionType::Check; });
+  if (!check(after_root_check != e2e_root.edges.end(), "root check path unavailable")) {
+    return false;
+  }
+  const auto &e2e_btn = browser_tree_->nodes[static_cast<std::size_t>(after_root_check->child)];
+  const auto after_btn_check = std::ranges::find_if(
+      e2e_btn.edges, [](const auto &edge) { return edge.action.type == ActionType::Check; });
+  if (!check(after_btn_check != e2e_btn.edges.end(), "BTN check path unavailable") ||
+      !check(browser_tree_->nodes[static_cast<std::size_t>(after_btn_check->child)].kind ==
+                 PublicNodeKind::Chance,
+             "flop check-check does not reach turn chance")) {
+    return false;
+  }
+  navigate_browser_node(after_btn_check->child);
+  if (!check(!chance_card_selector_->isHidden() && chance_card_selector_->count() > 1,
+             "turn card selector is unavailable")) {
+    return false;
+  }
+  chance_card_selector_->setCurrentIndex(1);
+  QCoreApplication::processEvents();
+  if (!check(chance_card_selector_->isHidden() && browser_analysis_.has_value() &&
+                 browser_tree_->nodes[static_cast<std::size_t>(browser_analysis_->public_node)]
+                         .state.street == Street::Turn,
+             "selecting a turn card does not continue to the turn decision")) {
     return false;
   }
   project_.iterations = 3;
