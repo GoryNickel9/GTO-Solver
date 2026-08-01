@@ -3,6 +3,10 @@
 Exact Short Deck Heads-Up solver foundation following
 `docs/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md`.
 
+I contratti tecnici correnti sono raccolti nell'indice
+[`docs/specifications/README.md`](docs/specifications/README.md). Roadmap e
+report di fase conservano ordine dei gate ed evidenza storica.
+
 ## Build
 
 Bootstrap the pinned vcpkg baseline and expose its root:
@@ -157,8 +161,9 @@ checkpoints, saves/opens `.gtsd`, and navigates real strategy data by 9×9 hand
 class and physical combo. Configuration is visual: starting pot/stack/rake,
 separate CO/OOP and BTN/IP betting panels, street overrides and a visual
 three-to-five-card Short Deck board picker; the versioned JSON remains an
-internal persistence/API format. The solve target is NashConv/Pot (`Target
-dEV`, default 1%) and is certified every iteration. RAM, disk and backing mode
+internal persistence/API format. The interactive solve target is GTO+-style
+maximum unilateral deviation gain divided by pot (default 1%); NashConv/Pot is
+shown separately. Certification runs every 20 iterations and at solve end. RAM, disk and backing mode
 are selected automatically by preflight. Range classes start at 0% and are
 painted directly with click/drag or a percentage slider. Pause and cancel
 remain available during solving; local solution keys are managed transparently
@@ -178,3 +183,28 @@ i3-10100F host, the installed application completed the reduced E2E fixture in
 gap during solving. These values validate integration and responsiveness, not
 convergence or the exact 2 GHz / 16 GB release target. See
 `docs/PHASE_10_COMPLETION_REPORT.md`.
+
+The automated GTO+ convergence benchmark applies the same Target dEV definition
+under a fixed, versioned fixture and timing protocol. Run five independent
+Release processes with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  .\tools\run_gto_plus_convergence_benchmark.ps1
+```
+
+The versioned per-run JSON and aggregate mediana/p95 report are described in
+`docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
+
+Further roadmap phases are currently frozen by the canonical GTO+ parity gate.
+For corrected fixture `GTP-AHKHQH-003`, the targets are convergence in at most
+`1.900000 s` and solver memory at most `8.888889 MB`, with exact/lossless
+correctness and comparable root value. The current
+baseline, experiment history and mandatory update template live in
+`docs/GTO_PLUS_PARITY_JOURNEY.md`. The latest development candidate passes both
+the memory and root-EV gates but fails speed on five processes (median
+`2.7197086 s`, solver state `4.214976 MB`, root-EV delta `+0.005491 ante`). The
+conditional BTN EVs are diagnostic because the two solvers reach them with
+different combo-by-combo CO posteriors. The next phase is the test-only F10.4
+controlled-posterior root lock; it is planned, not implemented. The roadmap
+freeze therefore remains active.

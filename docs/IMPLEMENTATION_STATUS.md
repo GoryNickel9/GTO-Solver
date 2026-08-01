@@ -1,6 +1,10 @@
 # Stato implementazione roadmap HU Short Deck
 
-Aggiornato: 2026-07-29
+Aggiornato: 2026-08-02
+
+Le specifiche tecniche canoniche sono indicizzate in
+[`specifications/README.md`](specifications/README.md). Questo documento
+riassume gate ed evidenza di implementazione.
 
 ## Stato sintetico dei gate
 
@@ -13,11 +17,12 @@ Aggiornato: 2026-07-29
 | F4 | **Completata** | Modulo `gtosd::isomorphism`, tutte le 24 permutazioni, mapping inverso, 7.140 flop fisici e 573 orbite, chance con molteplicità | Nessun residuo F4 |
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
 | F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
-| F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query, PF-F1 a 0,741405%, layout range-aware, infoset canonici e public DAG lossless | Il benchmark GTO+ `AhKhQh` usa 125.352 infoset, 250.704 action entry e 14.673 nodi pubblici canonici; la costruzione parte ancora dal tree fisico |
+| F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query, PF-F1 a 0,741405%, layout range-aware, infoset canonici e public DAG lossless | La fixture GTO+ `003` usa 250.704 infoset, 526.872 action entry e 31.461 nodi pubblici canonici; la costruzione parte ancora dal tree fisico |
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e 309 asserzioni | La quantizzazione resta sperimentale; la misura PF-F1 storage usa una iterazione e non sostituisce la certificazione F7 |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
-| F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, stima risorse range-aware conservativa, chiavi locali trasparenti, log persistenti, recovery cifrato, heatmap 9×9 ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti; la stima preventiva non sottrae ancora le orbite canoniche effettive |
-| F11+ | Non iniziata | — | Nodelock globale e milestone successive |
+| F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
+| GTO+ parity gate | **PASS memoria/root EV; FAIL velocità** | `GTP-AHKHQH-003`: mediana 2,7197086 s, stato 4,214976 MB; probe accurato CO root 19,163591 vs 19,1581, delta +0,005491 ante; “smoothly” disabilitato | F10.4 test-only: imporre la strategia root GTO+ combo-per-combo e confrontare gli EV BTN con posteriori uguali |
+| F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -470,20 +475,21 @@ Il dettaglio è in
 Il gate automatico locale F10 è completato. L'eseguibile prodotto `gto_gui`
 integra configurazione visuale completa, board Short Deck visuale da tre a cinque
 carte, pannelli di sizing separati CO/OOP e BTN/IP, editor range CO/BTN
-paint-on-click/slider a basis point, Target dEV certificato a ogni iterazione,
+paint-on-click/slider a basis point, Target dEV certificato a intervalli,
 preflight e backend memoria automatici, solve CFR+ in worker separato, pausa,
 annullamento e progresso per iterazione,
-checkpoint/recovery `.gtsd`, save/open autenticato, albero fisico e strategy
-matrix per classe e combo.
+checkpoint/recovery `.gtsd`, save/open autenticato, albero azioni con frequenze,
+reached range per nodo, equity exact, strategy matrix 9×9 e distribuzione del
+valore mano.
 
 | Gate | Evidenza |
 |---|---|
 | Crea→solve→salva→riapri→naviga→resume | PASS, E2E Qt sull'eseguibile reale e dall'install tree |
-| Classe/combo | PASS, heatmap 9×9 combo-weighted e query batch delle combo fisiche legali |
+| Classe/combo | PASS, distribuzione azioni, equity exact, heatmap 9×9 reached-weighted e valore mano |
 | Progress continuo | PASS, iteration counter indipendente dall'intervallo BR/NashConv |
 | Nessun freeze solve | PASS, massimo gap heartbeat 12,0331 ms sulla fixture E2E installata |
 | Range effettivi | PASS, reach CFR/BR, fingerprint, checkpoint e chunk `RANGES` condividono gli stessi 1.260 pesi |
-| Regressioni | PASS, Release 21/21; Debug F10; MSVC ASan core e GUI; clang-format |
+| Regressioni | PASS, Release 22/22 (144,33 s); E2E prodotto aggiornato 30,75 s; precedenti gate Debug e MSVC ASan |
 | Packaging | PASS, install tree pulito 75 file / 89.080.903 B e smoke E2E installato |
 
 La misura E2E usa una fixture ridotta check-only da due iterazioni, poi ripresa
@@ -492,9 +498,14 @@ PF-F1 F7 a 0,741405%.
 Il dettaglio, i limiti e i comandi di riproduzione sono in
 [`PHASE_10_COMPLETION_REPORT.md`](PHASE_10_COMPLETION_REPORT.md).
 
-### Prossimo ingresso
+## Prossimo ingresso
 
-La milestone successiva è **Fase 11 — Nodelock globale**.
+La fase successiva è **F10.4 — controlled-posterior root lock diagnostico**,
+definita nel Journey. Non è node locking di prodotto: vincola soltanto il root
+CO nel test, lascia libere le continuation e certifica separatamente il gioco
+vincolato. Se entrambi i delta BTN scendono entro ±0,5 ante, la causa dominante
+è la selezione del posteriore root; altrimenti si apre il differenziale
+downstream dal primo nodo a reach uguali.
 
 ## Contratti poker già codificati
 

@@ -1,5 +1,11 @@
 # Canonical public DAG
 
+Contratto canonico corrente: [`specifications/TREE_FORMAT.md`](specifications/TREE_FORMAT.md).
+
+I conteggi AhKhQh in questo documento appartengono alla fixture storica
+`GTP-AHKHQH-001` senza raise. Il gate GTO+ corrente usa la fixture corretta
+`GTP-AHKHQH-003`; i suoi golden sono nel Journey canonico.
+
 Aggiornato: 2026-07-29
 
 ## Obiettivo
@@ -88,8 +94,10 @@ modalità 2 e 3 vengono confrontati anche tutti i 250.704 regret e strategy sum.
 
 La costruzione parte ancora dal public tree fisico e solo successivamente lo
 compatta. Il peak RSS di costruzione non beneficia quindi dell'intera riduzione
-del DAG. Inoltre i buffer persistenti restano due array `float64`, pari a
-4.011.264 byte per questa configurazione.
+del DAG. Il percorso accuratezza predefinito conserva due array `float64`, pari
+a 4.011.264 byte per questa configurazione. Il benchmark GTO+ usa invece la
+modalità prestazioni esplicita con stato `float32` e calcolo/certificazione
+`float64`, pari a 2.005.632 byte; non è sampling né card abstraction.
 
 Il prossimo miglioramento di memoria richiede costruzione canonica diretta o
 storage numerico configurabile con validazione separata della precisione.

@@ -24,21 +24,22 @@ autenticato. Il timer UI è rimasto attivo per l'intero solve E2E.
 | Home/recenti | Nuovo progetto, lista persistente degli ultimi dieci `.gtsd`, apertura con chiave locale automatica |
 | Tree builder | Pot/stack/rake, pannelli separati CO/OOP e BTN/IP, override per street e board Short Deck visuale da 3 a 5 carte |
 | Range editor | Matrice quadrata 9×9 paint-on-click/drag, slider 0,01%, default 0%, blocker applicati alle combo fisiche |
-| Estimate dialog | Nodi, infoset, azioni, picco RAM, backing store e selezione automatica RAM/out-of-core |
-| Solve monitor | Iterazione continua, EV CO/BTN, NashConv, chart, pausa e cancel |
-| Solution browser | Public tree fisico, heatmap strategy per classe e frequenze per combo |
+| Estimate dialog | Nodi fisici/canonici, infoset e azioni materializzati, memoria persistente regret+strategy e selezione RAM/out-of-core |
+| Solve monitor | Tempo trascorso, iterazione continua, EV CO/BTN, NashConv, intervallo di certificazione, chart, pausa e cancel |
+| Solution browser | Albero azioni orizzontale con frequenze, selettore esplicito delle carte turn/river; tabella combo con distribuzione/equity/reach, heatmap 9×9 read-only e distribuzione del valore mano |
 | Save/open | Container `.gtsd` 1.0 cifrato, chiave locale trasparente, import con chiave solo da altro PC |
-| Settings solve | Target dEV 1% (NashConv/Pot); certificazione a ogni iterazione; budget e backend automatici |
+| Settings solve | Target dEV GTO+ 1%; NashConv/Pot separato; certificazione ogni 20 iterazioni e a fine solve; budget e backend automatici |
 | Errori/recovery | Errori tipizzati visibili; recovery `.gtsd` atomico riapribile all'avvio |
 | Localizzazione | UI italiana; catalogo sorgente `gtosd_en.ts` predisposto |
 | Diagnostica | Log JSONL persistente e cartella apribile dalla toolbar |
 
-### Semantica dei controlli di calcolo
+### Semantica dei controlli di calcolo (aggiornata 2026-08-01)
 
-- **Target dEV**: soglia di arresto esposta come percentuale e misurata
-  esattamente come `NashConv / starting pot`; il default è 1%.
-- **Certificazione**: best response e NashConv sono calcolati a ogni iterazione;
-  l'utente non può ridurne la frequenza.
+- **Target dEV GTO+**: massimo guadagno di deviazione unilaterale diviso per il
+  pot iniziale; il default è 1%. NashConv/Pot resta diagnostico e separato.
+- **Certificazione**: best response e NashConv sono calcolati ogni 20 iterazioni
+  e sempre all'ultima; il monitor distingue tempo totale, iterazioni CFR+ e
+  certificazioni.
 - **Risorse**: il preflight usa automaticamente l'80% della RAM fisica e dello
   spazio temporaneo disponibile, passando da lazy RAM a out-of-core quando
   necessario.
@@ -62,21 +63,23 @@ F10 aggiunge `PostflopRanges` con `2 × 630` `RangeWeight`:
 - i file F8/F9 col marker uniform-range restano leggibili;
 - il fingerprint legacy resta identico quando entrambi i range sono uniformi.
 
-La query batch costruisce il layout una sola volta e restituisce la strategia
-media per tutti i combo legali del nodo. La heatmap aggrega per classe usando
-i pesi sorgente dell'attore; una classe a massa zero resta `—` e non viene
-rinormalizzata silenziosamente.
+L'analisi del nodo ricostruisce il reach lungo la history usando la strategia
+media, applica i blocker chance e calcola l'equity enumerando esattamente i
+runout Short Deck. La heatmap aggrega per classe usando il reached range
+dell'attore; una classe a massa zero resta `—`.
 
 ## 4. Gate F10
 
 | Gate | Esito | Evidenza |
 |---|---|---|
 | Crea→solve→salva→riapri→naviga→resume | PASS | `gtosd_phase10_product_e2e` |
-| Dati per classe/combo | PASS | heatmap 81 classi, query batch legali, dettaglio combo 0–629 |
+| Dati per classe/combo | PASS | combo raggiunte, equity exact, distribuzione azioni, heatmap 81 classi e valore mano |
 | Progress continuo | PASS | iteration counter aggiornato dal control callback |
 | Nessun freeze durante solve | PASS | heartbeat massimo 12,0331 ms, soglia test 100 ms |
 | Recovery | PASS | ogni certificazione produce `.gtsd` atomico autenticato |
 | Range effettivi | PASS | test reach/EV, mismatch fingerprint e round-trip 1.260 pesi |
+| Navigazione chance | PASS | E2E seleziona un turn dopo check-check e raggiunge il nodo decisionale di turn |
+| Matrice strategia | PASS | `NoEditTriggers` e `NoSelection`, incluso doppio click |
 
 ## 5. Benchmark E2E
 
@@ -112,6 +115,10 @@ minimo esatto resta un gate di release e non viene dichiarata superata.
 | Install tree | PASS, 75 file / 89.080.903 B |
 | E2E dall'eseguibile installato | PASS, 1,937 s; massimo gap solve 12,0331 ms |
 
+Retest del 2026-07-29 dopo la correzione memoria/tempo e il nuovo browser:
+Release completa **22/22 PASS in 144,33 s**; E2E prodotto mirato **PASS in
+30,75 s**. L'E2E ora comprende anche l'analisi exact di equity e valore mano.
+
 Il run Release completo include F4 exhaustive, F7 exact e F8 storage. PF-F1
 non è stato risolto nuovamente per 125 iterazioni: la certificazione pubblicata
 in F7 rimane `NashConv / pot = 0,741405%`.
@@ -135,9 +142,7 @@ Start-Process C:\absolute\path\to\gtosd-f10\bin\gto_gui.exe `
 
 - la chart EV è a livello di profilo/certificazione; action EV per combo non è
   ancora una vista dedicata;
-- la heatmap usa il range root sorgente; node reach e reached range non sono
-  ancora materializzati come analytics separati;
-- il preflight e la query batch del browser sono ancora sincroni; il gate
+- il preflight e l'analisi exact del nodo sono ancora sincroni; il gate
   no-freeze certifica solve e resume, non queste operazioni on-demand;
 - il catalogo inglese è predisposto come `.ts`, non ancora compilato/caricato
   come `.qm`;
@@ -151,6 +156,11 @@ Start-Process C:\absolute\path\to\gtosd-f10\bin\gto_gui.exe `
 Questi limiti non alterano CFR, BR, NashConv, range, checkpoint o strategia
 salvata; delimitano le viste e il packaging di release.
 
-## 9. Prossima fase
+## 9. Prossimo gate
 
-La prossima milestone è **Fase 11 — Nodelock globale**.
+La prosecuzione verso F11 è congelata. Il prossimo lavoro è il gate bloccante
+di parità corretto `GTP-AHKHQH-003`, mantenuto in
+[`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md). Il root EV è ora
+in parità entro `0,0055 ante`; la fase immediata F10.4 controllerà i posteriori
+BTN imponendo nel solo test la strategia root GTO+ combo-per-combo. F10.4 non è
+ancora implementata e non equivale al node locking di prodotto F11.

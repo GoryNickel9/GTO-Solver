@@ -1,5 +1,11 @@
 # Range-aware solver memory
 
+Contratto canonico corrente: [`specifications/PERFORMANCE.md`](specifications/PERFORMANCE.md).
+
+I conteggi AhKhQh sotto riportati documentano la fixture storica
+`GTP-AHKHQH-001` senza raise. Non rappresentano il gate GTO+ corrente
+`GTP-AHKHQH-003`.
+
 Aggiornato: 2026-07-29
 
 ## 1. Obiettivo
@@ -77,9 +83,12 @@ con certificazione exact BR/NashConv:
 | 4 | 2,296 |
 | 5 | 2,198 |
 
-Mediana F10.1: 2,221 s. Con F10.2, cinque ulteriori processi Release hanno
+Mediana F10.1: 2,221 s. Questo è il tempo di **una sola iterazione CFR+ più una
+certificazione exact BR/NashConv**, non il tempo necessario a raggiungere il
+target dEV né a “solvare l'intero albero”. Con F10.2, cinque ulteriori processi Release hanno
 prodotto una mediana di 2,192 s e 29.346 visite CFR per iterazione a due
-giocatori. Il valore non è direttamente confrontabile con gli 0,85 s di GTO+
+giocatori. Il valore non era direttamente confrontabile con il precedente
+riferimento GTO+ da 0,82 s (ora sostituito dal riferimento confermato da 1,71 s)
 finché non sono allineati algoritmo, numero di iterazioni, stopping criterion e
 inclusione della best response. La costruzione della mappa canonica e del DAG
 aggiunge ancora un costo fisso, ma il traversal non visita più tutti i 52.644
@@ -87,23 +96,26 @@ nodi fisici.
 
 ## 5. Gap residuo rispetto a GTO+
 
-GTO+ riporta 2,6 MB di “Memory needed for solving”. Il nostro breakdown
+Il riferimento aggiornato GTO+ riporta 8 MB di “Memory needed for solving”. Il nostro breakdown
 range-aware è:
 
 | Componente | Byte |
 |---|---:|
 | Public tree materializzato | 21.899.848 |
 | Regret + average strategy float64 canonici | 4.011.264 |
+| Regret + average strategy float32 performance | 2.005.632 |
 | Delta regret differito float64 | 2.005.632 |
 | Layout/board index fisico | almeno 2.543.764 |
 | Scratch conservativo | 1.426.616 |
 
-La dicitura GTO+ è quindi più vicina al solo storage persistente del solving
-che al peak RSS dell'intero processo. Il target 2,6 MB non è ancora raggiunto.
-F10.2 evita di attraversare tutti i runout equivalenti, ma la costruzione parte
-ancora dal tree fisico e i buffer persistenti restano `float64`. Solo dopo un
-confronto numerico dedicato è lecito valutare storage `float32`; checkpoint e
-modalità di precisione dovranno essere versionati.
+La dicitura GTO+ è quindi più vicina al solo stato persistente del solving che
+al peak RSS dell'intero processo. Il percorso accuratezza resta `float64`
+(`4,01 MB`); il benchmark GTO+ seleziona esplicitamente stato `float32` con
+calcolo `float64` (`2,005632 MB`) e supera il gate memoria. Delta regret,
+indici, tree e peak RSS restano pubblicati separatamente e non vengono nascosti
+nel confronto. Il checkpoint `float32` è consultabile e ricertificabile; la sua
+persistenza versionata resta lavoro successivo e non sostituisce il formato
+`float64` predefinito.
 
 ## 6. Controllo delle fasi
 
@@ -111,4 +123,5 @@ F0-F10 risultano completate. F10.1 integra nel solver production lo
 stabilizzatore globale lossless di F4, mapping inverso implicito nelle query e
 checkpoint separati tramite fingerprint `iso-infosets-v1`. F10.2 aggiunge il
 public DAG canonico e conserva carta, molteplicità e mapping inverso per ogni
-outcome chance. F11 nodelock e le fasi successive non sono prerequisiti.
+outcome chance. F11 e le fasi successive sono ora congelate dal gate descritto
+in [`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).

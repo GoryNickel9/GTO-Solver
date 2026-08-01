@@ -1,5 +1,9 @@
 # Roadmap tecnica — GTO Solver Short Deck
 
+I contratti tecnici estratti e mantenuti per argomento sono indicizzati in
+[`specifications/README.md`](specifications/README.md). Questa roadmap resta la
+fonte per sequenza, dipendenze e gate.
+
 ## 1. Stato e scopo del documento
 
 | Campo | Valore |
@@ -188,12 +192,12 @@ Una size superiore allo stack viene convertita in all-in. Una size inferiore al 
 
 ### 4.3 Soglia automatica dell’all-in
 
-La soglia è globale per player, street e scenario. Si calcola:
+La soglia è globale per player, street e scenario. La semantica compatibile con GTO+ si calcola
+sullo stato prima dell'azione del player:
 
 ```text
-pot_after_call = current_pot + amount_to_call
-push_increment = effective_stack_before_action - amount_to_call
-push_percent = push_increment / pot_after_call × 100
+push_amount = effective_stack_before_action
+push_percent = push_amount / current_pot × 100
 trigger = push_percent < configured_threshold
 ```
 
@@ -203,6 +207,7 @@ trigger = push_percent < configured_threshold
 | Add all-in | Mantiene le size normali e aggiunge l’all-in |
 | Go all-in | Rimuove le size aggressive normali e conserva soltanto l’all-in |
 
+La call fa parte del push: non viene sottratta dallo stack e non viene aggiunta al denominatore.
 Fold, check e call non vengono rimossi da `Go all-in`. La condizione è stretta: una percentuale esattamente uguale alla soglia non attiva la trasformazione.
 
 ### 4.4 Profondità dei raise
@@ -2032,6 +2037,30 @@ Tutti i dati visibili per classe/combo
 Progress continuo
 Nessun freeze UI durante solve
 ```
+
+### Gate bloccante post-F10 — parità GTO+
+
+Prima di F11 deve essere superata la fixture canonica corretta `GTP-AHKHQH-003`
+documentata in
+[`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).
+
+```text
+Tempo GTOSD fino alla convergenza <= 1,900000 s
+Memoria solver GTOSD <= 8,888889 MB
+EV del gioco al root nella stessa convenzione e tolleranza versionata
+EV/frequenze condizionali come gate solo con posteriori combo-per-combo uguali
+Exact/no bucketing/no sampling
+Parità physical/canonical e suite Release PASS
+```
+
+F11 e tutte le fasi successive restano congelate finché entrambi i benchmark
+prestazionali non raggiungono almeno il 90% del riferimento GTO+ e tutti i gate
+EV/correttezza non passano.
+
+Al 2026-08-02 memoria e root EV passano, mentre la velocità fallisce. Gli EV BTN
+restano diagnostici perché i posteriori CO dopo bet/check sono differenti. La
+prossima attività è F10.4, un root lock esterno combo-per-combo test-only che
+non costituisce il node locking di prodotto della F11.
 
 ### Fase 11 — Nodelock globale
 
