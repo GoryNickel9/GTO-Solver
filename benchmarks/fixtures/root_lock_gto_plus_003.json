@@ -1,0 +1,195 @@
+{
+  "path": "diagnostic_external_root_lock",
+  "source_description": "GTO+ v1.6.9 64-bit operational run (1.71 s, dEV 0.390 ante = 0.98%, 8 threads, Target dEV 1%): 36 root rows Bet 20 / Check transcribed from docs/specifications/gtoplus_specs.md (CO FI FLOP table). Root aggregate: bet 19.7% / check 80.3%, EV 19.1588 ante.",
+  "source_dev_percent": 0.98,
+  "range_co": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo",
+  "range_btn": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo",
+  "gto_plus_reference_ev_antes": {
+    "flop_co_root": 19.1588,
+    "flop_btn_after_co_check": 21.6597,
+    "flop_btn_after_co_bet_20": 17.5107,
+    "flop_co_after_check_btn_bet_20": 11.8959
+  },
+  "entries": [
+    {
+      "combo": "AsAd",
+      "bet_20": 0.123,
+      "check": 0.877
+    },
+    {
+      "combo": "AsAc",
+      "bet_20": 0.123,
+      "check": 0.877
+    },
+    {
+      "combo": "AdAc",
+      "bet_20": 0.123,
+      "check": 0.877
+    },
+    {
+      "combo": "KsKc",
+      "bet_20": 0.573,
+      "check": 0.427
+    },
+    {
+      "combo": "KdKc",
+      "bet_20": 0.573,
+      "check": 0.427
+    },
+    {
+      "combo": "KsKd",
+      "bet_20": 0.573,
+      "check": 0.427
+    },
+    {
+      "combo": "AcKc",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AsKs",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AdKd",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AdKs",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AcKs",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AsKd",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AcKd",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AsKc",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "AdKc",
+      "bet_20": 0.12,
+      "check": 0.88
+    },
+    {
+      "combo": "QsQc",
+      "bet_20": 0.41,
+      "check": 0.59
+    },
+    {
+      "combo": "QdQc",
+      "bet_20": 0.41,
+      "check": 0.59
+    },
+    {
+      "combo": "QsQd",
+      "bet_20": 0.41,
+      "check": 0.59
+    },
+    {
+      "combo": "AsQs",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AdQd",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AcQc",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AdQs",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AcQd",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AsQc",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AdQc",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AsQd",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "AcQs",
+      "bet_20": 0.085,
+      "check": 0.915
+    },
+    {
+      "combo": "KcQc",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KsQs",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KdQd",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KdQs",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KcQs",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KsQd",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KcQd",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KsQc",
+      "bet_20": 0.215,
+      "check": 0.785
+    },
+    {
+      "combo": "KdQc",
+      "bet_20": 0.215,
+      "check": 0.785
+    }
+  ]
+}

@@ -36,10 +36,13 @@ condizionale. Il confronto torna causale soltanto dopo avere reso uguali tali
 posteriori, per esempio con il root lock diagnostico descritto sotto.
 L'utente ha confermato che GTO+ e GTOSD girano sulla stessa macchina e che gli
 `1,71 s` vanno dal click su `Run Solver`, con albero già preparato, fino alla
-soluzione completa consultabile. La versione osservata è GTO+ v1.6.9 64-bit.
-L'action tree completo e l'unità esatta della memoria dichiarata non sono ancora
-registrati; per questo la certificazione scientifica definitiva resta pending,
-anche se i gate prestazionali sono misurabili.
+soluzione completa consultabile. La versione osservata è GTO+ v1.6.9 64-bit
+(8 thread). L'unità della memoria dichiarata è confermata (MB decimali: 8 MB =
+8.000.000 byte, confronto diretto con lo stato solver GTOSD in byte).
+L'action tree GTO+ è registrato a livello flop — 4 nodi, action set, frequenze
+ed EV combo-per-combo in `docs/specifications/gtoplus_specs.md` — mentre turn
+e river restano da acquisire; la certificazione scientifica definitiva resta
+quindi pending, anche se i gate prestazionali sono misurabili.
 
 La semantica è coerente con la spiegazione pubblica del rappresentante GTO+:
 dEV è il massimo EV ottenibile sfruttando le imprecisioni dell'avversario
@@ -51,11 +54,76 @@ per il run sorgente da `1,71 s`.
 
 - `benchmarks/fixtures/gto_plus_ahkhqh_003.json`: contratto versionato, target e
   conteggi golden;
+- `benchmarks/fixtures/gto_plus_ahkhqh_103.json` e `gto_plus_ahkhqh_104.json`:
+  benchmark v2 costruiti dai valori degli export GTO+ documentati nei markdown
+  (vedi sotto);
 - `schemas/gto_plus_convergence_benchmark.schema.json`: schema del contratto;
 - `gto_cli postflop benchmark-gto-plus`: un singolo processo indipendente e un
   report atomico `gtosd.gto_plus_convergence_run.v1`;
 - `tools/run_gto_plus_convergence_benchmark.ps1`: almeno cinque processi,
   mediana, p95 nearest-rank, score e gate separati.
+
+## Specifica v2: benchmark di convergenza generici
+
+Dal 2026-08-02 il comando `benchmark-gto-plus` accetta anche la specifica
+generica `gtosd.gto_plus_convergence_benchmark.v2`
+(`schemas/gto_plus_convergence_benchmark.v2.schema.json`). Il contratto v1
+`GTP-AHKHQH-003` resta congelato: stessa validazione, stesso report, stessi
+valori. La v2 rende ogni parametro leggibile dalla specifica:
+
+- **fixture**: board, `range_co`/`range_btn` (liste di classi tipo
+  `AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo`), pot e stack in ante, bet/raise size in
+  percentuale del pot, `maximum_raises_per_street`, semantica all-in
+  (`disabled` oppure `go_if_remaining_stack_below_N_percent_current_pot`),
+  `final_bet_smoothing`, `rake_percent`;
+- **gtosd_run**: iterazioni, certification interval, averaging delay,
+  parallel action depth, thread, processi indipendenti;
+- **gto_plus_reference**: target dEV, tempo e memoria GTO+, tolleranze EV e
+  frequenze, `gate_node` (opzionale: id del nodo il cui EV decide
+  `correctness_passed`; default il root) e `reference_nodes`: una lista di
+  nodi indirizzati con `path` (etichette di azione dal root, es. `[]` per il
+  root, `["bet_20"]` per il figlio dopo una bet da 20 ante) + `player`, con
+  `ev_antes` e/o `actions` attesi. I `path` non devono attraversare un cambio
+  strada (i nodi chance non sono risolvibili da un path di sole azioni);
+- **expected_layout**: fingerprint e conteggi, come in v1.
+
+Il report prodotto è identico nella forma (`gtosd.gto_plus_convergence_run.v1`);
+le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
+`reference_node_action_frequencies` sono gli `id` dichiarati nella specifica
+(per `GTP-AHKHQH-003` restano `flop_co_root`, `flop_btn_after_co_check`,
+`flop_btn_after_co_bet_20`, quindi il report v1 non cambia).
+
+Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta sia v1 sia v2 e
+deriva `benchmark_id` dalla specifica; i gate (tempo/memoria, riproducibilità,
+EV, frequenze) restano quelli del protocollo. `GTP-AHKHQH-101` è la fixture v2
+di validazione: replica esattamente lo scenario di `003` e deve produrre gli
+stessi valori, ed è il riferimento per aggiungere nuovi benchmark: si copia la
+fixture, si cambia `benchmark_id`, board/range/stack/sizing e i valori GTO+
+osservati (`elapsed_seconds`, `solver_memory_bytes`, `target_dev_percent`,
+`reference_nodes`), poi si aggiorna `expected_layout` con fingerprint e
+conteggi del primo run GTOSD (la prima esecuzione con layout errato fallisce
+il gate di layout, non la parità).
+
+> **Nuovi benchmark**: parte da `benchmarks/fixtures/TEMPLATE.json`
+> (schema-valido, valori noti del 101) e segui la procedura passo-passo in
+> `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md` — non serve toccare il codice C++.
+
+## Bug risolto: stack overflow del solver con all-in Go a soglia bassa
+
+Durante la validazione della v2 è emerso un bug latente pre-esistente del
+solver (non del percorso benchmark): con pot 20 / stack 60, size 33% e
+`automatic_all_in` con soglia `≤ 110%` del pot corrente, il processo terminava
+con fail-fast `0xC0000409` (stack overflow) durante l'analisi dei nodi di
+riferimento. Causa: `DenseTraversal::policy_decision` e
+`DenseTraversal::cfr_decision` dichiaravano `action_values` (~39 KB) e
+`strategies` (~39 KB) sullo stack in funzioni ricorsive; con alberi profondi
+(max_depth 12, raggiungibili con size piccole e all-in tardivo) la ricorsione
+superava lo stack da 1 MB dei thread. Fix (libs/postflop/src/postflop_solver.cpp):
+i due buffer ora usano la `DecisionScratchLease` già esistente (scratch su
+heap, depth-pooled, usata dalle path canoniche). Verificato con repro ASan
+prima/dopo: prima stack-overflow in `policy_decision`, dopo nessun errore e
+stessi valori numerici; il v1 `GTP-AHKHQH-003` produce lo stesso report di
+prima del fix.
 
 ## Esecuzione
 
@@ -78,6 +146,58 @@ averaging, certificazione exact BR finale e finalizzazione della soluzione.
 Esclude preparazione del tree/layout, avvio del processo e scrittura JSON. Il
 wall time comprensivo della preparazione viene pubblicato separatamente. Ogni
 run parte senza checkpoint o backing file condiviso e usa al massimo 6 thread.
+
+## Nuovi benchmark dai valori dei markdown (2026-08-02)
+
+La tabella di parità 2026-08-02 (più sotto) contiene i valori combo-per-combo
+dei due run GTO+ v1.6.9 dello scenario `Ah Kh Qh`: oltre ai valori arrotondati
+già registrati in `003` (`19,15 / 21,65 / 17,51`), riporta i valori precisi di
+entrambi i profili. Da questi sono state create due specifiche v2 senza nuovi
+export:
+
+- `GTP-AHKHQH-103` — profilo operativo (1,71 s, dEV 0,98%, 8 thread GTO+):
+  target 1%, export combo-per-combo completo di `docs/specifications/gtoplus_specs.md`
+  (4 nodi flop): EV `19,1588 / 17,5107 / 21,6597 / 11,8959`, root bet
+  `7,102/36 = 19,7278%`, frequenze BTN dopo bet (`37,4 / 62,6 / 0,0`), BTN dopo
+  check (`bet 25,7% / check 74,3%`) e CO dopo check-bet (`raise 3,75% / call
+  56,3% / fold 40,0%`). GTOSD: `correctness=pass` (root EV delta `-0,0372
+  ante`), 80 iterazioni, 8 thread allineati a GTO+.
+- `GTP-AHKHQH-104` — profilo stretto (4,20 s, dEV 0,19%): target 0,19%, EV
+  `19,1581 / 21,6682 / 17,1176`, root bet `6,487/36 = 18,0194%`; frequenze BTN
+  non esportate per questo run (nodi solo-EV). GTOSD: `correctness=pass` (root
+  EV delta `-0,0077 ante`), converge a 180 iterazioni (dEV 0,1898%), 8 thread.
+
+Entrambe hanno `metadata_complete: false` (restano da registrare turn e river
+dell'action tree GTO+; l'unità della memoria è confermata come MB decimali, e
+per `104` la memoria è assunta uguale al run operativo, stesso albero). Le
+fixture usano lo stesso `expected_layout` di `003` (stesso albero).
+
+### Metadati del tree builder (completati 2026-08-05)
+
+L'utente ha dichiarato le due impostazioni mancanti del tree builder GTO+:
+turn e river usano le **stesse size del flop** (50% pot) e l'all-in scatta
+**solo quando la bet size supera lo stack rimanente** (regola naturale; la
+soglia 150% era un'inferenza non confermata ed è stata rimossa). Questa
+correzione ha cambiato l'albero (`165.774` nodi fisici) e i valori del
+benchmark; vedi la voce `2026-08-05` nel journey. `101` resta
+`metadata_complete: true` (fonte esterna completa per il solo flop); `003`,
+`103` e `104` restano `false` perché l'action tree turn/river non è esportato
+nodo per nodo — non blocca alcun gate.
+
+## Gate di correttezza: root EV (dal 2026-08-02)
+
+`correctness_passed` è deciso da convergenza, layout/fingerprint e dall'EV GTO+
+del **nodo di riferimento del gate**: per `GTP-AHKHQH-003` e per le specifiche
+v2 senza `gate_node` esplicito è il root dell'albero (path vuoto), l'unico EV
+comparabile in modo causale (vedi "Parità del root EV" più sotto). Gli EV BTN
+condizionali e le frequenze restano pubblicati nel report e nel summary come
+**diagnostica** (`ev_correctness_passed`, `action_frequency_correctness_passed`)
+ma non decidono `correctness_passed`: a posteriori root differenti, due profili
+con la stessa strategia root non definiscono lo stesso subgame condizionale.
+Con questo gate `GTP-AHKHQH-003` risulta `correctness=pass` (root EV
+`-0,0284 ante`, tolleranza `0,05`). Il gate tempo (`≤ 1,9 s`) e la
+registrazione completa dei metadati GTO+ (`metadata_complete`) restano
+separati e pendenti per `003`.
 
 ## Parità del root EV e posteriori BTN — 2026-08-02
 
@@ -184,34 +304,34 @@ La fixture `002` è ritirata. Applicava la soglia all-in a
 `All-in 100`. L'ispezione della soluzione GTO+ v1.6.9 mostra invece, dopo
 `CO bet 20`, tre azioni: `fold`, `call 20`, `raise 60`; l'all-in non è presente.
 
-`003` applica la condizione stretta allo stack completo rispetto al pot prima
-dell'azione. I golden diventano: `112.848` nodi fisici, `31.461` nodi canonici,
-`250.704` infoset, `526.872` action entry, fingerprint
-`fnv1a64:001a19fa48cd8b1e` e `4.214.976 byte` di stato solver `float32`.
+`003` applica la regola all-in naturale (all-in solo quando la bet size supera lo
+stack rimanente; correzione 2026-08-05, vedi il journey). I golden diventano:
+`165.774` nodi fisici, `46.065` nodi canonici, `385.980` infoset, `834.636`
+action entry, fingerprint `fnv1a64:9e42ca23963f718b` e `6.677.088 byte` di
+stato solver `float32`.
 
 Cinque processi Release indipendenti hanno prodotto:
 
 | Run | Iterazioni | dEV finale | Tempo `Run Solver` |
 |---:|---:|---:|---:|
-| 1 | 80 | 0,695544% | 2,8812251 s |
-| 2 | 80 | 0,695544% | 2,7197086 s |
-| 3 | 80 | 0,695544% | 2,8186997 s |
-| 4 | 80 | 0,695544% | 2,6386802 s |
-| 5 | 80 | 0,695544% | 2,6308951 s |
+| 1 | 80 | 0,674155% | 2,973 s |
+| 2 | 80 | 0,674155% | 3,048 s |
+| 3 | 80 | 0,674155% | 3,128 s |
+| 4 | 80 | 0,674155% | 3,268 s |
+| 5 | 80 | 0,674155% | 3,271 s |
 
-Mediana `2,7197086 s`, p95 `2,8812251 s`, speed score `62,874383%` **FAIL**.
-Lo stato solver è `4.214.976 byte`, memory score `189,799420%` **PASS**.
+Mediana `3,128 s`, p95 `3,271 s`, speed score `54,34%` **FAIL** (gate 1,9 s).
+Lo stato solver è `6.677.088 byte`, memory score `83,46%` **PASS**.
 
-| Check EV flop | GTO+ | GTOSD a dEV 0,696% | Delta | Stato ±0,5 ante |
+| Check EV flop | GTO+ | GTOSD a dEV 0,674% | Delta | Stato |
 |---|---:|---:|---:|---|
-| CO root | 19,15 | 19,121570 | -0,028430 | PASS |
-| BTN dopo check CO | 21,65 | 22,201691 | +0,551691 | **FAIL** |
-| BTN dopo bet 20 CO | 17,51 | 16,770667 | -0,739333 | **FAIL** |
+| CO root (gate) | 19,15 | 19,112908 | -0,037092 | PASS |
+| BTN dopo check CO | 21,65 | 22,083289 | +0,433289 | diagnostico |
+| BTN dopo bet 20 CO | 17,51 | 17,360028 | -0,149972 | diagnostico |
 
-Le frequenze non coincidono: GTOSD usa root bet `24,36%` contro `19,7%` e
-BTN raise 60 `11,49%` contro `0,0%`. Un probe GTOSD a 1.000 iterazioni
-(`dEV 0,011334%`) porta i delta BTN a `+0,768551` e `-1,513825 ante`; la
-divergenza quindi non è un arresto prematuro e non è una normalizzazione EV.
+Le frequenze non coincidono ancora pienamente: root bet `24,36%` contro
+`19,7%`; il root lock diagnostico F10.4 (2026-08-05) porta i delta BTN a
+`+0,0348` / `+0,0366` — vedi il journey.
 
 L'utente ha confermato che la selezione GTO+ “With only 2 bets left, get the
 money in smoothly” era disabilitata. Lo smoothing geometrico è quindi escluso
@@ -230,13 +350,12 @@ conteggi, action entry, dEV, frequenze ed EV di `raise_depth=1`. Con pot 40,
 stack 100 e size 50%, gli ulteriori raise raggiungibili sono già assorbiti dalla
 policy all-in; il cap dei raise non spiega la divergenza.
 
-### Sweep delle quattro interpretazioni della soglia all-in
+### Sweep delle quattro interpretazioni della soglia all-in (storico)
 
-Lo sweep mantiene invariati fixture, size, `raise_depth=1`, confronto stretto
-`<150%`, `smoothly=false`, CFR+ exact, averaging delay 20 e target dEV 1%.
-Al nodo osservato dopo `CO bet 20`, il pot corrente è 60, lo stack BTN è 100,
-il call è 20, il pot dopo il call è 80 e lo stack aggiuntivo disponibile dopo
-il call è 80.
+Lo sweep del 2026-08-02 è conservato come registrazione storica: nessuna delle
+quattro formule A-D è la regola GTO+. La correzione 2026-08-05 (dichiarazione
+utente) stabilisce la regola naturale — all-in solo quando la bet size supera
+lo stack rimanente — che sostituisce l'interpretazione A. Vedi il journey.
 
 | ID | Rapporto sottoposto a soglia | Rapporto al nodo BTN | Azioni BTN | Nodi fisici | Action entry | dEV | EV CO / BTN-check / BTN-bet | Delta EV massimo |
 |---|---|---:|---|---:|---:|---:|---|---:|

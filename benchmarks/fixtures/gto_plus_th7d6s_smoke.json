@@ -1,0 +1,89 @@
+{
+  "schema": "gtosd.gto_plus_convergence_benchmark.v2",
+  "benchmark_id": "GTP-TH7D6S-999",
+  "source": "GTO+",
+  "fixture": {
+    "variant": "short_deck_hu_postflop",
+    "deck": "36_cards_6_to_ace",
+    "flop": [
+      "Th",
+      "7d",
+      "6s"
+    ],
+    "initial_pot_antes": 19,
+    "effective_stack_antes": 92,
+    "bet_size_percent_pot": 50,
+    "raise_size_percent_pot": 50,
+    "maximum_raises_per_street": 4,
+    "automatic_all_in": "disabled",
+    "automatic_all_in_strict_boundary": false,
+    "final_bet_smoothing": "disabled",
+    "rake_percent": 0,
+    "range_co": "[73.0]77[/73.0],88,99,[99.0]97s[/99.0],98s,[52.0]A7s[/52.0],A8s,A9s,[97.0]AJo[/97.0],[1.0]AJs[/1.0],AQo,[67.0]AQs[/67.0],[60.0]ATo[/60.0],[0.0]ATs[/0.0],[62.0]J8s[/62.0],J9s,JJ,JTo,[93.0]JTs[/93.0],[55.0]KJo[/55.0],KJs,[73.0]KK[/73.0],[65.0]KQo[/65.0],KQs,[29.0]KTo[/29.0],KTs,[66.0]Q9s[/66.0],[58.0]QJo[/58.0],QJs,QQ,[55.0]QTo[/55.0],QTs,T8s,[54.0]T9o[/54.0],[94.0]T9s[/94.0],TT",
+    "range_btn": "[3.0]86o[/3.0],[0.0]96o[/0.0],[15.0]96s[/15.0],[3.0]97o[/3.0],[13.0]97s[/13.0],[7.0]98o[/7.0],[23.0]A6o[/23.0],[27.0]A7o[/27.0],[0.0]A7s[/0.0],[15.0]A8o[/15.0],[17.0]A9o[/17.0],AA,[1.0]AJo[/1.0],[48.0]AKo[/48.0],AKs,[5.0]AQo[/5.0],[35.0]AQs[/35.0],[17.0]ATo[/17.0],[7.0]J7o[/7.0],[2.0]J7s[/2.0],[18.0]J8o[/18.0],[25.0]J8s[/25.0],[19.0]J9o[/19.0],[1.0]J9s[/1.0],[4.0]JJ[/4.0],[15.0]JTo[/15.0],[0.0]K6o[/0.0],[3.0]K7o[/3.0],[9.0]K8o[/9.0],[8.0]K9o[/8.0],[9.0]KJo[/9.0],[79.0]KK[/79.0],[21.0]KQo[/21.0],[17.0]KTo[/17.0],[5.0]Q8o[/5.0],[11.0]Q9o[/11.0],[29.0]QJo[/29.0],[34.0]QQ[/34.0],[13.0]QTo[/13.0],[6.0]T6o[/6.0],[2.0]T6s[/2.0],[12.0]T7o[/12.0],[2.0]T7s[/2.0],[19.0]T8o[/19.0],[22.0]T9o[/22.0],[7.0]TT[/7.0]"
+  },
+  "gtosd_run": {
+    "maximum_iterations": 5,
+    "certification_interval": 1,
+    "averaging_delay": 0,
+    "parallel_action_depth": 5,
+    "maximum_solver_threads": 6,
+    "independent_processes": 5,
+    "timer_scope": "run_solver"
+  },
+  "gto_plus_reference": {
+    "elapsed_seconds": 17.66,
+    "solver_memory_bytes": 399000000,
+    "memory_unit": "decimal_mb",
+    "target_dev_percent": 1.0,
+    "target_definition": "maximum unilateral best-response gain divided by the initial pot",
+    "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed, same machine as GTOSD benchmark",
+    "timing_scope": "click on Run Solver, tree already prepared, until complete consultable solution",
+    "metadata_complete": false,
+    "gate_node": "flop_co_root",
+    "ev_absolute_tolerance_antes": 0.05,
+    "action_frequency_absolute_tolerance_fraction": 0.01,
+    "display_precision_percent": 0.1,
+    "reference_nodes": [
+      {
+        "id": "flop_co_root",
+        "path": [],
+        "player": 0,
+        "ev_antes": 8.22198,
+        "actions": {
+          "check": 0.951,
+          "bet_9": 0.0491
+        }
+      },
+      {
+        "id": "flop_btn_after_co_check",
+        "path": [
+          "check"
+        ],
+        "player": 1,
+        "ev_antes": 11.0269
+      },
+      {
+        "id": "flop_btn_after_co_bet_9",
+        "path": [
+          "bet_9"
+        ],
+        "player": 1,
+        "ev_antes": 5.98754,
+        "actions": {
+          "fold": 0.202,
+          "call_9": 0.594,
+          "raise_28": 0.204
+        }
+      }
+    ]
+  },
+  "expected_layout": {
+    "game_fingerprint": "fnv1a64:db01987c7570ec46",
+    "physical_public_nodes": 378834,
+    "canonical_public_nodes": 0,
+    "information_sets": 36596832,
+    "actions": 83318592,
+    "solver_state_bytes": 666548736
+  }
+}

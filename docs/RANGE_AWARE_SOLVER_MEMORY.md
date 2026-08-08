@@ -109,7 +109,9 @@ range-aware è:
 | Scratch conservativo | 1.426.616 |
 
 La dicitura GTO+ è quindi più vicina al solo stato persistente del solving che
-al peak RSS dell'intero processo. Il percorso accuratezza resta `float64`
+al peak RSS dell'intero processo (l'utente ha confermato che GTO+ usa **MB
+decimali**: 8 MB = 8.000.000 byte, confronto diretto in byte con lo stato
+solver GTOSD). Il percorso accuratezza resta `float64`
 (`4,01 MB`); il benchmark GTO+ seleziona esplicitamente stato `float32` con
 calcolo `float64` (`2,005632 MB`) e supera il gate memoria. Delta regret,
 indici, tree e peak RSS restano pubblicati separatamente e non vengono nascosti

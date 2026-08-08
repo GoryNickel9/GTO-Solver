@@ -24,18 +24,30 @@ preparato non possono essere inclusi da un lato e esclusi dall'altro.
 
 ## Fixture di parità
 
-`GTP-AHKHQH-003` è il benchmark comparativo corrente. Lo script
-`tools/run_gto_plus_convergence_benchmark.ps1` avvia processi indipendenti e
-produce report versionati. Il confronto primario usa la mediana di cinque run e
-pubblica anche p95 e ogni campione.
+`GTP-AHKHQH-003` è il benchmark comparativo corrente (specifica v1 congelata).
+Lo script `tools/run_gto_plus_convergence_benchmark.ps1` avvia processi
+indipendenti e produce report versionati. Il confronto primario usa la mediana
+di cinque run e pubblica anche p95 e ogni campione.
 
-Baseline documentata:
+La specifica generica v2 (`gtosd.gto_plus_convergence_benchmark.v2`) permette
+di registrare nuovi benchmark di convergenza senza modifiche al codice: board,
+range, stack-to-pot, sizing, raise depth e nodi di riferimento EV/frequenze
+sono letti dalla fixture (`benchmarks/fixtures/gto_plus_ahkhqh_101.json` è la
+validazione v2 dello scenario 003). Ogni nuovo benchmark mantiene il proprio
+riferimento GTO+ e i propri gate.
+
+Baseline documentata (re-baseline 2026-08-05, regola all-in naturale):
 
 - GTO+ operativo: 1,71 s a dEV 0,98%, memoria solver 8 MB;
-- GTOSD: mediana 2,7197086 s, p95 2,8812251 s;
-- GTOSD state `Float32`: 4.214.976 byte;
+- GTOSD: mediana 3,128 s, p95 3,271 s (cinque run, albero 165.774 nodi);
+- GTOSD state `Float32`: 6.677.088 byte (più vicino agli 8 MB GTO+ del
+  precedente 4.214.976 byte);
 - gate tempo `<=1,900000 s`: FAIL;
-- gate memoria `<=8.888.889 byte`: PASS.
+- gate memoria `<=8.888.889 byte`: PASS;
+- gate correttezza (`correctness_gate`, EV del nodo root): PASS dal 2026-08-02;
+  gli EV BTN condizionali e le frequenze restano diagnostica (con il root lock
+  F10.4 i delta BTN scendono a +0,0348 / +0,0366 ante,
+  vedi GTO_PLUS_PARITY_JOURNEY.md).
 
 Il tentativo GTO+ a target 0,10% è censurato a `>245 s` e non sostituisce il
 riferimento operativo senza ridefinire l'intero protocollo.

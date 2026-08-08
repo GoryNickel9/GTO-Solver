@@ -1,0 +1,199 @@
+{
+  "version": 1,
+  "flop": [
+    "Ah",
+    "Kh",
+    "Qh"
+  ],
+  "initial_pot_units": 400000,
+  "effective_stack_units": 1000000,
+  "rake": {
+    "enabled": true,
+    "percentage_bp": 0,
+    "cap_units": 0,
+    "no_flop_no_drop": true,
+    "minimum_pot_units": 0
+  },
+  "streets": {
+    "flop": {
+      "co": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      },
+      "btn": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      }
+    },
+    "turn": {
+      "co": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      },
+      "btn": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      }
+    },
+    "river": {
+      "co": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      },
+      "btn": {
+        "lead": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "after_check": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 0,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        },
+        "facing_bet": {
+          "sizes_bp": [
+            5000
+          ],
+          "raise_depth": 1,
+          "all_in_mode": "disabled",
+          "all_in_threshold_bp": 0,
+          "minimum_bet_units": 10000
+        }
+      }
+    }
+  }
+}

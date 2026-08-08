@@ -1,0 +1,89 @@
+{
+  "schema": "gtosd.gto_plus_convergence_benchmark.v2",
+  "benchmark_id": "GTP-AHKHQH-101",
+  "source": "GTO+",
+  "fixture": {
+    "variant": "short_deck_hu_postflop",
+    "deck": "36_cards_6_to_ace",
+    "initial_pot_antes": 40,
+    "effective_stack_antes": 100,
+    "flop": [
+      "Ah",
+      "Kh",
+      "Qh"
+    ],
+    "range_co": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo",
+    "range_btn": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo",
+    "bet_size_percent_pot": 50,
+    "raise_size_percent_pot": 50,
+    "maximum_raises_per_street": 1,
+    "automatic_all_in": "disabled",
+    "automatic_all_in_strict_boundary": false,
+    "final_bet_smoothing": "disabled",
+    "rake_percent": 0
+  },
+  "gtosd_run": {
+    "maximum_iterations": 200,
+    "certification_interval": 20,
+    "averaging_delay": 20,
+    "parallel_action_depth": 5,
+    "maximum_solver_threads": 6,
+    "independent_processes": 5,
+    "timer_scope": "run_solver"
+  },
+  "gto_plus_reference": {
+    "elapsed_seconds": 1.71,
+    "solver_memory_bytes": 8000000,
+    "target_dev_percent": 1.0,
+    "target_definition": "maximum unilateral best-response gain divided by the initial pot",
+    "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed, same machine as GTOSD benchmark",
+    "timing_scope": "click on Run Solver, tree already prepared, until complete consultable solution",
+    "metadata_complete": true,
+    "memory_unit": "decimal_mb",
+    "gate_node": "flop_co_root",
+    "ev_absolute_tolerance_antes": 0.05,
+    "action_frequency_absolute_tolerance_fraction": 0.01,
+    "display_precision_percent": 0.1,
+    "reference_nodes": [
+      {
+        "id": "flop_co_root",
+        "path": [],
+        "player": 0,
+        "ev_antes": 19.15,
+        "actions": {
+          "check": 0.803,
+          "bet_20": 0.197
+        }
+      },
+      {
+        "id": "flop_btn_after_co_check",
+        "path": [
+          "check"
+        ],
+        "player": 1,
+        "ev_antes": 21.65
+      },
+      {
+        "id": "flop_btn_after_co_bet_20",
+        "path": [
+          "bet_20"
+        ],
+        "player": 1,
+        "ev_antes": 17.51,
+        "actions": {
+          "fold": 0.374,
+          "call_20": 0.626,
+          "raise_60": 0.0
+        }
+      }
+    ]
+  },
+  "expected_layout": {
+    "game_fingerprint": "fnv1a64:9e42ca23963f718b",
+    "physical_public_nodes": 165774,
+    "canonical_public_nodes": 46065,
+    "information_sets": 385980,
+    "actions": 834636,
+    "solver_state_bytes": 6677088
+  }
+}

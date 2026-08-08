@@ -136,6 +136,7 @@ install(FILES ${PROJECT_BINARY_DIR}/generated/gtosd/version.hpp
 install(FILES schemas/postflop_tree_config.schema.json
               schemas/gto_plus_reference.schema.json
               schemas/gto_plus_convergence_benchmark.schema.json
+              schemas/gto_plus_convergence_benchmark.v2.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
 install(DIRECTORY benchmarks/fixtures/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)

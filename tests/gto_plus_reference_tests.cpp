@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -30,7 +33,6 @@ gtosd::PostflopTreeConfig make_reference_config() {
   config.rake.percentage = gtosd::RangeWeight::from_basis_points(0).value();
   config.rake.cap = gtosd::Money{};
   const auto half_pot = gtosd::PotPercentage::from_basis_points(5'000).value();
-  const auto go_all_in_threshold = gtosd::PotPercentage::from_basis_points(15'000).value();
   for (auto &street : config.streets) {
     for (auto &player : street.players) {
       player[static_cast<std::size_t>(gtosd::BettingScenario::Lead)].aggressive_sizes = {half_pot};
@@ -40,8 +42,7 @@ gtosd::PostflopTreeConfig make_reference_config() {
           half_pot};
       for (auto &scenario : player) {
         scenario.raise_depth = 0U;
-        scenario.all_in_mode = gtosd::AllInMode::Go;
-        scenario.all_in_threshold = go_all_in_threshold;
+        scenario.all_in_mode = gtosd::AllInMode::Disabled;
       }
       player[static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)].raise_depth = 1U;
     }
@@ -70,12 +71,15 @@ gtosd::PostflopRanges make_reference_ranges() {
 }
 
 void test_exact_reference_build() {
-  constexpr std::uint64_t expected_nodes = 112'848U;
-  constexpr std::uint64_t expected_physical_infosets = 1'366'272U;
-  constexpr std::uint64_t expected_physical_actions = 2'871'072U;
-  constexpr std::uint64_t expected_canonical_infosets = 250'704U;
-  constexpr std::uint64_t expected_canonical_actions = 526'872U;
-  constexpr std::uint64_t expected_canonical_public_nodes = 31'461U;
+  // Natural all-in rule (dichiarazione utente 2026-08-05): all-in solo quando
+  // la bet size supera lo stack rimanente. Rimossa la soglia 150% (inferenza
+  // mai confermata). Albero: 165.774 nodi fisici / 46.065 canonici.
+  constexpr std::uint64_t expected_nodes = 165'774U;
+  constexpr std::uint64_t expected_physical_infosets = 2'104'992U;
+  constexpr std::uint64_t expected_physical_actions = 4'551'552U;
+  constexpr std::uint64_t expected_canonical_infosets = 385'980U;
+  constexpr std::uint64_t expected_canonical_actions = 834'636U;
+  constexpr std::uint64_t expected_canonical_public_nodes = 46'065U;
   constexpr std::uint64_t expected_action_buffer_bytes =
       expected_canonical_actions * 2U * sizeof(double);
 
@@ -130,7 +134,7 @@ void test_exact_reference_build() {
   require(solved.value().checkpoint.cumulative_regret.size() == expected_canonical_actions &&
               solved.value().checkpoint.cumulative_strategy.size() == expected_canonical_actions,
           "checkpoint stores only lossless canonical action entries");
-  require(expected_action_buffer_bytes == 8'429'952U,
+  require(expected_action_buffer_bytes == 13'354'176U,
           "two canonical float64 CFR buffers have the exact corrected reference byte count");
   auto float32_options = options;
   float32_options.state_precision = gtosd::PostflopStatePrecision::Float32;
@@ -142,7 +146,7 @@ void test_exact_reference_build() {
                   expected_canonical_actions &&
               float32_solved.value().checkpoint.cumulative_strategy_float32.size() ==
                   expected_canonical_actions,
-          "float32 performance state stores both canonical buffers in 4.214976 MB");
+          "float32 performance state stores both canonical buffers in 6.677088 MB");
   const auto float32_certified =
       gtosd::certify_postflop_checkpoint(config, ranges, float32_solved.value().checkpoint);
   const auto float32_analysis =
@@ -333,12 +337,130 @@ void test_lossless_isomorphism_matches_physical_cfr() {
             << " maximum_strategy_difference=" << maximum_strategy_difference << '\n';
 }
 
+gtosd::DiagnosticRootLock make_external_root_lock() {
+  // F10.4 input immutabile: le 36 righe combo-per-combo Bet 20 / Check del CO
+  // root esportate da GTO+ v1.6.9 (run operativo dEV 0.98%, 8 threads),
+  // trascritte da docs/specifications/gtoplus_specs.md (tabella CO FI FLOP).
+  struct Row {
+    const char *combo;
+    double bet_20;
+    double check;
+  };
+  static constexpr std::array<Row, 36> rows{
+      {{"AsAd", 0.123, 0.877}, {"AsAc", 0.123, 0.877}, {"AdAc", 0.123, 0.877},
+       {"KsKc", 0.573, 0.427}, {"KdKc", 0.573, 0.427}, {"KsKd", 0.573, 0.427},
+       {"AcKc", 0.12, 0.88},   {"AsKs", 0.12, 0.88},   {"AdKd", 0.12, 0.88},
+       {"AdKs", 0.12, 0.88},   {"AcKs", 0.12, 0.88},   {"AsKd", 0.12, 0.88},
+       {"AcKd", 0.12, 0.88},   {"AsKc", 0.12, 0.88},   {"AdKc", 0.12, 0.88},
+       {"QsQc", 0.41, 0.59},   {"QdQc", 0.41, 0.59},   {"QsQd", 0.41, 0.59},
+       {"AsQs", 0.085, 0.915}, {"AdQd", 0.085, 0.915}, {"AcQc", 0.085, 0.915},
+       {"AdQs", 0.085, 0.915}, {"AcQd", 0.085, 0.915}, {"AsQc", 0.085, 0.915},
+       {"AdQc", 0.085, 0.915}, {"AsQd", 0.085, 0.915}, {"AcQs", 0.085, 0.915},
+       {"KcQc", 0.215, 0.785}, {"KsQs", 0.215, 0.785}, {"KdQd", 0.215, 0.785},
+       {"KdQs", 0.215, 0.785}, {"KcQs", 0.215, 0.785}, {"KsQd", 0.215, 0.785},
+       {"KcQd", 0.215, 0.785}, {"KsQc", 0.215, 0.785}, {"KdQc", 0.215, 0.785}}};
+  gtosd::DiagnosticRootLock lock;
+  lock.source_description =
+      "GTO+ v1.6.9 operational run (dEV 0.98%, 8 threads), CO root Bet 20 / Check rows";
+  lock.source_dev_percent = 0.98;
+  for (const auto &row : rows) {
+    const auto first = gtosd::parse_card(std::string_view(row.combo, 2)).value();
+    const auto second = gtosd::parse_card(std::string_view(row.combo + 2, 2)).value();
+    gtosd::DiagnosticRootLockEntry entry;
+    entry.combo = {std::min(first, second), std::max(first, second)};
+    entry.action_labels = {"check", "bet_20"};
+    entry.probabilities = {row.check, row.bet_20};
+    lock.entries.push_back(std::move(entry));
+  }
+  return lock;
+}
+
+void test_external_root_lock_diagnostic() {
+  // F10.4 permanent validation: controlled posteriori with the GTO+ CO root
+  // strategy locked. The unconstrained fixture must stay untouched; the locked
+  // probabilities must be reproduced exactly; the constrained game converges;
+  // the root posteriori stay zero-sum.
+  const auto config = make_reference_config();
+  const auto ranges = make_reference_ranges();
+  const auto lock = make_external_root_lock();
+
+  gtosd::PostflopSolveOptions unconstrained_options;
+  unconstrained_options.iterations = 1U;
+  const auto unconstrained =
+      gtosd::solve_postflop_exact(config, ranges, unconstrained_options).value();
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 30U;
+  options.averaging_delay = 3U;
+  options.certification_interval = 1U;
+  options.diagnostic_root_lock = &lock;
+  const auto solved = gtosd::solve_postflop_exact(config, ranges, options).value();
+  const auto &final = solved.convergence.back();
+
+  require(solved.checkpoint.game_fingerprint == unconstrained.checkpoint.game_fingerprint,
+          "the root lock does not change the game fingerprint (F10.4 point 2)");
+  require(solved.checkpoint.completed_iterations == 30U, "constrained solve completes");
+
+  // Point 3: zero-sum root recomposition and Bet/Check posteriori generated by
+  // the lock.
+  require(std::abs(final.profile_value_antes[0] + final.profile_value_antes[1]) < 1.0e-9,
+          "constrained profile is zero-sum (F10.4 point 3)");
+  require(std::abs(final.expected_payoff_sum_antes) < 1.0e-9,
+          "expected payoff sum is zero (F10.4 point 3)");
+
+  // Point 4: downstream solve accuracy at least equal to the reference probe
+  // (the unconstrained 003 probe converges to 0.695544% at 80 iterations; the
+  // constrained game must stay in the same regime at 30 iterations).
+  const auto deviation = gtosd::normalized_max_deviation_gain(final, config.initial_pot).value();
+  require(deviation < 0.10, "constrained game converges (F10.4 point 4)");
+  require(std::isfinite(final.normalized_nash_conv), "constrained NashConv is finite");
+
+  // Point 1: exact combo coverage and locked-probability reproduction at the
+  // tree root under the constrained solve.
+  const auto prepared = gtosd::prepare_postflop_tree(config, ranges, true, true, true).value();
+  const auto public_tree = gtosd::prepared_postflop_public_tree(prepared);
+  const auto analysis =
+      gtosd::analyze_postflop_node(*prepared, solved.checkpoint, public_tree->root).value();
+  require(analysis.combos.size() == lock.entries.size(),
+          "root analysis covers exactly the locked combos (F10.4 point 1)");
+  double maximum_probability_delta = 0.0;
+  const auto combos = gtosd::all_combos();
+  for (const auto &entry : lock.entries) {
+    const auto combo_it = std::ranges::find(combos, entry.combo);
+    require(combo_it != combos.end(), "locked combo is part of the game");
+    const auto combo_id = static_cast<gtosd::ComboId>(std::distance(combos.begin(), combo_it));
+    const auto combo_analysis =
+        std::ranges::find_if(analysis.combos, [combo_id](const auto &combo) {
+          return combo.combo == combo_id;
+        });
+    require(combo_analysis != analysis.combos.end(), "locked combo has a root posterior");
+    const auto bet_action = std::ranges::find_if(
+        analysis.actions, [](const gtosd::Action &action) {
+          return action.type == gtosd::ActionType::Bet &&
+                 action.amount.units() == 20 * gtosd::Money::units_per_ante;
+        });
+    require(bet_action != analysis.actions.end(), "root exposes the locked bet action");
+    const auto bet_probability =
+        combo_analysis->action_probabilities[static_cast<std::size_t>(
+            std::distance(analysis.actions.begin(), bet_action))];
+    maximum_probability_delta =
+        std::max(maximum_probability_delta, std::abs(bet_probability - entry.probabilities[1]));
+  }
+  require(maximum_probability_delta < 1.0e-4,
+          "locked root probabilities are reproduced per combo (F10.4 point 1)");
+  std::cout << "EXTERNAL_ROOT_LOCK_TEST=PASS"
+            << " fingerprint=" << solved.checkpoint.game_fingerprint
+            << " maximum_probability_delta=" << maximum_probability_delta
+            << " constrained_dev_percent=" << deviation * 100.0 << '\n';
+}
+
 } // namespace
 
 int main() {
   try {
     test_exact_reference_build();
     test_lossless_isomorphism_matches_physical_cfr();
+    test_external_root_lock_diagnostic();
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "GTO_PLUS_REFERENCE_TEST=FAIL assertions=" << assertions

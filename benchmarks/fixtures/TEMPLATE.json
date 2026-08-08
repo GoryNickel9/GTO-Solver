@@ -1,0 +1,111 @@
+{
+  "schema": "gtosd.gto_plus_convergence_benchmark.v2",
+  "benchmark_id": "GTP-TEMPLATE-100",
+  "source": "GTO+",
+  "fixture": {
+    "variant": "short_deck_hu_postflop",
+    "deck": "36_cards_6_to_ace",
+    "flop": ["Ah", "Kh", "Qh"],
+    "initial_pot_antes": 40,
+    "effective_stack_antes": 100,
+    "bet_size_percent_pot": 50,
+    "raise_size_percent_pot": 50,
+    "maximum_raises_per_street": 1,
+    "automatic_all_in": "disabled",
+    "automatic_all_in_strict_boundary": false,
+    "final_bet_smoothing": "disabled",
+    "rake_percent": 0,
+    "range_co": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo",
+    "range_btn": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo"
+  },
+  "gtosd_run": {
+    "maximum_iterations": 200,
+    "certification_interval": 20,
+    "averaging_delay": 20,
+    "parallel_action_depth": 5,
+    "maximum_solver_threads": 6,
+    "independent_processes": 5,
+    "timer_scope": "run_solver"
+  },
+  "gto_plus_reference": {
+    "elapsed_seconds": 1.71,
+    "solver_memory_bytes": 8000000,
+    "memory_unit": "decimal_mb",
+    "target_dev_percent": 1.0,
+    "target_definition": "maximum unilateral best-response gain divided by the initial pot",
+    "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed, same machine as GTOSD benchmark",
+    "timing_scope": "click on Run Solver, tree already prepared, until complete consultable solution",
+    "metadata_complete": false,
+    "gate_node": "flop_co_root",
+    "ev_absolute_tolerance_antes": 0.05,
+    "action_frequency_absolute_tolerance_fraction": 0.01,
+    "display_precision_percent": 0.1,
+    "reference_nodes": [
+      {
+        "id": "flop_co_root",
+        "path": [],
+        "player": 0,
+        "ev_antes": 19.15,
+        "actions": {
+          "check": 0.803,
+          "bet_20": 0.197
+        }
+      },
+      {
+        "id": "flop_btn_after_co_check",
+        "path": ["check"],
+        "player": 1,
+        "ev_antes": 21.65
+      },
+      {
+        "id": "flop_btn_after_co_bet",
+        "path": ["bet_20"],
+        "player": 1,
+        "ev_antes": 17.51,
+        "actions": {
+          "fold": 0.374,
+          "call_20": 0.626,
+          "raise_60": 0.0
+        }
+      }
+    ]
+  },
+  "expected_layout": {
+    "game_fingerprint": "fnv1a64:9e42ca23963f718b",
+    "physical_public_nodes": 165774,
+    "canonical_public_nodes": 46065,
+    "information_sets": 385980,
+    "actions": 834636,
+    "solver_state_bytes": 6677088
+  },
+  "_how_to_fill": {
+    "_intro": "Template benchmark v2: i valori qui sotto sono gli ESEMPI di GTP-AHKHQH-101. Copia questo file in benchmarks/fixtures/gto_plus_<board>_<nnn>.json e cambia SOLO i campi elencati qui. Guida completa: docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md. La chiave _how_to_fill (prefisso _) è ignorata dal CLI.",
+    "benchmark_id": "Cambia: GTP-<BOARD>-<NNN>, es. GTP-TH7D6S-101 (101+ = serie v2).",
+    "fixture": {
+      "flop": "Le 3 carte del flop, es. [\"Ah\",\"Kh\",\"Qh\"] (carta valida ^[AKQJT9876][shdc]$, mazzo corto 6-A).",
+      "initial_pot_antes": "Pot iniziale in ante (già postato).",
+      "effective_stack_antes": "Stack effettivo in ante.",
+      "bet_size_percent_pot": "Bet size in % del pot (50 = metà pot).",
+      "raise_size_percent_pot": "Raise size in % del pot.",
+      "maximum_raises_per_street": "Profondità raise per strada (AhKhQh: 1; th7d6s: 4).",
+      "range_co": "Range CO: notazione hand class (AA-QQ,AKs-AQs,...) o export GTO+ con pesi ([73.0]77[/73.0]).",
+      "range_btn": "Range BTN (stessa sintassi di range_co).",
+      "_note": "automatic_all_in (disabled), automatic_all_in_strict_boundary (false), final_bet_smoothing (disabled), rake_percent (0): non toccare."
+    },
+    "gtosd_run": {
+      "_note": "Protocollo: normalmente NON si tocca. maximum_iterations è solo un cap di sicurezza: il benchmark passa sulla convergenza (dEV <= target_dev_percent -> stop_reason: converged), non sul numero di iterazioni."
+    },
+    "gto_plus_reference": {
+      "elapsed_seconds": "Tempo GTO+ per il target (base del gate speed).",
+      "solver_memory_bytes": "Memoria GTO+ in byte (MB decimali: 8 MB = 8000000).",
+      "target_dev_percent": "dEV target GTO+ in % (1.0): criterio di convergenza.",
+      "gate_node": "Nodo che decide la correttezza (default: root). Non cambiare.",
+      "ev_absolute_tolerance_antes": "Tolleranza EV base in ante (0.05) per il gate root e per il check EV pesato (tolleranza aggregata = base + budget arrotondamento display).",
+      "reference_nodes": "Nodi di confronto dal GTO+: il root (path [], player 0, EV + frequenze azioni) e i suoi figli diretti (path di 1 elemento, player 1, EV condizionale). Gli id sono generici (es. flop_btn_after_co_bet): è il path a identificare il nodo. Le etichette azione (bet_20, call_9, ...) si copiano dal report di una run di prova.",
+      "_note": "action_frequency_absolute_tolerance_fraction (0.01), display_precision_percent (0.1), target_definition, target_provenance, timing_scope, metadata_complete: normalmente invariati."
+    },
+    "expected_layout": {
+      "_note": "NON si compila a mano: si copiano i 6 valori dal report della run di prova (guida, Passo B). La game_fingerprint è un vincolo esatto: se l'action tree cambia, il gate layout fallisce."
+    }
+  }
+}

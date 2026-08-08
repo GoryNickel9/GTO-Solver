@@ -44,12 +44,22 @@ gto_cli postflop certify <config.json> <checkpoint>
 gto_cli postflop compare-gto-plus <config.json> <checkpoint> <reference.json>
 gto_cli postflop benchmark-gto-plus <specification.json> <report.json>
 gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>
+gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <report.json>
 ```
 
 `solve` e `resume` producono checkpoint e report JSON/Markdown. `certify`
 ricalcola best response e NashConv. `query` restituisce la strategia media per
 nodo/combo. `benchmark-gto-plus` usa lo schema e la fixture versionati; non va
-sostituito con un timing ad hoc.
+sostituito con un timing ad hoc. Accetta sia la specifica v1 congelata
+(`gtosd.gto_plus_convergence_benchmark.v1`, `GTP-AHKHQH-003`) sia la specifica
+generica v2 (`gtosd.gto_plus_convergence_benchmark.v2`), che parametrizza
+board, range, stack, sizing, profondità di raise, regola all-in, parametri di
+run e nodi di riferimento per azione. `root-lock-diagnostic` è il percorso
+diagnostico F10.4 `diagnostic_external_root_lock`: blocca la strategia del nodo
+root CO sulle probabilità esterne combo-per-combo (36 righe Bet 20/Check di
+GTO+ v1.6.9), risolve il gioco vincolato e riporta convergenza del gioco
+vincolato, exploitability del gioco originale ed EV dei nodi di riferimento
+con delta rispetto a GTO+.
 
 ## Storage
 

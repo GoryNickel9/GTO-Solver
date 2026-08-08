@@ -29,7 +29,7 @@ correttezza matematica.
 | Stack effettivo | 100 ante |
 | Bet size | 50% pot per entrambi, flop/turn/river |
 | Raise | 50% pot, massimo uno per street |
-| All-in automatico | `Go all-in if remaining stack < 150% current pot`, confine stretto |
+| All-in automatico | Regola naturale: all-in solo quando la bet size supera lo stack rimanente (correzione 2026-08-05; la soglia `150%` era un'inferenza mai confermata ed è stata rimossa) |
 | Smoothing due bet finali GTO+ | Disabilitato, confermato dall'utente |
 | Rake | 0% |
 | Precisione GTOSD | stato `float32`, calcolo e certificazione `float64` |
@@ -74,14 +74,17 @@ Confermato dall'utente:
 - stesso hardware per GTO+ e GTOSD;
 - Target dEV `1%` nel run da `1,71 s`;
 - timer dal click su `Run Solver`, con albero già preparato, fino alla soluzione
-  completa consultabile.
+  completa consultabile;
+- unità della memoria GTO+: **MB decimali** (8 MB = 8.000.000 byte), quindi il
+  confronto in byte con lo stato solver GTOSD è diretto.
 
 Resta da registrare, senza invalidare il target operativo:
 
-- export o ispezione completa dell'action tree GTO+;
-- unità della memoria GTO+ (`MB` decimali o `MiB`).
+- turn e river dell'action tree GTO+ (il livello flop è registrato: 4 nodi con
+  action set, frequenze ed EV combo-per-combo in
+  `docs/specifications/gtoplus_specs.md`).
 
-Finché questi campi non sono allineati, una misura GTOSD può essere
+Finché questo campo non è allineato, una misura GTOSD può essere
 diagnostica, ma non può essere dichiarata comparazione scientifica definitiva.
 
 ## 4. Definizione del gate 90%
@@ -262,8 +265,52 @@ primo nodo con reach già uguali. In entrambi i casi il lock resta test-only.
 
 **Definition of Done.** Implementazione, fixture esterna versionata, test degli
 input invalidi, run accurato, report JSON riproducibile, aggiornamento di questo
-journey e del benchmark, build Release e suite completa PASS. Al 2026-08-02 la
-fase è **PIANIFICATA, NON IMPLEMENTATA**.
+journey e del benchmark, build Release e suite completa PASS. Al 2026-08-05 la
+fase è **COMPLETATA** — vedi la voce `2026-08-05 — Regola all-in corretta e
+F10.4 completata` nel registro: con la regola all-in naturale e il root locked
+i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
+
+### 2026-08-05 — Regola all-in corretta e F10.4 completata
+
+- **Correzione della regola all-in**: la soglia `Go all-in if remaining stack <
+  150% current pot` era un'inferenza non confermata (interpretazione A dello
+  sweep 2026-08-02). L'utente dichiara che GTO+ non ha tale regola: all-in solo
+  quando la bet size supera lo stack rimanente (regola naturale). Applicata a
+  tutte le strade (flop/turn/river), stesse size 50%.
+- Impatto sull'albero (con range): `165.774` nodi fisici, `46.065` canonici,
+  `385.980` infosets canoniche, `834.636` action entry, stato `6.677.088` byte
+  (più vicino agli 8 MB dichiarati da GTO+ dei `4.214.976` precedenti).
+  Fingerprint di gioco: `fnv1a64:9e42ca23963f718b`.
+- Re-baseline completo: fixture `003` (v1, contratto aggiornato), `101`, `103`,
+  `104` (v2) ri-parametrizzate con la regola naturale e nuovi `expected_layout`;
+  `make_gto_plus_parity_config` e il config del diagnostic allineati.
+- Numeri dopo la correzione (80 iterazioni, senza lock): dEV `0,674155%`,
+  EV CO root `19,1129` (gate PASS), BTN dopo check `22,0833` (delta `+0,433`),
+  BTN dopo bet `17,3600` (delta `-0,150` — prima era `-0,74`): la regola all-in
+  da sola spiega gran parte del mismatch BTN storico.
+- **F10.4 completata**: implementato il root lock diagnostico
+  `diagnostic_external_root_lock` (36 righe combo-per-combo Bet 20/Check del
+  run operativo GTO+ 0,98%, provenienza in `gtoplus_specs.md`, source dEV
+  conservato nel report). Validazione permanente nel reference test:
+  1. copertura esatta delle 36 combo e riproduzione delle probabilità locked
+     (delta massimo `2,2e-16`);
+  2. fingerprint del gioco invariato rispetto alla fixture non vincolata;
+  3. ricomposizione zero-sum del root e posteriori Bet/Check dal lock;
+  4. convergenza del gioco vincolato (dEV `0,203%` a 200 iterazioni, probe
+     non vincolato `0,674%`).
+- Risultato con root locked (200 iterazioni, gioco vincolato convergente):
+  CO root `19,1232` (delta `-0,0356`), BTN dopo check `21,6945` (delta
+  `+0,0348`), BTN dopo bet `17,5473` (delta `+0,0366`), CO dopo check-bet
+  `11,9884` (delta `+0,0925`); frequenze BTN call `64,6%` vs `62,6%` GTO+,
+  fold `34,8%` vs `37,4%`; CO dopo check-bet call `55,2%` vs `56,3%`,
+  raise `4,5%` vs `3,75%`.
+- **Decisione F10.4: PASS**. Con la regola all-in corretta e il mix root CO
+  locked, entrambi gli EV BTN sono entro `±0,05 ante` (non solo `±0,5`):
+  il mismatch storico era principalmente (1) la regola all-in errata e (2) la
+  selezione del mix root/posteriore CO. Il nodo CO dopo check-bet (`+0,0925`)
+  resta il primo candidato del differenziale downstream residuo.
+- Evidenza: `out/f104-root-lock.json`, `out/_nat-101.json`, report dei run
+  re-baseline, `EXTERNAL_ROOT_LOCK_TEST=PASS` nella suite.
 
 ## 8. Registro delle implementazioni
 

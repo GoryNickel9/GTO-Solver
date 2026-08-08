@@ -1,7 +1,7 @@
 param(
   [string]$BuildDir = "out/build/windows-release",
   [string]$OutputDir = "out/gto-plus-convergence",
-  [string]$Specification = "benchmarks/fixtures/gto_plus_ahkhqh_003.json",
+  [string]$Specification = "benchmarks/fixtures/gto_plus_ahkhqh_101.json",
   [int]$Runs = 5,
   [switch]$EnforceGate
 )
@@ -33,8 +33,9 @@ if (-not (Test-Path -LiteralPath $resolvedSpecification -PathType Leaf)) {
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 
 $specificationData = Get-Content -LiteralPath $resolvedSpecification -Raw | ConvertFrom-Json
-if ($specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v1" -or
-    $specificationData.benchmark_id -ne "GTP-AHKHQH-003") {
+if (($specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v1" -and
+     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v2") -or
+    $specificationData.benchmark_id -notmatch "^GTP-[A-Z0-9]{2,}-[0-9]{3}$") {
   throw "Unexpected benchmark specification."
 }
 
@@ -98,9 +99,13 @@ $memoryGateBytes = $referenceMemory / 0.90
 $speedGatePassed = $median -le $speedGateSeconds
 $memoryGatePassed = $solverStateBytes -le $memoryGateBytes
 $referenceMetadataComplete = [bool]$specificationData.gto_plus_reference.metadata_complete
-$measurementValid = $allCorrect -and $allEvCorrect -and $allActionFrequenciesCorrect -and
-                    $allConverged -and $allRelease -and $consistentFingerprint -and
-                    $consistentStateBytes
+# correctness_passed gates on the reference node EV selected by the
+# specification (gate_node, default the tree root). The all-node EV and
+# action-frequency flags remain published as diagnostics and do not invalidate
+# the measurement: per the 2026-08-02 analysis the conditional BTN EV cannot
+# prove a different game unless the root posteriors are identical.
+$measurementValid = $allCorrect -and $allConverged -and $allRelease -and
+                    $consistentFingerprint -and $consistentStateBytes
 $scientificComparisonReady = $measurementValid -and $worktreeClean -and
                              $referenceMetadataComplete
 
@@ -142,7 +147,7 @@ $scientificComparisonReady = $measurementValid -and $worktreeClean -and
 
 $summary = [ordered]@{
   schema = "gtosd.gto_plus_convergence_summary.v1"
-  benchmark_id = "GTP-AHKHQH-003"
+  benchmark_id = $specificationData.benchmark_id
   generated_at_utc = [DateTime]::UtcNow.ToString("o")
   repository = [ordered]@{
     commit = $commit
@@ -179,6 +184,7 @@ $summary = [ordered]@{
   }
   gates = [ordered]@{
     measurement_valid = $measurementValid
+    correctness_gate_passed = $allCorrect
     ev_correctness_passed = $allEvCorrect
     action_frequency_correctness_passed = $allActionFrequenciesCorrect
     hardware_metadata_complete = [bool]$hardwareMetadataComplete

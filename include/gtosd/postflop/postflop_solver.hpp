@@ -34,6 +34,25 @@ struct PostflopCertification;
 struct PostflopCheckpoint;
 class PostflopPreparedTree;
 
+// F10.4 diagnostic external root lock: fixes the tree-root strategy of the
+// CO player to externally observed combo-per-combo probabilities. This is a
+// diagnostic-only constraint (controlled posteriors); it never changes the
+// default unconstrained solver behavior.
+struct DiagnosticRootLockEntry {
+  Combo combo{};
+  std::vector<std::string> action_labels;
+  std::vector<double> probabilities;
+
+  friend bool operator==(const DiagnosticRootLockEntry &, const DiagnosticRootLockEntry &) =
+      default;
+};
+
+struct DiagnosticRootLock {
+  std::string source_description;
+  double source_dev_percent{0.0};
+  std::vector<DiagnosticRootLockEntry> entries;
+};
+
 struct PostflopSolveOptions {
   std::uint64_t iterations{1};
   std::uint64_t averaging_delay{0};
@@ -45,6 +64,10 @@ struct PostflopSolveOptions {
   bool enable_lossless_isomorphism{true};
   bool enable_canonical_public_dag{true};
   std::uint8_t parallel_action_depth{0};
+  // F10.4: when non-null, the tree-root CO strategy is locked to these
+  // external probabilities for the whole solve. The pointer must outlive the
+  // solve call. Default nullptr = unconstrained solve.
+  const DiagnosticRootLock *diagnostic_root_lock{nullptr};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>

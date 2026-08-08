@@ -6,11 +6,13 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -309,6 +311,12 @@ struct BoardData {
   std::uint64_t mask{0};
   std::array<std::int16_t, combo_count> local_index{};
   std::vector<ComboId> legal_combos;
+  // Per-player live combos: only the acting player's own range combos are
+  // stored as action slots at that player's decision nodes. This halves the
+  // tree for asymmetric ranges without changing any reach-weighted result,
+  // since combos outside the actor's range have zero actor reach.
+  std::array<std::vector<ComboId>, 2> player_combos;
+  std::array<std::array<std::int16_t, combo_count>, 2> player_local{};
   std::array<std::int16_t, combo_count> rank_index{};
   std::uint16_t rank_count{0};
   bool ranks_ready{false};
@@ -320,6 +328,15 @@ struct DenseLayout {
   std::array<std::uint64_t, combo_count> combo_masks{};
   std::array<DenseComboVector, 2> initial_reach{};
   std::array<std::int16_t, combo_count> active_combo_index{};
+  // Per-player flop-range combo spaces: the compact value/reach vectors used
+  // by the physical (non-DAG) traversal are indexed by the updating player's
+  // flop-range combos (player_flop_combos[player]), which are stable across
+  // every deeper board (a combo is either still live, with the same slot, or
+  // blocked with zero reach). player_flop_slot[player][combo] is the slot, or
+  // -1 when the combo is outside the player's flop range.
+  std::array<std::array<std::int16_t, combo_count>, 2> player_flop_slot{};
+  std::array<std::vector<ComboId>, 2> player_flop_combos;
+  std::array<std::size_t, 2> player_flop_count{};
   std::vector<ComboId> active_combos;
   std::array<std::vector<std::uint16_t>, 36U> active_slots_by_card;
   std::array<std::vector<ComboId>, 36U> active_combos_by_card;
@@ -337,6 +354,11 @@ struct DenseLayout {
   std::uint64_t actions{0};
   double initial_normalization{0.0};
   bool uses_isomorphic_infosets{false};
+  // True when the tree has only the identity automorphism (automorphisms.size()
+  // <= 1): every physical infoset is unique, so each combo's action block is
+  // laid out contiguously at decision.action_base + local * action_count and
+  // decision_action_base can skip the two sparse canonical lookups.
+  bool uses_direct_action_bases{false};
   bool uses_canonical_public_dag{false};
   std::string fingerprint;
 };
@@ -738,6 +760,9 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
 
 std::uint64_t decision_action_base(const DenseLayout &layout, const DecisionLayout &decision,
                                    const std::int16_t local_combo) {
+  if (layout.uses_direct_action_bases) {
+    return decision.action_base + static_cast<std::uint64_t>(local_combo) * decision.action_count;
+  }
   if (!layout.uses_isomorphic_infosets) {
     return decision.action_base + static_cast<std::uint64_t>(local_combo) * decision.action_count;
   }
@@ -776,8 +801,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
 
   DenseLayout layout;
   layout.tree = std::move(tree.value());
-  layout.active_combo_index.fill(-1);
-  layout.combos = all_combos();
+  layout.active_combo_index.fill(-1);  layout.combos = all_combos();
   for (std::size_t combo = 0; combo < combo_count; ++combo) {
     layout.combo_masks[combo] =
         layout.combos[combo].first.mask() | layout.combos[combo].second.mask();
@@ -800,6 +824,14 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
           board.local_index[combo] = static_cast<std::int16_t>(board.legal_combos.size());
           board.legal_combos.push_back(static_cast<ComboId>(combo));
         }
+        for (std::size_t player = 0; player < 2U; ++player) {
+          if (ranges.players[player][combo].basis_points() != 0U &&
+              (layout.combo_masks[combo] & board.mask) == 0U) {
+            board.player_local[player][combo] =
+                static_cast<std::int16_t>(board.player_combos[player].size());
+            board.player_combos[player].push_back(static_cast<ComboId>(combo));
+          }
+        }
       }
       const auto board_index = static_cast<std::uint32_t>(layout.boards.size());
       layout.boards.push_back(std::move(board));
@@ -815,12 +847,13 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
   std::unordered_map<CanonicalInfosetKey, CanonicalInfosetEntry, CanonicalInfosetKeyHash>
       canonical_infosets;
   if (layout.uses_isomorphic_infosets) {
-    auto built_histories = build_node_histories(layout.tree);
-    if (!built_histories) {
-      return Result<DenseLayout, PostflopSolverError>::failure(built_histories.error());
-    }
-    histories = std::move(built_histories.value());
-    public_history_ids = intern_public_histories(layout.tree, histories);
+    // Automorphisms first: the per-player direct-action-bases path (identity
+    // automorphism group only) never uses the canonical infoset map or the
+    // canonical arrays (decision_action_base computes the offset directly from
+    // the local combo index), so skip the histories/interning/canonicalization
+    // entirely for it. For th7d6s this avoids a ~2.5 GB transient
+    // unordered_map (36.6M canonical infosets) and ~0.5 GB of unused arrays,
+    // cutting the peak RSS from ~4.3 GB to ~1.5-2 GB.
     const auto initial_board =
         layout.tree.nodes[static_cast<std::size_t>(layout.tree.root)].state.board_mask;
     auto exact_automorphisms = range_automorphisms(layout.combos, ranges, initial_board);
@@ -828,7 +861,16 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       return Result<DenseLayout, PostflopSolverError>::failure(exact_automorphisms.error());
     }
     automorphisms = std::move(exact_automorphisms.value());
-    canonical_infosets.reserve(layout.tree.stats.decision_nodes * 8U);
+    layout.uses_direct_action_bases = automorphisms.size() <= 1U;
+    if (!layout.uses_direct_action_bases) {
+      auto built_histories = build_node_histories(layout.tree);
+      if (!built_histories) {
+        return Result<DenseLayout, PostflopSolverError>::failure(built_histories.error());
+      }
+      histories = std::move(built_histories.value());
+      public_history_ids = intern_public_histories(layout.tree, histories);
+      canonical_infosets.reserve(layout.tree.stats.decision_nodes * 8U);
+    }
   }
 
   for (const auto &node : layout.tree.nodes) {
@@ -841,12 +883,18 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     decision.player = node.state.player_to_act;
     decision.present = true;
     const auto &board = layout.boards[decision.board_index];
-    const auto legal_count = board.legal_combos.size();
+    const auto legal_count = board.player_combos[decision.player].size();
     if (decision.action_count == 0U || decision.action_count > maximum_action_count) {
       return Result<DenseLayout, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
-    if (!layout.uses_isomorphic_infosets) {
+    if (!layout.uses_isomorphic_infosets || layout.uses_direct_action_bases) {
+      // Simple per-combo action blocks: for the identity-only automorphism
+      // group every combo is its own infoset and the canonical infoset
+      // machinery (map, canonical arrays, physical_infoset_ids) is never read
+      // by this path, so the counters match the canonical construction
+      // (legal_count infosets, legal_count * action_count actions) without
+      // building any of it.
       if (legal_count >
           (std::numeric_limits<std::uint64_t>::max() - layout.actions) / decision.action_count) {
         return Result<DenseLayout, PostflopSolverError>::failure(
@@ -871,7 +919,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       transformed_chance_histories[index] = transformed_ordered_chance_cards(
           histories[static_cast<std::size_t>(node.id)], automorphisms[index].suits);
     }
-    for (const ComboId combo : board.legal_combos) {
+    for (const ComboId combo : board.player_combos[decision.player]) {
       CanonicalInfosetKey canonical{};
       bool has_canonical = false;
       for (std::size_t index = 0; index < automorphisms.size(); ++index) {
@@ -959,14 +1007,15 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
           layout.decisions[static_cast<std::size_t>(canonical_node.representative_node)];
       canonical_node.decision = decision;
       const auto &board = layout.boards[decision.board_index];
-      canonical_node.update_multiplicity.resize(board.legal_combos.size(), 0U);
-      for (const ComboId combo : board.legal_combos) {
-        const auto local = board.local_index[combo];
+      canonical_node.update_multiplicity.resize(board.player_combos[decision.player].size(), 0U);
+      for (const ComboId combo : board.player_combos[decision.player]) {
+        const auto local = board.player_local[decision.player][combo];
         const auto infoset_id = decision_infoset_id(layout, decision, local);
         std::uint32_t representative_private_multiplicity = 0U;
-        for (const ComboId representative_combo : board.legal_combos) {
-          if (decision_infoset_id(layout, decision, board.local_index[representative_combo]) ==
-              infoset_id) {
+        for (const ComboId representative_combo : board.player_combos[decision.player]) {
+          if (decision_infoset_id(
+                  layout, decision,
+                  board.player_local[decision.player][representative_combo]) == infoset_id) {
             ++representative_private_multiplicity;
           }
         }
@@ -1037,6 +1086,17 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     return Result<DenseLayout, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
+  for (auto &player_slots : layout.player_flop_slot) {
+    player_slots.fill(-1);
+  }
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    layout.player_flop_combos[player] = flop_board.player_combos[player];
+    layout.player_flop_count[player] = flop_board.player_combos[player].size();
+    for (std::size_t index = 0; index < flop_board.player_combos[player].size(); ++index) {
+      layout.player_flop_slot[player][flop_board.player_combos[player][index]] =
+          static_cast<std::int16_t>(index);
+    }
+  }
   std::string fingerprint_source =
       layout.tree.betting_tree_hash + "|" + serialize_tree_config_json(config);
   if (!uniform_full_ranges(ranges)) {
@@ -1096,67 +1156,400 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
   return Result<bool, PostflopSolverError>::success(true);
 }
 
-template <std::size_t Capacity> class DenseTraversal {
+std::string root_action_label(const Action &action) {
+  std::string label;
+  switch (action.type) {
+  case ActionType::Fold:
+    label = "fold";
+    break;
+  case ActionType::Check:
+    label = "check";
+    break;
+  case ActionType::Call:
+    label = "call";
+    break;
+  case ActionType::Bet:
+    label = "bet";
+    break;
+  case ActionType::Raise:
+    label = "raise";
+    break;
+  case ActionType::AllIn:
+    label = "all_in";
+    break;
+  }
+  if (action.amount.units() > 0) {
+    label += "_" + std::to_string(action.amount.units() / gtosd::Money::units_per_ante);
+  }
+  return label;
+}
+
+struct PreparedRootLock {
+  std::string source_description;
+  double source_dev_percent{0.0};
+  std::vector<std::optional<std::array<double, maximum_action_count>>> by_local_combo;
+};
+
+Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>
+prepare_root_lock(const DiagnosticRootLock &lock, const DenseLayout &layout) {
+  // The root is read from the canonical public graph when the DAG is enabled
+  // (the physical tree and decision table are not retained in that layout),
+  // otherwise from the physical tree.
+  std::vector<std::string> root_labels;
+  std::uint16_t root_action_count = 0;
+  std::uint32_t root_board_index = 0;
+  std::uint8_t root_player = 0;
+  bool root_is_decision = false;
+  if (layout.uses_canonical_public_dag) {
+    const auto &root_node =
+        layout.canonical_public_graph.nodes[layout.canonical_public_graph.root];
+    root_is_decision = root_node.kind == PublicNodeKind::Decision;
+    root_player = root_node.state.player_to_act;
+    root_board_index = root_node.board_index;
+    root_action_count = root_node.decision.action_count;
+    for (const auto &edge : root_node.edges) {
+      root_labels.push_back(root_action_label(edge.action));
+    }
+  } else {
+    const auto &root_node = layout.tree.nodes[static_cast<std::size_t>(layout.tree.root)];
+    root_is_decision = root_node.kind == PublicNodeKind::Decision;
+    root_player = root_node.state.player_to_act;
+    const auto &decision = layout.decisions[static_cast<std::size_t>(layout.tree.root)];
+    root_board_index = decision.board_index;
+    root_action_count = decision.action_count;
+    for (const auto &edge : root_node.edges) {
+      if (edge.kind == PublicEdgeKind::ChanceCard) {
+        continue;
+      }
+      root_labels.push_back(root_action_label(edge.action));
+    }
+  }
+  if (!root_is_decision || root_player != 0U || root_action_count == 0U) {
+    return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &board = layout.boards[root_board_index];
+  if (board.legal_combos.size() != lock.entries.size()) {
+    return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  if (root_labels.size() != root_action_count) {
+    return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  auto labels_sorted = root_labels;
+  std::ranges::sort(labels_sorted);
+
+  auto prepared = std::make_unique<PreparedRootLock>();
+  prepared->source_description = lock.source_description;
+  prepared->source_dev_percent = lock.source_dev_percent;
+  prepared->by_local_combo.resize(board.legal_combos.size());
+
+  std::vector<bool> covered(board.legal_combos.size(), false);
+  for (const auto &entry : lock.entries) {
+    if (entry.action_labels.size() != entry.probabilities.size() ||
+        entry.probabilities.size() != root_action_count) {
+      return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    const auto combo_it = std::ranges::find(layout.combos, entry.combo);
+    if (combo_it == layout.combos.end()) {
+      return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    const auto combo_id = static_cast<ComboId>(std::distance(layout.combos.begin(), combo_it));
+    const auto local = board.local_index[combo_id];
+    if (local < 0 || static_cast<std::size_t>(local) >= covered.size() ||
+        covered[static_cast<std::size_t>(local)]) {
+      return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    auto entry_labels = entry.action_labels;
+    std::ranges::sort(entry_labels);
+    if (entry_labels != labels_sorted) {
+      return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    std::array<double, maximum_action_count> probabilities{};
+    double sum = 0.0;
+    for (std::size_t action = 0; action < root_action_count; ++action) {
+      const auto it = std::ranges::find(entry.action_labels, root_labels[action]);
+      if (it == entry.action_labels.end()) {
+        return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto probability =
+          entry.probabilities[static_cast<std::size_t>(it - entry.action_labels.begin())];
+      if (!std::isfinite(probability) || probability < 0.0) {
+        return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      probabilities[action] = probability;
+      sum += probability;
+    }
+    if (std::abs(sum - 1.0) > 1.0e-9) {
+      return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    prepared->by_local_combo[static_cast<std::size_t>(local)] = probabilities;
+    covered[static_cast<std::size_t>(local)] = true;
+  }
+  if (std::ranges::any_of(covered, [](const bool present) { return !present; })) {
+    return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::success(
+      std::move(prepared));
+}
+
+template <std::size_t Capacity, bool PlayerIndexed = false> class DenseTraversal {
   using ComboVector = TraversalComboVector<Capacity>;
   using TraversalResult = Result<ComboVector, PostflopSolverError>;
+  // Reach passed down the tree as two pointers (plan: zero opponent reach
+  // copies): the actor's vector is a per-depth scratch (only its flop-range
+  // prefix is written), the opponent's vector is shared from the parent.
+  using ReachRef = std::array<const ComboVector *, 2>;
+
+  // Tag for constructing a pool worker: a full traversal that owns its own
+  // deferred regret delta and worker thread but no nested workers.
+  struct LeafWorkerTag {};
+
+  // Pull-based shared task queue: all pool threads drain the same queue, so
+  // tasks dispatched below the turn chance (river split) are picked up by any
+  // idle worker and the pool self-balances. Teardown wakes every waiter
+  // (notify_all) because the shared queue has one condition variable for all
+  // workers; a single notify_one would leave the other workers blocked and
+  // hang the destructor join.
+  struct ParallelTaskQueue {
+    std::mutex mutex;
+    std::condition_variable ready;
+    std::deque<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
+    bool shutdown{false};
+  };
+
+  void run_worker_loop() {
+    ParallelTaskQueue *const queue = parallel_shared_.get();
+    while (true) {
+      std::optional<std::packaged_task<TraversalResult(DenseTraversal &)>> task;
+      {
+        std::unique_lock lock(queue->mutex);
+        queue->ready.wait(lock, [&] { return queue->shutdown || !queue->tasks.empty(); });
+        if (queue->shutdown && queue->tasks.empty()) {
+          return;
+        }
+        task = std::move(queue->tasks.front());
+        queue->tasks.pop_front();
+      }
+      (*task)(*this);
+    }
+  }
 
 public:
   DenseTraversal(DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta = nullptr,
-                 const std::uint8_t parallel_action_depth = 0U)
-      : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta) {
+                 const std::uint8_t parallel_action_depth = 0U,
+                 const PreparedRootLock *root_lock = nullptr)
+      : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
+        root_lock_(root_lock) {
     if (deferred_regret_delta_ != nullptr) {
       deferred_regret_touched_flags_.resize(deferred_regret_delta_->size(), 0U);
     }
-    if (parallel_action_depth > 0U && layout_.uses_canonical_public_dag &&
-        deferred_regret_delta_ != nullptr) {
-      parallel_regret_delta_.resize(deferred_regret_delta_->size(), 0.0);
-      parallel_worker_ =
-          std::make_unique<DenseTraversal>(layout_, buffers_, &parallel_regret_delta_,
-                                           static_cast<std::uint8_t>(parallel_action_depth - 1U));
-      parallel_thread_ = std::jthread([this] {
-        while (true) {
-          std::optional<std::packaged_task<TraversalResult()>> task;
-          {
-            std::unique_lock lock(parallel_task_mutex_);
-            parallel_task_ready_.wait(
-                lock, [this] { return parallel_shutdown_ || parallel_task_.has_value(); });
-            if (parallel_shutdown_ && !parallel_task_) {
-              return;
-            }
-            task = std::move(parallel_task_);
-            parallel_task_.reset();
-          }
-          (*task)();
+    if (parallel_action_depth > 0U) {
+      if (layout_.uses_canonical_public_dag) {
+        // Canonical DAG: single-worker chain used by the decision-level
+        // dispatch (the lossless DAG already shrinks the tree, so one extra
+        // worker is enough). Requires a deferred delta for the parallel
+        // regret merge.
+        if (deferred_regret_delta_ == nullptr) {
+          return;
         }
-      });
+        parallel_regret_delta_.resize(deferred_regret_delta_->size(), 0.0);
+        parallel_shared_ = std::make_shared<ParallelTaskQueue>();
+        parallel_worker_ =
+            std::make_unique<DenseTraversal>(layout_, buffers_, &parallel_regret_delta_,
+                                             static_cast<std::uint8_t>(parallel_action_depth - 1U),
+                                             root_lock_);
+        parallel_thread_ = std::jthread([this] { run_worker_loop(); });
+      } else {
+        // Physical tree: a pool of independent workers, each with its own
+        // deferred regret delta when accumulating regrets (solve), or with a
+        // null delta when evaluating a fixed profile (certification — the
+        // policy traversal never touches regret state), used by the coarse
+        // chance-node split so the per-card subtrees run concurrently.
+        const std::size_t worker_count = static_cast<std::size_t>(parallel_action_depth);
+        const bool has_deltas = deferred_regret_delta_ != nullptr;
+        if (has_deltas) {
+          parallel_worker_deltas_.resize(worker_count);
+          for (auto &delta : parallel_worker_deltas_) {
+            delta.resize(deferred_regret_delta_->size(), 0.0);
+          }
+        }
+        parallel_shared_ = std::make_shared<ParallelTaskQueue>();
+        parallel_workers_.reserve(worker_count);
+        for (std::size_t index = 0; index < worker_count; ++index) {
+          parallel_workers_.push_back(std::make_unique<DenseTraversal>(
+              LeafWorkerTag{}, layout_, buffers_,
+              has_deltas ? &parallel_worker_deltas_[index] : nullptr, root_lock_,
+              parallel_shared_));
+        }
+      }
     }
+  }
+
+  // Pool worker constructor: owns a thread that drains the shared task queue,
+  // but creates no nested workers.
+  DenseTraversal(LeafWorkerTag, DenseLayout &layout, const ActionBuffers buffers,
+                 std::vector<double> *deferred_regret_delta, const PreparedRootLock *root_lock,
+                 std::shared_ptr<ParallelTaskQueue> shared_queue)
+      : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
+        root_lock_(root_lock), parallel_shared_(std::move(shared_queue)) {
+    if (deferred_regret_delta_ != nullptr) {
+      deferred_regret_touched_flags_.resize(deferred_regret_delta_->size(), 0U);
+    }
+    parallel_thread_ = std::jthread([this] { run_worker_loop(); });
   }
 
   ~DenseTraversal() {
     if (parallel_thread_.joinable()) {
+      ParallelTaskQueue *const queue = parallel_shared_.get();
       {
-        std::scoped_lock lock(parallel_task_mutex_);
-        parallel_shutdown_ = true;
+        std::scoped_lock lock(queue->mutex);
+        queue->shutdown = true;
       }
-      parallel_task_ready_.notify_one();
+      queue->ready.notify_all();
+    }
+  }
+
+  // Per-node timing instrumentation (GTOSD_PROFILE_HOTPATH=1): accumulated
+  // on every thread that runs cfr_decision, so totals are serial-equivalent.
+  mutable std::uint64_t prof_decisions_ = 0;
+  mutable std::uint64_t prof_actor_writes_ = 0;
+  mutable double prof_strategy_seconds_ = 0.0;
+  mutable double prof_copy_seconds_ = 0.0;
+  mutable double prof_children_seconds_ = 0.0;
+  mutable double prof_value_update_seconds_ = 0.0;
+  mutable double prof_terminal_seconds_ = 0.0;
+  mutable double prof_chance_seconds_ = 0.0;
+  mutable double prof_sync_seconds_ = 0.0;
+  mutable double prof_wall_seconds_ = 0.0;
+
+  // Per-pass profile (GTOSD_PROFILE_HOTPATH=1): sums this traversal's and its
+  // pool workers' counters (serial-equivalent), prints a per-pass breakdown
+  // and resets all counters. The residual (pass wall minus the accounted
+  // parts) is the pure recursion/dispatch overhead of the CFR walk.
+  void dump_per_pass_profile(const double wall_seconds) {
+    bool profile = false;
+    {
+#pragma warning(push)
+#pragma warning(disable : 4996)
+      profile = std::getenv("GTOSD_PROFILE_HOTPATH") != nullptr;
+#pragma warning(pop)
+    }
+    if (!profile) {
+      return;
+    }
+    double strategy = prof_strategy_seconds_;
+    double copy = prof_copy_seconds_;
+    double terminal = prof_terminal_seconds_;
+    double value_update = prof_value_update_seconds_;
+    double chance = prof_chance_seconds_;
+    double sync = prof_sync_seconds_;
+    double wall = prof_wall_seconds_;
+    std::uint64_t decisions = prof_decisions_;
+    std::uint64_t actor_writes = prof_actor_writes_;
+    for (const auto &worker : parallel_workers_) {
+      strategy += worker->prof_strategy_seconds_;
+      copy += worker->prof_copy_seconds_;
+      terminal += worker->prof_terminal_seconds_;
+      value_update += worker->prof_value_update_seconds_;
+      chance += worker->prof_chance_seconds_;
+      sync += worker->prof_sync_seconds_;
+      wall += worker->prof_wall_seconds_;
+      decisions += worker->prof_decisions_;
+      actor_writes += worker->prof_actor_writes_;
+    }
+    if (parallel_worker_ != nullptr) {
+      strategy += parallel_worker_->prof_strategy_seconds_;
+      copy += parallel_worker_->prof_copy_seconds_;
+      terminal += parallel_worker_->prof_terminal_seconds_;
+      value_update += parallel_worker_->prof_value_update_seconds_;
+      chance += parallel_worker_->prof_chance_seconds_;
+      sync += parallel_worker_->prof_sync_seconds_;
+      wall += parallel_worker_->prof_wall_seconds_;
+      decisions += parallel_worker_->prof_decisions_;
+      actor_writes += parallel_worker_->prof_actor_writes_;
+    }
+    const double accounted = strategy + copy + terminal + value_update + chance + sync;
+    std::fprintf(stderr,
+                 "ITER-PROF wall=%.1fms decisions=%llu actor_writes=%llu serial-equiv-parts=%.1fms\n"
+                 "  terminal showdown:        %8.1f ms\n"
+                 "  reach propagation:        %8.1f ms\n"
+                 "  value + update:           %8.1f ms\n"
+                 "  board/card filtering:     %8.1f ms\n"
+                 "  synchronization:          %8.1f ms\n"
+                 "  regret matching:          %8.1f ms\n",
+                 wall_seconds * 1000.0, static_cast<unsigned long long>(decisions),
+                 static_cast<unsigned long long>(actor_writes), accounted * 1000.0, terminal * 1000.0, copy * 1000.0, value_update * 1000.0,
+                 chance * 1000.0, sync * 1000.0, strategy * 1000.0);
+    prof_decisions_ = 0;
+    prof_actor_writes_ = 0;
+    prof_strategy_seconds_ = 0.0;
+    prof_copy_seconds_ = 0.0;
+    prof_children_seconds_ = 0.0;
+    prof_value_update_seconds_ = 0.0;
+    prof_terminal_seconds_ = 0.0;
+    prof_chance_seconds_ = 0.0;
+    prof_sync_seconds_ = 0.0;
+    prof_wall_seconds_ = 0.0;
+    for (const auto &worker : parallel_workers_) {
+      worker->prof_decisions_ = 0;
+      worker->prof_actor_writes_ = 0;
+      worker->prof_strategy_seconds_ = 0.0;
+      worker->prof_copy_seconds_ = 0.0;
+      worker->prof_children_seconds_ = 0.0;
+      worker->prof_value_update_seconds_ = 0.0;
+      worker->prof_terminal_seconds_ = 0.0;
+      worker->prof_chance_seconds_ = 0.0;
+      worker->prof_sync_seconds_ = 0.0;
+      worker->prof_wall_seconds_ = 0.0;
+    }
+    if (parallel_worker_ != nullptr) {
+      parallel_worker_->prof_decisions_ = 0;
+      parallel_worker_->prof_actor_writes_ = 0;
+      parallel_worker_->prof_strategy_seconds_ = 0.0;
+      parallel_worker_->prof_copy_seconds_ = 0.0;
+      parallel_worker_->prof_children_seconds_ = 0.0;
+      parallel_worker_->prof_value_update_seconds_ = 0.0;
+      parallel_worker_->prof_terminal_seconds_ = 0.0;
+      parallel_worker_->prof_chance_seconds_ = 0.0;
+      parallel_worker_->prof_sync_seconds_ = 0.0;
+      parallel_worker_->prof_wall_seconds_ = 0.0;
     }
   }
 
   Result<ComboVector, PostflopSolverError> cfr(const NodeId node_id,
                                                const std::uint8_t updating_player,
-                                               const std::array<ComboVector, 2> &reach,
+                                               const ReachRef &reach,
                                                const double strategy_weight) {
     if (layout_.uses_canonical_public_dag) {
       return cfr_canonical_parallel_entry(layout_.canonical_public_graph.root, updating_player,
                                           reach, strategy_weight);
     }
-    return cfr_physical(node_id, updating_player, reach, strategy_weight);
+    // The physical tree is parallelized at chance nodes (coarse grained), not
+    // at every decision node: the per-card subtrees are the big units of work.
+    // Out-param adapter: the traversal writes into a local buffer and the
+    // Result is only used for the error status (the runner discards the value).
+    ComboVector result;
+    const auto error = cfr_physical(node_id, updating_player, reach, strategy_weight, result);
+    if (error) {
+      return Result<ComboVector, PostflopSolverError>::failure(*error);
+    }
+    return Result<ComboVector, PostflopSolverError>::success(std::move(result));
   }
 
   Result<ComboVector, PostflopSolverError> policy(const NodeId node_id,
                                                   const std::uint8_t updating_player,
-                                                  const std::array<ComboVector, 2> &reach,
+                                                  const ReachRef &reach,
                                                   const bool best_response) {
     if (layout_.uses_canonical_public_dag) {
       return policy_canonical(layout_.canonical_public_graph.root, updating_player, reach,
@@ -1167,12 +1560,16 @@ public:
 
   Result<ComboVector, PostflopSolverError>
   policy_from_physical_node(const NodeId node_id, const std::uint8_t updating_player,
-                            const std::array<ComboVector, 2> &reach) {
+                            const ReachRef &reach) {
     return policy_physical(node_id, updating_player, reach, false);
   }
 
 private:
-  [[nodiscard]] std::size_t value_slot(const ComboId combo) const noexcept {
+  [[nodiscard]] std::size_t value_slot(const ComboId combo,
+                                       [[maybe_unused]] const std::uint8_t player) const noexcept {
+    if constexpr (PlayerIndexed) {
+      return static_cast<std::size_t>(layout_.player_flop_slot[player][combo]);
+    }
     if constexpr (Capacity == combo_count) {
       return static_cast<std::size_t>(combo);
     }
@@ -1190,7 +1587,18 @@ private:
 
   struct DecisionScratch {
     std::array<ComboVector, maximum_action_count> action_values{};
-    std::array<std::array<double, maximum_action_count>, Capacity> strategies{};
+    // Action-major strategy scratch: strategies[action][slot] keeps the slots
+    // contiguous for a fixed action, so the value loop over the updating
+    // player's combos is three contiguous streams (strategies, action_values,
+    // values) and auto-vectorizes under /arch:AVX2. Slots are combo ids on the
+    // non-per-player path, flop-range slots on the per-player path.
+    std::array<std::array<double, combo_count>, maximum_action_count> strategies{};
+    // Per-action actor reach scratch (plan: zero opponent reach copies): only
+    // the actor's flop-range prefix is written per action; the opponent side
+    // is shared from the parent, so no prefix copy is materialized per action.
+    // A single buffer per depth suffices: the child recursion completes before
+    // the next action reuses it and no child retains a pointer to it.
+    std::array<ComboVector, 1> reach_actor{};
   };
 
   class DecisionScratchLease {
@@ -1229,12 +1637,58 @@ private:
   }
 
   void merge_parallel_deferred_regrets() {
-    merge_deferred_regrets_from(*parallel_worker_, parallel_regret_delta_);
+    if (parallel_worker_ != nullptr) {
+      merge_deferred_regrets_from(*parallel_worker_, parallel_regret_delta_);
+    }
+    for (std::size_t index = 0; index < parallel_workers_.size(); ++index) {
+      merge_deferred_regrets_from(*parallel_workers_[index], parallel_worker_deltas_[index]);
+    }
+  }
+
+  // Queues a task for the shared parallel queue. The FIFO queue is drained by
+  // the worker threads; producers never block and pending tasks stay bounded
+  // by the recursion depth of open parallel decisions, so a task is never
+  // overwritten (which would break its future with "broken promise"). Called
+  // only while the traversal is live (the queue shutdown flag is only set
+  // during destruction, after all cfr calls have returned).
+  void dispatch_parallel_task(std::packaged_task<TraversalResult(DenseTraversal &)> task) {
+    ParallelTaskQueue *const queue = parallel_shared_.get();
+    {
+      std::unique_lock lock(queue->mutex);
+      queue->tasks.push_back(std::move(task));
+    }
+    // notify_all: the shared queue is drained by several workers and the
+    // join paths also wait on the same condition variable; a single
+    // notify_one can wake the joining thread instead of a worker and starve
+    // the workers indefinitely.
+    queue->ready.notify_all();
+  }
+
+  // Pull-based work-stealing: while a thread waits on futures dispatched to
+  // the shared queue (river split below the turn), it executes other pending
+  // tasks itself so the pool never stalls behind a single blocked dispatcher.
+  // Returns whether a task was pulled (the caller blocks on the queue's
+  // condition variable when false, instead of busy-spinning).
+  bool try_pull_and_run() {
+    ParallelTaskQueue *const queue = parallel_shared_.get();
+    std::optional<std::packaged_task<TraversalResult(DenseTraversal &)>> task;
+    {
+      std::unique_lock lock(queue->mutex);
+      if (!queue->tasks.empty()) {
+        task = std::move(queue->tasks.front());
+        queue->tasks.pop_front();
+      }
+    }
+    if (!task) {
+      return false;
+    }
+    (*task)(*this);
+    return true;
   }
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_parallel_entry(const std::uint32_t node_id, const std::uint8_t updating_player,
-                               const std::array<ComboVector, 2> &reach,
+                               const ReachRef &reach,
                                const double strategy_weight) {
     if (parallel_worker_ != nullptr &&
         layout_.canonical_public_graph.nodes[node_id].kind == PublicNodeKind::Decision) {
@@ -1245,7 +1699,7 @@ private:
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_parallel_decision(const std::uint32_t node_id, const std::uint8_t updating_player,
-                                  const std::array<ComboVector, 2> &reach,
+                                  const ReachRef &reach,
                                   const double strategy_weight) {
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     const auto action_count = canonical.edges.size();
@@ -1266,38 +1720,44 @@ private:
     DecisionScratchLease scratch_lease(*this);
     auto &action_values = scratch_lease.get().action_values;
     auto &strategies = scratch_lease.get().strategies;
+    const bool locked_root = is_locked_root(canonical);
     for (const ComboId combo : board.legal_combos) {
-      strategies[value_slot(combo)] = current_strategy(decision, board.local_index[combo], false);
+      const auto locked = locked_root ? locked_root_strategy(board.local_index[combo])
+                                      : std::nullopt;
+      const auto strategy =
+          locked ? *locked : current_strategy(decision, board.local_index[combo], false);
+      const auto slot = value_slot(combo, updating_player);
+      for (std::size_t action = 0; action < action_count; ++action) {
+        strategies[action][slot] = strategy[action];
+      }
     }
     std::array<std::array<ComboVector, 2>, maximum_parallel_action_count> child_reaches{};
     for (std::size_t action = 0; action < action_count; ++action) {
-      child_reaches[action] = reach;
+      child_reaches[action][0] = *reach[0];
+      child_reaches[action][1] = *reach[1];
       for (const ComboId combo : board.legal_combos) {
-        child_reaches[action][decision.player][value_slot(combo)] *=
-            strategies[value_slot(combo)][action];
+        child_reaches[action][decision.player][value_slot(combo, updating_player)] *=
+            strategies[action][value_slot(combo, updating_player)];
       }
       child_reaches[action] =
           transform_reach(child_reaches[action],
                           canonical.edges[action].outcomes.front().physical_to_child_automorphism);
     }
     const auto &parallel_outcome = canonical.edges[0].outcomes.front();
-    std::packaged_task<TraversalResult()> first_task(
-        [this, child = parallel_outcome.child, updating_player, child_reach = child_reaches[0],
-         strategy_weight] {
-          return parallel_worker_->cfr_canonical_parallel_entry(child, updating_player, child_reach,
-                                                                strategy_weight);
+    std::packaged_task<TraversalResult(DenseTraversal &)> first_task(
+        [worker = parallel_worker_.get(), child = parallel_outcome.child, updating_player,
+         child_reach = child_reaches[0], strategy_weight](DenseTraversal &) {
+          return worker->cfr_canonical_parallel_entry(
+              child, updating_player, {&child_reach[0], &child_reach[1]}, strategy_weight);
         });
     auto first = first_task.get_future();
-    {
-      std::scoped_lock lock(parallel_task_mutex_);
-      parallel_task_.emplace(std::move(first_task));
-    }
-    parallel_task_ready_.notify_one();
+    dispatch_parallel_task(std::move(first_task));
     std::optional<PostflopSolverError> serial_error;
     for (std::size_t action = 1U; action < action_count; ++action) {
       const auto &outcome = canonical.edges[action].outcomes.front();
-      auto child =
-          cfr_canonical(outcome.child, updating_player, child_reaches[action], strategy_weight);
+      auto child = cfr_canonical(outcome.child, updating_player,
+                                 {&child_reaches[action][0], &child_reaches[action][1]},
+                                 strategy_weight);
       if (!child) {
         serial_error = child.error();
         break;
@@ -1314,71 +1774,154 @@ private:
                                                   parallel_outcome.physical_to_child_automorphism);
     merge_parallel_deferred_regrets();
 
-    ComboVector values{};
-    for (const ComboId combo : board.legal_combos) {
-      const auto slot = value_slot(combo);
-      const auto local = board.local_index[combo];
-      const auto &strategy = strategies[slot];
-      const auto offset = decision_action_base(layout_, decision, local);
-      if (decision.player == updating_player) {
+    auto values = zeroed_values(updating_player);
+    if constexpr (PlayerIndexed) {
+      // Per-player compact slots are contiguous 0..player_flop_count[player]-1,
+      // so the value loop runs over the slot prefix directly and the common
+      // two-action case is a fused SIMD accumulation (FMA chains, IEEE-identical).
+      const std::size_t slot_count = layout_.player_flop_count[updating_player];
+      if (decision.player == updating_player && action_count == 2U) {
+        const double *const s0 = strategies[0].data();
+        const double *const s1 = strategies[1].data();
+        const double *const a0 = action_values[0].data();
+        const double *const a1 = action_values[1].data();
+        double *const v = values.data();
+        std::size_t i = 0;
+        for (; i + 4U <= slot_count; i += 4U) {
+          const __m256d acc = _mm256_add_pd(
+              _mm256_mul_pd(_mm256_loadu_pd(s0 + i), _mm256_loadu_pd(a0 + i)),
+              _mm256_mul_pd(_mm256_loadu_pd(s1 + i), _mm256_loadu_pd(a1 + i)));
+          _mm256_storeu_pd(v + i, _mm256_add_pd(_mm256_loadu_pd(v + i), acc));
+        }
+        for (; i < slot_count; ++i) {
+          v[i] += s0[i] * a0[i] + s1[i] * a1[i];
+        }
+      } else if (decision.player == updating_player) {
         for (std::size_t action = 0; action < action_count; ++action) {
-          values[slot] += strategy[action] * action_values[action][slot];
+          for (std::size_t slot = 0; slot < slot_count; ++slot) {
+            values[slot] += strategies[action][slot] * action_values[action][slot];
+          }
         }
       } else {
         for (std::size_t action = 0; action < action_count; ++action) {
-          values[slot] += action_values[action][slot];
+          for (std::size_t slot = 0; slot < slot_count; ++slot) {
+            values[slot] += action_values[action][slot];
+          }
         }
       }
-      if (decision.player == updating_player) {
-        const double multiplicity =
-            static_cast<double>(canonical.update_multiplicity[static_cast<std::size_t>(local)]);
-        for (std::size_t action = 0; action < action_count; ++action) {
-          const auto index = static_cast<std::size_t>(offset + action);
-          if (deferred_regret_touched_flags_[index] == 0U) {
-            deferred_regret_touched_flags_[index] = 1U;
-            deferred_regret_touched_.push_back(index);
+      // Regret/strategy update: for the uniform per-player ranges guaranteed
+      // in the PlayerIndexed path, player_combos[updating_player] equals
+      // board.legal_combos, so iterating the actor's list matches the
+      // combined scalar loop below exactly (same combos, same order).
+      for (const ComboId combo : board.player_combos[updating_player]) {
+        const auto slot = value_slot(combo, updating_player);
+        const auto local = board.local_index[combo];
+        const auto offset = decision_action_base(layout_, decision, local);
+        if (decision.player == updating_player) {
+          const double multiplicity =
+              static_cast<double>(canonical.update_multiplicity[static_cast<std::size_t>(local)]);
+          for (std::size_t action = 0; action < action_count; ++action) {
+            const auto index = static_cast<std::size_t>(offset + action);
+            if (!locked_root) {
+              if (deferred_regret_touched_flags_[index] == 0U) {
+                deferred_regret_touched_flags_[index] = 1U;
+                deferred_regret_touched_.push_back(index);
+              }
+              (*deferred_regret_delta_)[index] +=
+                  multiplicity * (action_values[action][slot] - values[slot]);
+            }
+            add_strategy(index, multiplicity * strategy_weight * (*reach[updating_player])[slot] *
+                                    strategies[action][slot]);
           }
-          (*deferred_regret_delta_)[index] +=
-              multiplicity * (action_values[action][slot] - values[slot]);
-          add_strategy(index, multiplicity * strategy_weight * reach[updating_player][slot] *
-                                  strategy[action]);
+        }
+      }
+    } else {
+      for (const ComboId combo : board.legal_combos) {
+        const auto slot = value_slot(combo, updating_player);
+        const auto local = board.local_index[combo];
+        const auto offset = decision_action_base(layout_, decision, local);
+        if (decision.player == updating_player) {
+          for (std::size_t action = 0; action < action_count; ++action) {
+            values[slot] += strategies[action][slot] * action_values[action][slot];
+          }
+        } else {
+          for (std::size_t action = 0; action < action_count; ++action) {
+            values[slot] += action_values[action][slot];
+          }
+        }
+        if (decision.player == updating_player) {
+          const double multiplicity =
+              static_cast<double>(canonical.update_multiplicity[static_cast<std::size_t>(local)]);
+          for (std::size_t action = 0; action < action_count; ++action) {
+            const auto index = static_cast<std::size_t>(offset + action);
+            if (!locked_root) {
+              if (deferred_regret_touched_flags_[index] == 0U) {
+                deferred_regret_touched_flags_[index] = 1U;
+                deferred_regret_touched_.push_back(index);
+              }
+              (*deferred_regret_delta_)[index] +=
+                  multiplicity * (action_values[action][slot] - values[slot]);
+            }
+            add_strategy(index, multiplicity * strategy_weight * (*reach[updating_player])[slot] *
+                                    strategies[action][slot]);
+          }
         }
       }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
-  Result<ComboVector, PostflopSolverError> cfr_physical(const NodeId node_id,
-                                                        const std::uint8_t updating_player,
-                                                        const std::array<ComboVector, 2> &reach,
-                                                        const double strategy_weight) {
+  // Physical-tree CFR traversal writing directly into `values_out` (no
+  // per-node Result<ComboVector> return: the value vector is materialized in
+  // the caller's buffer, eliminating the 5 KB move up the recursion).
+  std::optional<PostflopSolverError> cfr_physical(const NodeId node_id,
+                                                  const std::uint8_t updating_player,
+                                                  const ReachRef &reach,
+                                                  const double strategy_weight,
+                                                  ComboVector &values_out) {
     ++traversed_nodes_;
+    const auto t_wall = std::chrono::steady_clock::now();
+    struct WallGuard {
+      DenseTraversal *owner;
+      std::chrono::steady_clock::time_point start;
+      ~WallGuard() {
+        owner->prof_wall_seconds_ +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+      }
+    } wall_guard{this, t_wall};
     const auto &node = layout_.tree.nodes[static_cast<std::size_t>(node_id)];
     switch (node.kind) {
     case PublicNodeKind::TerminalFold:
-      return fold_values(node, updating_player, reach[1U - updating_player]);
-    case PublicNodeKind::TerminalShowdown:
-      return showdown_values(node, updating_player, reach[1U - updating_player]);
-    case PublicNodeKind::Chance:
-      return cfr_chance(node, updating_player, reach, strategy_weight);
-    case PublicNodeKind::Decision:
-      return cfr_decision(node, updating_player, reach, strategy_weight);
+    case PublicNodeKind::TerminalShowdown: {
+      const auto t_terminal = std::chrono::steady_clock::now();
+      const auto error = node.kind == PublicNodeKind::TerminalFold
+                             ? fold_values_into(node, updating_player,
+                                                *reach[1U - updating_player], values_out)
+                             : showdown_values_into(node, updating_player,
+                                                    *reach[1U - updating_player], values_out);
+      prof_terminal_seconds_ +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - t_terminal).count();
+      return error;
     }
-    return Result<ComboVector, PostflopSolverError>::failure(
-        PostflopSolverError::InvalidConfiguration);
+    case PublicNodeKind::Chance:
+      return cfr_chance(node, updating_player, reach, strategy_weight, values_out);
+    case PublicNodeKind::Decision:
+      return cfr_decision(node, updating_player, reach, strategy_weight, values_out);
+    }
+    return PostflopSolverError::InvalidConfiguration;
   }
 
   Result<ComboVector, PostflopSolverError> policy_physical(const NodeId node_id,
                                                            const std::uint8_t updating_player,
-                                                           const std::array<ComboVector, 2> &reach,
+                                                           const ReachRef &reach,
                                                            const bool best_response) {
     ++traversed_nodes_;
     const auto &node = layout_.tree.nodes[static_cast<std::size_t>(node_id)];
     switch (node.kind) {
     case PublicNodeKind::TerminalFold:
-      return fold_values(node, updating_player, reach[1U - updating_player]);
+      return fold_values(node, updating_player, *reach[1U - updating_player]);
     case PublicNodeKind::TerminalShowdown:
-      return showdown_values(node, updating_player, reach[1U - updating_player]);
+      return showdown_values(node, updating_player, *reach[1U - updating_player]);
     case PublicNodeKind::Chance:
       return policy_chance(node, updating_player, reach, best_response);
     case PublicNodeKind::Decision:
@@ -1390,18 +1933,46 @@ private:
 
 public:
   [[nodiscard]] std::uint64_t traversed_nodes() const noexcept {
-    return traversed_nodes_ +
-           (parallel_worker_ == nullptr ? 0U : parallel_worker_->traversed_nodes());
+    std::uint64_t total = traversed_nodes_;
+    if (parallel_worker_ != nullptr) {
+      total += parallel_worker_->traversed_nodes();
+    }
+    for (const auto &worker : parallel_workers_) {
+      total += worker->traversed_nodes();
+    }
+    return total;
   }
   [[nodiscard]] double maximum_normalization_error() const noexcept {
-    return parallel_worker_ == nullptr ? maximum_normalization_error_
-                                       : std::max(maximum_normalization_error_,
-                                                  parallel_worker_->maximum_normalization_error());
+    double maximum = maximum_normalization_error_;
+    if (parallel_worker_ != nullptr) {
+      maximum = std::max(maximum, parallel_worker_->maximum_normalization_error());
+    }
+    for (const auto &worker : parallel_workers_) {
+      maximum = std::max(maximum, worker->maximum_normalization_error());
+    }
+    return maximum;
   }
 
   Result<bool, PostflopSolverError> apply_deferred_regrets() {
     if (deferred_regret_delta_ == nullptr) {
       return Result<bool, PostflopSolverError>::success(true);
+    }
+    // Pool workers merge their per-thread deferred deltas into our deferred
+    // delta and apply their own (disjoint) action indices on their own
+    // threads, so the merge+clip work overlaps with our own apply. The
+    // disjointness is guaranteed by the physical tree: each pool task owns a
+    // distinct subtree and, with trivial automorphisms, distinct action
+    // bases. The canonical path has no pool workers and is unaffected.
+    std::vector<std::future<TraversalResult>> worker_futures;
+    worker_futures.reserve(parallel_workers_.size());
+    for (const auto &worker : parallel_workers_) {
+      auto *const target = deferred_regret_delta_;
+      std::packaged_task<TraversalResult(DenseTraversal &)> task(
+          [worker = worker.get(), target](DenseTraversal &) {
+            return worker->apply_pool_regrets(*target);
+          });
+      worker_futures.push_back(task.get_future());
+      worker->dispatch_parallel_task(std::move(task));
     }
     for (const std::size_t index : deferred_regret_touched_) {
       const auto updated = buffers_.regret_at(index) + (*deferred_regret_delta_)[index];
@@ -1413,7 +1984,34 @@ public:
       deferred_regret_touched_flags_[index] = 0U;
     }
     deferred_regret_touched_.clear();
+    for (auto &future : worker_futures) {
+      const auto applied = future.get();
+      if (!applied) {
+        return Result<bool, PostflopSolverError>::failure(applied.error());
+      }
+    }
     return Result<bool, PostflopSolverError>::success(true);
+  }
+
+  // Pool worker: merges this traversal's deferred regret deltas into the
+  // shared target delta and applies the clipped regrets for its own action
+  // indices (disjoint from every other thread's), then resets its own state.
+  // Called on the worker thread via an apply task at the end of a player pass.
+  Result<ComboVector, PostflopSolverError> apply_pool_regrets(std::vector<double> &target_delta) {
+    for (const std::size_t index : deferred_regret_touched_) {
+      target_delta[index] += (*deferred_regret_delta_)[index];
+      (*deferred_regret_delta_)[index] = 0.0;
+      const auto updated = buffers_.regret_at(index) + target_delta[index];
+      if (!std::isfinite(updated)) {
+        return Result<ComboVector, PostflopSolverError>::failure(
+            PostflopSolverError::NumericalFailure);
+      }
+      buffers_.set_regret(index, std::max(0.0, updated));
+      target_delta[index] = 0.0;
+      deferred_regret_touched_flags_[index] = 0U;
+    }
+    deferred_regret_touched_.clear();
+    return Result<ComboVector, PostflopSolverError>::success(ComboVector{});
   }
 
 private:
@@ -1455,7 +2053,7 @@ private:
 
   Result<ComboVector, PostflopSolverError> cfr_canonical(const std::uint32_t node_id,
                                                          const std::uint8_t updating_player,
-                                                         const std::array<ComboVector, 2> &reach,
+                                                         const ReachRef &reach,
                                                          const double strategy_weight) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
@@ -1463,12 +2061,13 @@ private:
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff(canonical.board_index,
                                      canonical.fold_payoff_antes[updating_player],
-                                     reach[1U - updating_player]);
+                                     updating_player, *reach[1U - updating_player]);
     case PublicNodeKind::TerminalShowdown:
       return showdown_values_with_payoffs(
           canonical.board_index, canonical.showdown_payoff_antes[updating_player][2],
           canonical.showdown_payoff_antes[updating_player][1],
-          canonical.showdown_payoff_antes[updating_player][0], reach[1U - updating_player]);
+          canonical.showdown_payoff_antes[updating_player][0], updating_player,
+          *reach[1U - updating_player]);
     case PublicNodeKind::Chance:
       return cfr_canonical_chance(canonical, updating_player, reach, strategy_weight);
     case PublicNodeKind::Decision:
@@ -1480,7 +2079,7 @@ private:
 
   Result<ComboVector, PostflopSolverError> policy_canonical(const std::uint32_t node_id,
                                                             const std::uint8_t updating_player,
-                                                            const std::array<ComboVector, 2> &reach,
+                                                            const ReachRef &reach,
                                                             const bool best_response) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
@@ -1488,12 +2087,13 @@ private:
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff(canonical.board_index,
                                      canonical.fold_payoff_antes[updating_player],
-                                     reach[1U - updating_player]);
+                                     updating_player, *reach[1U - updating_player]);
     case PublicNodeKind::TerminalShowdown:
       return showdown_values_with_payoffs(
           canonical.board_index, canonical.showdown_payoff_antes[updating_player][2],
           canonical.showdown_payoff_antes[updating_player][1],
-          canonical.showdown_payoff_antes[updating_player][0], reach[1U - updating_player]);
+          canonical.showdown_payoff_antes[updating_player][0], updating_player,
+          *reach[1U - updating_player]);
     case PublicNodeKind::Chance:
       return policy_canonical_chance(canonical, updating_player, reach, best_response);
     case PublicNodeKind::Decision:
@@ -1505,14 +2105,14 @@ private:
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_chance(const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
-                       const std::array<ComboVector, 2> &reach, const double strategy_weight) {
+                       const ReachRef &reach, const double strategy_weight) {
     if (canonical.total_legal_outcome_count <= 4U) {
       return Result<ComboVector, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
     const auto &board = layout_.boards[canonical.board_index];
     const double denominator = static_cast<double>(canonical.total_legal_outcome_count - 4U);
-    ComboVector values{};
+    auto values = zeroed_values(updating_player);
     for (const auto &edge : canonical.edges) {
       std::optional<std::array<ComboVector, 2>> representative_reach;
       std::optional<ComboVector> representative_values;
@@ -1524,7 +2124,8 @@ private:
         if (representative_reach && child_reach == *representative_reach) {
           child_values = &*representative_values;
         } else {
-          auto child = cfr_canonical(outcome.child, updating_player, child_reach, strategy_weight);
+          auto child = cfr_canonical(outcome.child, updating_player,
+                                     {&child_reach[0], &child_reach[1]}, strategy_weight);
           if (!child) {
             return child;
           }
@@ -1543,17 +2144,17 @@ private:
             static_cast<double>(outcome.physical_outcome_count) / denominator;
         for (const ComboId combo : board.legal_combos) {
           if ((layout_.combo_masks[combo] & outcome.chance_card.mask()) == 0U) {
-            values[value_slot(combo)] += probability * parent_values[value_slot(combo)];
+            values[value_slot(combo, updating_player)] += probability * parent_values[value_slot(combo, updating_player)];
           }
         }
       }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_decision(const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
-                         const std::array<ComboVector, 2> &reach, const double strategy_weight) {
+                         const ReachRef &reach, const double strategy_weight) {
     const auto &decision = canonical.decision;
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
@@ -1565,21 +2166,33 @@ private:
     DecisionScratchLease scratch_lease(*this);
     auto &action_values = scratch_lease.get().action_values;
     auto &strategies = scratch_lease.get().strategies;
+    const bool locked_root = is_locked_root(canonical);
     for (const ComboId combo : board.legal_combos) {
-      strategies[value_slot(combo)] = current_strategy(decision, board.local_index[combo], false);
+      const auto locked = locked_root ? locked_root_strategy(board.local_index[combo])
+                                      : std::nullopt;
+      const auto strategy =
+          locked ? *locked : current_strategy(decision, board.local_index[combo], false);
+      const auto slot = value_slot(combo, updating_player);
+      for (std::size_t action = 0; action < action_count; ++action) {
+        strategies[action][slot] = strategy[action];
+      }
     }
     for (std::size_t action = 0; action < action_count; ++action) {
       if (canonical.edges[action].outcomes.size() != 1U) {
         return Result<ComboVector, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      auto child_reach = reach;
+      std::array<ComboVector, 2> child_reach;
+      child_reach[0] = *reach[0];
+      child_reach[1] = *reach[1];
       for (const ComboId combo : board.legal_combos) {
-        child_reach[decision.player][value_slot(combo)] *= strategies[value_slot(combo)][action];
+        child_reach[decision.player][value_slot(combo, updating_player)] *=
+            strategies[action][value_slot(combo, updating_player)];
       }
       const auto &outcome = canonical.edges[action].outcomes.front();
       child_reach = transform_reach(child_reach, outcome.physical_to_child_automorphism);
-      auto child = cfr_canonical(outcome.child, updating_player, child_reach, strategy_weight);
+      auto child = cfr_canonical(outcome.child, updating_player,
+                                 {&child_reach[0], &child_reach[1]}, strategy_weight);
       if (!child) {
         return child;
       }
@@ -1587,15 +2200,14 @@ private:
           transform_values_to_parent(child.value(), outcome.physical_to_child_automorphism);
     }
 
-    ComboVector values{};
+    auto values = zeroed_values(updating_player);
     for (const ComboId combo : board.legal_combos) {
-      const auto slot = value_slot(combo);
+      const auto slot = value_slot(combo, updating_player);
       const auto local = board.local_index[combo];
-      const auto &strategy = strategies[slot];
       const auto offset = decision_action_base(layout_, decision, local);
       if (decision.player == updating_player) {
         for (std::size_t action = 0; action < action_count; ++action) {
-          values[slot] += strategy[action] * action_values[action][slot];
+          values[slot] += strategies[action][slot] * action_values[action][slot];
         }
       } else {
         for (std::size_t action = 0; action < action_count; ++action) {
@@ -1607,34 +2219,36 @@ private:
             static_cast<double>(canonical.update_multiplicity[static_cast<std::size_t>(local)]);
         for (std::size_t action = 0; action < action_count; ++action) {
           const auto index = static_cast<std::size_t>(offset + action);
-          const auto regret_delta = multiplicity * (action_values[action][slot] - values[slot]);
-          if (deferred_regret_delta_ != nullptr) {
-            if (deferred_regret_touched_flags_[index] == 0U) {
-              deferred_regret_touched_flags_[index] = 1U;
-              deferred_regret_touched_.push_back(index);
+          if (!locked_root) {
+            const auto regret_delta = multiplicity * (action_values[action][slot] - values[slot]);
+            if (deferred_regret_delta_ != nullptr) {
+              if (deferred_regret_touched_flags_[index] == 0U) {
+                deferred_regret_touched_flags_[index] = 1U;
+                deferred_regret_touched_.push_back(index);
+              }
+              (*deferred_regret_delta_)[index] += regret_delta;
+            } else {
+              buffers_.set_regret(index, std::max(0.0, buffers_.regret_at(index) + regret_delta));
             }
-            (*deferred_regret_delta_)[index] += regret_delta;
-          } else {
-            buffers_.set_regret(index, std::max(0.0, buffers_.regret_at(index) + regret_delta));
           }
-          add_strategy(index, multiplicity * strategy_weight * reach[updating_player][slot] *
-                                  strategy[action]);
+          add_strategy(index, multiplicity * strategy_weight * (*reach[updating_player])[slot] *
+                                  strategies[action][slot]);
         }
       }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError>
   policy_canonical_chance(const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
-                          const std::array<ComboVector, 2> &reach, const bool best_response) {
+                          const ReachRef &reach, const bool best_response) {
     if (canonical.total_legal_outcome_count <= 4U) {
       return Result<ComboVector, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
     const auto &board = layout_.boards[canonical.board_index];
     const double denominator = static_cast<double>(canonical.total_legal_outcome_count - 4U);
-    ComboVector values{};
+    auto values = zeroed_values(updating_player);
     for (const auto &edge : canonical.edges) {
       std::optional<std::array<ComboVector, 2>> representative_reach;
       std::optional<ComboVector> representative_values;
@@ -1646,7 +2260,8 @@ private:
         if (representative_reach && child_reach == *representative_reach) {
           child_values = &*representative_values;
         } else {
-          auto child = policy_canonical(outcome.child, updating_player, child_reach, best_response);
+          auto child = policy_canonical(outcome.child, updating_player,
+                                        {&child_reach[0], &child_reach[1]}, best_response);
           if (!child) {
             return child;
           }
@@ -1665,18 +2280,18 @@ private:
             static_cast<double>(outcome.physical_outcome_count) / denominator;
         for (const ComboId combo : board.legal_combos) {
           if ((layout_.combo_masks[combo] & outcome.chance_card.mask()) == 0U) {
-            values[value_slot(combo)] += probability * parent_values[value_slot(combo)];
+            values[value_slot(combo, updating_player)] += probability * parent_values[value_slot(combo, updating_player)];
           }
         }
       }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError>
   policy_canonical_decision(const CanonicalPublicNode &canonical,
                             const std::uint8_t updating_player,
-                            const std::array<ComboVector, 2> &reach, const bool best_response) {
+                            const ReachRef &reach, const bool best_response) {
     const auto &decision = canonical.decision;
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
@@ -1687,42 +2302,54 @@ private:
     DecisionScratchLease scratch_lease(*this);
     auto &action_values = scratch_lease.get().action_values;
     auto &strategies = scratch_lease.get().strategies;
+    const bool locked_root = is_locked_root(canonical);
     for (const ComboId combo : board.legal_combos) {
-      strategies[value_slot(combo)] = current_strategy(decision, board.local_index[combo], true);
+      const auto locked = locked_root ? locked_root_strategy(board.local_index[combo])
+                                      : std::nullopt;
+      const auto strategy =
+          locked ? *locked : current_strategy(decision, board.local_index[combo], true);
+      const auto slot = value_slot(combo, updating_player);
+      for (std::size_t action = 0; action < action_count; ++action) {
+        strategies[action][slot] = strategy[action];
+      }
     }
     for (std::size_t action = 0; action < action_count; ++action) {
       if (canonical.edges[action].outcomes.size() != 1U) {
         return Result<ComboVector, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      auto child_reach = reach;
+      std::array<ComboVector, 2> child_reach;
+      child_reach[0] = *reach[0];
+      child_reach[1] = *reach[1];
       if (!(best_response && decision.player == updating_player)) {
         for (const ComboId combo : board.legal_combos) {
-          child_reach[decision.player][value_slot(combo)] *= strategies[value_slot(combo)][action];
+          child_reach[decision.player][value_slot(combo, updating_player)] *=
+              strategies[action][value_slot(combo, updating_player)];
         }
       }
       const auto &outcome = canonical.edges[action].outcomes.front();
       child_reach = transform_reach(child_reach, outcome.physical_to_child_automorphism);
-      auto child = policy_canonical(outcome.child, updating_player, child_reach, best_response);
+      auto child =
+          policy_canonical(outcome.child, updating_player, {&child_reach[0], &child_reach[1]},
+                           best_response);
       if (!child) {
         return child;
       }
       action_values[action] =
           transform_values_to_parent(child.value(), outcome.physical_to_child_automorphism);
     }
-    ComboVector values{};
+    auto values = zeroed_values(updating_player);
     for (const ComboId combo : board.legal_combos) {
-      const auto slot = value_slot(combo);
-      if (best_response && decision.player == updating_player) {
+      const auto slot = value_slot(combo, updating_player);
+      if (best_response && decision.player == updating_player && !is_locked_root(canonical)) {
         values[slot] = action_values[0][slot];
         for (std::size_t action = 1; action < action_count; ++action) {
           values[slot] = std::max(values[slot], action_values[action][slot]);
         }
       } else {
-        const auto &strategy = strategies[slot];
         if (decision.player == updating_player) {
           for (std::size_t action = 0; action < action_count; ++action) {
-            values[slot] += strategy[action] * action_values[action][slot];
+            values[slot] += strategies[action][slot] * action_values[action][slot];
           }
         } else {
           for (std::size_t action = 0; action < action_count; ++action) {
@@ -1731,7 +2358,7 @@ private:
         }
       }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   template <bool Float32State>
@@ -1788,11 +2415,47 @@ private:
                : current_strategy_for_state<false>(decision, local_combo, average);
   }
 
+  [[nodiscard]] bool is_locked_root(const CanonicalPublicNode &canonical) const noexcept {
+    return root_lock_ != nullptr &&
+           std::addressof(canonical) == std::addressof(layout_.canonical_public_graph
+                                                           .nodes[layout_.canonical_public_graph
+                                                                     .root]);
+  }
+
+  [[nodiscard]] bool is_locked_root(const PublicTreeNode &node) const noexcept {
+    return root_lock_ != nullptr && node.id == layout_.tree.root;
+  }
+
+  [[nodiscard]] std::optional<std::array<double, maximum_action_count>>
+  locked_root_strategy(const std::int16_t local_combo) const {
+    if (root_lock_ == nullptr || local_combo < 0) {
+      return std::nullopt;
+    }
+    const auto local = static_cast<std::size_t>(local_combo);
+    if (local >= root_lock_->by_local_combo.size()) {
+      return std::nullopt;
+    }
+    return root_lock_->by_local_combo[local];
+  }
+
   Result<ComboVector, PostflopSolverError> fold_values(const PublicTreeNode &node,
                                                        const std::uint8_t updating_player,
                                                        const ComboVector &opponent_reach) const {
     return fold_values(node.state, layout_.node_board[static_cast<std::size_t>(node.id)],
                        updating_player, opponent_reach);
+  }
+
+  std::optional<PostflopSolverError>
+  fold_values_into(const PublicTreeNode &node, const std::uint8_t updating_player,
+                   const ComboVector &opponent_reach, ComboVector &values_out) const {
+    const auto settlement = settle_terminal(node.state, layout_.tree.config.rake);
+    if (!settlement) {
+      return PostflopSolverError::SettlementFailure;
+    }
+    const double payoff =
+        static_cast<double>(settlement.value().payoff_units[updating_player]) / units_per_ante;
+    return fold_values_with_payoff_into(layout_.node_board[static_cast<std::size_t>(node.id)],
+                                        payoff, updating_player, opponent_reach, values_out);
   }
 
   Result<ComboVector, PostflopSolverError> fold_values(const PublicState &state,
@@ -1806,30 +2469,71 @@ private:
     }
     const double payoff =
         static_cast<double>(settlement.value().payoff_units[updating_player]) / units_per_ante;
-    return fold_values_with_payoff(board_index, payoff, opponent_reach);
+    return fold_values_with_payoff(board_index, payoff, updating_player, opponent_reach);
+  }
+
+  std::optional<PostflopSolverError>
+  fold_values_with_payoff_into(const std::uint32_t board_index, const double payoff,
+                               const std::uint8_t updating_player,
+                               const ComboVector &opponent_reach, ComboVector &values_out) const {
+    double total = 0.0;
+    std::array<double, 36> by_card{};
+    const auto &board = layout_.boards[board_index];
+    const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
+    if constexpr (PlayerIndexed) {
+      // Compact per-player terminal: only the opponent's live combos carry
+      // nonzero opponent reach, and only the updating player's live combos
+      // are ever read by parents (reach of the updating player is zero
+      // elsewhere), so iterate exactly those lists.
+      for (const ComboId combo_id : board.player_combos[opponent]) {
+        const double weight = opponent_reach[value_slot(combo_id, opponent)];
+        total += weight;
+        by_card[layout_.combos[combo_id].first.value()] += weight;
+        by_card[layout_.combos[combo_id].second.value()] += weight;
+      }
+    } else {
+      for (const ComboId combo_id : board.legal_combos) {
+        const double weight = opponent_reach[value_slot(combo_id, opponent)];
+        total += weight;
+        by_card[layout_.combos[combo_id].first.value()] += weight;
+        by_card[layout_.combos[combo_id].second.value()] += weight;
+      }
+    }
+    zero_values_into(updating_player, values_out);
+    if constexpr (PlayerIndexed) {
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        const auto &combo = layout_.combos[combo_id];
+        const double own_weight = layout_.initial_reach[opponent][combo_id] > 0.0
+                                      ? opponent_reach[value_slot(combo_id, opponent)]
+                                      : 0.0;
+        const double compatible = total - by_card[combo.first.value()] -
+                                  by_card[combo.second.value()] + own_weight;
+        values_out[value_slot(combo_id, updating_player)] =
+            compatible * payoff / layout_.initial_normalization;
+      }
+    } else {
+      for (const ComboId combo_id : board.legal_combos) {
+        const auto &combo = layout_.combos[combo_id];
+        const double compatible = total - by_card[combo.first.value()] -
+                                  by_card[combo.second.value()] +
+                                  opponent_reach[value_slot(combo_id, updating_player)];
+        values_out[value_slot(combo_id, updating_player)] =
+            compatible * payoff / layout_.initial_normalization;
+      }
+    }
+    return std::nullopt;
   }
 
   Result<ComboVector, PostflopSolverError>
   fold_values_with_payoff(const std::uint32_t board_index, const double payoff,
+                          const std::uint8_t updating_player,
                           const ComboVector &opponent_reach) const {
-    double total = 0.0;
-    std::array<double, 36> by_card{};
-    const auto &board = layout_.boards[board_index];
-    for (const ComboId combo_id : board.legal_combos) {
-      const double weight = opponent_reach[value_slot(combo_id)];
-      total += weight;
-      by_card[layout_.combos[combo_id].first.value()] += weight;
-      by_card[layout_.combos[combo_id].second.value()] += weight;
-    }
     ComboVector values{};
-    for (const ComboId combo_id : board.legal_combos) {
-      const auto &combo = layout_.combos[combo_id];
-      const double compatible = total - by_card[combo.first.value()] -
-                                by_card[combo.second.value()] +
-                                opponent_reach[value_slot(combo_id)];
-      values[value_slot(combo_id)] = compatible * payoff / layout_.initial_normalization;
+    if (const auto error = fold_values_with_payoff_into(board_index, payoff, updating_player,
+                                                        opponent_reach, values)) {
+      return Result<ComboVector, PostflopSolverError>::failure(*error);
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError> showdown_values(const PublicTreeNode &node,
@@ -1837,6 +2541,28 @@ private:
                                                            const ComboVector &opponent_reach) {
     return showdown_values(node.state, layout_.node_board[static_cast<std::size_t>(node.id)],
                            updating_player, opponent_reach);
+  }
+
+  std::optional<PostflopSolverError>
+  showdown_values_into(const PublicTreeNode &node, const std::uint8_t updating_player,
+                       const ComboVector &opponent_reach, ComboVector &values_out) {
+    const auto own_win = settle_terminal(node.state, layout_.tree.config.rake,
+                                         static_cast<std::uint8_t>(1U << updating_player));
+    const auto tie = settle_terminal(node.state, layout_.tree.config.rake, 0b11U);
+    const auto own_loss = settle_terminal(node.state, layout_.tree.config.rake,
+                                          static_cast<std::uint8_t>(1U << (1U - updating_player)));
+    if (!own_win || !tie || !own_loss) {
+      return PostflopSolverError::SettlementFailure;
+    }
+    const double win_payoff =
+        static_cast<double>(own_win.value().payoff_units[updating_player]) / units_per_ante;
+    const double tie_payoff =
+        static_cast<double>(tie.value().payoff_units[updating_player]) / units_per_ante;
+    const double loss_payoff =
+        static_cast<double>(own_loss.value().payoff_units[updating_player]) / units_per_ante;
+    return showdown_values_with_payoffs_into(layout_.node_board[static_cast<std::size_t>(node.id)],
+                                             win_payoff, tie_payoff, loss_payoff, updating_player,
+                                             opponent_reach, values_out);
   }
 
   Result<ComboVector, PostflopSolverError> showdown_values(const PublicState &state,
@@ -1859,28 +2585,42 @@ private:
     const double loss_payoff =
         static_cast<double>(own_loss.value().payoff_units[updating_player]) / units_per_ante;
     return showdown_values_with_payoffs(board_index, win_payoff, tie_payoff, loss_payoff,
-                                        opponent_reach);
+                                        updating_player, opponent_reach);
   }
 
-  Result<ComboVector, PostflopSolverError>
-  showdown_values_with_payoffs(const std::uint32_t board_index, const double win_payoff,
-                               const double tie_payoff, const double loss_payoff,
-                               const ComboVector &opponent_reach) {
+  std::optional<PostflopSolverError>
+  showdown_values_with_payoffs_into(const std::uint32_t board_index, const double win_payoff,
+                                    const double tie_payoff, const double loss_payoff,
+                                    const std::uint8_t updating_player,
+                                    const ComboVector &opponent_reach, ComboVector &values_out) {
     const auto prepared = prepare_ranks(layout_, board_index);
     if (!prepared) {
-      return Result<ComboVector, PostflopSolverError>::failure(prepared.error());
+      return prepared.error();
     }
     const auto &board = layout_.boards[board_index];
     const auto rank_count = static_cast<std::size_t>(board.rank_count);
+    const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
     const auto calculate = [&](auto &totals, auto &by_card, auto &prefix, auto &card_prefix) {
-      for (const ComboId combo_id : board.legal_combos) {
-        const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
-        const double weight = opponent_reach[value_slot(combo_id)];
-        totals[rank] += weight;
-        by_card[static_cast<std::size_t>(layout_.combos[combo_id].first.value()) * rank_count +
-                rank] += weight;
-        by_card[static_cast<std::size_t>(layout_.combos[combo_id].second.value()) * rank_count +
-                rank] += weight;
+      if constexpr (PlayerIndexed) {
+        for (const ComboId combo_id : board.player_combos[opponent]) {
+          const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
+          const double weight = opponent_reach[value_slot(combo_id, opponent)];
+          totals[rank] += weight;
+          by_card[static_cast<std::size_t>(layout_.combos[combo_id].first.value()) * rank_count +
+                  rank] += weight;
+          by_card[static_cast<std::size_t>(layout_.combos[combo_id].second.value()) * rank_count +
+                  rank] += weight;
+        }
+      } else {
+        for (const ComboId combo_id : board.legal_combos) {
+          const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
+          const double weight = opponent_reach[value_slot(combo_id, opponent)];
+          totals[rank] += weight;
+          by_card[static_cast<std::size_t>(layout_.combos[combo_id].first.value()) * rank_count +
+                  rank] += weight;
+          by_card[static_cast<std::size_t>(layout_.combos[combo_id].second.value()) * rank_count +
+                  rank] += weight;
+        }
       }
       for (std::size_t rank = 0; rank < rank_count; ++rank) {
         prefix[rank + 1U] = prefix[rank] + totals[rank];
@@ -1889,49 +2629,133 @@ private:
               card_prefix[card * (rank_count + 1U) + rank] + by_card[card * rank_count + rank];
         }
       }
-      ComboVector values{};
-      for (const ComboId combo_id : board.legal_combos) {
-        const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
-        const auto first = static_cast<std::size_t>(layout_.combos[combo_id].first.value());
-        const auto second = static_cast<std::size_t>(layout_.combos[combo_id].second.value());
-        const double invalid_lower = card_prefix[first * (rank_count + 1U) + rank] +
-                                     card_prefix[second * (rank_count + 1U) + rank];
-        const double invalid_tie = by_card[first * rank_count + rank] +
-                                   by_card[second * rank_count + rank] -
-                                   opponent_reach[value_slot(combo_id)];
-        const double invalid_all = card_prefix[first * (rank_count + 1U) + rank_count] +
-                                   card_prefix[second * (rank_count + 1U) + rank_count] -
-                                   opponent_reach[value_slot(combo_id)];
-        const double lower = prefix[rank] - invalid_lower;
-        const double equal = totals[rank] - invalid_tie;
-        const double higher =
-            (prefix[rank_count] - prefix[rank + 1U]) - (invalid_all - invalid_lower - invalid_tie);
-        values[value_slot(combo_id)] =
-            (lower * win_payoff + equal * tie_payoff + higher * loss_payoff) /
-            layout_.initial_normalization;
+      zero_values_into(updating_player, values_out);
+      if constexpr (PlayerIndexed) {
+        for (const ComboId combo_id : board.player_combos[updating_player]) {
+          const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
+          const auto first = static_cast<std::size_t>(layout_.combos[combo_id].first.value());
+          const auto second = static_cast<std::size_t>(layout_.combos[combo_id].second.value());
+          const double own_reach = layout_.initial_reach[opponent][combo_id] > 0.0
+                                       ? opponent_reach[value_slot(combo_id, opponent)]
+                                       : 0.0;
+          const double invalid_lower = card_prefix[first * (rank_count + 1U) + rank] +
+                                       card_prefix[second * (rank_count + 1U) + rank];
+          const double invalid_tie =
+              by_card[first * rank_count + rank] + by_card[second * rank_count + rank] - own_reach;
+          const double invalid_all =
+              card_prefix[first * (rank_count + 1U) + rank_count] +
+              card_prefix[second * (rank_count + 1U) + rank_count] - own_reach;
+          const double lower = prefix[rank] - invalid_lower;
+          const double equal = totals[rank] - invalid_tie;
+          const double higher = (prefix[rank_count] - prefix[rank + 1U]) -
+                                (invalid_all - invalid_lower - invalid_tie);
+          values_out[value_slot(combo_id, updating_player)] =
+              (lower * win_payoff + equal * tie_payoff + higher * loss_payoff) /
+              layout_.initial_normalization;
+        }
+      } else {
+        for (const ComboId combo_id : board.legal_combos) {
+          const auto rank = static_cast<std::size_t>(board.rank_index[combo_id]);
+          const auto first = static_cast<std::size_t>(layout_.combos[combo_id].first.value());
+          const auto second = static_cast<std::size_t>(layout_.combos[combo_id].second.value());
+          const double invalid_lower = card_prefix[first * (rank_count + 1U) + rank] +
+                                       card_prefix[second * (rank_count + 1U) + rank];
+          const double invalid_tie = by_card[first * rank_count + rank] +
+                                     by_card[second * rank_count + rank] -
+                                     opponent_reach[value_slot(combo_id, updating_player)];
+          const double invalid_all = card_prefix[first * (rank_count + 1U) + rank_count] +
+                                     card_prefix[second * (rank_count + 1U) + rank_count] -
+                                     opponent_reach[value_slot(combo_id, updating_player)];
+          const double lower = prefix[rank] - invalid_lower;
+          const double equal = totals[rank] - invalid_tie;
+          const double higher =
+              (prefix[rank_count] - prefix[rank + 1U]) - (invalid_all - invalid_lower - invalid_tie);
+          values_out[value_slot(combo_id, updating_player)] =
+              (lower * win_payoff + equal * tie_payoff + higher * loss_payoff) /
+              layout_.initial_normalization;
+        }
       }
-      return values;
     };
-    if constexpr (Capacity <= compact_combo_capacity) {
-      std::fill_n(showdown_totals_.begin(), rank_count, 0.0);
-      std::fill_n(showdown_by_card_.begin(), 36U * rank_count, 0.0);
-      std::fill_n(showdown_prefix_.begin(), rank_count + 1U, 0.0);
-      std::fill_n(showdown_card_prefix_.begin(), 36U * (rank_count + 1U), 0.0);
-      return Result<ComboVector, PostflopSolverError>::success(
-          calculate(showdown_totals_, showdown_by_card_, showdown_prefix_, showdown_card_prefix_));
+    // Reuse the member scratch arrays (sized for the maximum rank space, see
+    // the member declarations): no per-node heap allocation (the old code
+    // heap-allocated ~5.4 KB per showdown node, ~4.4 M allocations per run).
+    std::fill_n(showdown_totals_.begin(), rank_count, 0.0);
+    std::fill_n(showdown_by_card_.begin(), 36U * rank_count, 0.0);
+    std::fill_n(showdown_prefix_.begin(), rank_count + 1U, 0.0);
+    std::fill_n(showdown_card_prefix_.begin(), 36U * (rank_count + 1U), 0.0);
+    calculate(showdown_totals_, showdown_by_card_, showdown_prefix_, showdown_card_prefix_);
+    return std::nullopt;
+  }
+
+  Result<ComboVector, PostflopSolverError>
+  showdown_values_with_payoffs(const std::uint32_t board_index, const double win_payoff,
+                               const double tie_payoff, const double loss_payoff,
+                               const std::uint8_t updating_player,
+                               const ComboVector &opponent_reach) {
+    ComboVector values{};
+    if (const auto error = showdown_values_with_payoffs_into(
+            board_index, win_payoff, tie_payoff, loss_payoff, updating_player, opponent_reach,
+            values)) {
+      return Result<ComboVector, PostflopSolverError>::failure(*error);
+    }
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
+  }
+
+  // Returns a zero-initialized value vector. In the per-player path only the
+  // updating player's flop-range prefix (slots 0..player_flop_count[player])
+  // can ever be read, so only that prefix is zeroed; every reader in this
+  // path iterates player_combos lists or bounds by player_flop_count.
+#pragma warning(push)
+#pragma warning(disable : 4701)
+  [[nodiscard]] ComboVector zeroed_values(const std::uint8_t updating_player) const {
+    ComboVector values;
+    if constexpr (PlayerIndexed) {
+      std::fill_n(values.begin(), layout_.player_flop_count[updating_player], 0.0);
     } else {
-      std::vector<double> totals(rank_count, 0.0);
-      std::vector<double> by_card(36U * rank_count, 0.0);
-      std::vector<double> prefix(rank_count + 1U, 0.0);
-      std::vector<double> card_prefix(36U * (rank_count + 1U), 0.0);
-      return Result<ComboVector, PostflopSolverError>::success(
-          calculate(totals, by_card, prefix, card_prefix));
+      values.fill(0.0);
+    }
+    return values;
+  }
+#pragma warning(pop)
+
+  // Zeroes the active prefix of an out-parameter value buffer (per-player
+  // compact slots are 0..player_flop_count[player]-1 in the PlayerIndexed
+  // path; the full array otherwise). Every callee that writes through an
+  // out-param must zero its destination first so that slots not written
+  // (blocked combos) read as zero in the parent's accumulation.
+  void zero_values_into(const std::uint8_t updating_player, ComboVector &values) const {
+    if constexpr (PlayerIndexed) {
+      std::fill_n(values.begin(), layout_.player_flop_count[updating_player], 0.0);
+    } else {
+      values.fill(0.0);
     }
   }
 
-  std::array<ComboVector, 2> block_card(const std::array<ComboVector, 2> &reach,
+  std::array<ComboVector, 2> block_card(const ReachRef &reach,
                                         const BoardData &board, const CardId card) const {
-    auto blocked = reach;
+    if constexpr (PlayerIndexed) {
+      // Per-player compact spaces: slots 0..player_flop_count[p]-1 are the
+      // player's flop-range combos (contiguous), so the copy is a pair of
+      // contiguous prefix copies; then zero the slots blocked by the new card.
+      // Slots beyond each prefix are never read in this path.
+      std::array<ComboVector, 2> blocked;
+      std::copy_n(reach[0]->begin(), layout_.player_flop_count[0], blocked[0].begin());
+      std::copy_n(reach[1]->begin(), layout_.player_flop_count[1], blocked[1].begin());
+      for (const ComboId combo : board.player_combos[0]) {
+        if ((layout_.combo_masks[combo] & card.mask()) != 0U) {
+          blocked[0][value_slot(combo, 0)] = 0.0;
+        }
+      }
+      for (const ComboId combo : board.player_combos[1]) {
+        if ((layout_.combo_masks[combo] & card.mask()) != 0U) {
+          blocked[1][value_slot(combo, 1)] = 0.0;
+        }
+      }
+      return blocked;
+    }
+    std::array<ComboVector, 2> blocked;
+    blocked[0] = *reach[0];
+    blocked[1] = *reach[1];
     static_cast<void>(board);
     if constexpr (Capacity <= compact_combo_capacity) {
       for (const std::uint16_t slot : layout_.active_slots_by_card[card.value()]) {
@@ -1947,100 +2771,401 @@ private:
     return blocked;
   }
 
-  Result<ComboVector, PostflopSolverError> cfr_chance(const PublicTreeNode &node,
-                                                      const std::uint8_t updating_player,
-                                                      const std::array<ComboVector, 2> &reach,
-                                                      const double strategy_weight) {
-    ComboVector values{};
+  // Copies the reach arrays. With per-player compact spaces (PlayerIndexed)
+  // each player's live slots are a contiguous prefix, so the copy is two
+  // contiguous prefix copies (~4.5 KB instead of ~10 KB); otherwise a full
+  // copy preserves the zero-initialized state (identical to `auto copy =
+  // reach;`).
+  std::array<ComboVector, 2> copy_reach(const ReachRef &reach,
+                                        const BoardData &board) const {
+    static_cast<void>(board);
+    if constexpr (PlayerIndexed) {
+      std::array<ComboVector, 2> copy;
+      std::copy_n(reach[0]->begin(), layout_.player_flop_count[0], copy[0].begin());
+      std::copy_n(reach[1]->begin(), layout_.player_flop_count[1], copy[1].begin());
+      return copy;
+    }
+    std::array<ComboVector, 2> copy;
+    copy[0] = *reach[0];
+    copy[1] = *reach[1];
+    return copy;
+  }
+
+  std::optional<PostflopSolverError> cfr_chance(const PublicTreeNode &node,
+                                                const std::uint8_t updating_player,
+                                                const ReachRef &reach,
+                                                const double strategy_weight,
+                                                ComboVector &values_out) {
+    zero_values_into(updating_player, values_out);
     if (node.edges.empty() || node.edges.front().total_legal_outcome_count <= 4U) {
-      return Result<ComboVector, PostflopSolverError>::failure(
-          PostflopSolverError::InvalidConfiguration);
+      return PostflopSolverError::InvalidConfiguration;
     }
     const auto &board = layout_.boards[layout_.node_board[static_cast<std::size_t>(node.id)]];
     const double denominator =
         static_cast<double>(node.edges.front().total_legal_outcome_count - 4U);
-    for (const auto &edge : node.edges) {
-      auto child_reach = block_card(reach, board, edge.chance_card);
-      const auto child = cfr_physical(edge.child, updating_player, child_reach, strategy_weight);
-      if (!child) {
-        return child;
-      }
+    const auto accumulate = [&](const PublicTreeEdge &edge, const ComboVector &child) {
       const double probability = static_cast<double>(edge.physical_outcome_count) / denominator;
-      for (const ComboId combo_id : board.legal_combos) {
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
         if ((layout_.combo_masks[combo_id] & edge.chance_card.mask()) == 0U) {
-          values[value_slot(combo_id)] += probability * child.value()[value_slot(combo_id)];
+          const auto slot = value_slot(combo_id, updating_player);
+          values_out[slot] += probability * child[slot];
         }
       }
+    };
+    // Coarse-grained parallel split at the turn chance (the first chance layer
+    // after the flop betting tree): the per-card subtrees are fanned out over
+    // the worker pool (round-robin) while the current thread keeps its own
+    // share, so all threads work concurrently on roughly equal-sized units.
+    // Below the turn chance everything runs serially, so no nested dispatch
+    // can serialize behind a worker's queue. Tasks execute on each worker's
+    // own traversal; their deferred regret deltas are merged and applied on
+    // the worker threads at the end of the player pass (apply_deferred_regrets
+    // dispatches one task per worker), so the merge cost does not sit on the
+    // current thread's critical path.
+    const std::size_t edge_count = node.edges.size();
+    const std::size_t worker_count = parallel_workers_.size();
+    const std::size_t split = (!parallel_shutdown_.load() &&
+                               std::popcount(board.mask) == 3U && worker_count > 0U)
+                                  ? edge_count - edge_count / (worker_count + 1U)
+                                  : 0U;
+    std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
+    std::vector<std::future<TraversalResult>> futures;
+    tasks.reserve(split);
+    futures.reserve(split);
+    // Round-robin task assignment: consecutive per-card subtrees are roughly
+    // equal-sized (the blocked-combo sets vary smoothly across cards), so
+    // interleaving balances the workers' loads better than contiguous chunks.
+    // The task assignment does not affect the accumulation order (the results
+    // are read back in edge order), so any assignment is bit-exact.
+    const auto worker_for = [worker_count](const std::size_t index) {
+      return static_cast<std::size_t>(index % worker_count);
+    };
+    // Pre-sized result vectors: each child writes directly into its own slot
+    // (the workers write disjoint slots of the main thread's vector, which
+    // stay valid until the join below).
+    std::vector<ComboVector> worker_results(split);
+    std::vector<ComboVector> main_results(edge_count - split);
+    for (std::size_t index = 0; index < split; ++index) {
+      const auto &edge = node.edges[index];
+      auto child_reach = block_card(reach, board, edge.chance_card);
+      std::packaged_task<TraversalResult(DenseTraversal &)> task(
+          [child = edge.child, updating_player, child_reach, strategy_weight,
+           result = &worker_results[index]](DenseTraversal &self) {
+            const auto error = self.cfr_physical(child, updating_player,
+                                                 {&child_reach[0], &child_reach[1]},
+                                                 strategy_weight, *result);
+            if (error) {
+              return Result<ComboVector, PostflopSolverError>::failure(*error);
+            }
+            return Result<ComboVector, PostflopSolverError>::success(ComboVector{});
+          });
+      futures.push_back(task.get_future());
+      tasks.push_back(std::move(task));
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    const auto t_sync = std::chrono::steady_clock::now();
+    for (std::size_t index = 0; index < split; ++index) {
+      if (worker_count > 0U) {
+        parallel_workers_[worker_for(index)]->dispatch_parallel_task(std::move(tasks[index]));
+      } else {
+        dispatch_parallel_task(std::move(tasks[index]));
+      }
+    }
+    prof_sync_seconds_ +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t_sync).count();
+    // Both the worker subtrees (0..split) and the main thread's share
+    // (split..edge_count) are joined, then accumulated in the original edge
+    // order so the floating-point summation is bit-identical to the serial
+    // traversal regardless of where the split boundary lies.
+    for (std::size_t index = split; index < edge_count; ++index) {
+      const auto &edge = node.edges[index];
+      auto child_reach = block_card(reach, board, edge.chance_card);
+      const auto error = cfr_physical(edge.child, updating_player,
+                                      {&child_reach[0], &child_reach[1]}, strategy_weight,
+                                      main_results[index - split]);
+      if (error) {
+        return error;
+      }
+    }
+    for (std::size_t index = 0; index < split; ++index) {
+      auto &future = futures[index];
+      // Work-stealing wait: keep the pool busy with other pending subtrees
+      // instead of blocking on this future. When the shared queue is empty,
+      // block briefly on its condition variable instead of busy-spinning.
+      while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (!try_pull_and_run()) {
+          ParallelTaskQueue *const queue = parallel_shared_.get();
+          std::unique_lock lock(queue->mutex);
+          queue->ready.wait_for(lock, std::chrono::milliseconds(1));
+        }
+      }
+      auto child = future.get();
+      if (!child) {
+        return child.error();
+      }
+    }
+    const auto t_chance = std::chrono::steady_clock::now();
+    for (std::size_t index = 0; index < split; ++index) {
+      accumulate(node.edges[index], worker_results[index]);
+    }
+    for (std::size_t index = split; index < edge_count; ++index) {
+      accumulate(node.edges[index], main_results[index - split]);
+    }
+    prof_chance_seconds_ +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t_chance).count();
+    return std::nullopt;
   }
 
-  Result<ComboVector, PostflopSolverError> cfr_decision(const PublicTreeNode &node,
-                                                        const std::uint8_t updating_player,
-                                                        const std::array<ComboVector, 2> &reach,
-                                                        const double strategy_weight) {
+  std::optional<PostflopSolverError> cfr_decision(const PublicTreeNode &node,
+                                                   const std::uint8_t updating_player,
+                                                   const ReachRef &reach,
+                                                   const double strategy_weight,
+                                                   ComboVector &values_out) {
     const auto &decision = layout_.decisions[static_cast<std::size_t>(node.id)];
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
-    std::array<ComboVector, maximum_action_count> action_values{};
-    std::array<std::array<double, maximum_action_count>, combo_count> strategies{};
-    for (const ComboId combo_id : board.legal_combos) {
-      strategies[combo_id] = current_strategy(decision, board.local_index[combo_id], false);
+    DecisionScratchLease scratch_lease(*this);
+    auto &action_values = scratch_lease.get().action_values;
+    auto &strategies = scratch_lease.get().strategies;
+    const auto t_begin = std::chrono::steady_clock::now();
+    const auto t_after_strategy = [&] {
+      const auto t_strategy = std::chrono::steady_clock::now();
+      prof_strategy_seconds_ +=
+          std::chrono::duration<double>(t_strategy - t_begin).count();
+      return t_strategy;
+    }();
+    auto t_child_end = t_after_strategy;
+    // Strategies are only meaningful for the acting player's own live combos
+    // (board.player_combos[decision.player]); for every other combo the
+    // actor's reach is zero, so its strategy never contributes. Only the
+    // updating player's live combos (board.player_combos[updating_player])
+    // carry nonzero updating-player reach, so value loops iterate that list.
+    // Cache each actor combo's flop-space slot once per node (the action loop
+    // would otherwise re-derive it per action), preserving iteration order and
+    // bit-exact accumulation. Only the first actor_slot_count entries are
+    // written before being read.
+#pragma warning(push)
+#pragma warning(disable : 4701)
+    std::array<std::int16_t, combo_count> actor_slots;
+#pragma warning(pop)
+    std::size_t actor_slot_count = 0;
+    for (const ComboId combo_id : board.player_combos[decision.player]) {
+      actor_slots[actor_slot_count++] =
+          static_cast<std::int16_t>(value_slot(combo_id, decision.player));
     }
-
-    for (std::size_t action = 0; action < action_count; ++action) {
-      auto child_reach = reach;
-      for (const ComboId combo_id : board.legal_combos) {
-        child_reach[decision.player][value_slot(combo_id)] *= strategies[combo_id][action];
+    for (const ComboId combo_id : board.player_combos[decision.player]) {
+      const auto locked = is_locked_root(node) ? locked_root_strategy(board.local_index[combo_id])
+                                               : std::nullopt;
+      const auto strategy = locked
+                                ? *locked
+                                : current_strategy(decision,
+                                                   board.player_local[decision.player][combo_id],
+                                                   false);
+      const auto slot = value_slot(combo_id, decision.player);
+      for (std::size_t action = 0; action < action_count; ++action) {
+        strategies[action][slot] = strategy[action];
       }
-      const auto child =
-          cfr_physical(node.edges[action].child, updating_player, child_reach, strategy_weight);
-      if (!child) {
-        return child;
-      }
-      action_values[action] = child.value();
     }
-
-    ComboVector values{};
-    for (const ComboId combo_id : board.legal_combos) {
-      const auto slot = value_slot(combo_id);
-      const auto local = board.local_index[combo_id];
-      const auto &strategy = strategies[combo_id];
-      const auto offset = decision_action_base(layout_, decision, local);
-      if (decision.player == updating_player) {
+    // SIMD batch for the common two-action case: consecutive actor combos
+    // have contiguous action blocks (uses_direct_action_bases), so four
+    // combos' regrets are eight contiguous floats; four scalar divisions
+    // become one AVX2 division. The arithmetic (max, pair-add, 1/sum, mul)
+    // is IEEE-identical to the scalar path, so the result is bit-exact.
+    if (!is_locked_root(node) && action_count == 2U && layout_.uses_direct_action_bases &&
+        buffers_.regret_float32 != nullptr) {
+      const float *const regrets = buffers_.regret_float32 + decision.action_base;
+      const __m256d zero = _mm256_setzero_pd();
+      const __m256d one = _mm256_set1_pd(1.0);
+      const __m256d half = _mm256_set1_pd(0.5);
+      std::size_t i = 0;
+      for (; i + 4U <= actor_slot_count; i += 4U) {
+        __m256d r01 = _mm256_cvtps_pd(_mm_loadu_ps(regrets + 2U * i));
+        __m256d r23 = _mm256_cvtps_pd(_mm_loadu_ps(regrets + 2U * i + 4U));
+        r01 = _mm256_max_pd(r01, zero);
+        r23 = _mm256_max_pd(r23, zero);
+        __m256d sums = _mm256_hadd_pd(r01, r23);
+        // _mm256_hadd_pd is per-128-bit-lane: (a0+a1, b0+b1, a2+a3, b2+b3), so
+        // reorder to (s0, s1, s2, s3) = (a0+a1, a2+a3, b0+b1, b2+b3).
+        sums = _mm256_permute4x64_pd(sums, 0b11011000);
+        __m256d inverse = _mm256_div_pd(one, sums);
+        inverse = _mm256_blendv_pd(inverse, half, _mm256_cmp_pd(sums, zero, _CMP_LE_OS));
+        __m256d s01 = _mm256_mul_pd(r01, _mm256_permute4x64_pd(inverse, 0b01010000));
+        __m256d s23 = _mm256_mul_pd(r23, _mm256_permute4x64_pd(inverse, 0b11111010));
+        // The scalar path substitutes the uniform strategy when sum <= 0;
+        // the clamped regrets would otherwise multiply to zero.
+        {
+          const __m256d le_zero = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+          s01 = _mm256_blendv_pd(s01, half, _mm256_permute4x64_pd(le_zero, 0b01010000));
+          s23 = _mm256_blendv_pd(s23, half, _mm256_permute4x64_pd(le_zero, 0b11111010));
+        }
+        alignas(32) double s01_arr[4];
+        alignas(32) double s23_arr[4];
+        _mm256_store_pd(s01_arr, s01);
+        _mm256_store_pd(s23_arr, s23);
+        for (std::size_t k = 0; k < 4U; ++k) {
+          const auto slot = static_cast<std::size_t>(actor_slots[i + k]);
+          const double first = k < 2U ? s01_arr[2U * k] : s23_arr[2U * (k - 2U)];
+          const double second = k < 2U ? s01_arr[2U * k + 1U] : s23_arr[2U * (k - 2U) + 1U];
+          strategies[0][slot] = first;
+          strategies[1][slot] = second;
+        }
+      }
+      for (; i < actor_slot_count; ++i) {
+        const auto combo_id = board.player_combos[decision.player][i];
+        const auto strategy =
+            current_strategy(decision, board.player_local[decision.player][combo_id], false);
+        const auto slot = static_cast<std::size_t>(actor_slots[i]);
         for (std::size_t action = 0; action < action_count; ++action) {
-          values[slot] += strategy[action] * action_values[action][slot];
+          strategies[action][slot] = strategy[action];
+        }
+      }
+    }
+
+    auto t_prev = t_after_strategy;
+    for (std::size_t action = 0; action < action_count; ++action) {
+      // The child node kind decides whether the actor reach is consumed at
+      // all: a terminal (fold/showdown) reads only reach[1-updating_player].
+      // When the actor is the updating player the freshly written actor reach
+      // is never read, so its materialization is skipped and the parent's own
+      // reach is passed instead (Phase C.3 fusion).
+      const auto &child_node =
+          layout_.tree.nodes[static_cast<std::size_t>(node.edges[action].child)];
+      const bool terminal_child = child_node.kind == PublicNodeKind::TerminalFold ||
+                                  child_node.kind == PublicNodeKind::TerminalShowdown;
+      const bool actor_needed = !terminal_child || decision.player != updating_player;
+      ComboVector &actor_reach = scratch_lease.get().reach_actor[0];
+      if (actor_needed) {
+        std::size_t slot_index = 0;
+        for (const ComboId combo_id : board.player_combos[decision.player]) {
+          static_cast<void>(combo_id);
+          const auto slot = actor_slots[slot_index++];
+          ++prof_actor_writes_;
+          // Fused actor write: only the actor's flop-range prefix is set, so
+          // no prefix copy is materialized; the opponent side is shared from
+          // the parent (plan: zero opponent reach copies).
+          actor_reach[slot] = (*reach[decision.player])[slot] * strategies[action][slot];
+        }
+      }
+      const auto t_copy_end = std::chrono::steady_clock::now();
+      prof_copy_seconds_ +=
+          std::chrono::duration<double>(t_copy_end - t_prev).count();
+      // The child writes its value vector directly into this action's slot of
+      // the parent's scratch (no Result<ComboVector> return, no prefix copy).
+      const ReachRef child_ref =
+          actor_needed
+              ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                       : ReachRef{reach[0], &actor_reach})
+              : ReachRef{reach[0], reach[1]};
+      const auto error =
+          cfr_physical(node.edges[action].child, updating_player, child_ref, strategy_weight,
+                       action_values[action]);
+      t_child_end = std::chrono::steady_clock::now();
+      prof_children_seconds_ +=
+          std::chrono::duration<double>(t_child_end - t_copy_end).count();
+      t_prev = t_child_end;
+      if (error) {
+        return error;
+      }
+    }
+
+    auto &values = values_out;
+    zero_values_into(updating_player, values);
+    const bool updating_actor = decision.player == updating_player;
+    if (updating_actor) {
+      if constexpr (PlayerIndexed) {
+        // Action-outer, slot-inner value accumulation: for a fixed action the
+        // three streams (strategies[action][slot], action_values[action][slot],
+        // values[slot]) are contiguous over the updating player's flop-range
+        // slots, so the loop auto-vectorizes under /arch:AVX2. Slots for
+        // combos blocked on this board hold zero in action_values (children
+        // keep them zero), so the full-prefix accumulation is exact. The
+        // summation order differs from the strict combo-outer order by
+        // construction; the dEV deviation is far below the 1e-6 gate.
+        const auto updating_count = layout_.player_flop_count[updating_player];
+        if (action_count == 2U) {
+          // Fused two-action accumulation: four contiguous slots at a time
+          // (per-player slots are contiguous). Compared with the scalar
+          // action-outer loop this halves the values load/store traffic and
+          // enables a single FMA chain per slot; IEEE-identical per slot.
+          const double *const s0 = strategies[0].data();
+          const double *const s1 = strategies[1].data();
+          const double *const a0 = action_values[0].data();
+          const double *const a1 = action_values[1].data();
+          double *const v = values.data();
+          std::size_t i = 0;
+          for (; i + 4U <= updating_count; i += 4U) {
+            const __m256d acc = _mm256_add_pd(
+                _mm256_mul_pd(_mm256_loadu_pd(s0 + i), _mm256_loadu_pd(a0 + i)),
+                _mm256_mul_pd(_mm256_loadu_pd(s1 + i), _mm256_loadu_pd(a1 + i)));
+            _mm256_storeu_pd(v + i, _mm256_add_pd(_mm256_loadu_pd(v + i), acc));
+          }
+          for (; i < updating_count; ++i) {
+            v[i] += s0[i] * a0[i] + s1[i] * a1[i];
+          }
+        } else {
+          for (std::size_t action = 0; action < action_count; ++action) {
+            for (std::size_t slot = 0; slot < updating_count; ++slot) {
+              values[slot] += strategies[action][slot] * action_values[action][slot];
+            }
+          }
         }
       } else {
+        // Non-per-player space: slots are combo ids, iterate the updating
+        // player's live combos (combo-outer to keep the bit-exact order).
+        for (const ComboId combo_id : board.player_combos[updating_player]) {
+          const auto slot = value_slot(combo_id, updating_player);
+          for (std::size_t action = 0; action < action_count; ++action) {
+            values[slot] += strategies[action][slot] * action_values[action][slot];
+          }
+        }
+      }
+      // Regret/strategy updates remain combo-outer: each combo's action block
+      // is contiguous (offset..offset+action_count) and each index is touched
+      // once, so the order is irrelevant to the result. (The F1 vectorized
+      // update was measured and reverted: 175.5s vs 164.0s baseline — the
+      // scattered value loads dominate and the contiguity check is pure
+      // overhead; see journey §8.9.)
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        const auto slot = value_slot(combo_id, updating_player);
+        const bool locked_root = is_locked_root(node);
+        const auto actor_local = board.player_local[decision.player][combo_id];
+        const auto offset = decision_action_base(layout_, decision, actor_local);
+        for (std::size_t action = 0; action < action_count; ++action) {
+          const auto index = static_cast<std::size_t>(offset + action);
+          if (!locked_root) {
+            const auto regret_delta = action_values[action][slot] - values[slot];
+            if (deferred_regret_delta_ != nullptr) {
+              if (deferred_regret_touched_flags_[index] == 0U) {
+                deferred_regret_touched_flags_[index] = 1U;
+                deferred_regret_touched_.push_back(index);
+              }
+              (*deferred_regret_delta_)[index] += regret_delta;
+            } else {
+              buffers_.set_regret(index, std::max(0.0, buffers_.regret_at(index) + regret_delta));
+            }
+          }
+          add_strategy(index,
+                       strategy_weight * (*reach[updating_player])[slot] * strategies[action][slot]);
+        }
+      }
+    } else {
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        const auto slot = value_slot(combo_id, updating_player);
         for (std::size_t action = 0; action < action_count; ++action) {
           values[slot] += action_values[action][slot];
         }
       }
-      if (decision.player == updating_player) {
-        for (std::size_t action = 0; action < action_count; ++action) {
-          const auto index = static_cast<std::size_t>(offset + action);
-          const auto regret_delta = action_values[action][slot] - values[slot];
-          if (deferred_regret_delta_ != nullptr) {
-            if (deferred_regret_touched_flags_[index] == 0U) {
-              deferred_regret_touched_flags_[index] = 1U;
-              deferred_regret_touched_.push_back(index);
-            }
-            (*deferred_regret_delta_)[index] += regret_delta;
-          } else {
-            buffers_.set_regret(index, std::max(0.0, buffers_.regret_at(index) + regret_delta));
-          }
-          add_strategy(index, strategy_weight * reach[updating_player][slot] * strategy[action]);
-        }
-      }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    prof_value_update_seconds_ +=
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t_child_end).count();
+    ++prof_decisions_;
+    return std::nullopt;
   }
 
   Result<ComboVector, PostflopSolverError> policy_chance(const PublicTreeNode &node,
                                                          const std::uint8_t updating_player,
-                                                         const std::array<ComboVector, 2> &reach,
+                                                         const ReachRef &reach,
                                                          const bool best_response) {
-    ComboVector values{};
+    auto values = zeroed_values(updating_player);
     if (node.edges.empty() || node.edges.front().total_legal_outcome_count <= 4U) {
       return Result<ComboVector, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
@@ -2048,103 +3173,231 @@ private:
     const auto &board = layout_.boards[layout_.node_board[static_cast<std::size_t>(node.id)]];
     const double denominator =
         static_cast<double>(node.edges.front().total_legal_outcome_count - 4U);
-    for (const auto &edge : node.edges) {
+    const auto accumulate = [&](const PublicTreeEdge &edge, const ComboVector &child) {
+      const double probability = static_cast<double>(edge.physical_outcome_count) / denominator;
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        if ((layout_.combo_masks[combo_id] & edge.chance_card.mask()) == 0U) {
+          const auto slot = value_slot(combo_id, updating_player);
+          values[slot] += probability * child[slot];
+        }
+      }
+    };
+    // Same coarse-grained parallel split as cfr_chance: fan the per-card
+    // subtrees out over the worker pool (round-robin) while the current
+    // thread keeps its own share, then join.
+    const std::size_t edge_count = node.edges.size();
+    const std::size_t worker_count = parallel_workers_.size();
+    const std::size_t split = (!parallel_shutdown_.load() &&
+                               std::popcount(board.mask) == 3U && worker_count > 0U)
+                                  ? edge_count - edge_count / (worker_count + 1U)
+                                  : 0U;
+    std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
+    std::vector<std::future<TraversalResult>> futures;
+    tasks.reserve(split);
+    futures.reserve(split);
+    const auto worker_for = [worker_count, split](const std::size_t index) {
+      return split == 0U ? 0U : index * worker_count / split;
+    };
+    for (std::size_t index = 0; index < split; ++index) {
+      const auto &edge = node.edges[index];
       auto child_reach = block_card(reach, board, edge.chance_card);
-      const auto child = policy_physical(edge.child, updating_player, child_reach, best_response);
+      std::packaged_task<TraversalResult(DenseTraversal &)> task(
+          [child = edge.child, updating_player, child_reach,
+           best_response](DenseTraversal &self) {
+            return self.policy_physical(child, updating_player,
+                                        {&child_reach[0], &child_reach[1]}, best_response);
+          });
+      futures.push_back(task.get_future());
+      tasks.push_back(std::move(task));
+    }
+    for (std::size_t index = 0; index < split; ++index) {
+      if (worker_count > 0U) {
+        parallel_workers_[worker_for(index)]->dispatch_parallel_task(std::move(tasks[index]));
+      } else {
+        dispatch_parallel_task(std::move(tasks[index]));
+      }
+    }
+    // Both the worker subtrees (0..split) and the main thread's share
+    // (split..edge_count) are joined, then accumulated in the original edge
+    // order so the floating-point summation is bit-identical to the serial
+    // traversal: the certification is a single-shot evaluation and must stay
+    // bit-exact against the reference profile. Result vectors reserve without
+    // zero-init (every slot is assigned before reading).
+    std::vector<ComboVector> worker_results;
+    worker_results.reserve(split);
+    std::vector<ComboVector> main_results;
+    main_results.reserve(edge_count - split);
+    for (std::size_t index = split; index < edge_count; ++index) {
+      const auto &edge = node.edges[index];
+      auto child_reach = block_card(reach, board, edge.chance_card);
+      const auto child =
+          policy_physical(edge.child, updating_player, {&child_reach[0], &child_reach[1]},
+                          best_response);
       if (!child) {
         return child;
       }
-      const double probability = static_cast<double>(edge.physical_outcome_count) / denominator;
-      for (const ComboId combo_id : board.legal_combos) {
-        if ((layout_.combo_masks[combo_id] & edge.chance_card.mask()) == 0U) {
-          values[value_slot(combo_id)] += probability * child.value()[value_slot(combo_id)];
-        }
-      }
+      main_results.emplace_back(child.value());
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    for (std::size_t index = 0; index < split; ++index) {
+      auto child = futures[index].get();
+      if (!child) {
+        return Result<ComboVector, PostflopSolverError>::failure(child.error());
+      }
+      worker_results.emplace_back(child.value());
+    }
+    for (std::size_t index = 0; index < split; ++index) {
+      accumulate(node.edges[index], worker_results[index]);
+    }
+    for (std::size_t index = split; index < edge_count; ++index) {
+      accumulate(node.edges[index], main_results[index - split]);
+    }
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError> policy_decision(const PublicTreeNode &node,
                                                            const std::uint8_t updating_player,
-                                                           const std::array<ComboVector, 2> &reach,
+                                                           const ReachRef &reach,
                                                            const bool best_response) {
     const auto &decision = layout_.decisions[static_cast<std::size_t>(node.id)];
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
-    std::array<ComboVector, maximum_action_count> action_values{};
-    std::array<std::array<double, maximum_action_count>, combo_count> strategies{};
-    for (const ComboId combo_id : board.legal_combos) {
-      strategies[combo_id] = current_strategy(decision, board.local_index[combo_id], true);
+    DecisionScratchLease scratch_lease(*this);
+    auto &action_values = scratch_lease.get().action_values;
+    auto &strategies = scratch_lease.get().strategies;
+    for (const ComboId combo_id : board.player_combos[decision.player]) {
+      const auto locked = is_locked_root(node)
+                              ? locked_root_strategy(board.local_index[combo_id])
+                              : std::nullopt;
+      const auto strategy = locked
+                                ? *locked
+                                : current_strategy(decision,
+                                                   board.player_local[decision.player][combo_id],
+                                                   true);
+      const auto slot = value_slot(combo_id, decision.player);
+      for (std::size_t action = 0; action < action_count; ++action) {
+        strategies[action][slot] = strategy[action];
+      }
+    }
+    // Cache each actor combo's flop-space slot once per node (see cfr_decision).
+#pragma warning(push)
+#pragma warning(disable : 4701)
+    std::array<std::int16_t, combo_count> actor_slots;
+#pragma warning(pop)
+    std::size_t actor_slot_count = 0;
+    for (const ComboId combo_id : board.player_combos[decision.player]) {
+      actor_slots[actor_slot_count++] =
+          static_cast<std::int16_t>(value_slot(combo_id, decision.player));
     }
     for (std::size_t action = 0; action < action_count; ++action) {
-      auto child_reach = reach;
+      auto child_reach = copy_reach(reach, board);
       if (!(best_response && decision.player == updating_player)) {
-        for (const ComboId combo_id : board.legal_combos) {
-          child_reach[decision.player][value_slot(combo_id)] *= strategies[combo_id][action];
+        std::size_t slot_index = 0;
+        for (const ComboId combo_id : board.player_combos[decision.player]) {
+          static_cast<void>(combo_id);
+          const auto slot = actor_slots[slot_index++];
+          child_reach[decision.player][slot] *= strategies[action][slot];
         }
       }
-      const auto child =
-          policy_physical(node.edges[action].child, updating_player, child_reach, best_response);
+      const auto child = policy_physical(node.edges[action].child, updating_player,
+                                         {&child_reach[0], &child_reach[1]}, best_response);
       if (!child) {
         return child;
       }
-      action_values[action] = child.value();
+      if constexpr (PlayerIndexed) {
+        std::copy_n(child.value().begin(), layout_.player_flop_count[updating_player],
+                    action_values[action].begin());
+      } else {
+        action_values[action] = child.value();
+      }
     }
-    ComboVector values{};
-    for (const ComboId combo_id : board.legal_combos) {
-      const auto slot = value_slot(combo_id);
-      if (best_response && decision.player == updating_player) {
+    auto values = zeroed_values(updating_player);
+    const bool updating_actor = decision.player == updating_player;
+    if (best_response && updating_actor && !is_locked_root(node)) {
+      // Best-response branch: max over actions, order-independent.
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        const auto slot = value_slot(combo_id, updating_player);
         values[slot] = action_values[0][slot];
         for (std::size_t action = 1; action < action_count; ++action) {
           values[slot] = std::max(values[slot], action_values[action][slot]);
         }
-      } else {
-        const auto &strategy = strategies[combo_id];
-        if (decision.player == updating_player) {
-          for (std::size_t action = 0; action < action_count; ++action) {
-            values[slot] += strategy[action] * action_values[action][slot];
+      }
+    } else if (updating_actor) {
+      if constexpr (PlayerIndexed) {
+        // Action-outer, slot-inner: contiguous streams, auto-vectorized (see
+        // cfr_decision).
+        const auto updating_count = layout_.player_flop_count[updating_player];
+        for (std::size_t action = 0; action < action_count; ++action) {
+          for (std::size_t slot = 0; slot < updating_count; ++slot) {
+            values[slot] += strategies[action][slot] * action_values[action][slot];
           }
-        } else {
+        }
+      } else {
+        for (const ComboId combo_id : board.player_combos[updating_player]) {
+          const auto slot = value_slot(combo_id, updating_player);
           for (std::size_t action = 0; action < action_count; ++action) {
-            values[slot] += action_values[action][slot];
+            values[slot] += strategies[action][slot] * action_values[action][slot];
           }
         }
       }
+    } else {
+      for (const ComboId combo_id : board.player_combos[updating_player]) {
+        const auto slot = value_slot(combo_id, updating_player);
+        for (std::size_t action = 0; action < action_count; ++action) {
+          values[slot] += action_values[action][slot];
+        }
+      }
     }
-    return Result<ComboVector, PostflopSolverError>::success(values);
+    return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
   DenseLayout &layout_;
   ActionBuffers buffers_;
   std::vector<double> *deferred_regret_delta_{nullptr};
+  const PreparedRootLock *root_lock_{nullptr};
   std::vector<std::size_t> deferred_regret_touched_;
   std::vector<std::uint8_t> deferred_regret_touched_flags_;
   std::vector<double> parallel_regret_delta_;
   std::unique_ptr<DenseTraversal> parallel_worker_;
-  std::mutex parallel_task_mutex_;
-  std::condition_variable parallel_task_ready_;
-  std::optional<std::packaged_task<TraversalResult()>> parallel_task_;
-  bool parallel_shutdown_{false};
+  std::vector<std::vector<double>> parallel_worker_deltas_;
+  std::vector<std::unique_ptr<DenseTraversal>> parallel_workers_;
+  std::shared_ptr<ParallelTaskQueue> parallel_shared_;
+  std::atomic<bool> parallel_shutdown_{false};
   std::jthread parallel_thread_;
   std::vector<std::unique_ptr<DecisionScratch>> decision_scratch_;
-  std::array<double, compact_combo_capacity> showdown_totals_{};
-  std::array<double, 36U * compact_combo_capacity> showdown_by_card_{};
-  std::array<double, compact_combo_capacity + 1U> showdown_prefix_{};
-  std::array<double, 36U * (compact_combo_capacity + 1U)> showdown_card_prefix_{};
+  // Showdown rank scratch, sized for the maximum rank space: rank_count is
+  // the number of distinct hand values among the board's legal combos, always
+  // <= combo_count, so these members cover every board without per-node heap
+  // allocation (the old code heap-allocated ~5.4 KB per showdown node).
+  std::array<double, combo_count> showdown_totals_{};
+  std::array<double, 36U * combo_count> showdown_by_card_{};
+  std::array<double, combo_count + 1U> showdown_prefix_{};
+  std::array<double, 36U * (combo_count + 1U)> showdown_card_prefix_{};
   std::size_t decision_scratch_depth_{0};
   std::uint64_t traversed_nodes_{0};
   double maximum_normalization_error_{0.0};
 };
 
-template <std::size_t Capacity>
+template <std::size_t Capacity, bool PlayerIndexed>
 std::array<TraversalComboVector<Capacity>, 2> initial_reach(const DenseLayout &layout) {
   std::array<TraversalComboVector<Capacity>, 2> reach{};
-  for (const ComboId combo : layout.active_combos) {
-    const auto slot = Capacity == combo_count
-                          ? static_cast<std::size_t>(combo)
-                          : static_cast<std::size_t>(layout.active_combo_index[combo]);
-    reach[0][slot] = layout.initial_reach[0][combo];
-    reach[1][slot] = layout.initial_reach[1][combo];
+  if constexpr (PlayerIndexed) {
+    // Each player's reach lives in its own flop-range space (contiguous
+    // prefix of size player_flop_count[player]); the same seeding serves both
+    // player passes.
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      for (std::size_t slot = 0; slot < layout.player_flop_count[player]; ++slot) {
+        const auto combo = layout.player_flop_combos[player][slot];
+        reach[player][slot] = layout.initial_reach[player][combo];
+      }
+    }
+  } else {
+    for (const ComboId combo : layout.active_combos) {
+      const auto slot = Capacity == combo_count
+                            ? static_cast<std::size_t>(combo)
+                            : static_cast<std::size_t>(layout.active_combo_index[combo]);
+      reach[0][slot] = layout.initial_reach[0][combo];
+      reach[1][slot] = layout.initial_reach[1][combo];
+    }
   }
   return reach;
 }
@@ -2159,21 +3412,27 @@ public:
   [[nodiscard]] virtual double maximum_normalization_error() const noexcept = 0;
 };
 
-template <std::size_t Capacity>
+template <std::size_t Capacity, bool PlayerIndexed>
 class TypedDenseTraversalRunner final : public DenseTraversalRunner {
 public:
   TypedDenseTraversalRunner(DenseLayout &layout, const ActionBuffers buffers,
                             std::vector<double> *deferred_regret_delta,
-                            const std::uint8_t parallel_action_depth)
-      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth),
-        reach_(initial_reach<Capacity>(layout)), root_(layout.tree.root) {}
+                            const std::uint8_t parallel_action_depth,
+                            const PreparedRootLock *root_lock)
+      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock),
+        reach_(initial_reach<Capacity, PlayerIndexed>(layout)), root_(layout.tree.root) {}
 
   Result<bool, PostflopSolverError> cfr(const std::uint8_t updating_player,
                                         const double strategy_weight) override {
-    const auto traversed = traversal_.cfr(root_, updating_player, reach_, strategy_weight);
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto traversed = traversal_.cfr(root_, updating_player, {&reach_[0], &reach_[1]},
+                                          strategy_weight);
+    const double wall =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     if (!traversed) {
       return Result<bool, PostflopSolverError>::failure(traversed.error());
     }
+    traversal_.dump_per_pass_profile(wall);
     return Result<bool, PostflopSolverError>::success(true);
   }
 
@@ -2188,7 +3447,7 @@ public:
   }
 
 private:
-  DenseTraversal<Capacity> traversal_;
+  DenseTraversal<Capacity, PlayerIndexed> traversal_;
   std::array<TraversalComboVector<Capacity>, 2> reach_;
   NodeId root_{0};
 };
@@ -2196,13 +3455,25 @@ private:
 std::unique_ptr<DenseTraversalRunner>
 make_dense_traversal_runner(DenseLayout &layout, const ActionBuffers buffers,
                             std::vector<double> *deferred_regret_delta,
-                            const std::uint8_t parallel_action_depth) {
+                            const std::uint8_t parallel_action_depth,
+                            const PreparedRootLock *root_lock) {
   if (layout.uses_canonical_public_dag && layout.active_combos.size() <= compact_combo_capacity) {
-    return std::make_unique<TypedDenseTraversalRunner<compact_combo_capacity>>(
-        layout, buffers, deferred_regret_delta, parallel_action_depth);
+    return std::make_unique<TypedDenseTraversalRunner<compact_combo_capacity, false>>(
+        layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
   }
-  return std::make_unique<TypedDenseTraversalRunner<combo_count>>(
-      layout, buffers, deferred_regret_delta, parallel_action_depth);
+  if (layout.uses_direct_action_bases) {
+    // Per-player physical path (identity automorphisms only): every action
+    // index is touched exactly once per player pass (each combo is its own
+    // infoset and each node is visited once), so the deferred regret delta
+    // (667 MB double + the end-of-pass apply) is unnecessary: the update
+    // loop's immediate-apply branch (deferred_regret_delta_ == nullptr) is
+    // bit-exact for single-touch indices and eliminates the delta, the
+    // worker merge and the whole regret_application phase.
+    return std::make_unique<TypedDenseTraversalRunner<combo_count, true>>(
+        layout, buffers, nullptr, parallel_action_depth, root_lock);
+  }
+  return std::make_unique<TypedDenseTraversalRunner<combo_count, false>>(
+      layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
 }
 
 Result<double, PostflopSolverError>
@@ -2244,10 +3515,96 @@ measure_canonical_normalization_error(const DenseLayout &layout, const ActionBuf
   return Result<double, PostflopSolverError>::success(maximum_error);
 }
 
-template <std::size_t Capacity>
+// Sums a per-combo value vector weighted by the player's initial reach, in the
+// same convention as analyze_postflop_node: profile/BR values are expressed as
+// per-hand EVs in antes. The certification evaluates at the tree root, where
+// the public-reach probability is exactly 1.0 by construction of
+// initial_normalization; the division is kept to mirror the analysis path.
+template <std::size_t Capacity, bool PlayerIndexed>
+double reach_weighted_sum(const DenseLayout &layout,
+                          const std::array<TraversalComboVector<Capacity>, 2> &reach,
+                          const TraversalComboVector<Capacity> &values, const std::uint8_t player) {
+  double total = 0.0;
+  if constexpr (PlayerIndexed) {
+    for (std::size_t slot = 0; slot < layout.player_flop_count[player]; ++slot) {
+      total += reach[player][slot] * values[slot];
+    }
+  } else {
+    for (std::size_t slot = 0; slot < Capacity; ++slot) {
+      total += reach[player][slot] * values[slot];
+    }
+  }
+  return total;
+}
+
+template <std::size_t Capacity, bool PlayerIndexed>
+double root_public_reach_probability(const DenseLayout &layout,
+                                     const std::array<TraversalComboVector<Capacity>, 2> &reach) {
+  // In DAG mode build_layout clears node_board/tree.nodes, so the root board
+  // must come from the canonical graph instead of the physical node mapping.
+  const auto root_board_index =
+      layout.uses_canonical_public_dag
+          ? layout.canonical_public_graph.nodes[layout.canonical_public_graph.root].board_index
+          : layout.node_board[layout.tree.root];
+  const auto &board = layout.boards[root_board_index];
+  double compatible_pair_mass = 0.0;
+  if constexpr (PlayerIndexed) {
+    // Per-player spaces: reach[0] is in P0's flop-range space and reach[1] in
+    // P1's; map each combo through its player's slot table (-1 when the combo
+    // is outside that player's flop range).
+    for (const ComboId first : board.legal_combos) {
+      const auto slot0 = layout.player_flop_slot[0][first];
+      if (slot0 < 0 || !(reach[0][slot0] > 0.0)) {
+        continue;
+      }
+      for (const ComboId second : board.legal_combos) {
+        if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
+          const auto slot1 = layout.player_flop_slot[1][second];
+          if (slot1 >= 0) {
+            compatible_pair_mass += reach[0][slot0] * reach[1][slot1];
+          }
+        }
+      }
+    }
+  } else {
+    const auto slot_of = [&layout](const ComboId combo) -> std::size_t {
+      if constexpr (Capacity == combo_count) {
+        return static_cast<std::size_t>(combo);
+      }
+      return static_cast<std::size_t>(layout.active_combo_index[combo]);
+    };
+    for (const ComboId first : board.legal_combos) {
+      if (!(reach[0][slot_of(first)] > 0.0)) {
+        continue;
+      }
+      for (const ComboId second : board.legal_combos) {
+        if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
+          compatible_pair_mass += reach[0][slot_of(first)] * reach[1][slot_of(second)];
+        }
+      }
+    }
+  }
+  return layout.initial_normalization > 0.0
+             ? compatible_pair_mass / layout.initial_normalization
+             : 0.0;
+}
+
+template <std::size_t Capacity, bool PlayerIndexed>
 Result<PostflopCertification, PostflopSolverError>
-certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration) {
-  const auto reach = initial_reach<Capacity>(layout);
+certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration,
+              const PreparedRootLock *root_lock) {
+  const auto reach = initial_reach<Capacity, PlayerIndexed>(layout);
+  const double public_reach_probability =
+      root_public_reach_probability<Capacity, PlayerIndexed>(layout, reach);
+  if (!(public_reach_probability > 0.0)) {
+    return Result<PostflopCertification, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto aggregate_value = [&](const std::uint8_t player,
+                                   const TraversalComboVector<Capacity> &values) {
+    return reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values, player) /
+           public_reach_probability;
+  };
   for (std::uint32_t board_index = 0; board_index < layout.boards.size(); ++board_index) {
     if (std::popcount(layout.boards[board_index].mask) == 5) {
       const auto prepared = prepare_ranks(layout, board_index);
@@ -2257,20 +3614,22 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     }
   }
   if (!layout.uses_canonical_public_dag) {
-    DenseTraversal<Capacity> traversal(layout, buffers);
+    // Policy-only traversal: the pool works without a deferred regret delta
+    // (the policy path never touches regret state), so each of the four
+    // profile/BR evaluations runs on the worker pool at the turn chance.
+    DenseTraversal<Capacity, PlayerIndexed> traversal(layout, buffers, nullptr, 7U, root_lock);
     PostflopCertification certification;
     certification.iteration = iteration;
     for (std::uint8_t player = 0; player < 2U; ++player) {
-      const auto profile = traversal.policy(layout.tree.root, player, reach, false);
-      const auto response = traversal.policy(layout.tree.root, player, reach, true);
+      const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
+      const auto profile = traversal.policy(layout.tree.root, player, reach_ref, false);
+      const auto response = traversal.policy(layout.tree.root, player, reach_ref, true);
       if (!profile || !response) {
         return Result<PostflopCertification, PostflopSolverError>::failure(
             profile ? response.error() : profile.error());
       }
-      certification.profile_value_antes[player] =
-          std::accumulate(profile.value().begin(), profile.value().end(), 0.0);
-      certification.best_response_value_antes[player] =
-          std::accumulate(response.value().begin(), response.value().end(), 0.0);
+      certification.profile_value_antes[player] = aggregate_value(player, profile.value());
+      certification.best_response_value_antes[player] = aggregate_value(player, response.value());
     }
     certification.nash_conv_antes =
         (certification.best_response_value_antes[0] - certification.profile_value_antes[0]) +
@@ -2289,15 +3648,18 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     }
     return Result<PostflopCertification, PostflopSolverError>::success(certification);
   }
-  const auto evaluate = [&layout, buffers, &reach](const std::uint8_t player,
+  const auto evaluate = [&layout, buffers, &reach, root_lock,
+                         public_reach_probability](const std::uint8_t player,
                                                    const bool best_response) {
-    DenseTraversal<Capacity> traversal(layout, buffers);
-    const auto values = traversal.policy(layout.tree.root, player, reach, best_response);
+    DenseTraversal<Capacity, PlayerIndexed> traversal(layout, buffers, nullptr, 0U, root_lock);
+    const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
+    const auto values = traversal.policy(layout.tree.root, player, reach_ref, best_response);
     if (!values) {
       return Result<double, PostflopSolverError>::failure(values.error());
     }
     return Result<double, PostflopSolverError>::success(
-        std::accumulate(values.value().begin(), values.value().end(), 0.0));
+        reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value(), player) /
+        public_reach_probability);
   };
   auto profile_zero = std::async(std::launch::async, evaluate, std::uint8_t{0}, false);
   auto response_zero = std::async(std::launch::async, evaluate, std::uint8_t{0}, true);
@@ -2333,11 +3695,15 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
 }
 
 Result<PostflopCertification, PostflopSolverError>
-certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration) {
+certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration,
+        const PreparedRootLock *root_lock) {
   if (layout.uses_canonical_public_dag && layout.active_combos.size() <= compact_combo_capacity) {
-    return certify_typed<compact_combo_capacity>(layout, buffers, iteration);
+    return certify_typed<compact_combo_capacity, false>(layout, buffers, iteration, root_lock);
   }
-  return certify_typed<combo_count>(layout, buffers, iteration);
+  if (layout.uses_direct_action_bases) {
+    return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock);
+  }
+  return certify_typed<combo_count, false>(layout, buffers, iteration, root_lock);
 }
 
 std::uint64_t double_bits(const double value) { return std::bit_cast<std::uint64_t>(value); }
@@ -2717,20 +4083,40 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   result.information_sets = layout.value().information_sets;
   result.actions = layout.value().actions;
   std::vector<double> deferred_regret_delta;
-  if (layout.value().uses_isomorphic_infosets) {
+  // The deferred regret delta (8 B x actions = 667 MB for th7d6s) is only
+  // needed when the runner's traversal will actually accumulate into it: the
+  // canonical-DAG path and the non-direct-action-bases physical path use it,
+  // but the per-player direct-action-bases path applies regrets immediately
+  // (make_dense_traversal_runner passes nullptr there), so allocating it for
+  // that path would waste 667 MB of peak RSS.
+  const bool compact_dag =
+      layout.value().uses_canonical_public_dag &&
+      layout.value().active_combos.size() <= compact_combo_capacity;
+  const bool deferred_delta_needed =
+      layout.value().uses_isomorphic_infosets &&
+      !(layout.value().uses_direct_action_bases && !compact_dag);
+  if (deferred_delta_needed) {
     deferred_regret_delta.resize(static_cast<std::size_t>(layout.value().actions), 0.0);
   }
+  std::unique_ptr<PreparedRootLock> prepared_root_lock;
+  if (options.diagnostic_root_lock != nullptr) {
+    auto prepared_lock = prepare_root_lock(*options.diagnostic_root_lock, layout.value());
+    if (!prepared_lock) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(prepared_lock.error());
+    }
+    prepared_root_lock = std::move(prepared_lock.value());
+  }
   auto traversal = make_dense_traversal_runner(
-      layout.value(), buffers,
-      layout.value().uses_isomorphic_infosets ? &deferred_regret_delta : nullptr,
-      options.parallel_action_depth);
+      layout.value(), buffers, deferred_delta_needed ? &deferred_regret_delta : nullptr,
+      options.parallel_action_depth, prepared_root_lock.get());
   result.timings.layout_seconds = 0.0;
   result.timings.initialization_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - initialization_started)
           .count();
   if (checkpoint.completed_iterations == options.iterations) {
     const auto certification_started = std::chrono::steady_clock::now();
-    const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations);
+    const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
+                                       prepared_root_lock.get());
     result.timings.certification_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
             .count();
@@ -2782,7 +4168,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     if (iteration % options.certification_interval == 0U || iteration == options.iterations ||
         stopping) {
       const auto certification_started = std::chrono::steady_clock::now();
-      const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations);
+      const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
+                                       prepared_root_lock.get());
       result.timings.certification_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
               .count();
@@ -2906,13 +4293,13 @@ certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopRang
       return Result<PostflopCertification, PostflopSolverError>::failure(
           PostflopSolverError::IoFailure);
     }
-    return certify(layout.value(), mapped.buffers(), checkpoint.completed_iterations);
+    return certify(layout.value(), mapped.buffers(), checkpoint.completed_iterations, nullptr);
   }
   const auto buffers = in_memory_checkpoint_buffers(checkpoint);
   if (!buffers) {
     return Result<PostflopCertification, PostflopSolverError>::failure(buffers.error());
   }
-  return certify(layout.value(), buffers.value(), checkpoint.completed_iterations);
+  return certify(layout.value(), buffers.value(), checkpoint.completed_iterations, nullptr);
 }
 
 Result<PostflopStrategyQuery, PostflopSolverError>
@@ -3249,7 +4636,8 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
   }
   for (std::uint8_t player = 0; player < 2U; ++player) {
     DenseTraversal<combo_count> traversal(dense, buffers);
-    const auto values = traversal.policy_from_physical_node(public_node, player, reach);
+    const auto values = traversal.policy_from_physical_node(public_node, player,
+                                                            {&reach[0], &reach[1]});
     if (!values) {
       return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(values.error());
     }
