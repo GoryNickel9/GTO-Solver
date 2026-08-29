@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -81,6 +82,15 @@ std::optional<std::uint64_t> parse_u64(const std::string_view text) {
     return std::nullopt;
   }
   return value;
+}
+
+std::optional<std::string> environment_value(const char *const name) {
+#pragma warning(push)
+#pragma warning(disable : 4996)
+  const char *const value = std::getenv(name);
+#pragma warning(pop)
+  return value == nullptr ? std::nullopt
+                          : std::optional<std::string>{value};
 }
 
 std::optional<gtosd::PostflopBenchmark> parse_memory_benchmark(std::string_view text);
@@ -911,6 +921,7 @@ struct ConvergenceBenchmarkSpec {
   std::uint64_t certification_interval{0};
   std::uint64_t averaging_delay{0};
   std::uint64_t diagnostic_iteration_limit{0};
+  bool diagnostic_fixed_iterations{false};
   std::uint8_t parallel_action_depth{0};
   std::uint8_t maximum_solver_threads{0};
   bool enable_lossless_isomorphism{true};
@@ -1039,7 +1050,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   options.iterations = spec.diagnostic_iteration_limit;
   options.averaging_delay = spec.averaging_delay;
   options.certification_interval = spec.certification_interval;
-  options.target_normalized_max_deviation = spec.target_percent / 100.0;
+  if (!spec.diagnostic_fixed_iterations) {
+    options.target_normalized_max_deviation = spec.target_percent / 100.0;
+  }
   options.strict_target = true;
   options.state_precision = spec.state_precision;
   options.algorithm = spec.algorithm;
@@ -1113,8 +1126,10 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       result.information_sets == spec.expected_information_sets &&
       result.actions == spec.expected_actions && solver_state_bytes == spec.expected_solver_state_bytes &&
       result.checkpoint.game_fingerprint == spec.expected_game_fingerprint;
-  const bool converged = result.stop_reason == gtosd::PostflopStopReason::Converged &&
-                         final_deviation.value() < spec.target_percent / 100.0;
+  const bool converged =
+      final_deviation.value() < spec.target_percent / 100.0 &&
+      (result.stop_reason == gtosd::PostflopStopReason::Converged ||
+       spec.diagnostic_fixed_iterations);
   const auto public_tree = gtosd::prepared_postflop_public_tree(prepared.value());
   if (requires_physical_analysis_tree && !public_tree) {
     std::cerr << "postflop benchmark-gto-plus failed: missing_analysis_tree\n";
@@ -1442,6 +1457,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                 result.timings.traversal_seconds
           : 0.0;
 
+  const bool diagnostic_simultaneous =
+      environment_value("GTOSD_DIAGNOSTIC_SIMULTANEOUS").has_value();
+  const nlohmann::json iteration_limit =
+      spec.diagnostic_iteration_limit == 0U
+          ? nlohmann::json(nullptr)
+          : nlohmann::json(spec.diagnostic_iteration_limit);
   nlohmann::json report = {
       {"schema", "gtosd.gto_plus_convergence_run.v1"},
       {"benchmark_id", spec.benchmark_id},
@@ -1457,7 +1478,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                         : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus
                                ? "exact_dcfr_plus"
                                : "exact_cfr_plus")},
-      {"update_mode", "alternating"},
+      {"update_mode", diagnostic_simultaneous ? "simultaneous" : "alternating"},
       {"precision",
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
            ? "action_major_scaled_uint16_regret_strategy_float32_compute"
@@ -1528,7 +1549,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
          result.work_counters.showdown_terminal_evaluations},
         {"regret_update_entries", result.work_counters.regret_update_entries},
         {"strategy_update_entries", result.work_counters.strategy_update_entries}}},
-      {"iteration_limit", nullptr},
+      {"iteration_limit", iteration_limit},
+      {"fixed_iteration_diagnostic", spec.diagnostic_fixed_iterations},
       {"certification_interval", spec.certification_interval},
       {"averaging_delay", spec.averaging_delay},
       {"stop_reason", postflop_stop_reason_name(result.stop_reason)},
@@ -1764,6 +1786,36 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
       run.value("enable_lossless_isomorphism", true);
   spec.enable_canonical_public_dag =
       run.value("enable_canonical_public_dag", true);
+  const auto diagnostic_iteration_override =
+      environment_value("GTOSD_DIAGNOSTIC_ITERATION_LIMIT");
+  if (diagnostic_iteration_override) {
+    const auto parsed = parse_u64(*diagnostic_iteration_override);
+    if (!parsed || *parsed == 0U) {
+      std::cerr << "postflop benchmark-gto-plus failed: "
+                   "invalid_diagnostic_iteration_limit\n";
+      return 2;
+    }
+    spec.diagnostic_iteration_limit = *parsed;
+  }
+  const auto diagnostic_certification_override =
+      environment_value("GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL");
+  if (diagnostic_certification_override) {
+    const auto parsed = parse_u64(*diagnostic_certification_override);
+    if (!parsed || *parsed == 0U) {
+      std::cerr << "postflop benchmark-gto-plus failed: "
+                   "invalid_diagnostic_certification_interval\n";
+      return 2;
+    }
+    spec.certification_interval = *parsed;
+  }
+  spec.diagnostic_fixed_iterations =
+      environment_value("GTOSD_DIAGNOSTIC_FIXED_ITERATIONS").has_value();
+  if (spec.diagnostic_fixed_iterations &&
+      spec.diagnostic_iteration_limit == 0U) {
+    std::cerr << "postflop benchmark-gto-plus failed: "
+                 "fixed_iterations_without_limit\n";
+    return 2;
+  }
   const auto algorithm = run.value("algorithm", std::string{"cfr_plus"});
   if (algorithm == "dcfr_plus") {
     spec.algorithm = gtosd::PostflopAlgorithm::DcfrPlus;
