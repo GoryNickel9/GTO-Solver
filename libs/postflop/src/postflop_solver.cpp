@@ -15201,9 +15201,19 @@ analyze_postflop_node(const PostflopTreeConfig &config, const PostflopRanges &ra
 Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node(PostflopPreparedTree &prepared, const PostflopCheckpoint &checkpoint,
                       const NodeId public_node) {
-  auto &layout = prepared.implementation_->analysis_layout
+  auto &production_layout = prepared.implementation_->layout;
+  const bool production_canonical_root =
+      production_layout.uses_canonical_public_dag &&
+      production_layout.tree.nodes.empty() &&
+      public_node == production_layout.canonical_public_graph.root;
+  // A prepared browser may own a materialized physical tree for history
+  // navigation. The root remains authoritative in the production canonical
+  // layout so it uses the same capacity-dispatched profile evaluation as
+  // certification; only non-root browser nodes require the physical layout.
+  auto &layout = prepared.implementation_->analysis_layout &&
+                         !production_canonical_root
                      ? *prepared.implementation_->analysis_layout
-                     : prepared.implementation_->layout;
+                     : production_layout;
   return analyze_postflop_node_with_layout(layout, checkpoint, public_node);
 }
 

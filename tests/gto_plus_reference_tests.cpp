@@ -382,6 +382,79 @@ void test_lossless_isomorphism_matches_physical_cfr() {
             << " iso_on_actions=" << iso_on.value().actions << '\n';
 }
 
+void test_prepared_compressed_root_analysis_matches_certification() {
+  const auto config = make_reference_config();
+  const auto ranges = make_reference_ranges();
+  auto prepared =
+      gtosd::prepare_postflop_tree(config, ranges, true, true, true).value();
+  const auto estimate = gtosd::prepared_postflop_layout_estimate(*prepared);
+  require(estimate.physical_public_tree.node_count !=
+              estimate.canonical_public_nodes,
+          "prepared root differential uses a genuinely compressed public DAG");
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 80U;
+  options.certification_interval = 80U;
+  options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
+  options.state_precision =
+      gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.dcfr_positive_regret_exponent = 1.5;
+  options.dcfr_average_exponent = 2.0;
+  options.averaging_delay = 0U;
+  options.parallel_action_depth = 7U;
+  const auto solved = gtosd::solve_postflop_exact(*prepared, options);
+  require(solved.has_value() && solved.value().convergence.size() == 1U,
+          "production signed DCFR root differential solves");
+
+  const auto &certification = solved.value().convergence.back();
+  const auto direct = gtosd::analyze_postflop_node(
+      config, ranges, solved.value().checkpoint, 0U);
+  const auto browser_tree = gtosd::prepared_postflop_public_tree(prepared);
+  require(direct.has_value() && browser_tree && !browser_tree->nodes.empty(),
+          "direct root and prepared physical browser tree are available");
+  const auto prepared_root = gtosd::analyze_postflop_node(
+      *prepared, solved.value().checkpoint, browser_tree->root);
+  require(prepared_root.has_value(), "prepared root analysis succeeds");
+
+  const auto &root = browser_tree->nodes[browser_tree->root];
+  const auto check = std::ranges::find_if(root.edges, [](const auto &edge) {
+    return edge.action.type == gtosd::ActionType::Check;
+  });
+  const auto bet = std::ranges::find_if(root.edges, [](const auto &edge) {
+    return edge.action.type == gtosd::ActionType::Bet;
+  });
+  require(check != root.edges.end() && bet != root.edges.end(),
+          "prepared browser root exposes check and bet children");
+  const auto check_child = gtosd::analyze_postflop_node(
+      *prepared, solved.value().checkpoint, check->child);
+  const auto bet_child = gtosd::analyze_postflop_node(
+      *prepared, solved.value().checkpoint, bet->child);
+  require(check_child.has_value() && bet_child.has_value(),
+          "prepared physical browser still analyzes both non-root children");
+
+  const double certification_gto_plus =
+      certification.profile_value_antes[0] + 20.0;
+  std::cerr << "PREPARED_ROOT_DIFFERENTIAL iteration=80"
+            << " certification_profile_p0="
+            << certification.profile_value_antes[0]
+            << " certification_gto_plus_p0=" << certification_gto_plus
+            << " direct_profile_p0=" << direct.value().profile_value_antes[0]
+            << " direct_gto_plus_p0=" << direct.value().gto_plus_ev_antes[0]
+            << " prepared_profile_p0="
+            << prepared_root.value().profile_value_antes[0]
+            << " prepared_gto_plus_p0="
+            << prepared_root.value().gto_plus_ev_antes[0] << '\n';
+
+  constexpr double root_tolerance = 1.0e-9;
+  require(std::abs(certification.profile_value_antes[0] -
+                   direct.value().profile_value_antes[0]) < root_tolerance,
+          "direct canonical root analysis matches exact certification");
+  require(std::abs(direct.value().profile_value_antes[0] -
+                   prepared_root.value().profile_value_antes[0]) <
+              root_tolerance,
+          "prepared compressed root analysis matches direct canonical authority");
+}
+
 gtosd::DiagnosticRootLock make_external_root_lock() {
   // F10.4 input immutabile: le 36 righe combo-per-combo Bet 20 / Check del CO
   // root esportate da GTO+ v1.6.9 (run operativo dEV 0.98%, 8 threads),
@@ -505,6 +578,7 @@ int main() {
   try {
     test_exact_reference_build();
     test_lossless_isomorphism_matches_physical_cfr();
+    test_prepared_compressed_root_analysis_matches_certification();
     test_external_root_lock_diagnostic();
     return 0;
   } catch (const std::exception &error) {
