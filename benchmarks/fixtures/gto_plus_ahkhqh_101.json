@@ -23,12 +23,12 @@
     "rake_percent": 0
   },
   "gtosd_run": {
-    "algorithm": "dcfr_plus",
+    "algorithm": "dcfr",
     "dcfr_positive_regret_exponent": 1.4,
     "dcfr_average_exponent": 2.0,
     "certification_interval": 20,
     "averaging_delay": 10,
-    "state_precision": "float13_regret_float11_strategy",
+    "state_precision": "scaled_uint16_regret_strategy",
     "parallel_action_depth": 4,
     "maximum_solver_threads": 6,
     "independent_processes": 5,
