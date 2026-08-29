@@ -3333,16 +3333,14 @@ private:
       const double strategy_weight,
       std::array<ComboVector, maximum_action_count> &strategies,
       const bool local_indexed) {
-    const bool unweighted_dcfr_average = buffers_.signed_scaled_regret;
-    if (!unweighted_dcfr_average && strategy_weight == 0.0) {
+    if (strategy_weight == 0.0) {
       return;
     }
     const auto scale_index = static_cast<std::size_t>(canonical.state_scale_index);
     const auto action_count = static_cast<std::size_t>(canonical.decision.action_count);
     const auto &combos = board.player_combos[player];
     const double old_scale =
-        static_cast<double>(buffers_.strategy_node_scale[scale_index]) *
-        (unweighted_dcfr_average ? strategy_weight : 1.0);
+        static_cast<double>(buffers_.strategy_node_scale[scale_index]);
     double maximum = 0.0;
     if constexpr (std::is_same_v<Scalar, float>) {
       const auto &slots = PlayerIndexed ? board.player_flop_slots[player]
@@ -3365,15 +3363,11 @@ private:
           const __m256 current_strategy = local_indexed
               ? _mm256_loadu_ps(destination + local)
               : _mm256_i32gather_ps(destination, indices, 4);
-          const __m256 addition = unweighted_dcfr_average
-                                      ? current_strategy
-                                      : _mm256_mul_ps(
-                                            _mm256_mul_ps(
-                                                weight_vector,
-                                                _mm256_i32gather_ps(
-                                                    (*reach[player]).data(),
-                                                    indices, 4)),
-                                            current_strategy);
+          const __m256 addition = _mm256_mul_ps(
+              _mm256_mul_ps(
+                  weight_vector,
+                  _mm256_i32gather_ps((*reach[player]).data(), indices, 4)),
+              current_strategy);
           const __m256 updated = _mm256_add_ps(old_values, addition);
           _mm256_storeu_ps(destination + local, updated);
           maximum_vector = _mm256_max_ps(maximum_vector, updated);
@@ -3383,10 +3377,7 @@ private:
           const auto strategy_slot = local_indexed ? local : slot;
           const double current = static_cast<double>(destination[strategy_slot]);
           const double updated = static_cast<double>(source[local]) * old_scale +
-              (unweighted_dcfr_average
-                   ? current
-                   : strategy_weight *
-                         static_cast<double>((*reach[player])[slot]) * current);
+              strategy_weight * static_cast<double>((*reach[player])[slot]) * current;
           destination[local] = static_cast<float>(updated);
           maximum = std::max(maximum, updated);
         }
@@ -3400,10 +3391,8 @@ private:
       for (std::size_t local = 0; local < combos.size(); ++local) {
         const auto slot = value_slot(combos[local], player);
         const auto strategy_slot = local_indexed ? local : slot;
-        const double reach_weight = unweighted_dcfr_average
-                                        ? 1.0
-                                        : strategy_weight *
-                                              static_cast<double>((*reach[player])[slot]);
+        const double reach_weight =
+            strategy_weight * static_cast<double>((*reach[player])[slot]);
         for (std::size_t action = 0; action < action_count; ++action) {
           const auto index = canonical_action_major_index(canonical, local, action);
           const double updated =

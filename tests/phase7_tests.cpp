@@ -484,8 +484,8 @@ void test_simultaneous_dcfr_semantics() {
   options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
   options.state_precision =
       gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
-  options.dcfr_positive_regret_exponent = 1.9;
-  options.dcfr_average_exponent = 3.0;
+  options.dcfr_positive_regret_exponent = 1.5;
+  options.dcfr_average_exponent = 2.0;
   options.parallel_action_depth = 0U;
   const ScopedEnvironment simultaneous("GTOSD_DIAGNOSTIC_SIMULTANEOUS", "1");
 
@@ -530,6 +530,37 @@ void test_simultaneous_dcfr_semantics() {
   for (const auto probability : root_strategies.value().front().probabilities) {
     require_near(probability, 1.0 / 3.0, 2.0e-4,
                  "first simultaneous average equals the manual uniform strategy");
+  }
+
+  options.iterations = 2U;
+  options.averaging_delay = 1U;
+  const auto second_only =
+      gtosd::solve_postflop_exact(river_config, ranges, options);
+  require(second_only.has_value(),
+          "delayed simultaneous DCFR exposes the second current strategy");
+  const auto second_strategies = gtosd::query_postflop_strategies(
+      river_config, ranges, second_only.value().checkpoint, tree.value().root);
+  require(second_strategies.has_value() && !second_strategies.value().empty(),
+          "second simultaneous strategy is queryable");
+
+  options.averaging_delay = 0U;
+  const auto weighted_two =
+      gtosd::solve_postflop_exact(river_config, ranges, options);
+  require(weighted_two.has_value(),
+          "two-iteration simultaneous DCFR average solves");
+  const auto weighted_strategies = gtosd::query_postflop_strategies(
+      river_config, ranges, weighted_two.value().checkpoint, tree.value().root);
+  require(weighted_strategies.has_value() && !weighted_strategies.value().empty(),
+          "two-iteration simultaneous average is queryable");
+  for (std::size_t action = 0U;
+       action < root_strategies.value().front().probabilities.size(); ++action) {
+    const double expected =
+        (root_strategies.value().front().probabilities[action] +
+         4.0 * second_strategies.value().front().probabilities[action]) /
+        5.0;
+    require_near(weighted_strategies.value().front().probabilities[action],
+                 expected, 4.0e-4,
+                 "DCFR gamma=2 average weights iterations as 1:4");
   }
 
   options.iterations = 3U;
