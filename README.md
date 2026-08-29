@@ -7,6 +7,12 @@ I contratti tecnici correnti sono raccolti nell'indice
 [`docs/specifications/README.md`](docs/specifications/README.md). Roadmap e
 report di fase conservano ordine dei gate ed evidenza storica.
 
+Il calcolo del solver è **CPU + RAM only**. GPU, CUDA, ROCm, OpenCL, Vulkan
+Compute, DirectCompute e altri acceleratori non possono essere usati per tree
+building, traversal CFR, best response, certificazione o post-processing della
+soluzione. Un'eventuale accelerazione grafica della GUI riguarda soltanto il
+rendering e non partecipa mai al solve.
+
 ## Build
 
 Bootstrap the pinned vcpkg baseline and expose its root:
@@ -196,15 +202,35 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
-Further roadmap phases are currently frozen by the canonical GTO+ parity gate.
-For corrected fixture `GTP-AHKHQH-003`, the targets are convergence in at most
-`1.900000 s` and solver memory at most `8.888889 MB`, with exact/lossless
-correctness and comparable root value. The current
-baseline, experiment history and mandatory update template live in
-`docs/GTO_PLUS_PARITY_JOURNEY.md`. The latest development candidate passes both
-the memory and root-EV gates but fails speed on five processes (median
-`2.7197086 s`, solver state `4.214976 MB`, root-EV delta `+0.005491 ante`). The
-conditional BTN EVs are diagnostic because the two solvers reach them with
-different combo-by-combo CO posteriors. The next phase is the test-only F10.4
-controlled-posterior root lock; it is planned, not implemented. The roadmap
-freeze therefore remains active.
+Further roadmap phases are frozen by the three-fixture GTO+ parity gate. The
+authoritative checkpoint is dated 2026-08-14 and is recorded in
+`docs/GTO_PLUS_PARITY_JOURNEY.md`: all three single-process Release runs pass
+strict `Target dEV < 1%`, root EV and `solver_state_bytes`; all three execution
+time gates fail. The 90%-of-GTO+ time ceilings are `1.900000 s`, `19.622222 s`
+and `128.988889 s`. The TST ceiling uses the user-confirmed GTO+ convergence
+trace whose first strict sub-1% point is `116.09 s` (`0.91%`, `0.146 ante`),
+superseding the earlier isolated `108.54 s` observation. Solver-state limits remain the direct GTO+ values
+`8.000.000 B`, `399.000.000 B` and `2.000.000.000 B`; peak RSS is reported
+separately and never substitutes this metric. A five-process timing
+certification is intentionally deferred until single runs pass.
+
+The three-fixture suite also contains `GTP-TH7D6S-101` and
+`GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected
+generally: percentage pushes use stack above the call divided by the pot after
+the call, `Add` and `Go` remain distinct, and configurations may declare sizes
+per raise count. Aggressive target amounts now use a general, serializable
+piecewise rounding policy in the core; TST selects the observed `5.3/14/47`
+policy without benchmark-ID branches. GTO+ benchmarks are target-driven with
+no iteration cap and stop only at a certified `Target dEV < 1%`. Periodic
+best-response certification starts only after average-strategy sampling begins;
+finite completion, pause and cancellation still force a final certification.
+The production core also provides a benchmark-independent three-byte action
+state (`float13` non-negative CFR+ regret plus `float11` average strategy,
+with `float64` computation). Current single Release runs pass solver-state RAM,
+dEV and root-EV gates on AHKHQH, TH7D6S and TSTC9D. The current reports are
+`AHKHQH 4.970917 s / 2.503.908 B`,
+`TH7D6S 37.810434 s / 249.955.776 B` and
+`TSTC9D 690.307523 s / 1.747.903.656 B`. These are single runs used to close
+correctness and RAM, not promoted timing medians. Execution time is the sole
+remaining parity blocker; machine pressure is not accepted as an explanation
+for a failed gate.

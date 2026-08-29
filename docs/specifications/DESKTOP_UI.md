@@ -5,6 +5,10 @@
 La GUI di prodotto è `gto_gui`, basata su Qt 6 Widgets per Windows. Il core
 matematico non dipende da Qt. Il worker di solving non gira sul thread UI e
 comunica progress, controlli e risultati attraverso confini thread-safe.
+Il worker esegue il solve esclusivamente su CPU e RAM. Qt o il sistema grafico
+possono usare accelerazione GPU soltanto per il rendering dell'interfaccia; non
+esiste alcun trasferimento di traversal, regret, strategy o best response alla
+GPU.
 
 ## Workflow supportato
 

@@ -1,4 +1,11 @@
-## PREFLOP CONFIGURATION
+# GTO+ export di riferimento — fixture storica v1
+
+> **STATO: EXPORT STORICO / NON SPECIFICA NORMATIVA.** Il contenuto è un export
+> postflop `AhKhQh`, non una configurazione preflop generale. Le specifiche
+> correnti sono `GTO_PLUS_PARITY_JOURNEY.md` e il formato benchmark v2.
+> Il confronto corrente è CPU/RAM-only; la GPU non può partecipare al solving.
+
+## POSTFLOP CONFIGURATION
 1. Range CO: AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo
 2. Range BTN: AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo
 3. Board: AhKhQh

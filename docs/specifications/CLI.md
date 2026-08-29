@@ -7,6 +7,9 @@ report versionati su stdout/file, diagnostica su stderr e usa codici di uscita
 non zero per input, I/O, incompatibilità, failure numeriche o gate falliti.
 Un comando sconosciuto restituisce `2`.
 
+Tutti i comandi di build-tree, solve, resume, best response e benchmark usano
+esclusivamente CPU e RAM. La CLI non espone e non esporrà opzioni GPU.
+
 ## Diagnostica e tree
 
 ```text

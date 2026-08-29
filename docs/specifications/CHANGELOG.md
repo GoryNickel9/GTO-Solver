@@ -3,6 +3,32 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-08-14
+
+### Aggiornato
+
+- Allineato il checkpoint della suite GTO+ ai report correnti: dEV/root/RAM
+  PASS su 3/3 e tempo FAIL su 3/3.
+- Separati esplicitamente riferimenti temporali GTO+ grezzi, limiti al 90%,
+  `solver_state_bytes`, transient workspace e peak RSS.
+- Registrati l'assenza di iteration cap, il confronto stretto `Target dEV < 1%`
+  e il freeze F11+ fino al superamento con modifiche del solo core generale.
+- Documentato il fallback fisico necessario per range asimmetrici e il ritiro
+  dell'esperimento isomorfico non lossless.
+- Reso permanente il contratto di solving CPU/RAM-only: nessun backend GPU o
+  acceleratore di calcolo presente o futuro; l'eventuale GPU è rendering GUI.
+- Ordinato il piano tempo: fast path generale del fallback fisico, DAG
+  player-local, isomorfismo street-local e soltanto dopo layout/scheduling/SIMD.
+- Marcato il candidato DAG presente nel worktree come non verificato e non
+  promosso; i benchmark correnti non sono stati aggiornati.
+
+### Verificato
+
+- Build Release di `gto_cli` e `gtosd_gto_plus_reference_tests`.
+- Riferimento GTO+ PASS con 24 asserzioni, fallback asimmetrico a differenza
+  zero e root lock esterno PASS. La suite CTest completa non è stata rieseguita
+  in questa chiusura.
+
 ## 2026-08-02
 
 ### Aggiunto

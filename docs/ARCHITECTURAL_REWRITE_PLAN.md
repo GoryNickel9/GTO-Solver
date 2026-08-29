@@ -1,5 +1,11 @@
 # Piano di riscrittura architetturale — th7d6s < 90 s
 
+> **STATO: PIANO STORICO / DA RIVALIDARE.** Le misure e le proposte qui
+> riportate non sono lo stato corrente senza una nuova esecuzione controllata.
+> Il vincolo corrente è CPU/RAM-only; eventuali proposte interpretabili come
+> offload GPU non sono autorizzate. Il piano operativo è in
+> `specifications/PERFORMANCE.md`.
+
 Data: 2026-08-06 · Stato: PIANO (da approvare prima dell'esecuzione)
 Obiettivo: `run_solver` th7d6s < 90 s con tutti i gate verdi (dEV ≤ 1e-6, AhKhQh invariato, suite PASS).
 Riferimento: GTO+ 17.66 s sullo stesso benchmark (misura dell'utente, anche sotto carico).

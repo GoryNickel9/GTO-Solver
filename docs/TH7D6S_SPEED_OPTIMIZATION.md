@@ -1,5 +1,16 @@
 # Piano di ottimizzazione velocità — benchmark GTO+ th7d6s
 
+> **STATO: PIANO STORICO.** Conserva ipotesi e protocollo di ottimizzazione;
+> gli esiti effettivi, inclusi i revert, sono nel journey canonico.
+> Il checkpoint operativo 2026-08-14 è 82 iterazioni, dEV 0,986976%, root
+> 8,220073/8,22198, 37,810434 s e 249.955.776 B. Il vecchio target “200
+> iterazioni massime” non è più valido: il benchmark non ha iteration cap e
+> termina soltanto con `Target dEV < 1%`. Non applicare questo piano alla
+> fixture; ogni ottimizzazione deve appartenere al core generale.
+> Il solving è permanentemente CPU/RAM-only. Questo piano storico non autorizza
+> GPU o acceleratori di calcolo; il piano corrente ordinato è in
+> `specifications/PERFORMANCE.md`.
+
 > Documento operativo per un agent coder. **Unico obiettivo: ridurre il tempo di esecuzione** del
 > benchmark `GTP-TH7D6S-101` (fixture `benchmarks/fixtures/gto_plus_th7d6s_101.json`), senza
 > rompere la correttezza dei benchmark che oggi passano. Ogni modifica va verificata con il

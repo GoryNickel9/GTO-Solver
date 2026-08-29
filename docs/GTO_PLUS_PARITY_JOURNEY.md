@@ -1,8 +1,235 @@
-# GTO+ parity journey — AhKhQh
+# GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-08-02
-Benchmark ID: `GTP-AHKHQH-003`
+Aggiornato: 2026-08-29
+Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **Aggiornamento riferimento GTO+ 2026-08-28 (prevale sui riferimenti temporali
+> TSTC9D storici sotto).** La nuova curva GTO+ contiene 24 punti fra 5,00 s e
+> 116,09 s. Il primo punto strettamente sotto `Target dEV < 1%` è `0,91%`
+> (`0,146 ante`) a `116,09 s`; il punto precedente è `1,13%` (`0,181 ante`) a
+> `111,40 s`. Il riferimento grezzo TSTC9D è quindi `116,09 s` e il limite con
+> margine concordato del 90% è `128,988889 s`. Il vecchio `108,54 s` resta
+> registrato nella fixture come misura superata, ma non è più il tempo di
+> completamento certificato. La traccia integrale è versionata in
+> `benchmarks/fixtures/gto_plus_tstc9d_101.json`.
+
+> **Checkpoint operativo TSTC9D 2026-08-29 (prevale sul checkpoint TSTC9D
+> 2026-08-14 sotto).** La fixture dispone ora degli importi monetari GTO+
+> osservati ed è marcata `metadata_complete=true`. Il percorso resta exact,
+> CPU-only, senza sampling/bucketing/GPU, con otto thread, stato signed
+> `ScaledUint16RegretStrategy`, DAG pubblico canonico e aritmetica del
+> traversal in `float` come previsto dal codec performance; best response e
+> gate esterni restano separati.
+>
+> Il miglior checkpoint lungo controllato della sessione usa DCFR
+> `alpha=1,9`, `beta=0`, `gamma=3`, 160 iterazioni e una sola certificazione
+> finale (`out/tstc9d_tail_river_alpha1_9_iter160.json`): traversal
+> **130,3729854 s**, certificazione **5,4393643 s**, elapsed solver
+> **136,2380205 s**, dEV **1,0784262679%**, root EV **8,4906667401 ante**
+> (delta `-0,0109832599`), `solver_state_bytes` **1.472.605.376 B**, peak RSS
+> **1.968.742.400 B** e 245.146.564 nodi visitati. Root e memoria passano;
+> dEV e tempo grezzo GTO+ `116,09 s` falliscono. È un singolo run, non una
+> mediana promossa.
+>
+> Profilo aggregato della traversata: produzione valori showdown `27,4%`,
+> value/update `22,0%`, accumulo rank/card `19,3%`, regret matching `13,6%`,
+> costruzione prefix `9,1%`, chance/board `8,3%`, reach `0,3%`. La famiglia
+> showdown complessiva vale circa il `55,8%`; il secondo limite è lo
+> scheduling, perché l'utilizzo CPU medio del run lungo è `86,1%` e le
+> strategie più dense rendono il costo per iterazione crescente. Il valore
+> breve migliore (`~0,733 s/iter` a 20 iterazioni) non rappresenta quindi il
+> costo medio del solve lungo (`~0,815 s/iter`).
+>
+> Ottimizzazioni lossless mantenute: specializzazione compile-time del
+> terminale fold/showdown accoppiato; slot flop compatibili con la chance
+> precalcolati; `/favor:INTEL64` in Release senza `/fp:fast`; split river
+> soltanto nella coda quando la queue è vuota e ci sono worker inattivi, con
+> accumulo finale nello stesso ordine canonico. Quest'ultimo ha ridotto il
+> traversal a 160 iterazioni da `132,257 s` a `130,373 s` (`-1,42%`) senza
+> cambiare root EV, dEV o nodi nel differenziale a 20 iterazioni.
+>
+> Esperimenti misurati e respinti: pinning thread; normalizzazione one-pass
+> dell'average; prefix showdown sparso; scratch chance riusabile; nested
+> river indiscriminato; PGO; stride showdown board-local 32; accumulo
+> cell-major; split parallelo dei tre rami root (più lento e non identico nel
+> DAG condiviso); DCFR+ (`174,729 s`, dEV `1,541924%` a 135); HS-DCFR 3.0
+> (`124,764 s`, dEV `2,265369%` a 135); DCFR beta 1 (`109,452 s` ma dEV
+> `4,075340%`); gamma 5 (`122,184 s`, dEV `1,263294%`) e gamma 2
+> (`125,727 s`, dEV `1,532120%`) a 135. Nessun risultato respinto è presente
+> nel percorso finale, salvo infrastruttura dormiente non attivata.
+>
+> **Stato:** goal di chiusura sospeso su richiesta dell'utente. F11+ resta
+> congelata. Il benchmark finale Release
+> `out/tstc9d_session_final_alpha1_9_gamma3_iter170.json` converge a 170
+> iterazioni: elapsed **153,1763512 s**, traversal **147,0631715 s** (`96,01%`),
+> certificazione **5,5051254 s** (`3,59%`), inizializzazione **0,5738847 s**
+> (`0,37%`), regret application **0,0001314 s** e finalizzazione
+> **0,0015453 s**. Il wall con preparazione tree è **179,7229091 s**, quindi
+> la preparazione esterna al timer solver pesa **26,5465579 s**. dEV
+> **0,9857595195%**, root **8,4925400350** (delta `-0,0091099650`), peak RSS
+> **1.968.537.600 B** e stato **1.472.605.376 B** passano; il time gate
+> `116,09 s` e il limite 90% `128,988889 s` falliscono. Cinque processi
+> indipendenti restano rinviati finché il singolo run non supera tutti i gate.
+> Verifica finale Release: `gtosd_gto_plus_reference_tests` PASS, 24
+> asserzioni; differenziale seriale/parallelo con massimo delta regret e
+> strategy pari a zero; `git diff --check` senza errori (soli avvisi EOL del
+> worktree). La suite CTest completa non è stata rieseguita.
+
+> **Policy prestazionale generale 2026-08-29.** Le ottimizzazioni devono
+> appartenere al motore condiviso e restare applicabili a board, range,
+> sizings e profondità differenti; non sono ammessi percorsi privilegiati per
+> TSTC9D o per qualsiasi altro nome di fixture. Un miglioramento su TSTC9D è
+> quindi soltanto un risultato locale finché non viene verificato anche sui
+> carichi AHKHQH e TH7D6S. Il prossimo gate è una profilazione omogenea a
+> iterazioni fisse sui tre benchmark, con lo stesso binario Release, CPU-only
+> e numero di thread dichiarato. Devono essere separati costo per iterazione,
+> numero di iterazioni fino alla soglia e overhead di certificazione; il run
+> target-driven ufficiale e la certificazione a cinque processi vengono dopo.
+> La policy completa, inclusi i criteri di promozione e non-regressione, è in
+> `docs/specifications/PERFORMANCE.md`.
+
+> **Checkpoint operativo 2026-08-14 (prevale su tutti i checkpoint sotto).**
+> Il core supporta uno stato packed generale di 3 byte/action: regret CFR+
+> unsigned float13 `E8M5` e strategy sum unsigned float11 `E5M6`, con traversal
+> e payoff in float64. Non esistono branch per benchmark. I tre run Release
+> passano dEV strettamente sotto 1%, root EV e RAM. Sono run singoli di chiusura
+> RAM/correttezza; la certificazione temporale a cinque processi è rinviata.
+>
+> | Benchmark | Report | Iter / dEV | Root EV GTOSD / GTO+ | Tempo / limite 90% | `solver_state_bytes` / GTO+ | Gate |
+> |---|---|---:|---:|---:|---:|---|
+> | `GTP-AHKHQH-101` | `out/ram_final_ahkhqh.json` | 100 / 0,982960% | 19,123322 / 19,15 | 4,970917 / 1,900000 s | 2.503.908 / 8.000.000 B | dEV/root/RAM PASS; tempo FAIL |
+> | `GTP-TH7D6S-101` | `out/compact_no_average_simd3_th7d6s.json` | 82 / 0,986976% | 8,220073 / 8,22198 | 37,810434 / 19,622222 s | 249.955.776 / 399.000.000 B | dEV/root/RAM PASS; tempo FAIL |
+> | `GTP-TSTC9D-101` | `out/compact_no_average_simd3_tstc9d.json` | 200 / 0,983565% | 8,498226 / 8,50165 | 690,307523 / 120,600000 s | 1.747.903.656 / 2.000.000.000 B | dEV/root/RAM PASS; tempo FAIL |
+>
+> I riferimenti temporali GTO+ grezzi sono rispettivamente 1,71 s, 17,66 s e
+> 108,54 s; i limiti mostrati concedono il margine concordato del 90%. I limiti
+> RAM sono invece i byte GTO+ diretti, non maggiorati. Peak RSS resta separato
+> (`208.031.744 B`, `477.130.752 B`, `3.166.359.552 B`) e non sostituisce lo
+> stato solver. Tutti i time gate restano FAIL: la pressione della macchina non
+> viene usata per giustificarli e il residuo è trattato come problema del core.
+>
+> **Worktree sperimentale successivo, non promosso.** Sono state avviate
+> modifiche generali per il DAG con range asimmetrici, ma la build è stata
+> interrotta e non esistono ancora differenziale, riferimento o benchmark
+> validi. Il checkpoint della tabella resta quindi l'unica evidenza corrente.
+> L'audit ha inoltre rilevato un intervento precedente e più circoscritto: nel
+> fallback fisico TST le action base sono già dirette, ma la selezione del path
+> resta legata al numero di automorfismi. Il primo candidato da verificare è
+> `!uses_isomorphic_infosets || automorphisms.size() <= 1`, così da riusare
+> `PlayerIndexed`, regret immediati e nessun buffer differito senza cambiare il
+> gioco. Solo dopo viene il DAG player-local e poi l'isomorfismo street-local.
+> Tutto il solving, inclusi BR e certificazione, è CPU/RAM-only; la GPU è
+> esclusa permanentemente dal percorso di calcolo.
+>
+> Il 2026-08-14, dopo il ritiro dell'ultimo esperimento asimmetrico, la build
+> Release di `gto_cli` e `gtosd_gto_plus_reference_tests` è PASS. Il riferimento
+> eseguibile è PASS con 24 asserzioni; fallback fisico asimmetrico e root lock
+> esterno sono PASS. Non è stata rieseguita la suite CTest completa in questa
+> chiusura: il precedente 16/16 del 2026-08-13 resta evidenza storica distinta.
+>
+> **Checkpoint strutturale precedente 2026-08-13.**
+> Due schermate dell'albero GTO+ hanno chiuso il differenziale strutturale
+> iniziale di `TSTC9D`: GTO+ arrotonda `5,28` a `5,3`, quindi mostra `Raise 14`;
+> dopo la prima bet non aggiunge il push perché vale circa `280,83%` del pot
+> dopo il call, mentre dopo `Raise 14` aggiunge `Raise 80` perché il push vale
+> `150%`, conservando anche il raise regolare al 75% (`Raise 47`). Il contratto
+> generale è quindi `(stack-call)/(pot+call) < soglia`, modalità `Add`, con
+> size `[33,75]` al primo raise e `[75]` ai raise successivi.
+>
+> Il core, il tree config e il parser benchmark sono stati riallineati in modo
+> generale: calendario di size per `raise_count`, `Add`/`Go` distinti e soglia
+> stretta sul pot dopo il call. Non esistono eccezioni per ID benchmark. Le
+> fixture precedenti senza calendario riusano la lista uniforme a ogni
+> profondità; AHKHQH e TH7D6S hanno all-in automatico disabilitato.
+>
+> Il vecchio run TST (`8,576672`, `114,614952 s`, `752.202.000 B`) è ora
+> **storico e non certificabile**, perché usava `[33,75]` a tutte le profondità,
+> modalità `Go` e la base `stack/current_pot`. Layout, fingerprint, RAM, tempo,
+> dEV e root EV TST devono essere rigenerati. Il rounding è ora una policy
+> generale, piecewise, validata e serializzata nel core: TST seleziona target
+> sotto 10 ante al decimo e target successivi all'ante intera, senza branch per
+> ID benchmark. Il catalogo risultante è `Bet 5,3`, `Raise 14`, poi
+> `Call 8,7 / Raise 47 / Raise 80`, con fingerprint
+> `fnv1a64:c51f0921903117bf`,
+> 2.791.872 nodi fisici, 231.129.064 infoset, 582.634.552 azioni e
+> 2.913.172.760 B di stato solver. Il solver core non riceve un massimo di
+> iterazioni. Il core ora evita le certificazioni periodiche prima che inizi
+> l'averaging, perché la strategia media non contiene ancora campioni. Nell'A/B
+> Release le certificazioni passano da `20..180` a `140,160,180`: a 160 il dEV
+> è 1,346488% e il solver continua; a 180 certifica 0,958803% e si ferma. Root
+> EV 8,496602 contro 8,50165 PASS; solver time 471,901781 s (-10,37% dal
+> baseline 526,492253 s), RAM allora ancora FAIL; è superato dal checkpoint
+> packed sopra.
+> `metadata_complete=false` e F11+ resta congelata.
+
+> **Checkpoint storico 2026-08-11 (non più operativo per TSTC9D).**
+> I tre benchmark superano già il target dEV e il gate `solver_state_bytes`;
+> `AHKHQH` e `TH7D6S` falliscono ancora il tempo; `TSTC9D` passa il tempo ma
+> fallisce il root EV.
+> Le misure sotto sono singoli processi Release, non la mediana finale di cinque.
+> La sessione di ottimizzazione è stata chiusa su richiesta dell'utente dopo
+> l'aggiornamento documentale: non sono stati avviati ulteriori full o CTest.
+> `TH7D6S` e `TSTC9D` sono stati ricertificati in
+> `out/build/windows-release-current`; `AHKHQH` è l'ultimo candidato conservato
+> e deve ancora essere rieseguito nello stesso build tree pulito.
+>
+> | Benchmark | dEV | Root EV GTOSD / GTO+ | Tempo GTOSD / limite | Stato solver | Gate |
+> |---|---:|---:|---:|---:|---|
+> | `AHKHQH` | 0,981301% | 19,103999 / 19,15 | 2,237744 / 1,900000 s | 6.677.088 B | dEV, root EV, RAM PASS; tempo FAIL |
+> | `TH7D6S` | 0,987345% | 8,220498 / 8,22198 | 27,896048 / 19,622222 s | 416.592.960 B | dEV, root EV, RAM PASS; tempo FAIL |
+> | `TSTC9D` | 0,963255% | 8,576672 / 8,50165 | 114,614952 / 120,600000 s | 752.202.000 B | dEV, RAM e tempo PASS; root EV FAIL |
+>
+> Il delta root `TSTC9D` è `+0,075022 ante`, quindi eccede la tolleranza
+> assoluta `0,05` di `0,025022 ante`. La fixture è marcata
+> `metadata_complete=false`: manca ancora la conferma degli importi effettivi
+> prodotti da GTO+ per i sizing 33%/75% al root e nelle sequenze bet/raise.
+> Il root CO esterno **8,50165** è invece confermato dall'utente.
+>
+> Il runner pubblica ora `initial_street_action_catalog`, che separa la label
+> storica dall'importo monetario esatto. La diagnostica TST mostra che la label
+> root `bet_5` rappresenta in realtà **5,28 ante** (33% di 16), mentre
+> `bet_12` rappresenta 12 ante. Le size successive conservano a loro volta i
+> pot frazionari (per esempio 21,28 e 35,3248 ante). Questo non dimostra ancora
+> la causa del delta EV: occorre confrontare il catalogo con gli importi
+> effettivamente usati da GTO+, che potrebbero essere arrotondati diversamente.
+> Le label non sono quindi una fonte sufficiente per certificare la fixture.
+>
+> I nuovi checkpoint usano overlap lossless dei sottoalberi al root e fan-out
+> chance annidato, ristretto ai soli rami root accodati. Sul build tree pulito
+> corrente TH chiude a 27,896048 s a iterazione 79 e TST a 114,614952 s a
+> iterazione 140; TST conserva quindi il PASS tempo. Restano misure singole,
+> non mediane finali di cinque processi.
+>
+> **Handoff di chiusura.** Il prossimo ingresso ad alta priorità è una misura
+> AHK isolata sul tree Release pulito, seguita da profiling strutturale del
+> doppio calcolo delle strategie per iterazione. La campagna finale da cinque
+> processi resta rinviata finché i singoli run AHK/TH non passano il tempo e la
+> fixture TST non dispone degli importi monetari GTO+ mancanti. F11+ resta
+> congelata.
+
+> **Checkpoint storico TH7D6S (2026-08-08; superato dal checkpoint 2026-08-14
+> sopra):** `GTP-TH7D6S-101` usa **416.592.960 B** di stato solver contro il
+> limite **443.333.333 B** (gate RAM 90% PASS). Il miglior full credibile è
+> `out/loop_policy_half_avx_full.json`: **86,1059943 s**, traversal
+> **79,7679045 s**, certificazione **5,7897606 s**, iterazione 140, dEV
+> **0,9260452878479758%**, root EV **8,219182737421068 ante** e gate
+> correctness/layout PASS. Il limite tempo **19,622222 s** resta FAIL di circa
+> 4,39 volte. Le ottimizzazioni successive zero-sum e fold/showdown sono
+> mantenute perché positive in A/B controllati, ma i loro full sono avvenuti
+> sotto carico e non sostituiscono questo best. Vedi
+> `speed_optimization_journey.md` §§8.24-8.28. La mediana finale di cinque
+> processi non è ancora stata eseguita e F11+ resta congelata.
+
+> Checkpoint prestazionale parallelo: il benchmark grande `GTP-TH7D6S-101` ha ora
+> memoria solver 416.592.960 B (gate 90% PASS) ma un run completo singolo da
+> 89,2088938 s contro il limite 19,622222 s (gate tempo FAIL). Correttezza root, layout,
+> dEV 0,9260452878479734% e precisione dichiarata passano. Dettagli e limiti della
+> misura singola sono registrati in `speed_optimization_journey.md` §8.16; questo
+> checkpoint non sblocca F11+ e non sostituisce il gate canonico `GTP-AHKHQH-003`.
+> Le schedule sperimentali HS-DCFR+(15/30) sono state misurate e rifiutate:
+> 65,0266614 s e 95,0473936 s rispettivamente. Il codice produttivo resta CFR+
+> canonico; risultati e trasformazione dei pesi sono registrati nel §8.17.
 
 ## 1. Scopo
 
@@ -128,22 +355,23 @@ viene rifiutata.
 
 ## 5. Baseline GTOSD corrente
 
-Implementazione: F10.3, selezione chance nel browser e oracolo EV GTO+.
+Implementazione: F10.4 completata come root-lock diagnostico; benchmark v1
+congelato e benchmark v2 parametrico disponibili.
 
 | Metrica | GTOSD corrente | Score | Stato |
 |---|---:|---:|---|
-| Tempo `Run Solver` a dEV GTO+ ≤1%, 5 processi | mediana 2,7197086 s; p95 2,8812251 s | 62,874383% | **FAIL** |
+| Tempo `Run Solver` a dEV GTO+ ≤1%, 5 processi | mediana documentata 3,128 s; p95 3,271 s | sotto la soglia `<=1,900000 s` | **FAIL** |
 | Convergenza deterministica | iterazione 80; dEV 0,695544%; NashConv/Pot 1,268598% | — | **PASS** |
-| Regret + average strategy `float32` | 4,214976 MB | 189,799420% | **PASS** |
+| Regret + average strategy `float32` | 6.677.088 byte | entro `<=8.888.889 byte` | **PASS** |
 | EV flop CO root, probe accurato | 19,163591 vs 19,1581; delta +0,005491 | — | **PASS** |
 | BTN dopo check, posteriori diversi | 22,418551 vs 21,6682; delta +0,750351 | — | Diagnostico |
 | BTN dopo bet 20, posteriori diversi | 15,996175 vs 17,1176; delta -1,121425 | — | Diagnostico |
 | CO root bet 20 | 24,6348% vs 18,0194% | — | Diagnostico: causa posteriori diversi |
 | BTN raise 60 dopo bet 20 | GTOSD 3,0438% vs GTO+ 0,0% nel run accurato | — | Diagnostico |
-| Nodi pubblici fisici | 112.848 | — | Informativo |
-| Nodi pubblici canonici | 31.461 | — | Informativo |
-| Infoset canonici | 250.704 | — | Informativo |
-| Action entry canoniche | 526.872 | — | Informativo |
+| Nodi pubblici fisici | 165.774 | — | Informativo |
+| Nodi pubblici canonici | 46.065 | — | Informativo |
+| Infoset canonici | 385.980 | — | Informativo |
+| Action entry canoniche | 834.636 | — | Informativo |
 | Delta regret transient | pubblicato separatamente in ogni run | — | Diagnostico, separato dallo stato solver |
 | Peak RSS | pubblicato in ogni run | — | Diagnostico, non equivalente agli 8 MB |
 
@@ -212,10 +440,10 @@ misure kernel-only restano secondarie.
 | 6 | Parallelismo deterministico per action subtree | Usa fino a 6 thread con delta separati e join | **Completato** |
 | 7 | Worker persistenti e riuso layout GUI | Elimina creazione thread e rebuild ripetuti | **Completato** |
 | 8 | Dimostrare la parità del root EV e ricomporre i rami BTN | Separa valore del gioco da EV condizionali dipendenti dal posteriore | **Completato: delta root +0,005491 ante** |
-| 9 | **F10.4 — Root lock diagnostico GTO+ combo-per-combo** | Con posteriori root identici, misura se i due delta BTN scendono entro ±0,5 ante | **NEXT** |
-| 10 | Classificare il residuo dopo root lock | Se passa: selezione dell'equilibrio; se fallisce: mismatch downstream | Bloccato da 9 |
-| 11 | Acquisire e confrontare l'action tree GTO+ downstream | Necessario soltanto se il lock lascia almeno un delta BTN oltre ±0,5 ante | Condizionato da 10 |
-| 12 | Profilare il percorso standard, senza lock | Ridurre la mediana da 2,7197086 s a ≤1,900000 s | Bloccato da 9–10 |
+| 9 | **F10.4 — Root lock diagnostico GTO+ combo-per-combo** | Con posteriori root identici, misura se i due delta BTN scendono entro ±0,5 ante | **Completato: PASS diagnostico** |
+| 10 | Classificare il residuo dopo root lock | Il residuo downstream principale è CO dopo check-bet, delta +0,0925 ante | **Completato come diagnosi; nessun unlock** |
+| 11 | Acquisire e confrontare l'action tree GTO+ downstream | Necessario solo dopo una decisione esplicita sul differenziale residuo | **Condizionato** |
+| 12 | Profilare il percorso standard, senza lock | Ridurre la mediana documentata da 3,128 s a ≤1,900000 s | **Prossimo lavoro; gate bloccante** |
 
 L'ordine può cambiare solo sulla base di profiling registrato qui.
 

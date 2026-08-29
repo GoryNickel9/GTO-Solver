@@ -1,7 +1,20 @@
 # Benchmark end-to-end di convergenza GTO+
 
+> **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v2 è
+> parametrico e va usato per nuovi scenari; questo documento conserva il
+> protocollo della fixture `GTP-AHKHQH-003` senza sostituire il parity journey.
+
 Benchmark ID: `GTP-AHKHQH-003`
 Schema: `gtosd.gto_plus_convergence_benchmark.v1`
+
+> **Checkpoint operativo 2026-08-14.** Il protocollo v2 è applicato alla suite
+> AHKHQH/TH7D6S/TSTC9D senza iteration cap e con arresto stretto a
+> `Target dEV < 1%`. I tre report correnti passano dEV, root EV e
+> `solver_state_bytes`; falliscono tutti il tempo. Valori e report autorevoli
+> sono nel parity journey. Le sezioni v1 e le diagnosi successive restano
+> evidenza storica del protocollo, non il dashboard corrente.
+> Il protocollo misura esclusivamente il backend CPU/RAM: non sono ammessi
+> offload o kernel GPU durante solving e certificazione.
 
 ## Scopo e limite
 
@@ -73,8 +86,10 @@ valori. La v2 rende ogni parametro leggibile dalla specifica:
 
 - **fixture**: board, `range_co`/`range_btn` (liste di classi tipo
   `AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo`), pot e stack in ante, bet/raise size in
-  percentuale del pot, `maximum_raises_per_street`, semantica all-in
-  (`disabled` oppure `go_if_remaining_stack_below_N_percent_current_pot`),
+  percentuale del pot, calendario opzionale
+  `raise_size_percent_pot_by_raise_count`, `maximum_raises_per_street`,
+  semantica all-in (`disabled`, `add_if_push_below_N_percent_pot_after_call`
+  oppure `go_if_push_below_N_percent_pot_after_call`),
   `final_bet_smoothing`, `rake_percent`;
 - **gtosd_run**: iterazioni, certification interval, averaging delay,
   parallel action depth, thread, processi indipendenti;
@@ -104,6 +119,12 @@ osservati (`elapsed_seconds`, `solver_memory_bytes`, `target_dev_percent`,
 conteggi del primo run GTOSD (la prima esecuzione con layout errato fallisce
 il gate di layout, non la parità).
 
+Il protocollo non ammette `maximum_iterations`: il solver core riceve
+`iterations=0` insieme al target e continua fino alla prima certificazione con
+`Target dEV < 1%`. Pausa, cancellazione ed errori espliciti restano gli unici
+arresti alternativi; il numero di iterazioni completate è un risultato, non un
+input del benchmark.
+
 > **Nuovi benchmark**: parte da `benchmarks/fixtures/TEMPLATE.json`
 > (schema-valido, valori noti del 101) e segui la procedura passo-passo in
 > `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md` — non serve toccare il codice C++.
@@ -111,8 +132,8 @@ il gate di layout, non la parità).
 ## Bug risolto: stack overflow del solver con all-in Go a soglia bassa
 
 Durante la validazione della v2 è emerso un bug latente pre-esistente del
-solver (non del percorso benchmark): con pot 20 / stack 60, size 33% e
-`automatic_all_in` con soglia `≤ 110%` del pot corrente, il processo terminava
+solver (non del percorso benchmark): con pot 20 / stack 60, size 33% e una
+soglia all-in allora descritta come `≤ 110%` del pot corrente, il processo terminava
 con fail-fast `0xC0000409` (stack overflow) durante l'analisi dei nodi di
 riferimento. Causa: `DenseTraversal::policy_decision` e
 `DenseTraversal::cfr_decision` dichiaravano `action_values` (~39 KB) e

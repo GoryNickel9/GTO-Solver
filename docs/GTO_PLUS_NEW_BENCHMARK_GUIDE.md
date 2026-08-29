@@ -9,6 +9,10 @@ riferimento GTO+ del nuovo scenario.
 > I valori del template **non vanno lasciati così**: `benchmark_id`, flop, range, pot/stack,
 > size, EV/frequenze dei nodi e `expected_layout` vanno adattati allo scenario.
 > Il template è congelato come base — i fixture veri si chiamano `gto_plus_<board>_<nnn>.json`.
+>
+> Ogni run comparativo usa il backend solver CPU/RAM-only. CPU, thread e RAM
+> devono essere riportati; una GPU non può partecipare al solve né essere usata
+> per ottenere il tempo dichiarato.
 
 ---
 
@@ -27,11 +31,12 @@ riferimento GTO+ del nuovo scenario.
 | `flop` | Le 3 carte del flop | Formato `["Ah","Kh","Qh"]`; carta valida `^[AKQJT9876][shdc]$` (mazzo corto 6-A). |
 | `initial_pot_antes` | Pot iniziale in ante (già postato) | GTO+: 40. |
 | `effective_stack_antes` | Stack effettivo in ante | GTO+: 100 (40+20+20... vedi sopra: 100 dopo il preflop). |
-| `bet_size_percent_pot` | Bet size in % del pot | GTO+: 50 → bet da 20 ante. |
-| `raise_size_percent_pot` | Raise size in % del pot | GTO+: 50 → raise da 60 ante. |
+| `bet_size_percent_pot` | Bet size in % del pot | GTO+: 50 → bet da 20 ante. Singolo intero **oppure array** per più size, es. `[33, 75]`. |
+| `raise_size_percent_pot` | Raise size in % del pot | GTO+: 50 → raise da 60 ante. Singolo intero **oppure array**, es. `[33, 75]`. |
+| `raise_size_percent_pot_by_raise_count` | Calendario opzionale delle size per profondità | Array con una entry per ogni raise consentito. L'indice zero è il primo raise. Esempio `[[33,75],[75],[75],[75]]`. Se assente, ogni profondità riusa `raise_size_percent_pot`. |
 | `maximum_raises_per_street` | Profondità raise consentita per strada | GTO+: 1. |
-| `automatic_all_in` | Regola all-in | **`"disabled"` = regola naturale** (all-in solo se la bet size supera lo stack rimanente — decisione utente 2026-08-05). |
-| `automatic_all_in_strict_boundary` | Confronto `<` vs `<=` alla soglia | Lascia `false` salvo motivo. |
+| `automatic_all_in` | Regola all-in | `"disabled"`; `"add_if_push_below_<N>_percent_pot_after_call"`; oppure `"go_if_push_below_<N>_percent_pot_after_call"`, con N 1–1000. Il push è `(stack-call)/(pot+call)`: `Add` conserva le size normali, `Go` le sostituisce quando la soglia scatta. |
+| `automatic_all_in_strict_boundary` | Confronto `<` vs `<=` alla soglia | Per la dicitura GTO+ “less than” usare `true`. |
 | `final_bet_smoothing` | Smoothing dell'ultima bet | `"disabled"`. |
 | `rake_percent` | Rake | GTO+: 0. |
 | `range_co` / `range_btn` | Range dei due giocatori (notazione hand class, es. `AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo`) | Formato GTOSD **e** export GTO+ con pesi: `[73.0]77[/73.0]` (peso in %, per singola hand class, 0–100; `[0.0]X[/0.0]` esclude la classe). I pesi diventano `RangeWeight` per combo. |
@@ -40,7 +45,7 @@ riferimento GTO+ del nuovo scenario.
 
 | Campo | Significato |
 |---|---|
-| `maximum_iterations` | **Solo un cap di sicurezza**, non una metrica: il run si ferma da solo alla convergenza (`stop_reason: "converged"` quando dEV ≤ `target_dev_percent`). Il benchmark **passa sulla convergenza**, non sul raggiungimento di un numero di iterazioni. Metti un cap generoso (es. 200); se il solver non converge nel cap, il benchmark fallisce con `stop_reason: "maximum_iterations_reached"`. |
+| `maximum_iterations` | **Non ammesso.** Il solver core usa la modalità target-driven senza limite di iterazioni e termina solo alla prima certificazione con dEV strettamente inferiore a `target_dev_percent`, oppure per pausa, cancellazione o errore reale. |
 | `certification_interval` | Ogni quante iterazioni si certifica (20). |
 | `averaging_delay` | Iterazioni prima di iniziare la media (20). |
 | `parallel_action_depth` | Profondità dell'albero parallelo (5). |
@@ -53,9 +58,11 @@ riferimento GTO+ del nuovo scenario.
 | Campo | Significato |
 |---|---|
 | `elapsed_seconds` | Tempo GTO+ per il target (1.71). Usato come base del gate speed. |
+| `convergence_trace` | Se disponibile, sequenza temporale osservata `elapsed_seconds`, `dev_percent`, `dev_antes`; preserva i valori mostrati da GTO+ senza interpolazione. |
+| `first_strictly_below_target` | Primo punto osservato con `dev_percent < target_dev_percent`; deve coincidere con `elapsed_seconds`. |
 | `solver_memory_bytes` | Memoria GTO+ in byte (**MB decimali**: 8 MB = 8 000 000). |
 | `memory_unit` | `"decimal_mb"` (confermato dall'utente per GTO+ v1.6.9). |
-| `target_dev_percent` | dEV target GTO+ in % (1.0). |
+| `target_dev_percent` | dEV target GTO+ in %; per questa suite deve essere `1.0` e il confronto è strettamente `<`. |
 | `target_definition` | Definizione del dEV (stringa, va lasciata/adeguata). |
 | `target_provenance` | Da dove arriva il riferimento (versione GTO+, macchina, run). |
 | `timing_scope` | Cosa misura `elapsed_seconds`. |
@@ -188,7 +195,7 @@ template sono specifici di Ah Kh Qh / 40-100 / 50% e **non valgono per altri boa
 
 Se il riferimento GTO+ lo fornisci tu (es. export del nuovo board), il resto è tutto qui.
 
-## 8. Diagnostico root-lock (F10.4, opzionale)
+## 8. Diagnostico root-lock (F10.4, implementato test-only)
 
 Per verificare che gli EV condizionali BTN combacino quando la strategia root è identica,
 esiste il diagnostico a root lock: fixture `benchmarks/fixtures/root_lock_gto_plus_003.json`
@@ -200,5 +207,6 @@ esiste il diagnostico a root lock: fixture `benchmarks/fixtures/root_lock_gto_pl
     benchmarks/fixtures/root_lock_gto_plus_003.json 200 out/f104_root_lock.json
 ```
 
-Risultato noto: delta BTN entro ±0.05 ante con il root bloccato (vs ±0.5 senza). Non è un
-gate automatico, è evidenza documentata in `GTO_PLUS_PARITY_JOURNEY.md`.
+Risultato documentato: delta BTN `+0.0348`/`+0.0366 ante` con il root bloccato.
+È una diagnostica validata, non un gate automatico e non costituisce node
+locking di prodotto. L'evidenza completa è in `GTO_PLUS_PARITY_JOURNEY.md`.

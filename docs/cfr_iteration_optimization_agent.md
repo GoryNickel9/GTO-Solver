@@ -1,5 +1,8 @@
 # Task: Optimize CFR Solver Cost per Iteration
 
+> **STATO: ANALISI STORICA / DA RIFARE CON PROFILING CORRENTE.** I numeri di
+> baseline e le priorità sotto non sono automaticamente validi per HEAD.
+
 ## Objective
 
 Optimize the solver's **cost per CFR pass/iteration**.
@@ -675,7 +678,8 @@ Do not start with:
 
 - cosmetic refactors
 - broad architecture rewrites unrelated to the hotspots
-- GPU work
+- GPU solver work (permanently prohibited by the CPU/RAM-only contract; it is
+  not a deferred optimization option)
 - database work
 - UI work
 - serialization

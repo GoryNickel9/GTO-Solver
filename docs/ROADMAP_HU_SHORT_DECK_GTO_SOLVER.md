@@ -14,6 +14,7 @@ fonte per sequenza, dipendenze e gate.
 | Prima piattaforma | Windows 10 64-bit |
 | Hardware minimo | 4 core a 2 GHz, 16 GB RAM |
 | Hardware consigliato | 6–8 core, 32 GB RAM |
+| Backend di solving | Esclusivamente CPU e RAM; nessuna GPU o acceleratore di calcolo |
 | Prima modalità | Heads-Up postflop |
 | Seconda modalità | Heads-Up preflop con albero completo fino al river |
 | Estensione futura | Preflop e postflop multiway, massimo 6 giocatori |
@@ -21,6 +22,12 @@ fonte per sequenza, dipendenze e gate.
 | Stato | Roadmap canonica iniziale |
 
 Questo documento definisce l’architettura, gli esperimenti algoritmici, le milestone, i test e i criteri di accettazione per costruire il solver. Non promette che ogni configurazione massima sia risolvibile con 16 GB: tale limite dovrà essere stabilito tramite benchmark misurati. Il software dovrà stimare preventivamente RAM, disco e complessità e rifiutare in modo esplicito le configurazioni che superano le risorse disponibili.
+
+Il vincolo CPU/RAM-only è permanente e vale per tree building, CFR, regret e
+strategy update, best response, certificazione e post-processing. CUDA, ROCm,
+OpenCL, Vulkan Compute, DirectCompute e tecnologie equivalenti non fanno parte
+della roadmap. L'eventuale GPU della macchina può essere usata dalla GUI solo
+per il rendering, mai per solvare.
 
 ## 2. Obiettivi di prodotto
 
@@ -192,12 +199,14 @@ Una size superiore allo stack viene convertita in all-in. Una size inferiore al 
 
 ### 4.3 Soglia automatica dell’all-in
 
-La soglia è globale per player, street e scenario. La semantica compatibile con GTO+ si calcola
-sullo stato prima dell'azione del player:
+La soglia è globale per player, street e scenario. La semantica percentuale è
+la stessa dei raise: prima si completa virtualmente il call, poi si confronta
+la parte di stack disponibile sopra il call con il pot dopo il call:
 
 ```text
-push_amount = effective_stack_before_action
-push_percent = push_amount / current_pot × 100
+pot_after_call = current_pot + amount_to_call
+push_increment = stack_before_action - amount_to_call
+push_percent = push_increment / pot_after_call × 100
 trigger = push_percent < configured_threshold
 ```
 
@@ -207,7 +216,6 @@ trigger = push_percent < configured_threshold
 | Add all-in | Mantiene le size normali e aggiunge l’all-in |
 | Go all-in | Rimuove le size aggressive normali e conserva soltanto l’all-in |
 
-La call fa parte del push: non viene sottratta dallo stack e non viene aggiunta al denominatore.
 Fold, check e call non vengono rimossi da `Go all-in`. La condizione è stretta: una percentuale esattamente uguale alla soglia non attiva la trasformazione.
 
 ### 4.4 Profondità dei raise
@@ -220,7 +228,16 @@ Fold, check e call non vengono rimossi da `Go all-in`. La condizione è stretta:
 | 3 | Tre raise non all-in |
 | 4 | Quattro raise non all-in |
 
-L’all-in non conta nel limite. Nella prima versione, le size `vs bet` vengono riutilizzate per le re-raise successive. Il formato di configurazione deve già distinguere `raise_depth`, così in futuro si potranno definire size diverse per ogni profondità.
+Una configurazione può inoltre dichiarare `sizes_by_raise_count_bp`: l'entry
+zero vale per il primo raise, l'entry uno per il re-raise e così via. Quando il
+calendario è assente, ogni profondità riusa `sizes_bp` per compatibilità con i
+file precedenti. Quando è presente deve contenere esattamente `raise_depth`
+entry non vuote; il contratto è generale e non dipende da uno specifico
+benchmark.
+
+L’all-in non conta nel limite. I file legacy senza calendario riutilizzano le
+size `vs bet` per tutte le re-raise; i file che dichiarano
+`sizes_by_raise_count_bp` possono definire size diverse per ogni profondità.
 
 ## 5. Rake
 
@@ -2040,27 +2057,31 @@ Nessun freeze UI durante solve
 
 ### Gate bloccante post-F10 — parità GTO+
 
-Prima di F11 deve essere superata la fixture canonica corretta `GTP-AHKHQH-003`
-documentata in
+Prima di F11 deve essere superata l'intera suite corrente
+`GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`, con `101` AHK
+equivalente v2 della fixture canonica congelata `GTP-AHKHQH-003`, documentata in
 [`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).
 
 ```text
-Tempo GTOSD fino alla convergenza <= 1,900000 s
-Memoria solver GTOSD <= 8,888889 MB
+Tempo GTOSD fino alla convergenza <= 1,900000 / 19,622222 / 128,988889 s
+Memoria solver GTOSD <= 8.000.000 / 399.000.000 / 2.000.000.000 B
+Target dEV strettamente < 1%, senza limite massimo di iterazioni
 EV del gioco al root nella stessa convenzione e tolleranza versionata
 EV/frequenze condizionali come gate solo con posteriori combo-per-combo uguali
 Exact/no bucketing/no sampling
 Parità physical/canonical e suite Release PASS
 ```
 
-F11 e tutte le fasi successive restano congelate finché entrambi i benchmark
-prestazionali non raggiungono almeno il 90% del riferimento GTO+ e tutti i gate
-EV/correttezza non passano.
+F11 e tutte le fasi successive restano congelate finché i tre benchmark non
+raggiungono almeno il 90% del riferimento GTO+ e tutti i gate dEV, root EV e
+`solver_state_bytes` non passano. Fixture e runner non possono essere adattati
+per ottenere il risultato: ogni correzione prestazionale deve appartenere al
+core generale.
 
-Al 2026-08-02 memoria e root EV passano, mentre la velocità fallisce. Gli EV BTN
-restano diagnostici perché i posteriori CO dopo bet/check sono differenti. La
-prossima attività è F10.4, un root lock esterno combo-per-combo test-only che
-non costituisce il node locking di prodotto della F11.
+Al 2026-08-14 dEV, root EV e memoria passano su 3/3; il tempo fallisce su 3/3.
+F10.4 è completata come root lock esterno combo-per-combo test-only e non
+costituisce il node locking di prodotto della F11. La prossima attività è una
+riduzione architetturale del costo del core, preservando i tre gate già chiusi.
 
 ### Fase 11 — Nodelock globale
 

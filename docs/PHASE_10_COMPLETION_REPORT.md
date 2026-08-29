@@ -1,5 +1,10 @@
 # Fase 10 — GUI HU postflop
 
+> **REPORT STORICO.** F10.4 è stata successivamente completata come diagnostica
+> test-only. Lo stato corrente del gate GTO+ e il freeze F11+ sono nel
+> `GTO_PLUS_PARITY_JOURNEY.md`; le previsioni nella sezione 9 non sono più un
+> handoff operativo.
+
 Data: 2026-07-29
 Versione: 0.10.0
 Stato: **completata localmente**
@@ -158,9 +163,7 @@ salvata; delimitano le viste e il packaging di release.
 
 ## 9. Prossimo gate
 
-La prosecuzione verso F11 è congelata. Il prossimo lavoro è il gate bloccante
-di parità corretto `GTP-AHKHQH-003`, mantenuto in
-[`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md). Il root EV è ora
-in parità entro `0,0055 ante`; la fase immediata F10.4 controllerà i posteriori
-BTN imponendo nel solo test la strategia root GTO+ combo-per-combo. F10.4 non è
-ancora implementata e non equivale al node locking di prodotto F11.
+La prosecuzione verso F11 resta congelata. Questo era il handoff alla chiusura
+di F10; F10.4 è ora implementata come diagnostica test-only e non equivale al
+node locking di prodotto F11. Lo stato operativo successivo è la suite a tre
+benchmark nel [`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).

@@ -75,6 +75,9 @@ WARP. L'affinità sceglie un logical processor per ciascuno di quattro core
 fisici, evitando di scambiare due sibling SMT per due core. Non simula
 frequenza, IPC o GPU di un'altra macchina; hardware e sistema operativo della
 misura finale devono quindi essere riportati nel completion report.
+La GPU citata in questo protocollo riguarda esclusivamente il rendering dei
+prototipi GUI. Nessun carico di solving viene inviato alla GPU: il solver usa
+soltanto CPU e RAM.
 
 ## 5. DPI, tastiera e automazione
 

@@ -1,5 +1,8 @@
 # Range-aware solver memory
 
+> **STATO: ANALISI STORICA.** I dati iniziali usano `GTP-AHKHQH-001`, fixture
+> ritirata. Per il gate corrente usare `GTP-AHKHQH-003` e il parity journey.
+
 Contratto canonico corrente: [`specifications/PERFORMANCE.md`](specifications/PERFORMANCE.md).
 
 I conteggi AhKhQh sotto riportati documentano la fixture storica
@@ -7,6 +10,15 @@ I conteggi AhKhQh sotto riportati documentano la fixture storica
 `GTP-AHKHQH-003`.
 
 Aggiornato: 2026-07-29
+
+> **Nota corrente 2026-08-14.** Lo stato solver promosso non è più float32 ma
+> packed 13+11 da 3 byte/action; i tre valori correnti sono 2.503.908 B,
+> 249.955.776 B e 1.747.903.656 B. Con range asimmetrici la sola unione delle
+> combo preserva la correttezza, ma la condivisione degli infoset sotto
+> automorfismi non banali non è ancora lossless: il core usa il layout fisico.
+> I breakdown v1 sotto restano analisi storica e non vanno usati come baseline.
+> Layout, mapping dei range e stato solver sono CPU/RAM-only; nessun buffer è
+> destinato a GPU o acceleratori di calcolo.
 
 ## 1. Obiettivo
 

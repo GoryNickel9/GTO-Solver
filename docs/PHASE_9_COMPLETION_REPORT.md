@@ -81,6 +81,9 @@ il fallback software WARP; non viene presentata come esecuzione su una CPU
 2 GHz con 16 GB. La qualificazione su hardware minimo esatto resta un gate di
 release F10, mentre Qt conserva un margine locale ampio.
 
+Direct3D e la sincronizzazione GPU misurano soltanto il rendering GUI. Il core
+solver non viene eseguito sulla GPU e mantiene il contratto CPU/RAM-only.
+
 ## 5. Validazione
 
 | Controllo | Risultato |
@@ -89,7 +92,7 @@ release F10, mentre Qt conserva un margine locale ampio.
 | Qt E2E DPI 100/150/200 | PASS, 3/3 |
 | ImGui E2E DPI 100/150/200 | PASS, 3/3 |
 | D3D11 hardware + WARP forzato | PASS nel test comune |
-| Benchmark con GPU synchronization | PASS, 3/3 backend |
+| Benchmark rendering con GPU synchronization | PASS, 3/3 backend; nessun solve GPU |
 | Install tree GUI e notice | PASS, 21 artefatti e smoke installato Qt/ImGui |
 | Regression suite Release | PASS, 19/19 inclusa F4 exhaustive |
 | Focused MSVC ASan F9 | PASS, 1/1 |

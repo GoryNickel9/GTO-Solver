@@ -1,5 +1,11 @@
 # CFR Solver Optimization — Next Profiling & Optimization Phase
 
+> **STATO STORICO / SUPERATO (2026-08-08).** I baseline 164,0/150,7 s e
+> l'ordine di priorità di questo documento non descrivono più il kernel
+> corrente. Per riprendere usare l'handoff in `speed_optimization_journey.md`
+> §§8.46-8.48. Lo snapshot 416.592.960 B / 86,1059943 s sotto è storico; il
+> checkpoint 2026-08-14 è 249.955.776 B / 37,810434 s e tempo ancora FAIL.
+
 ## Context
 
 Current benchmark against GTO+:
@@ -886,3 +892,7 @@ meaningfully lower through measured hot-path improvements
 ```
 
 Do not pursue speculative broad rewrites until these measurements identify the next dominant cost.
+# Nota di stato
+
+> **STATO: ANALISI STORICA / FASE CHIUSA.** Nuove ottimizzazioni richiedono
+> profiling e benchmark aggiornati.

@@ -1,5 +1,10 @@
 # Design: layout compatto (§5) — verso il <90 s
 
+> **STATO: DESIGN STORICO / NON APPROVATO.** Alcune varianti SIMD e di layout
+> descritte sono state provate e revertite; non rappresentano codice corrente.
+> Il layout solver resta in RAM e viene elaborato esclusivamente dalla CPU;
+> questo design non prevede né autorizza storage o kernel GPU.
+
 **Data**: 2026-08-06 · **Stato**: DESIGN (da approvare prima dell'esecuzione)
 **Riferimento**: `docs/ARCHITECTURAL_REWRITE_PLAN.md` §5 (oggi 5 righe) + misure della sessione.
 **Obiettivo**: dimezzare il tempo di `run_solver` th7d6s (~164 s → <90 s) attaccando il collo

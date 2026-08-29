@@ -20,6 +20,10 @@ Il percorso corrente usa CFR+ exact con aggiornamenti alternati su tutte le
 combo e chance compatibili. Non usa sampling, bucketing o astrazione lossy.
 L'isomorfismo globale e il DAG canonico sono riduzioni lossless.
 
+L'intero percorso, inclusi exact BR e certificazione, viene eseguito su CPU con
+stato e workspace in RAM. Un backend GPU non fa parte delle varianti ammesse e
+non è un'estensione pianificata: ottimizzazioni future devono restare CPU-only.
+
 Per ogni giocatore una traversata calcola i valori counterfactuali e produce
 delta separati. I regret negativi cumulativi vengono troncati a zero secondo
 CFR+. L'average strategy viene accumulata dopo `averaging_delay` e la strategia
@@ -44,6 +48,9 @@ Il postflop può parallelizzare action subtree fino a una profondità configurat
 I worker producono buffer separati e una riduzione deterministica. Thread count,
 profondità e impatto sulla convergenza fanno parte del benchmark. Nessun lock
 globale deve entrare nell'hot path.
+
+Il parallelismo è esclusivamente tra thread CPU. Non sono ammessi offload GPU,
+kernel compute o riduzioni numeriche eseguite da acceleratori esterni.
 
 ## Certificazione
 
@@ -78,3 +85,14 @@ resolving e depth-limited solving sono candidati, non capacità correnti.
 Preflop richiederà una decisione separata tra gioco non astratto, decomposizione
 e abstraction misurata. Multiway richiederà una nozione di soluzione e metriche
 separate; NashConv HU zero-sum non viene trasferita per assunzione.
+
+## Target memory-bounded approvato
+
+L'ADR
+[`ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md`](../ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md)
+seleziona DCFR standard (`alpha=1.5`, `beta=0`, `gamma=2`) come regret minimizer
+production iniziale del nuovo kernel canonico, con CFR+ come oracle e fallback.
+Questo target non descrive ancora il codice corrente: `DcfrPlus` usa una
+proiezione non-negativa custom e mantiene un identificatore distinto. La
+migrazione richiede differenziale formula-per-formula e un codec signed packed
+validato; non basta cambiare il nome dell'algoritmo.

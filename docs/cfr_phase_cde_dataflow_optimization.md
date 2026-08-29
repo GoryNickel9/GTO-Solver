@@ -917,3 +917,7 @@ The current benchmark to beat is:
 ```
 
 The next target should be achieved through **less dataflow work**, not further tuning of the already-tested actor-reach kernel.
+# Nota di stato
+
+> **STATO: ANALISI STORICA.** Le proposte C/D/E non sono un piano attivo finché
+> non vengono riaperte con misure e gate correnti.

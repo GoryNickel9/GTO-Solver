@@ -1,6 +1,16 @@
 # Stato implementazione roadmap HU Short Deck
 
-Aggiornato: 2026-08-02
+> **Verifica documentale:** 2026-08-29, worktree corrente non ancora committata.
+> Questo file è la dashboard dello stato implementato; i report `PHASE_*` restano
+> storici e il gate prestazionale è normato da `GTO_PLUS_PARITY_JOURNEY.md`.
+> L'ultimo checkpoint promosso compila in Release; il riferimento GTO+ passa
+> 24 asserzioni, fallback asimmetrico e root lock. Il worktree contiene un
+> candidato TSTC9D successivo validato soltanto con run singoli, non promosso.
+> Il riferimento GTO+ Release è stato rieseguito: PASS, 24 asserzioni e
+> differenziale seriale/parallelo nullo. Il CTest 16/16 appartiene alla
+> chiusura 2026-08-13 e non è stato rieseguito integralmente in questa sessione.
+
+Aggiornato: 2026-08-29
 
 Le specifiche tecniche canoniche sono indicizzate in
 [`specifications/README.md`](specifications/README.md). Questo documento
@@ -17,11 +27,12 @@ riassume gate ed evidenza di implementazione.
 | F4 | **Completata** | Modulo `gtosd::isomorphism`, tutte le 24 permutazioni, mapping inverso, 7.140 flop fisici e 573 orbite, chance con molteplicità | Nessun residuo F4 |
 | F5 | **Completata** | Moduli `gtosd::solver` e `gtosd::best_response`, cinque algoritmi, exact BR/NashConv, 79 asserzioni e sanitizer verdi | Cross-check OpenSpiel/sequence-form resta test-only futuro; non è un gate bloccante |
 | F6 | **Completata** | Tre prototype report, nove preflight exact, parità EV/NashConv e probe RSS out-of-core | Nessun residuo del gate memoria; traversal poker production appartiene a F7 |
-| F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query, PF-F1 a 0,741405%, layout range-aware, infoset canonici e public DAG lossless | La fixture GTO+ `003` usa 250.704 infoset, 526.872 action entry e 31.461 nodi pubblici canonici; la costruzione parte ancora dal tree fisico |
-| F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e 309 asserzioni | La quantizzazione resta sperimentale; la misura PF-F1 storage usa una iterazione e non sostituisce la certificazione F7 |
+| F7 | **Completata** | Modulo `gtosd::postflop`, CFR+ exact, BR/NashConv, checkpoint/resume, query, PF-F1 a 0,741405%, layout range-aware, infoset canonici e public DAG lossless | La baseline naturale GTO+ usa 385.980 infoset, 834.636 action entry, 46.065 nodi pubblici canonici e 165.774 nodi fisici; la costruzione parte ancora dal tree fisico |
+| F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **PASS memoria/root EV; FAIL velocità** | `GTP-AHKHQH-003`: mediana 2,7197086 s, stato 4,214976 MB; probe accurato CO root 19,163591 vs 19,1581, delta +0,005491 ante; “smoothly” disabilitato | F10.4 test-only: imporre la strategia root GTO+ combo-per-combo e confrontare gli EV BTN con posteriori uguali |
+| GTO+ parity gate | **NON SUPERATO; goal TST sospeso** | Run finale TST: DCFR `alpha=1,9, beta=0, gamma=3`, 170 iter, dEV `0,985760%`, root `8,492540`, elapsed `153,176351 s` (`147,063172` traversal + `5,505125` certificazione), stato `1.472.605.376 B`, peak RSS `1.968.537.600 B`. dEV/root/RAM PASS; tempo grezzo `116,09 s` e limite 90% `128,988889 s` FAIL. Run singolo, non cinque processi | Profilare il motore comune a iterazioni fisse su AHKHQH, TH7D6S e TSTC9D; poi ridurre il costo dei colli di bottiglia condivisi senza branch per fixture e senza cambiare l'ordine matematico; F11+ congelata |
+| Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 
 ## Fase 0 — Fondazioni del repository
@@ -500,12 +511,16 @@ Il dettaglio, i limiti e i comandi di riproduzione sono in
 
 ## Prossimo ingresso
 
-La fase successiva è **F10.4 — controlled-posterior root lock diagnostico**,
-definita nel Journey. Non è node locking di prodotto: vincola soltanto il root
-CO nel test, lascia libere le continuation e certifica separatamente il gioco
-vincolato. Se entrambi i delta BTN scendono entro ±0,5 ante, la causa dominante
-è la selezione del posteriore root; altrimenti si apre il differenziale
-downstream dal primo nodo a reach uguali.
+F10.4 è completata come esperimento diagnostico e non è node locking di
+prodotto. Il prossimo lavoro autorizzato è ridurre il tempo dei tre benchmark
+intervenendo soltanto sul core generale e mantenendo dEV, root EV e RAM. Il
+profilo corrente indica che micro-ottimizzazioni isolate non coprono il gap.
+Prima si deve abilitare il fast path fisico generale quando il fallback non usa
+infoset isomorfi: action base dirette, layout `PlayerIndexed`, regret immediati
+e nessun workspace differito. Seguono DAG lossless per range asimmetrici con
+reach/molteplicità player-local e isomorfismo street-local. Ogni candidato deve
+passare il differenziale `1e-11` prima dei benchmark. Il solving resta
+permanentemente CPU/RAM-only e F11+ resta congelata.
 
 ## Contratti poker già codificati
 

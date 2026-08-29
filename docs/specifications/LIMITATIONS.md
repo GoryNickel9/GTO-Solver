@@ -10,14 +10,25 @@ finite.
 
 ## Limiti di parità
 
-- Il gate memoria GTO+ passa; il gate velocità fallisce.
-- Il root EV AhKhQh è allineato entro 0,0055 ante.
+- dEV, root EV e `solver_state_bytes` passano sui tre benchmark correnti; i tre
+  gate velocità falliscono.
+- I tempi singoli correnti sono AHK 4,970917 s, TH 37,810434 s e TST
+  690,307523 s contro limiti 1,900000 / 19,622222 / 120,600000 s.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
-- F10.4 controlled-posterior è pianificata, non implementata.
+- F10.4 controlled-posterior è implementata esclusivamente come diagnostica
+  test-only; non è node locking globale di prodotto e non sblocca F11+.
 - Il run GTO+ a target 0,10% non ha raggiunto il target dopo circa 245 s.
 
 Le fasi F11+ restano congelate dal parity journey.
+
+## Vincolo permanente CPU/RAM
+
+Il solving usa e userà soltanto CPU e RAM. L'assenza della GPU non è una
+funzione ancora da implementare, ma una decisione permanente di prodotto e di
+architettura. Sono esclusi backend CUDA, ROCm, OpenCL, Vulkan Compute,
+DirectCompute e tecnologie equivalenti. La GPU può essere usata esclusivamente
+dal sistema grafico per renderizzare la GUI, senza partecipare ai calcoli.
 
 ## Funzioni non ancora supportate
 
@@ -26,7 +37,7 @@ Le fasi F11+ restano congelate dal parity journey.
 - multiway, side pot completi e metriche general-sum;
 - database di flop e trainer di prodotto;
 - abstraction/bucketing con errore misurato;
-- GPU o calcolo distribuito;
+- calcolo distribuito;
 - rake avanzato per stake/player count, jackpot drop e valute;
 - formati di soluzione preflop/multiway.
 
@@ -37,9 +48,12 @@ La presenza di tipi, placeholder o chunk riservati non costituisce supporto.
 - GUI desktop e packaging certificati sono attualmente Windows/Qt 6.
 - Il public tree ha un build limit configurabile e può superare RAM per alberi
   grandi.
-- `Float32` riduce lo stato ma può cambiare la traiettoria numerica; richiede
-  confronto con `Float64`.
-- La quantizzazione `uint16` è sperimentale e lossy.
+- Il benchmark usa stato packed `float13` regret + `float11` strategy con
+  compute `float64`; ogni nuovo formato richiede exact BR e confronto di root
+  EV, non soltanto finitezza.
+- Con range asimmetrici e simmetrie di seme non banali il core usa ancora il
+  layout fisico: la condivisione canonica richiede reach e molteplicità
+  player-local non ancora implementate correttamente.
 - Il catalogo SQLite non replica né recupera la chiave degli archivi.
 - Le chiavi `.gtsd` devono essere gestite dal layer chiamante.
 

@@ -1,5 +1,20 @@
 # Analisi memoria GTO+ (399MB) vs GTOSD (667MB stato / 868MB picco)
 
+> **AGGIORNAMENTO OPERATIVO 2026-08-14.** Il problema `solver_state_bytes` è
+> chiuso sui tre benchmark mediante il formato core packed 13+11 da 3
+> byte/action. TH7D6S usa 249.955.776 B contro 399.000.000 B; AHKHQH usa
+> 2.503.908 B contro 8.000.000 B; TSTC9D usa 1.747.903.656 B contro
+> 2.000.000.000 B. Tutti conservano dEV <1% e root correctness. I tempi
+> 4,970917 / 37,810434 / 690,307523 s falliscono i rispettivi limiti e non sono
+> compensati dalla RAM. Peak RSS e transient workspace restano metriche
+> separate. L'analisi float32 seguente resta storica.
+> Tutte le soluzioni di memoria restano CPU/RAM-only: non è ammesso spostare
+> stato, traversal o certificazione su GPU.
+
+> **STATO: ANALISI STORICA.** I numeri appartengono al benchmark
+> `GTP-TH7D6S-101` del 2026-08-06 e non sono la baseline corrente di
+> `GTP-AHKHQH-003`.
+
 **Data**: 2026-08-06 · **Benchmark**: `GTP-TH7D6S-101` (short deck HU postflop, flop Th7d6s)
 **Riferimento GTO+** (dalla fixture): `elapsed_seconds: 17.66`, `solver_memory_bytes: 399000000`
 **Stato attuale GTOSD**: 164.0s (miglior run pulito), stato 667MB, picco RSS 868MB.

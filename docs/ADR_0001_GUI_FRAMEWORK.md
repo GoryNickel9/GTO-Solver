@@ -10,6 +10,10 @@ matrice Short Deck 9×9, aprire container `.gtsd` a chunk e restare usabile su
 Windows 10 con quattro core e 16 GB. Il core matematico e lo storage non devono
 dipendere dal toolkit.
 
+Questa decisione riguarda esclusivamente la GUI. Un backend grafico può usare
+la GPU per disegnare, ma non autorizza né pianifica calcolo solver sulla GPU:
+tree, CFR, regret/strategy, best response e certificazione restano CPU/RAM-only.
+
 F9 confronta Qt 6 Widgets e Dear ImGui docking sullo stesso
 `gtosd::gui_prototype`: fixture da 100.000 nodi, 81 classi, dieci workflow,
 apertura autenticata del solo chunk `CONFIG`, DPI 100/150/200 e rendering con

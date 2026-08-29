@@ -1,5 +1,9 @@
 # Canonical public DAG
 
+> **STATO: ANALISI STORICA DI UNA FIXTURE RITIRATA.** Il contratto normativo
+> corrente è in `specifications/TREE_FORMAT.md`; i conteggi v1 qui presenti
+> non descrivono la baseline naturale aggiornata.
+
 Contratto canonico corrente: [`specifications/TREE_FORMAT.md`](specifications/TREE_FORMAT.md).
 
 I conteggi AhKhQh in questo documento appartengono alla fixture storica
@@ -7,6 +11,24 @@ I conteggi AhKhQh in questo documento appartengono alla fixture storica
 `GTP-AHKHQH-003`; i suoi golden sono nel Journey canonico.
 
 Aggiornato: 2026-07-29
+
+> **Limite operativo verificato 2026-08-14.** La prova di riuso degli infoset
+> suit-isomorphic con range player-asimmetrici non è lossless con il modello
+> attuale: dopo due iterazioni il differenziale ha prodotto profile EV
+> `5,03195/-5,03195` nel fisico contro `6,68204/-6,68204` nel DAG, BR
+> `32,4363/14,1074` contro `37,8948/11,6624`, massimo delta regret `11,8409` e
+> strategy `12`. Il core conserva quindi il fallback a infoset/tree fisici
+> quando esiste una simmetria non banale e i range dei player differiscono.
+> Serve un modello player-local di reach e update multiplicity prima di
+> riabilitare il DAG; non è ammesso rilassare la tolleranza `1e-11`.
+>
+> Un candidato successivo è presente nel worktree ma non ha completato build e
+> validazione: non modifica questo limite operativo e non costituisce un nuovo
+> benchmark. Prima della sua promozione devono coincidere reach trasformati,
+> update player-local, profile EV, BR, regret e strategy entro `1e-11`.
+
+Il DAG e ogni futura canonicalizzazione vengono calcolati esclusivamente su
+CPU e conservati in RAM. Nessun passaggio è delegabile alla GPU.
 
 ## Obiettivo
 
@@ -23,6 +45,12 @@ lasciano invariati:
 
 Non vengono usati sampling, bucketing, rinormalizzazione o canonicalizzazione
 del solo board.
+
+Una futura riduzione *street-local* può ricalcolare lo stabilizzatore dei semi
+dopo ogni nuova carta pubblica. Non equivale a fondere board localmente: ogni
+arco deve ancora trasformare entrambe le distribuzioni private, preservare i
+blocker e applicare il mapping inverso ai valori. È un candidato separato dal
+DAG globale documentato qui e non è ancora implementato né validato.
 
 ## Rappresentazione
 

@@ -280,6 +280,12 @@ Una size:
 - `raise_depth = 0` consente il bet iniziale ma vieta il raise;
 - `raise_depth = 4` vieta il quinto raise non all-in.
 
+Le size possono essere uniformi a tutte le profondità oppure dichiarate con
+un calendario `sizes_by_raise_count_bp`: indice zero per il primo raise,
+indice uno per il re-raise e così via. Il calendario, se presente, copre
+esattamente la profondità configurata ed è serializzato nel tree config; la
+lista uniforme resta il fallback compatibile con i file precedenti.
+
 ### 8.4 Add/Go all-in
 
 La soglia usa:
