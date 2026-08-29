@@ -1,14 +1,13 @@
 # Stato implementazione roadmap HU Short Deck
 
-> **Verifica documentale:** 2026-08-29, worktree corrente non ancora committata.
+> **Verifica documentale:** 2026-08-29, piano P0-P7 chiuso con Esito B.
 > Questo file è la dashboard dello stato implementato; i report `PHASE_*` restano
 > storici e il gate prestazionale è normato da `GTO_PLUS_PARITY_JOURNEY.md`.
-> L'ultimo checkpoint promosso compila in Release; il riferimento GTO+ passa
-> 24 asserzioni, fallback asimmetrico e root lock. Il worktree contiene un
-> candidato TSTC9D successivo validato soltanto con run singoli, non promosso.
-> Il riferimento GTO+ Release è stato rieseguito: PASS, 24 asserzioni e
-> differenziale seriale/parallelo nullo. Il CTest 16/16 appartiene alla
-> chiusura 2026-08-13 e non è stato rieseguito integralmente in questa sessione.
+> La build Release completa passa; il riferimento GTO+ passa 24 asserzioni,
+> fallback asimmetrico e root lock, con differenziale seriale/parallelo nullo.
+> La suite finale CTest è 18/18 PASS. Persistent scale, cache showdown e
+> action-liveness sono stati misurati e rimossi perché regressivi; il report
+> corrente è `NEXT_OPTIMIZATION_RESULTS_2026-08-29.md`.
 
 Aggiornato: 2026-08-29
 
@@ -31,7 +30,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; goal TST sospeso** | Run finale TST: DCFR `alpha=1,9, beta=0, gamma=3`, 170 iter, dEV `0,985760%`, root `8,492540`, elapsed `153,176351 s` (`147,063172` traversal + `5,505125` certificazione), stato `1.472.605.376 B`, peak RSS `1.968.537.600 B`. dEV/root/RAM PASS; tempo grezzo `116,09 s` e limite 90% `128,988889 s` FAIL. Run singolo, non cinque processi | Profilare il motore comune a iterazioni fisse su AHKHQH, TH7D6S e TSTC9D; poi ridurre il costo dei colli di bottiglia condivisi senza branch per fixture e senza cambiare l'ordine matematico; F11+ congelata |
+| GTO+ parity gate | **NON SUPERATO; Esito B misurato** | Run finale TST: DCFR `alpha=1,9, beta=0, gamma=3`, 170 iter, dEV `0,985760%`, root `8,492540`, elapsed `153,176351 s` (`147,063172` traversal + `5,505125` certificazione), stato `1.472.605.376 B`, peak RSS `1.968.537.600 B`. dEV/root/RAM PASS; tempo grezzo `116,09 s` e limite 90% `128,988889 s` FAIL. P0-P7 e CTest 18/18 sono documentati in `NEXT_OPTIMIZATION_RESULTS_2026-08-29.md` | Microbenchmark e differential di una fusione lossless del kernel showdown `PlayerIndexed<float>`; F11+ e cinque processi restano congelati finché un singolo full non supera il gate |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 
