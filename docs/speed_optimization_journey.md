@@ -2044,3 +2044,25 @@ I report `tstc9d-p3-{baseline,cache}-{a,b}.json` sono fuori repo. Non viene
 promossa alcuna cache e non si eseguono run 80/full. Il risultato converte il
 conteggio hash di P1 da ipotesi promettente a località insufficiente; la
 prossima direzione è ridurre passate/load-store nel dataflow decisionale.
+
+## §8.58 P4 — liveness action nel dataflow decisionale (2026-08-29)
+
+**Decisione: REJECT immediato; il prototipo è stato rimosso.**
+
+Il candidato scansionava lo scratch strategy già decodificato, con early-exit
+AVX2, e saltava la materializzazione della reach per action interamente zero.
+La ricorsione era già evitata dal controllo exact sulla child reach; il nuovo
+passaggio mirava quindi a eliminare soltanto load/store ormai inutili.
+
+Nel primo A/B TSTC9D a 20 iterazioni il baseline registra traversal
+17,765595 s ed elapsed 24,777966 s; il candidato 19,188408 s e 26,306911 s:
+rispettivamente +8,01% e +6,17%. Inoltre saltare il passaggio su action
+irraggiungibili cambia gli update/discount finiti: dEV 16,817241% ->
+16,799850%, NashConv 0,325841 -> 0,327267 e root 0,445935759 -> 0,443522662
+ante, pur con 29.490.340 nodi in entrambi i run. Non è quindi un dataflow
+bit-identico e il costo della scansione supera le scritture risparmiate.
+
+Il criterio di reject immediato evita una seconda alternanza e run più lunghi.
+Il report `tstc9d-p4-{baseline,liveness}-a.json` è conservato fuori repo. Le
+fusioni già presenti (2/3-action, fixed river e decode-at-update quando la
+strategy non serve ai discendenti) restano; non viene mantenuto nuovo codice.
