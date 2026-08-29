@@ -151,6 +151,57 @@ std::uint64_t measured_peak_rss() {
 #endif
 }
 
+std::uint64_t measured_current_rss() {
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS_EX counters{};
+  counters.cb = sizeof(counters);
+  if (GetProcessMemoryInfo(GetCurrentProcess(),
+                           reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&counters),
+                           sizeof(counters)) == 0) {
+    return 0;
+  }
+  return static_cast<std::uint64_t>(counters.WorkingSetSize);
+#else
+  std::ifstream statm("/proc/self/statm");
+  std::uint64_t total_pages = 0U;
+  std::uint64_t resident_pages = 0U;
+  if (!(statm >> total_pages >> resident_pages)) {
+    return 0U;
+  }
+  const long page_size = sysconf(_SC_PAGESIZE);
+  return page_size > 0
+             ? resident_pages * static_cast<std::uint64_t>(page_size)
+             : 0U;
+#endif
+}
+
+double measured_process_cpu_seconds() {
+#ifdef _WIN32
+  FILETIME creation{};
+  FILETIME exit{};
+  FILETIME kernel{};
+  FILETIME user{};
+  if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) == 0) {
+    return 0.0;
+  }
+  const auto ticks = [](const FILETIME value) {
+    return (static_cast<std::uint64_t>(value.dwHighDateTime) << 32U) |
+           static_cast<std::uint64_t>(value.dwLowDateTime);
+  };
+  return static_cast<double>(ticks(kernel) + ticks(user)) / 10'000'000.0;
+#else
+  rusage usage{};
+  if (getrusage(RUSAGE_SELF, &usage) != 0) {
+    return 0.0;
+  }
+  const auto seconds = [](const timeval value) {
+    return static_cast<double>(value.tv_sec) +
+           static_cast<double>(value.tv_usec) / 1'000'000.0;
+  };
+  return seconds(usage.ru_utime) + seconds(usage.ru_stime);
+#endif
+}
+
 class MappedBacking {
 public:
   MappedBacking(const std::string &path, const std::uint64_t size) : size_(size) {
@@ -1079,5 +1130,9 @@ const char *memory_error_name(const MemoryError error) noexcept {
 }
 
 std::uint64_t process_peak_rss_bytes() noexcept { return measured_peak_rss(); }
+
+std::uint64_t process_current_rss_bytes() noexcept { return measured_current_rss(); }
+
+double process_cpu_seconds() noexcept { return measured_process_cpu_seconds(); }
 
 } // namespace gtosd

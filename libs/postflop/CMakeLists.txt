@@ -1,4 +1,5 @@
 add_library(gtosd_postflop
+  src/canonical_layout.cpp
   src/postflop_solver.cpp)
 add_library(gtosd::postflop ALIAS gtosd_postflop)
 
@@ -16,12 +17,18 @@ target_link_libraries(gtosd_postflop
 set_target_properties(gtosd_postflop PROPERTIES EXPORT_NAME postflop)
 gtosd_set_warnings(gtosd_postflop)
 
+option(GTOSD_ENABLE_HOTPATH_PROFILE
+  "Compile detailed postflop hot-path instrumentation" OFF)
+if(GTOSD_ENABLE_HOTPATH_PROFILE)
+  target_compile_definitions(gtosd_postflop PRIVATE GTOSD_ENABLE_HOTPATH_PROFILE=1)
+endif()
+
 # The desktop performance target is x86-64 with AVX2. Keep strict IEEE
 # semantics (no /fp:fast), while enabling whole-program optimization and the
 # native vector instruction set for the exact postflop hot path.
 if(MSVC)
   target_compile_options(gtosd_postflop PRIVATE
-    $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2>)
+    $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2 /favor:INTEL64>)
   target_link_options(gtosd_postflop INTERFACE
     $<$<CONFIG:Release>:/LTCG>)
 endif()

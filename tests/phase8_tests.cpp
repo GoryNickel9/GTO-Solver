@@ -44,6 +44,34 @@ gtosd::PostflopCheckpoint make_checkpoint() {
   return checkpoint;
 }
 
+gtosd::PostflopCheckpoint make_mixed_checkpoint() {
+  gtosd::PostflopCheckpoint checkpoint;
+  checkpoint.game_fingerprint = "phase8-mixed-storage-fixture-v1";
+  checkpoint.completed_iterations = 25;
+  checkpoint.averaging_delay = 3;
+  checkpoint.action_count = 4;
+  checkpoint.state_precision =
+      gtosd::PostflopStatePrecision::Float24RegretFloat16Strategy;
+  // Packed positive float24 values: 0, 1, 2 and 0.5. Binary16 values use
+  // the same exact sequence, so persistence can be checked byte-for-byte.
+  checkpoint.cumulative_regret_float24 = {0x00, 0x00, 0x00, 0x00, 0x00, 0x7f,
+                                           0x00, 0x00, 0x80, 0x00, 0x00, 0x7e};
+  checkpoint.cumulative_strategy_float16 = {0x0000, 0x3c00, 0x4000, 0x3800};
+  return checkpoint;
+}
+
+gtosd::PostflopCheckpoint make_compact_checkpoint() {
+  gtosd::PostflopCheckpoint checkpoint;
+  checkpoint.game_fingerprint = "phase8-compact-storage-fixture-v1";
+  checkpoint.completed_iterations = 25;
+  checkpoint.averaging_delay = 3;
+  checkpoint.action_count = 4;
+  checkpoint.state_precision = gtosd::PostflopStatePrecision::Float13RegretFloat11Strategy;
+  checkpoint.cumulative_compact_state = {
+      0x00, 0x00, 0x00, 0x01, 0x20, 0x40, 0xfe, 0xdf, 0x7f, 0x34, 0x12, 0x80};
+  return checkpoint;
+}
+
 gtosd::PostflopCertification make_certification() {
   gtosd::PostflopCertification certification;
   certification.iteration = 25;
@@ -116,6 +144,57 @@ void test_round_trip_random_access_and_metrics() {
   const auto wrong = gtosd::open_solution(path, wrong_key);
   require(!wrong && wrong.error() == gtosd::StorageError::AuthenticationFailed,
           "wrong key fails index authentication");
+  remove_file(path);
+}
+
+void test_mixed_precision_round_trip() {
+  const auto checkpoint = make_mixed_checkpoint();
+  const auto certification = make_certification();
+  const auto archive =
+      gtosd::make_postflop_solution(load_config(), checkpoint, certification);
+  require(archive.has_value(), "mixed-precision solution archive builds");
+  const auto key = gtosd::generate_storage_key();
+  const auto path = std::filesystem::current_path() / "phase8_mixed_round_trip.gtsd";
+  remove_file(path);
+  require(gtosd::save_solution(path, archive.value(), key).has_value(),
+          "mixed-precision solution saves atomically");
+  const auto reader = gtosd::open_solution(path, key);
+  require(reader.has_value(), "mixed-precision solution opens");
+  const auto restored = gtosd::restore_postflop_solution(reader.value());
+  require(restored.has_value() &&
+              restored.value().checkpoint.state_precision == checkpoint.state_precision &&
+              restored.value().checkpoint.cumulative_regret_float24 ==
+                  checkpoint.cumulative_regret_float24 &&
+              restored.value().checkpoint.cumulative_strategy_float16 ==
+                  checkpoint.cumulative_strategy_float16 &&
+              restored.value().checkpoint.cumulative_regret.empty() &&
+              restored.value().checkpoint.cumulative_strategy.empty() &&
+              restored.value().checkpoint.cumulative_regret_float32.empty() &&
+              restored.value().checkpoint.cumulative_strategy_float32.empty(),
+          "mixed-precision strategy and precision metadata round-trip byte-for-byte");
+  remove_file(path);
+}
+
+void test_compact_precision_round_trip() {
+  const auto checkpoint = make_compact_checkpoint();
+  const auto archive =
+      gtosd::make_postflop_solution(load_config(), checkpoint, make_certification());
+  require(archive.has_value(), "compact-precision solution archive builds");
+  const auto key = gtosd::generate_storage_key();
+  const auto path = std::filesystem::current_path() / "phase8_compact_round_trip.gtsd";
+  remove_file(path);
+  require(gtosd::save_solution(path, archive.value(), key).has_value(),
+          "compact-precision solution saves atomically");
+  const auto reader = gtosd::open_solution(path, key);
+  require(reader.has_value(), "compact-precision solution opens");
+  const auto restored = gtosd::restore_postflop_solution(reader.value());
+  require(restored.has_value() &&
+              restored.value().checkpoint.state_precision == checkpoint.state_precision &&
+              restored.value().checkpoint.cumulative_compact_state ==
+                  checkpoint.cumulative_compact_state &&
+              restored.value().checkpoint.cumulative_regret.empty() &&
+              restored.value().checkpoint.cumulative_strategy.empty(),
+          "compact strategy and precision metadata round-trip byte-for-byte");
   remove_file(path);
 }
 
@@ -329,6 +408,8 @@ void test_authenticated_mutation_corpus() {
 int main() {
   try {
     test_round_trip_random_access_and_metrics();
+    test_mixed_precision_round_trip();
+    test_compact_precision_round_trip();
     test_corruption_truncation_and_versions();
     test_atomic_preservation_migration_and_catalog();
     test_quantization_and_dictionary_training();

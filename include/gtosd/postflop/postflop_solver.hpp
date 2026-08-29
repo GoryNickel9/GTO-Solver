@@ -29,7 +29,28 @@ enum class PostflopSolverError : std::uint8_t {
 
 enum class PostflopControlCommand : std::uint8_t { Continue, Pause, Cancel };
 enum class PostflopStopReason : std::uint8_t { Completed, Converged, Paused, Cancelled };
-enum class PostflopStatePrecision : std::uint8_t { Float64, Float32 };
+enum class PostflopStatePrecision : std::uint8_t {
+  Float64,
+  Float32,
+  Float24RegretFloat16Strategy,
+  Float13RegretFloat11Strategy,
+  ScaledUint16RegretStrategy,
+  ActionMajorFloat13RegretFloat11Strategy
+};
+enum class PostflopAlgorithm : std::uint8_t { CfrPlus, DcfrPlus, Dcfr, HsDcfr30 };
+
+// Training-free Hyperparameter Schedule from Zhang, McAleer and Sandholm,
+// "Faster Game Solving via Hyperparameter Schedules". The production
+// implementation clamps the published linear schedule at the theorem's
+// admissible bounds; this is identical to the paper throughout its 1,000
+// iteration experimental horizon and remains well-defined for unbounded runs.
+struct HsDcfrSchedulePoint {
+  double alpha{1.0};
+  double beta{-1.0};
+  double gamma{30.0};
+};
+
+[[nodiscard]] HsDcfrSchedulePoint hs_dcfr30_schedule(std::uint64_t iteration) noexcept;
 struct PostflopCertification;
 struct PostflopCheckpoint;
 class PostflopPreparedTree;
@@ -54,13 +75,26 @@ struct DiagnosticRootLock {
 };
 
 struct PostflopSolveOptions {
+  // Zero means target-driven with no iteration limit. This mode requires one
+  // convergence target and stops only when a certification satisfies it, or
+  // when the caller pauses/cancels or a real solver error occurs.
   std::uint64_t iterations{1};
   std::uint64_t averaging_delay{0};
   std::uint64_t certification_interval{1};
   std::optional<double> target_normalized_nash_conv;
   std::optional<double> target_normalized_max_deviation;
+  // Selects the mathematical boundary of the convergence gate. Existing
+  // callers retain <=; GTO+ Target dEV benchmarks use strict <.
+  bool strict_target{false};
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
+  PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};
+  // DCFR+ keeps CFR+'s non-negative regret projection. DCFR stores signed
+  // regrets and applies fixed Brown-Sandholm discounts. HsDcfr30 uses the
+  // published dynamic alpha/beta/gamma schedule and ignores these two fixed
+  // exponents. The parameters are also ignored by CfrPlus.
+  double dcfr_positive_regret_exponent{1.5};
+  double dcfr_average_exponent{2.0};
   bool enable_lossless_isomorphism{true};
   bool enable_canonical_public_dag{true};
   std::uint8_t parallel_action_depth{0};
@@ -85,12 +119,47 @@ struct PostflopCheckpoint {
   std::uint64_t completed_iterations{0};
   std::uint64_t averaging_delay{0};
   std::uint64_t action_count{0};
+  // Number of decision-node scale pairs in the action-major uint16 backend.
+  // Zero for all legacy state formats.
+  std::uint64_t decision_node_count{0};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
+  PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};
+  double dcfr_positive_regret_exponent{1.5};
+  double dcfr_average_exponent{2.0};
   std::string external_buffer_file;
   std::vector<double> cumulative_regret;
   std::vector<double> cumulative_strategy;
   std::vector<float> cumulative_regret_float32;
   std::vector<float> cumulative_strategy_float32;
+  // Explicit compressed mode: each regret is an IEEE float32 rounded to its
+  // upper 24 bits (8-bit exponent + 15-bit fraction), while average-strategy
+  // values use IEEE binary16. Computation remains float64.
+  std::vector<std::uint8_t> cumulative_regret_float24;
+  std::vector<std::uint16_t> cumulative_strategy_float16;
+  // Packed three-byte/action mode: unsigned regret float13 (E8M5; CFR+
+  // regrets are non-negative) and unsigned average-strategy float11 (E5M6).
+  // Traversal and payoff computation remain float64.
+  std::vector<std::uint8_t> cumulative_compact_state;
+  // Node-scaled action-major representation. For a decision with L local
+  // hands and A actions, entry (action, local) is stored at
+  // action_base + action * L + local. Decoded values are code * node scale;
+  // the common scale cancels during regret matching/policy normalization.
+  std::vector<std::uint16_t> cumulative_regret_uint16;
+  std::vector<std::uint16_t> cumulative_strategy_uint16;
+  std::vector<float> regret_node_scale;
+  std::vector<float> strategy_node_scale;
+};
+
+struct PostflopWorkCounters {
+  std::uint64_t visited_nodes{0};
+  std::uint64_t decision_node_evaluations{0};
+  std::uint64_t chance_node_evaluations{0};
+  std::uint64_t chance_outcome_evaluations{0};
+  std::uint64_t terminal_evaluations{0};
+  std::uint64_t fold_terminal_evaluations{0};
+  std::uint64_t showdown_terminal_evaluations{0};
+  std::uint64_t regret_update_entries{0};
+  std::uint64_t strategy_update_entries{0};
 };
 
 struct PostflopCertification {
@@ -100,6 +169,14 @@ struct PostflopCertification {
   double nash_conv_antes{0.0};
   double normalized_nash_conv{0.0};
   double expected_payoff_sum_antes{0.0};
+  // Runtime-only telemetry captured immediately after the exact
+  // certification. These fields are intentionally excluded from checkpoint
+  // identity: they describe the execution, not the mathematical state.
+  double solver_elapsed_seconds{0.0};
+  double traversal_elapsed_seconds{0.0};
+  double certification_elapsed_seconds{0.0};
+  std::uint64_t traversed_nodes{0};
+  PostflopWorkCounters work_counters;
 };
 
 struct PostflopSolveTimings {
@@ -124,6 +201,7 @@ struct PostflopSolveResult {
   std::uint64_t information_sets{0};
   std::uint64_t actions{0};
   std::uint64_t traversed_nodes{0};
+  PostflopWorkCounters work_counters;
   double maximum_normalization_error{0.0};
   PostflopSolveTimings timings;
   PostflopStopReason stop_reason{PostflopStopReason::Completed};

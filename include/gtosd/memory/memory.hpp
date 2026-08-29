@@ -105,5 +105,7 @@ probe_out_of_core_residency(const MemoryPrototypeReport &report, const std::stri
 [[nodiscard]] const char *postflop_benchmark_name(PostflopBenchmark benchmark) noexcept;
 [[nodiscard]] const char *memory_error_name(MemoryError error) noexcept;
 [[nodiscard]] std::uint64_t process_peak_rss_bytes() noexcept;
+[[nodiscard]] std::uint64_t process_current_rss_bytes() noexcept;
+[[nodiscard]] double process_cpu_seconds() noexcept;
 
 } // namespace gtosd

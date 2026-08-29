@@ -36,12 +36,24 @@ constexpr std::array<std::byte, 8> file_magic{std::byte{'G'}, std::byte{'T'}, st
 constexpr std::array<std::byte, 8> footer_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
                                                 std::byte{'D'}, std::byte{'D'}, std::byte{'O'},
                                                 std::byte{'N'}, std::byte{'E'}};
-constexpr std::array<std::byte, 8> strategy_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
-                                                  std::byte{'D'}, std::byte{'S'}, std::byte{'T'},
-                                                  std::byte{'R'}, std::byte{1}};
-constexpr std::array<std::byte, 8> metrics_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
-                                                 std::byte{'D'}, std::byte{'M'}, std::byte{'E'},
-                                                 std::byte{'T'}, std::byte{1}};
+constexpr std::array<std::byte, 8> strategy_magic_v1{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{1}};
+constexpr std::array<std::byte, 8> strategy_magic_v2{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{2}};
+constexpr std::array<std::byte, 8> strategy_magic_v3{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{3}};
+constexpr std::array<std::byte, 8> metrics_magic_v1{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{1}};
+constexpr std::array<std::byte, 8> metrics_magic_v2{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{2}};
+constexpr std::array<std::byte, 8> metrics_magic_v3{
+    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
+    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{3}};
 constexpr std::array<std::byte, 8> ev_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
                                             std::byte{'D'}, std::byte{'E'}, std::byte{'V'},
                                             std::byte{0},   std::byte{1}};
@@ -339,16 +351,17 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
   }
   std::vector<std::byte> result;
   const auto expected_values = static_cast<std::size_t>(checkpoint.action_count);
-  result.reserve(strategy_magic.size() + sizeof(std::uint64_t) +
+  result.reserve(strategy_magic_v1.size() + sizeof(std::uint64_t) +
                  expected_values * 2U * sizeof(double));
-  result.insert(result.end(), strategy_magic.begin(), strategy_magic.end());
-  append_integer(result, checkpoint.action_count);
 
   if (!checkpoint.cumulative_regret.empty() || !checkpoint.cumulative_strategy.empty()) {
-    if (checkpoint.cumulative_regret.size() != expected_values ||
+    if (checkpoint.state_precision != PostflopStatePrecision::Float64 ||
+        checkpoint.cumulative_regret.size() != expected_values ||
         checkpoint.cumulative_strategy.size() != expected_values) {
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
+    result.insert(result.end(), strategy_magic_v1.begin(), strategy_magic_v1.end());
+    append_integer(result, checkpoint.action_count);
     for (const auto value : checkpoint.cumulative_regret) {
       if (!std::isfinite(value)) {
         return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
@@ -366,22 +379,148 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
 
   if (!checkpoint.cumulative_regret_float32.empty() ||
       !checkpoint.cumulative_strategy_float32.empty()) {
-    if (checkpoint.cumulative_regret_float32.size() != expected_values ||
+    if (checkpoint.state_precision != PostflopStatePrecision::Float32 ||
+        checkpoint.cumulative_regret_float32.size() != expected_values ||
         checkpoint.cumulative_strategy_float32.size() != expected_values) {
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
+    result.clear();
+    result.reserve(strategy_magic_v2.size() + sizeof(std::uint64_t) + sizeof(std::uint8_t) +
+                   expected_values * 2U * sizeof(float));
+    result.insert(result.end(), strategy_magic_v2.begin(), strategy_magic_v2.end());
+    append_integer(result, checkpoint.action_count);
+    append_integer(result, static_cast<std::uint8_t>(checkpoint.state_precision));
     for (const auto value : checkpoint.cumulative_regret_float32) {
       if (!std::isfinite(value)) {
         return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
       }
-      append_double(result, static_cast<double>(value));
+      append_integer(result, std::bit_cast<std::uint32_t>(value));
     }
     for (const auto value : checkpoint.cumulative_strategy_float32) {
       if (!std::isfinite(value)) {
         return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
       }
-      append_double(result, static_cast<double>(value));
+      append_integer(result, std::bit_cast<std::uint32_t>(value));
     }
+    return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
+  }
+
+  if (!checkpoint.cumulative_regret_float24.empty() ||
+      !checkpoint.cumulative_strategy_float16.empty()) {
+    if (checkpoint.state_precision != PostflopStatePrecision::Float24RegretFloat16Strategy ||
+        expected_values > std::numeric_limits<std::size_t>::max() / 3U ||
+        checkpoint.cumulative_regret_float24.size() != expected_values * 3U ||
+        checkpoint.cumulative_strategy_float16.size() != expected_values) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+    }
+    for (std::size_t offset = 0; offset < expected_values * 3U; offset += 3U) {
+      const auto packed = static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
+                          (static_cast<std::uint32_t>(
+                               checkpoint.cumulative_regret_float24[offset + 1U])
+                           << 8U) |
+                          (static_cast<std::uint32_t>(
+                               checkpoint.cumulative_regret_float24[offset + 2U])
+                           << 16U);
+      if ((packed & 0xff0000U) == 0xff0000U) {
+        return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    if (std::ranges::any_of(checkpoint.cumulative_strategy_float16,
+                            [](const std::uint16_t value) {
+                              return (value & 0x7c00U) == 0x7c00U;
+                            })) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
+    }
+    result.clear();
+    result.reserve(strategy_magic_v2.size() + sizeof(std::uint64_t) + sizeof(std::uint8_t) +
+                   expected_values * 5U);
+    result.insert(result.end(), strategy_magic_v2.begin(), strategy_magic_v2.end());
+    append_integer(result, checkpoint.action_count);
+    append_integer(result, static_cast<std::uint8_t>(checkpoint.state_precision));
+    append_bytes(result, checkpoint.cumulative_regret_float24.data(),
+                 checkpoint.cumulative_regret_float24.size());
+    for (const auto value : checkpoint.cumulative_strategy_float16) {
+      append_integer(result, value);
+    }
+    return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
+  }
+
+  if (!checkpoint.cumulative_regret_uint16.empty() ||
+      !checkpoint.cumulative_strategy_uint16.empty() ||
+      !checkpoint.regret_node_scale.empty() ||
+      !checkpoint.strategy_node_scale.empty()) {
+    const auto scale_count = static_cast<std::size_t>(checkpoint.decision_node_count);
+    if (checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+        checkpoint.cumulative_regret_uint16.size() != expected_values ||
+        checkpoint.cumulative_strategy_uint16.size() != expected_values ||
+        checkpoint.regret_node_scale.size() != scale_count ||
+        checkpoint.strategy_node_scale.size() != scale_count ||
+        std::ranges::any_of(checkpoint.regret_node_scale,
+                            [](const float value) {
+                              return !std::isfinite(value) || value < 0.0F;
+                            }) ||
+        std::ranges::any_of(checkpoint.strategy_node_scale,
+                            [](const float value) {
+                              return !std::isfinite(value) || value < 0.0F;
+                            })) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+    }
+    const std::uint64_t payload_bytes =
+        checkpoint.action_count * 2U * sizeof(std::uint16_t) +
+        checkpoint.decision_node_count * 2U * sizeof(float);
+    if (payload_bytes > maximum_chunk_bytes) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+    }
+    result.clear();
+    result.reserve(strategy_magic_v3.size() + sizeof(std::uint64_t) + sizeof(std::uint8_t) +
+                   sizeof(std::uint64_t) + static_cast<std::size_t>(payload_bytes));
+    result.insert(result.end(), strategy_magic_v3.begin(), strategy_magic_v3.end());
+    append_integer(result, checkpoint.action_count);
+    append_integer(result, static_cast<std::uint8_t>(checkpoint.state_precision));
+    append_integer(result, checkpoint.decision_node_count);
+    for (const auto value : checkpoint.cumulative_regret_uint16) {
+      append_integer(result, value);
+    }
+    for (const auto value : checkpoint.cumulative_strategy_uint16) {
+      append_integer(result, value);
+    }
+    for (const auto value : checkpoint.regret_node_scale) {
+      append_integer(result, std::bit_cast<std::uint32_t>(value));
+    }
+    for (const auto value : checkpoint.strategy_node_scale) {
+      append_integer(result, std::bit_cast<std::uint32_t>(value));
+    }
+    return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
+  }
+
+  if (!checkpoint.cumulative_compact_state.empty()) {
+    if ((checkpoint.state_precision != PostflopStatePrecision::Float13RegretFloat11Strategy &&
+         checkpoint.state_precision !=
+             PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy) ||
+        expected_values > std::numeric_limits<std::size_t>::max() / 3U ||
+        checkpoint.cumulative_compact_state.size() != expected_values * 3U) {
+      return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+    }
+    for (std::size_t offset = 0; offset < expected_values * 3U; offset += 3U) {
+      const auto word = static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
+                        (static_cast<std::uint32_t>(
+                             checkpoint.cumulative_compact_state[offset + 1U])
+                         << 8U) |
+                        (static_cast<std::uint32_t>(
+                             checkpoint.cumulative_compact_state[offset + 2U])
+                         << 16U);
+      if ((word & 0x1fffU) == 0x1fffU) {
+        return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    result.clear();
+    result.reserve(strategy_magic_v2.size() + sizeof(std::uint64_t) + sizeof(std::uint8_t) +
+                   expected_values * 3U);
+    result.insert(result.end(), strategy_magic_v2.begin(), strategy_magic_v2.end());
+    append_integer(result, checkpoint.action_count);
+    append_integer(result, static_cast<std::uint8_t>(checkpoint.state_precision));
+    append_bytes(result, checkpoint.cumulative_compact_state.data(),
+                 checkpoint.cumulative_compact_state.size());
     return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
   }
 
@@ -400,6 +539,8 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
     return Result<std::vector<std::byte>, StorageError>::failure(StorageError::IoFailure);
   }
   std::array<double, 8192> buffer{};
+  result.insert(result.end(), strategy_magic_v1.begin(), strategy_magic_v1.end());
+  append_integer(result, checkpoint.action_count);
   std::uint64_t remaining = checkpoint.action_count * 2U;
   while (remaining != 0U) {
     const auto values = static_cast<std::size_t>(
@@ -422,31 +563,172 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
 
 Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const std::byte> bytes,
                                                          PostflopCheckpoint checkpoint) {
-  if (bytes.size() < strategy_magic.size() ||
-      !std::equal(strategy_magic.begin(), strategy_magic.end(), bytes.begin())) {
+  const bool version_1 = bytes.size() >= strategy_magic_v1.size() &&
+                         std::equal(strategy_magic_v1.begin(), strategy_magic_v1.end(),
+                                    bytes.begin());
+  const bool version_2 = bytes.size() >= strategy_magic_v2.size() &&
+                         std::equal(strategy_magic_v2.begin(), strategy_magic_v2.end(),
+                                    bytes.begin());
+  const bool version_3 = bytes.size() >= strategy_magic_v3.size() &&
+                         std::equal(strategy_magic_v3.begin(), strategy_magic_v3.end(),
+                                    bytes.begin());
+  if (!version_1 && !version_2 && !version_3) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
-  std::size_t cursor = strategy_magic.size();
+  std::size_t cursor = strategy_magic_v1.size();
   std::uint64_t action_count = 0;
   if (!read_integer(bytes, cursor, action_count) || action_count == 0U ||
-      action_count > maximum_chunk_bytes / (2U * sizeof(double)) ||
-      action_count > std::numeric_limits<std::size_t>::max() ||
-      bytes.size() - cursor != action_count * 2U * sizeof(double)) {
+      action_count > std::numeric_limits<std::size_t>::max()) {
+    return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+  }
+  if (version_1) {
+    if (action_count > maximum_chunk_bytes / (2U * sizeof(double)) ||
+        bytes.size() - cursor != action_count * 2U * sizeof(double) ||
+        checkpoint.state_precision != PostflopStatePrecision::Float64) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    checkpoint.action_count = action_count;
+    checkpoint.external_buffer_file.clear();
+    checkpoint.cumulative_regret.resize(static_cast<std::size_t>(action_count));
+    checkpoint.cumulative_strategy.resize(static_cast<std::size_t>(action_count));
+    for (auto &value : checkpoint.cumulative_regret) {
+      if (!read_double(bytes, cursor, value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    for (auto &value : checkpoint.cumulative_strategy) {
+      if (!read_double(bytes, cursor, value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    return Result<PostflopCheckpoint, StorageError>::success(std::move(checkpoint));
+  }
+
+  std::uint8_t encoded_precision = 0;
+  if (!read_integer(bytes, cursor, encoded_precision) ||
+      encoded_precision != static_cast<std::uint8_t>(checkpoint.state_precision)) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
   checkpoint.action_count = action_count;
   checkpoint.external_buffer_file.clear();
-  checkpoint.cumulative_regret.resize(static_cast<std::size_t>(action_count));
-  checkpoint.cumulative_strategy.resize(static_cast<std::size_t>(action_count));
-  for (auto &value : checkpoint.cumulative_regret) {
-    if (!read_double(bytes, cursor, value)) {
+  const auto count = static_cast<std::size_t>(action_count);
+  if (version_3) {
+    std::uint64_t encoded_decision_node_count = 0U;
+    if (checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+        !read_integer(bytes, cursor, encoded_decision_node_count) ||
+        encoded_decision_node_count != checkpoint.decision_node_count ||
+        encoded_decision_node_count > std::numeric_limits<std::size_t>::max()) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
+    const auto scale_count = static_cast<std::size_t>(checkpoint.decision_node_count);
+    const std::uint64_t payload_bytes =
+        action_count * 2U * sizeof(std::uint16_t) +
+        checkpoint.decision_node_count * 2U * sizeof(float);
+    if (payload_bytes > maximum_chunk_bytes || bytes.size() - cursor != payload_bytes) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    checkpoint.cumulative_regret_uint16.resize(count);
+    checkpoint.cumulative_strategy_uint16.resize(count);
+    checkpoint.regret_node_scale.resize(scale_count);
+    checkpoint.strategy_node_scale.resize(scale_count);
+    for (auto &value : checkpoint.cumulative_regret_uint16) {
+      if (!read_integer(bytes, cursor, value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    for (auto &value : checkpoint.cumulative_strategy_uint16) {
+      if (!read_integer(bytes, cursor, value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    const auto read_scale = [&](float &value) {
+      std::uint32_t bits = 0U;
+      return read_integer(bytes, cursor, bits) &&
+             std::isfinite(value = std::bit_cast<float>(bits)) && value >= 0.0F;
+    };
+    for (auto &value : checkpoint.regret_node_scale) {
+      if (!read_scale(value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    for (auto &value : checkpoint.strategy_node_scale) {
+      if (!read_scale(value)) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    return Result<PostflopCheckpoint, StorageError>::success(std::move(checkpoint));
   }
-  for (auto &value : checkpoint.cumulative_strategy) {
-    if (!read_double(bytes, cursor, value)) {
+  if (checkpoint.state_precision == PostflopStatePrecision::Float32) {
+    if (action_count > maximum_chunk_bytes / (2U * sizeof(float)) ||
+        bytes.size() - cursor != action_count * 2U * sizeof(float)) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
+    checkpoint.cumulative_regret_float32.resize(count);
+    checkpoint.cumulative_strategy_float32.resize(count);
+    for (auto &value : checkpoint.cumulative_regret_float32) {
+      std::uint32_t bits = 0;
+      if (!read_integer(bytes, cursor, bits) ||
+          !std::isfinite(value = std::bit_cast<float>(bits))) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    for (auto &value : checkpoint.cumulative_strategy_float32) {
+      std::uint32_t bits = 0;
+      if (!read_integer(bytes, cursor, bits) ||
+          !std::isfinite(value = std::bit_cast<float>(bits))) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+  } else if (checkpoint.state_precision ==
+             PostflopStatePrecision::Float24RegretFloat16Strategy) {
+    if (action_count > maximum_chunk_bytes / 5U || bytes.size() - cursor != action_count * 5U) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    checkpoint.cumulative_regret_float24.resize(count * 3U);
+    std::memcpy(checkpoint.cumulative_regret_float24.data(), bytes.data() + cursor, count * 3U);
+    cursor += count * 3U;
+    for (std::size_t offset = 0; offset < count * 3U; offset += 3U) {
+      const auto packed = static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
+                          (static_cast<std::uint32_t>(
+                               checkpoint.cumulative_regret_float24[offset + 1U])
+                           << 8U) |
+                          (static_cast<std::uint32_t>(
+                               checkpoint.cumulative_regret_float24[offset + 2U])
+                           << 16U);
+      if ((packed & 0xff0000U) == 0xff0000U) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+    checkpoint.cumulative_strategy_float16.resize(count);
+    for (auto &value : checkpoint.cumulative_strategy_float16) {
+      if (!read_integer(bytes, cursor, value) || (value & 0x7c00U) == 0x7c00U) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+  } else if (checkpoint.state_precision ==
+                 PostflopStatePrecision::Float13RegretFloat11Strategy ||
+             checkpoint.state_precision ==
+                 PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy) {
+    if (action_count > maximum_chunk_bytes / 3U || bytes.size() - cursor != action_count * 3U) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    checkpoint.cumulative_compact_state.resize(count * 3U);
+    std::memcpy(checkpoint.cumulative_compact_state.data(), bytes.data() + cursor, count * 3U);
+    cursor += count * 3U;
+    for (std::size_t offset = 0; offset < count * 3U; offset += 3U) {
+      const auto word = static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
+                        (static_cast<std::uint32_t>(
+                             checkpoint.cumulative_compact_state[offset + 1U])
+                         << 8U) |
+                        (static_cast<std::uint32_t>(
+                             checkpoint.cumulative_compact_state[offset + 2U])
+                         << 16U);
+      if ((word & 0x1fffU) == 0x1fffU) {
+        return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+      }
+    }
+  } else {
+    return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
   return Result<PostflopCheckpoint, StorageError>::success(std::move(checkpoint));
 }
@@ -541,7 +823,13 @@ Result<PostflopRanges, StorageError> decode_ranges(const std::span<const std::by
 
 Result<std::vector<std::byte>, StorageError> encode_metrics(const PostflopCheckpoint &checkpoint) {
   std::vector<std::byte> result;
-  result.insert(result.end(), metrics_magic.begin(), metrics_magic.end());
+  const bool scaled =
+      checkpoint.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy;
+  if (scaled) {
+    result.insert(result.end(), metrics_magic_v3.begin(), metrics_magic_v3.end());
+  } else {
+    result.insert(result.end(), metrics_magic_v2.begin(), metrics_magic_v2.end());
+  }
   append_integer(result, checkpoint.major);
   append_integer(result, checkpoint.minor);
   append_integer(result, checkpoint.completed_iterations);
@@ -550,23 +838,53 @@ Result<std::vector<std::byte>, StorageError> encode_metrics(const PostflopCheckp
   if (!append_string(result, checkpoint.game_fingerprint)) {
     return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
   }
+  append_integer(result, static_cast<std::uint8_t>(checkpoint.state_precision));
+  if (scaled) {
+    append_integer(result, checkpoint.decision_node_count);
+  }
   return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
 }
 
 Result<PostflopCheckpoint, StorageError> decode_metrics(const std::span<const std::byte> bytes) {
-  if (bytes.size() < metrics_magic.size() ||
-      !std::equal(metrics_magic.begin(), metrics_magic.end(), bytes.begin())) {
+  const bool version_1 = bytes.size() >= metrics_magic_v1.size() &&
+                         std::equal(metrics_magic_v1.begin(), metrics_magic_v1.end(),
+                                    bytes.begin());
+  const bool version_2 = bytes.size() >= metrics_magic_v2.size() &&
+                         std::equal(metrics_magic_v2.begin(), metrics_magic_v2.end(),
+                                    bytes.begin());
+  const bool version_3 = bytes.size() >= metrics_magic_v3.size() &&
+                         std::equal(metrics_magic_v3.begin(), metrics_magic_v3.end(),
+                                    bytes.begin());
+  if (!version_1 && !version_2 && !version_3) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
-  std::size_t cursor = metrics_magic.size();
+  std::size_t cursor = metrics_magic_v1.size();
   PostflopCheckpoint result;
   if (!read_integer(bytes, cursor, result.major) || !read_integer(bytes, cursor, result.minor) ||
       !read_integer(bytes, cursor, result.completed_iterations) ||
       !read_integer(bytes, cursor, result.averaging_delay) ||
       !read_integer(bytes, cursor, result.action_count) ||
-      !read_string(bytes, cursor, result.game_fingerprint) || cursor != bytes.size() ||
+      !read_string(bytes, cursor, result.game_fingerprint) ||
       result.major != PostflopCheckpoint::format_major ||
       result.minor > PostflopCheckpoint::format_minor || result.game_fingerprint.empty()) {
+    return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+  }
+  if (version_2 || version_3) {
+    std::uint8_t precision = 0;
+    if (!read_integer(bytes, cursor, precision) ||
+        precision >
+            static_cast<std::uint8_t>(
+                PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy)) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    result.state_precision = static_cast<PostflopStatePrecision>(precision);
+    if (version_3 &&
+        (!read_integer(bytes, cursor, result.decision_node_count) ||
+         result.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy)) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+  }
+  if (cursor != bytes.size()) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
   return Result<PostflopCheckpoint, StorageError>::success(std::move(result));

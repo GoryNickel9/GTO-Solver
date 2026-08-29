@@ -1,6 +1,7 @@
 #include "gtosd/memory/memory.hpp"
 #include "gtosd/storage/storage.hpp"
 
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -83,6 +84,20 @@ void test_weighted_reach_and_fingerprint() {
                                                      0U, batch.value().front().combo);
   require(single.has_value() && single.value().probabilities == batch.value().front().probabilities,
           "batch and single-combo strategy queries agree exactly");
+  const auto public_tree = gtosd::build_public_tree(config);
+  require(public_tree.has_value(), "asymmetric-range analysis tree builds");
+  const auto &root = public_tree.value().nodes[public_tree.value().root];
+  const auto check = std::ranges::find_if(root.edges, [](const auto &edge) {
+    return edge.action.type == gtosd::ActionType::Check;
+  });
+  require(check != root.edges.end(), "small asymmetric-range root exposes check");
+  const auto checked = gtosd::analyze_postflop_node(
+      config, weighted, weighted_result.checkpoint, check->child);
+  require(checked.has_value(),
+          checked.has_value()
+              ? "asymmetric-range child analysis succeeds"
+              : std::string{"asymmetric-range child analysis failed: "} +
+                    gtosd::postflop_solver_error_name(checked.error()));
   require(
       !gtosd::certify_postflop_checkpoint(config, uniform, weighted_result.checkpoint) &&
           gtosd::certify_postflop_checkpoint(config, uniform, weighted_result.checkpoint).error() ==
@@ -125,6 +140,68 @@ void test_empty_range_rejected() {
           "solver rejects an empty range before traversal");
 }
 
+void test_hs_dcfr30_schedule_and_resume() {
+  const auto at_zero = gtosd::hs_dcfr30_schedule(0U);
+  const auto at_sixty = gtosd::hs_dcfr30_schedule(60U);
+  const auto at_thousand = gtosd::hs_dcfr30_schedule(1'000U);
+  const auto clamped = gtosd::hs_dcfr30_schedule(10'000U);
+  require(at_zero.alpha == 1.0 && at_zero.beta == -1.0 && at_zero.gamma == 30.0,
+          "HS-DCFR(30) starts at the published exponents");
+  require(std::abs(at_sixty.alpha - 1.18) < 1.0e-12 &&
+              std::abs(at_sixty.beta + 1.12) < 1.0e-12 &&
+              std::abs(at_sixty.gamma - 29.7) < 1.0e-12,
+          "HS-DCFR(30) follows the published linear schedule");
+  require(at_thousand.alpha == 4.0 && at_thousand.beta == -3.0 &&
+              at_thousand.gamma == 25.0,
+          "HS-DCFR(30) matches the paper's experimental horizon");
+  require(clamped.alpha == 5.0 && clamped.beta == -5.0 && clamped.gamma == 5.0,
+          "unbounded HS-DCFR(30) remains inside the proven parameter bounds");
+
+  const auto config = make_small_config();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  auto continuous_tree =
+      gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 6U;
+  options.certification_interval = 6U;
+  options.algorithm = gtosd::PostflopAlgorithm::HsDcfr30;
+  options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  const auto continuous = gtosd::solve_postflop_exact(*continuous_tree, options);
+  require(continuous.has_value(),
+          continuous.has_value()
+              ? "HS-DCFR(30) continuous solve succeeds"
+              : std::string{"HS-DCFR(30) continuous solve failed: "} +
+                    gtosd::postflop_solver_error_name(continuous.error()));
+
+  auto resumed_tree =
+      gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  auto partial_options = options;
+  partial_options.iterations = 3U;
+  partial_options.certification_interval = 3U;
+  const auto partial = gtosd::solve_postflop_exact(*resumed_tree, partial_options);
+  require(partial.has_value(),
+          partial.has_value()
+              ? "HS-DCFR(30) partial solve succeeds"
+              : std::string{"HS-DCFR(30) partial solve failed: "} +
+                    gtosd::postflop_solver_error_name(partial.error()));
+  const auto resumed =
+      gtosd::solve_postflop_exact(*resumed_tree, options, &partial.value().checkpoint);
+  require(resumed.has_value(),
+          resumed.has_value()
+              ? "HS-DCFR(30) checkpoint resumes"
+              : std::string{"HS-DCFR(30) checkpoint resume failed: "} +
+                    gtosd::postflop_solver_error_name(resumed.error()));
+  require(continuous.value().checkpoint.cumulative_regret_uint16 ==
+                  resumed.value().checkpoint.cumulative_regret_uint16 &&
+              continuous.value().checkpoint.cumulative_strategy_uint16 ==
+                  resumed.value().checkpoint.cumulative_strategy_uint16 &&
+              continuous.value().checkpoint.regret_node_scale ==
+                  resumed.value().checkpoint.regret_node_scale &&
+              continuous.value().checkpoint.strategy_node_scale ==
+                  resumed.value().checkpoint.strategy_node_scale,
+          "HS-DCFR(30) resume is byte-equivalent to a continuous run");
+}
+
 } // namespace
 
 int main() {
@@ -132,6 +209,7 @@ int main() {
     test_weighted_reach_and_fingerprint();
     test_range_storage_round_trip();
     test_empty_range_rejected();
+    test_hs_dcfr30_schedule_and_resume();
     std::cout << "phase10 assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

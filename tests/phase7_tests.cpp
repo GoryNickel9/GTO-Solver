@@ -271,6 +271,17 @@ void test_nontrivial_zero_sum_certification() {
   require(point.nash_conv_antes >= -1e-12 && point.normalized_nash_conv >= -1e-12,
           "exact best responses produce nonnegative NashConv");
 
+  auto compact_options = options;
+  compact_options.state_precision =
+      gtosd::PostflopStatePrecision::Float13RegretFloat11Strategy;
+  const auto compact = gtosd::solve_postflop_exact(config.value(), compact_options);
+  require(compact.has_value() &&
+              compact.value().checkpoint.cumulative_compact_state.size() ==
+                  compact.value().actions * 3U &&
+              compact.value().convergence.size() == 1U &&
+              std::isfinite(compact.value().convergence.front().normalized_nash_conv),
+          "three-byte compact core state remains exactly certifiable");
+
   options.iterations = 5;
   options.target_normalized_nash_conv = 1'000.0;
   const auto target_stopped = gtosd::solve_postflop_exact(config.value(), options);
@@ -286,6 +297,31 @@ void test_nontrivial_zero_sum_certification() {
               gto_plus_target_stopped.value().stop_reason == gtosd::PostflopStopReason::Converged &&
               gto_plus_target_stopped.value().checkpoint.completed_iterations == 1U,
           "the exact solver stops on the first certified GTO+ maximum-deviation target");
+
+  options.iterations = 0;
+  options.strict_target = true;
+  options.target_normalized_max_deviation = 1'000.0;
+  const auto unbounded_target_stopped = gtosd::solve_postflop_exact(config.value(), options);
+  require(unbounded_target_stopped.has_value() &&
+              unbounded_target_stopped.value().stop_reason ==
+                  gtosd::PostflopStopReason::Converged &&
+              unbounded_target_stopped.value().checkpoint.completed_iterations == 1U,
+          "target-driven core solve has no iteration limit and stops below the strict target");
+
+  options.averaging_delay = 2;
+  options.certification_interval = 1;
+  const auto delayed_average_stopped = gtosd::solve_postflop_exact(config.value(), options);
+  require(delayed_average_stopped.has_value() &&
+              delayed_average_stopped.value().stop_reason ==
+                  gtosd::PostflopStopReason::Converged &&
+              delayed_average_stopped.value().checkpoint.completed_iterations == 3U &&
+              delayed_average_stopped.value().convergence.size() == 1U &&
+              delayed_average_stopped.value().convergence.front().iteration == 3U,
+          "periodic convergence certification starts only after average-strategy sampling");
+
+  options.target_normalized_max_deviation.reset();
+  require(!gtosd::solve_postflop_exact(config.value(), options),
+          "unbounded core solve without a convergence target is rejected");
 }
 
 } // namespace

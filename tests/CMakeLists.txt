@@ -147,6 +147,17 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_canonical_layout_tests canonical_layout_tests.cpp)
+target_link_libraries(gtosd_canonical_layout_tests PRIVATE gtosd::postflop)
+gtosd_set_warnings(gtosd_canonical_layout_tests)
+add_test(NAME gtosd_canonical_layout_tests COMMAND gtosd_canonical_layout_tests)
+set_tests_properties(gtosd_canonical_layout_tests
+  PROPERTIES LABELS "phase10;postflop;memory;canonical;exact")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_canonical_layout_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 if(GTOSD_BUILD_NIGHTLY_TESTS)
   add_executable(gtosd_phase2_nightly_tests phase2_nightly_tests.cpp)
   target_link_libraries(gtosd_phase2_nightly_tests PRIVATE gtosd::equity)
