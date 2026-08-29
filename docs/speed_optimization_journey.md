@@ -1911,3 +1911,35 @@ Validazione Release mirata:
 La curva current-vs-average precedente per DCFR standard resta ritirata. Va
 rigenerata con il binario corretto prima di attribuire il costo di convergenza
 alla dinamica regret o all'averaging.
+
+## §8.54 P0.5 — current vs average dopo il fix signed (2026-08-29)
+
+**Decisione: ACCEPT della misura; mantenere l'average come output canonico e
+non aprire uno sweep dei parametri di averaging.**
+
+Sono state create copie diagnostiche non versionate delle tre fixture, tutte
+con DCFR, backend signed `ScaledUint16RegretStrategy`, averaging delay zero e
+certificazione ogni 20 iterazioni. Current e average leggono checkpoint della
+stessa trajectory: a ogni checkpoint condiviso i nodi visitati coincidono
+esattamente.
+
+| Benchmark/checkpoint | dEV average | dEV current | Profile EV CO/BTN average | Profile EV CO/BTN current | BR CO/BTN average | BR CO/BTN current |
+|---|---:|---:|---:|---:|---:|---:|
+| AHKHQH @80 | 0,685946% | 3,980414% | -0,889317 / +0,889332 | -0,974296 / +0,974345 | -0,669381 / +1,163710 | +0,617870 / +2,400010 |
+| TH7D6S @80 | 0,805130% | 1,473611% | -1,278675 / +1,278675 | -1,278937 / +1,278937 | -1,139060 / +1,431650 | -1,039470 / +1,558923 |
+| TSTC9D @170 | 0,985760% | 2,389411% | +0,492540 / -0,492541 | +0,494339 / -0,494341 | +0,650262 / -0,399162 | +0,876644 / -0,273671 |
+
+La current migliora in tendenza ma oscilla: TH passa da 1,473611% @80 a
+7,159870% @100 e 1,853445% @120; TST passa da 3,112631% @160 a 2,389411%
+@170. L'average è migliore a ogni checkpoint condiviso sui tre benchmark e
+raggiunge `<1%` a 80/80/170. Il costo in iterazioni non è quindi causato da un
+average che nasconde una last iterate già convergente; l'average stabilizza una
+dinamica regret ancora rumorosa.
+
+Le run con certificazioni multiple non sono timing candidate: sul TST average
+il traversal è 173,216277 s e le otto certificazioni costano 61,841400 s. Il
+run ufficiale con sola certificazione finale resta l'autorità temporale.
+
+I report grezzi sono conservati fuori dal repository in
+`next-optimization/reports/*-p05.json`; contengono per ogni checkpoint dEV,
+NashConv, profile EV, BR per player, work counter, traversal e certificazione.
