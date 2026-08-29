@@ -38,3 +38,10 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_tstc9d_canonical_layout PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
+
+add_test(NAME gtosd_production_dcfr_contract
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_FIXTURE_DIR=${PROJECT_SOURCE_DIR}/benchmarks/fixtures
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_production_dcfr_contract.cmake)
+set_tests_properties(gtosd_production_dcfr_contract
+  PROPERTIES LABELS "phase10;postflop;gto-plus;contract")

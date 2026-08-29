@@ -16,8 +16,10 @@ nel workflow postflop di prodotto.
 
 ## Percorso HU postflop production
 
-Il percorso corrente usa CFR+ exact con aggiornamenti alternati su tutte le
-combo e chance compatibili. Non usa sampling, bucketing o astrazione lossy.
+Il percorso production corrente usa DCFR standard exact con aggiornamenti
+alternati su tutte le combo e chance compatibili. Il contratto e' congelato a
+`alpha=1.5`, `beta=0`, `gamma=2`, regret signed e average immediato
+(`averaging_delay=0`). Non usa sampling, bucketing o astrazione lossy.
 L'isomorfismo globale e il DAG canonico sono riduzioni lossless.
 
 L'intero percorso, inclusi exact BR e certificazione, viene eseguito su CPU con
@@ -25,18 +27,21 @@ stato e workspace in RAM. Un backend GPU non fa parte delle varianti ammesse e
 non è un'estensione pianificata: ottimizzazioni future devono restare CPU-only.
 
 Per ogni giocatore una traversata calcola i valori counterfactuali e produce
-delta separati. I regret negativi cumulativi vengono troncati a zero secondo
-CFR+. L'average strategy viene accumulata dopo `averaging_delay` e la strategia
-esposta deriva da tale accumulo.
+delta separati. Nel backend signed, all'iterazione `t`, i regret positivi
+precedenti sono moltiplicati per `(t-1)^alpha/((t-1)^alpha+1)` e quelli non
+positivi per `(t-1)^beta/((t-1)^beta+1)`; con
+`beta=0` il fattore negativo effettivo e' `1/2`. L'average strategy accumula
+`t^gamma * pi_i^sigma(I) * sigma_i^t(I,a)` dalla prima iterazione e la strategia
+esposta deriva da tale accumulo reach-weighted.
 
 ## Varianti
 
 | Algoritmo | Regret | Averaging | Uso corrente |
 |---|---|---|---|
 | Vanilla CFR | somma integrale | uniforme | laboratorio |
-| CFR+ | cumulativo troncato a zero | con delay | postflop production |
+| CFR+ | cumulativo troncato a zero | con delay | oracle/fallback exact |
 | Linear CFR | peso crescente con iterazione | lineare | laboratorio |
-| DCFR | discount separato positivo/negativo/strategy | parametrico | laboratorio |
+| DCFR | discount separato positivo/negativo/strategy | parametrico | postflop production |
 | External Sampling MCCFR | stima campionata | dipende dal campione | laboratorio |
 
 DCFR espone gli esponenti `alpha=1.5`, `beta=0`, `gamma=2` come default
@@ -92,7 +97,7 @@ L'ADR
 [`ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md`](../ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md)
 seleziona DCFR standard (`alpha=1.5`, `beta=0`, `gamma=2`) come regret minimizer
 production iniziale del nuovo kernel canonico, con CFR+ come oracle e fallback.
-Questo target non descrive ancora il codice corrente: `DcfrPlus` usa una
-proiezione non-negativa custom e mantiene un identificatore distinto. La
-migrazione richiede differenziale formula-per-formula e un codec signed packed
-validato; non basta cambiare il nome dell'algoritmo.
+Le tre fixture production AHKHQH, TH7D6S e TSTC9D applicano questo stesso
+contratto. `DcfrPlus` conserva una proiezione non-negativa custom e un
+identificatore distinto; non viene usato per scegliere parametri diversi in
+base al benchmark.

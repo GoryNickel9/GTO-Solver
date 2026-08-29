@@ -49,10 +49,9 @@
   },
   "gtosd_run": {
     "algorithm": "dcfr",
-    "dcfr_positive_regret_exponent": 1.9,
-    "dcfr_average_exponent": 3.0,
-    "diagnostic_iteration_limit": 170,
-    "certification_interval": 170,
+    "dcfr_positive_regret_exponent": 1.5,
+    "dcfr_average_exponent": 2.0,
+    "certification_interval": 20,
     "averaging_delay": 0,
     "state_precision": "scaled_uint16_regret_strategy",
     "enable_lossless_isomorphism": true,
@@ -124,6 +123,7 @@
     "game_fingerprint": "fnv1a64:731bf9562e90e792",
     "physical_public_nodes": 2791872,
     "canonical_public_nodes": 1758624,
+    "decision_node_scales": 630596,
     "information_sets": 145524152,
     "actions": 366890152,
     "solver_state_bytes": 1472605376

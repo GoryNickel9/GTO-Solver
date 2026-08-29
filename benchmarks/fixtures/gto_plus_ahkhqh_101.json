@@ -24,13 +24,13 @@
   },
   "gtosd_run": {
     "algorithm": "dcfr",
-    "dcfr_positive_regret_exponent": 1.4,
+    "dcfr_positive_regret_exponent": 1.5,
     "dcfr_average_exponent": 2.0,
     "certification_interval": 20,
-    "averaging_delay": 10,
+    "averaging_delay": 0,
     "state_precision": "scaled_uint16_regret_strategy",
-    "parallel_action_depth": 4,
-    "maximum_solver_threads": 6,
+    "parallel_action_depth": 7,
+    "maximum_solver_threads": 8,
     "independent_processes": 5,
     "timer_scope": "run_solver"
   },
@@ -82,11 +82,12 @@
     ]
   },
   "expected_layout": {
-    "game_fingerprint": "fnv1a64:2b35eb1ab45315c5",
+    "game_fingerprint": "fnv1a64:1b6f30a930cd9bd0",
     "physical_public_nodes": 165774,
     "canonical_public_nodes": 46065,
-    "information_sets": 385980,
-    "actions": 834636,
-    "solver_state_bytes": 2503908
+    "decision_node_scales": 18438,
+    "information_sets": 595626,
+    "actions": 1288290,
+    "solver_state_bytes": 5300664
   }
 }

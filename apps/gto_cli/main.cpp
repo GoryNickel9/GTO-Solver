@@ -936,6 +936,7 @@ struct ConvergenceBenchmarkSpec {
   std::string expected_game_fingerprint;
   std::uint64_t expected_physical_public_nodes{0};
   std::uint64_t expected_canonical_public_nodes{0};
+  std::uint64_t expected_decision_node_scales{0};
   std::uint64_t expected_information_sets{0};
   std::uint64_t expected_actions{0};
   std::uint64_t expected_solver_state_bytes{0};
@@ -1123,6 +1124,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   const bool layout_matches =
       result.public_tree.node_count == spec.expected_physical_public_nodes &&
       result.canonical_public_nodes == spec.expected_canonical_public_nodes &&
+      (spec.expected_decision_node_scales == 0U ||
+       result.checkpoint.decision_node_count ==
+           spec.expected_decision_node_scales) &&
       result.information_sets == spec.expected_information_sets &&
       result.actions == spec.expected_actions && solver_state_bytes == spec.expected_solver_state_bytes &&
       result.checkpoint.game_fingerprint == spec.expected_game_fingerprint;
@@ -1478,6 +1482,10 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                         : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus
                                ? "exact_dcfr_plus"
                                : "exact_cfr_plus")},
+      {"dcfr_parameters",
+       {{"alpha", spec.dcfr_positive_regret_exponent},
+        {"beta", 0.0},
+        {"gamma", spec.dcfr_average_exponent}}},
       {"update_mode", diagnostic_simultaneous ? "simultaneous" : "alternating"},
       {"precision",
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
@@ -1729,6 +1737,8 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
   spec.expected_game_fingerprint = expected.value("game_fingerprint", std::string{});
   spec.expected_physical_public_nodes = expected.value("physical_public_nodes", std::uint64_t{0});
   spec.expected_canonical_public_nodes = expected.value("canonical_public_nodes", std::uint64_t{0});
+  spec.expected_decision_node_scales =
+      expected.value("decision_node_scales", std::uint64_t{0});
   spec.expected_information_sets = expected.value("information_sets", std::uint64_t{0});
   spec.expected_actions = expected.value("actions", std::uint64_t{0});
   spec.expected_solver_state_bytes = expected.value("solver_state_bytes", std::uint64_t{0});
@@ -1847,6 +1857,8 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   spec.expected_game_fingerprint = expected.value("game_fingerprint", std::string{});
   spec.expected_physical_public_nodes = expected.value("physical_public_nodes", std::uint64_t{0});
   spec.expected_canonical_public_nodes = expected.value("canonical_public_nodes", std::uint64_t{0});
+  spec.expected_decision_node_scales =
+      expected.value("decision_node_scales", std::uint64_t{0});
   spec.expected_information_sets = expected.value("information_sets", std::uint64_t{0});
   spec.expected_actions = expected.value("actions", std::uint64_t{0});
   spec.expected_solver_state_bytes = expected.value("solver_state_bytes", std::uint64_t{0});

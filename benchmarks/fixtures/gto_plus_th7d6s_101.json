@@ -27,10 +27,10 @@
     "dcfr_positive_regret_exponent": 1.5,
     "dcfr_average_exponent": 2.0,
     "certification_interval": 20,
-    "averaging_delay": 40,
+    "averaging_delay": 0,
     "state_precision": "scaled_uint16_regret_strategy",
-    "parallel_action_depth": 5,
-    "maximum_solver_threads": 6,
+    "parallel_action_depth": 7,
+    "maximum_solver_threads": 8,
     "independent_processes": 5,
     "timer_scope": "run_solver"
   },
@@ -82,11 +82,12 @@
     ]
   },
   "expected_layout": {
-    "game_fingerprint": "fnv1a64:250fcee14c115402",
+    "game_fingerprint": "fnv1a64:fcba3c9eff1b7147",
     "physical_public_nodes": 378834,
-    "canonical_public_nodes": 0,
+    "canonical_public_nodes": 378834,
+    "decision_node_scales": 147256,
     "information_sets": 36596832,
     "actions": 83318592,
-    "solver_state_bytes": 249955776
+    "solver_state_bytes": 334452416
   }
 }
