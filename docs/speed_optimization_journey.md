@@ -2013,3 +2013,34 @@ fuori repo. Poiché lo smoke non passa il gate prestazionale A/B, non vengono
 eseguiti 80/100 o full con questo candidato. Il successivo costo misurato da
 affrontare è la famiglia showdown; prima di una cache serve però verificare
 exact equality oltre al fingerprint e stimare il costo RAM bounded.
+
+## §8.57 P3 — cache exact dell'ultima aggregazione showdown (2026-08-29)
+
+**Decisione: REJECT; il prototipo è stato rimosso.**
+
+Il 56,18% di fingerprint ripetuti di P1 non descriveva la località temporale.
+È stata quindi provata una cache worker-local di capacità uno, bounded: chiave
+board/player/dominio più confronto bit-per-bit dell'intera opponent reach. Un
+hit riusava `totals`, `by_card`, `prefix` e `card_prefix` già residenti nello
+scratch; un miss ripristinava esattamente le celle toccate e ricalcolava il
+percorso canonico. I paired fold con reach differente bypassavano la cache.
+
+A/B alternato TSTC9D a 20 iterazioni nello stesso binario:
+
+| Run | Traversal baseline | Traversal cache | Elapsed baseline | Elapsed cache |
+|---|---:|---:|---:|---:|
+| A | 17,019445 s | 17,744411 s | 24,217727 s | 24,453539 s |
+| B | 18,574024 s | 21,550167 s | 25,926139 s | 28,343256 s |
+| media | 17,796734 s | 19,647289 s | 25,071933 s | 26,398397 s |
+
+La cache peggiora il traversal medio del 10,40% e l'elapsed del 5,29%: il
+confronto exact della reach costa più degli hit adiacenti ottenibili. La
+correttezza resta bit-identica nello smoke (`dEV 16,817241%`, root, nodi e
+work counter invariati); Phase 7 PASS 179 assertion e reference GTO+ PASS 24
+assertion sia con cache off sia con cache on. Peak RSS resta circa 1,969 GB,
+quindi non esiste neppure margine per giustificare una cache molto più larga.
+
+I report `tstc9d-p3-{baseline,cache}-{a,b}.json` sono fuori repo. Non viene
+promossa alcuna cache e non si eseguono run 80/full. Il risultato converte il
+conteggio hash di P1 da ipotesi promettente a località insufficiente; la
+prossima direzione è ridurre passate/load-store nel dataflow decisionale.
