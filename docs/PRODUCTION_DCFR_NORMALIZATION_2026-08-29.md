@@ -1,5 +1,12 @@
 # Normalizzazione del contratto production DCFR — 2026-08-29/30
 
+> **Correzione successiva 2026-08-30.** Il Root FAIL AHKHQH documentato in
+> questo report era prodotto dall'analisi prepared del root sul browser fisico,
+> non da un floor signed/packed. Certification e direct canonical analysis erano
+> gia' entro tolleranza. Il fix e il differential sono documentati in
+> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
+> Root AHK/TH/TST e CTest sono ora PASS; il prerequisito RBP e' superato.
+
 ## Esito
 
 La suite AHKHQH/TH7D6S/TSTC9D usa ora un solo contratto matematico production:
@@ -170,7 +177,8 @@ risultato richiesto della normalizzazione, non viene compensato con tuning.
   PASS nel CTest finale;
 - layout e `decision_node_scales`: PASS nei sei run fixed/target;
 - dEV exact inferiore all'1%: PASS su tutte le fixture;
-- root EV: TH PASS, TST PASS, AHK FAIL;
+- root EV nel runner pre-fix: TH PASS, TST PASS, AHK FAIL; il risultato AHK e'
+  superseded dal fix prepared-root 2026-08-30, dopo il quale tutti e tre passano;
 - gate tempo: AHK PASS, TH FAIL, TST FAIL;
 - peak RSS: AHK FAIL, TH FAIL, TST PASS;
 - `solver_state_bytes`: PASS su tutte le fixture.
@@ -185,7 +193,8 @@ gli hash dei commit atomici finali sono riportati nel log e nell'handoff della
 task, evitando una auto-referenza impossibile nel commit che contiene questo
 file.
 
-Stato RBP: **BLOCCATO**. Il prossimo passo prioritario e' diagnosticare il floor
-AHKHQH signed/packed contro il root GTO+ senza cambiare contratto, fixture,
-riferimento o tolleranza. Solo dopo root PASS su tutti e tre si puo' avviare la
-telemetria RBP read-only `1.5/0/2`; `beta=0.5` resta vietato.
+Stato storico al momento della prima stesura: **BLOCCATO** in attesa di
+diagnosticare il presunto floor AHKHQH. Il differential successivo ha dimostrato
+che il backend signed/packed non era la causa: dopo il fix prepared-root tutti e
+tre i root passano e il prerequisito RBP e' **SUPERATO**. L'eventuale telemetria
+RBP dovra' comunque usare `1.5/0/2`; `beta=0.5` resta vietato.

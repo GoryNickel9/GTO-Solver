@@ -4,13 +4,22 @@ Aggiornato: 2026-08-29
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Root-analysis fix 2026-08-30.** Il precedente Root FAIL AHKHQH era un bug
+> di dispatch: con browser fisico preparato, il root non usava il layout
+> production canonico autorevole. Dopo il fix, AHK target @80 misura
+> `19,108987 / 19,15` (delta `-0,041013`, PASS); TH e TST restano PASS e CTest
+> e' 20/20. Vedere
+> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
+> Il parity gate prestazionale complessivo resta non superato; e' superato il
+> solo prerequisito root necessario per poter riprendere l'audit RBP.
+
 > **Baseline production comune 2026-08-29/30 (prevale per i nuovi confronti).**
 > Le tre fixture usano DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
 > average immediato e massimo otto thread. Il profilo TST `1.9/0/3` e i percorsi
 > DCFR+ sotto restano storici/superseded. Risultati e golden sono in
 > [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
-> TH e TST passano il root gate; AHK resta a delta `+0,056125` anche a 2.000
-> iterazioni contro tolleranza `0,05`. RBP resta quindi bloccato.
+> Il Root FAIL AHK e il conseguente blocco RBP pubblicati nella prima versione
+> del report erano diagnostici pre-fix e sono superseded dalla correzione sopra.
 
 > **Aggiornamento riferimento GTO+ 2026-08-28 (prevale sui riferimenti temporali
 > TSTC9D storici sotto).** La nuova curva GTO+ contiene 24 punti fra 5,00 s e

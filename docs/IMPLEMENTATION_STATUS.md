@@ -1,5 +1,12 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Aggiornamento root 2026-08-30:** corretto il dispatch del root prepared dal
+> browser fisico al layout production canonico. AHK target @80 e' ora
+> `19,108987 / 19,15`, delta `-0,041013`, Root PASS; TH e TST restano Root PASS,
+> CTest Release 20/20. Il prerequisito root per RBP e' superato; RBP non e'
+> stato ancora implementato. Dettagli in
+> `AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`.
+
 > **Verifica documentale:** 2026-08-29, piano P0-P7 chiuso con Esito B.
 > Questo file è la dashboard dello stato implementato; i report `PHASE_*` restano
 > storici e il gate prestazionale è normato da `GTO_PLUS_PARITY_JOURNEY.md`.
@@ -11,9 +18,9 @@
 
 > **Aggiornamento 2026-08-29/30:** il contratto production e' congelato a DCFR
 > exact signed `1.5/0/2`, delay zero e otto thread per AHK/TH/TST. La baseline
-> normalizzata e' in `PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`. TH e TST
-> passano il root gate, AHK no (`+0,056125` ante a 2.000 iterazioni contro
-> tolleranza `0,05`); RBP resta bloccato e non e' stato prototipato.
+> normalizzata e' in `PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`. Il Root FAIL
+> AHK e il blocco RBP della prima versione del report sono superseded dal fix
+> prepared-root 2026-08-30; RBP non e' stato ancora prototipato.
 
 Aggiornato: 2026-08-29
 
