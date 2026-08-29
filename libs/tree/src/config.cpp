@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <exception>
 #include <limits>
 #include <string>
@@ -74,6 +75,37 @@ const char *all_in_mode_name(const AllInMode mode) {
   return "disabled";
 }
 
+Result<MoneyRoundingMode, TreeConfigError> parse_rounding_mode(const Json &value) {
+  if (!value.is_string()) {
+    return Result<MoneyRoundingMode, TreeConfigError>::failure(
+        TreeConfigError::InvalidConfiguration);
+  }
+  const auto mode = value.get<std::string>();
+  if (mode == "nearest") {
+    return Result<MoneyRoundingMode, TreeConfigError>::success(MoneyRoundingMode::Nearest);
+  }
+  if (mode == "down") {
+    return Result<MoneyRoundingMode, TreeConfigError>::success(MoneyRoundingMode::Down);
+  }
+  if (mode == "up") {
+    return Result<MoneyRoundingMode, TreeConfigError>::success(MoneyRoundingMode::Up);
+  }
+  return Result<MoneyRoundingMode, TreeConfigError>::failure(
+      TreeConfigError::InvalidConfiguration);
+}
+
+const char *rounding_mode_name(const MoneyRoundingMode mode) {
+  switch (mode) {
+  case MoneyRoundingMode::Nearest:
+    return "nearest";
+  case MoneyRoundingMode::Down:
+    return "down";
+  case MoneyRoundingMode::Up:
+    return "up";
+  }
+  return "nearest";
+}
+
 Result<ScenarioConfig, TreeConfigError> parse_scenario(const Json &value) {
   if (!value.is_object() || !value.contains("sizes_bp") || !value.contains("raise_depth") ||
       !value.contains("all_in_mode") || !value.contains("all_in_threshold_bp") ||
@@ -101,6 +133,54 @@ Result<ScenarioConfig, TreeConfigError> parse_scenario(const Json &value) {
     }
     result.aggressive_sizes.push_back(percentage.value());
   }
+  if (value.contains("sizes_by_raise_count_bp")) {
+    const auto &schedule = value.at("sizes_by_raise_count_bp");
+    if (!schedule.is_array() || schedule.size() > 4U) {
+      return Result<ScenarioConfig, TreeConfigError>::failure(TreeConfigError::TooManySizes);
+    }
+    for (const auto &sizes : schedule) {
+      if (!sizes.is_array() || sizes.empty() || sizes.size() > 3U) {
+        return Result<ScenarioConfig, TreeConfigError>::failure(TreeConfigError::TooManySizes);
+      }
+      std::vector<PotPercentage> parsed_sizes;
+      parsed_sizes.reserve(sizes.size());
+      for (const auto &size : sizes) {
+        const auto percentage = parse_pot_percentage(size);
+        if (!percentage) {
+          return Result<ScenarioConfig, TreeConfigError>::failure(percentage.error());
+        }
+        parsed_sizes.push_back(percentage.value());
+      }
+      result.aggressive_sizes_by_raise_count.push_back(std::move(parsed_sizes));
+    }
+  }
+  if (value.contains("aggressive_target_rounding")) {
+    const auto &rounding = value.at("aggressive_target_rounding");
+    if (!rounding.is_object() || !rounding.contains("mode") ||
+        !rounding.contains("bands") || !rounding.at("bands").is_array() ||
+        rounding.at("bands").empty()) {
+      return Result<ScenarioConfig, TreeConfigError>::failure(
+          TreeConfigError::InvalidConfiguration);
+    }
+    const auto rounding_mode = parse_rounding_mode(rounding.at("mode"));
+    if (!rounding_mode) {
+      return Result<ScenarioConfig, TreeConfigError>::failure(rounding_mode.error());
+    }
+    result.aggressive_target_rounding_mode = rounding_mode.value();
+    for (const auto &band : rounding.at("bands")) {
+      if (!band.is_object() || !band.contains("upper_bound_exclusive_units") ||
+          !band.contains("quantum_units")) {
+        return Result<ScenarioConfig, TreeConfigError>::failure(
+            TreeConfigError::InvalidConfiguration);
+      }
+      const auto upper = parse_money(band.at("upper_bound_exclusive_units"), false);
+      const auto quantum = parse_money(band.at("quantum_units"), true);
+      if (!upper || !quantum) {
+        return Result<ScenarioConfig, TreeConfigError>::failure(TreeConfigError::InvalidMoney);
+      }
+      result.aggressive_target_rounding.push_back({upper.value(), quantum.value()});
+    }
+  }
   const auto mode = parse_all_in_mode(value.at("all_in_mode"));
   const auto threshold = parse_pot_percentage(value.at("all_in_threshold_bp"));
   const auto minimum_bet = parse_money(value.at("minimum_bet_units"), true);
@@ -110,6 +190,7 @@ Result<ScenarioConfig, TreeConfigError> parse_scenario(const Json &value) {
   }
   result.all_in_mode = mode.value();
   result.all_in_threshold = threshold.value();
+  result.all_in_strict_boundary = value.value("all_in_strict_boundary", true);
   result.minimum_bet = minimum_bet.value();
   return Result<ScenarioConfig, TreeConfigError>::success(std::move(result));
 }
@@ -119,11 +200,34 @@ Json scenario_to_json(const ScenarioConfig &scenario) {
   for (const auto size : scenario.aggressive_sizes) {
     sizes.push_back(size.basis_points());
   }
-  return Json{{"sizes_bp", std::move(sizes)},
+  Json size_schedule = Json::array();
+  for (const auto &depth_sizes : scenario.aggressive_sizes_by_raise_count) {
+    Json serialized_depth = Json::array();
+    for (const auto size : depth_sizes) {
+      serialized_depth.push_back(size.basis_points());
+    }
+    size_schedule.push_back(std::move(serialized_depth));
+  }
+  Json result{{"sizes_bp", std::move(sizes)},
               {"raise_depth", scenario.raise_depth},
               {"all_in_mode", all_in_mode_name(scenario.all_in_mode)},
               {"all_in_threshold_bp", scenario.all_in_threshold.basis_points()},
+              {"all_in_strict_boundary", scenario.all_in_strict_boundary},
               {"minimum_bet_units", scenario.minimum_bet.units()}};
+  if (!scenario.aggressive_sizes_by_raise_count.empty()) {
+    result["sizes_by_raise_count_bp"] = std::move(size_schedule);
+  }
+  if (!scenario.aggressive_target_rounding.empty()) {
+    Json bands = Json::array();
+    for (const auto &band : scenario.aggressive_target_rounding) {
+      bands.push_back({{"upper_bound_exclusive_units", band.upper_bound_exclusive.units()},
+                       {"quantum_units", band.quantum.units()}});
+    }
+    result["aggressive_target_rounding"] =
+        {{"mode", rounding_mode_name(scenario.aggressive_target_rounding_mode)},
+         {"bands", std::move(bands)}};
+  }
+  return result;
 }
 
 constexpr std::array<const char *, 3> street_names{"flop", "turn", "river"};
@@ -151,11 +255,31 @@ Result<bool, TreeConfigError> validate_tree_config(const PostflopTreeConfig &con
         if (scenario.aggressive_sizes.size() > 3U) {
           return Result<bool, TreeConfigError>::failure(TreeConfigError::TooManySizes);
         }
+        if (!scenario.aggressive_sizes_by_raise_count.empty() &&
+            (scenario.aggressive_sizes_by_raise_count.size() != scenario.raise_depth ||
+             std::ranges::any_of(scenario.aggressive_sizes_by_raise_count, [](const auto &sizes) {
+               return sizes.empty() || sizes.size() > 3U;
+             }))) {
+          return Result<bool, TreeConfigError>::failure(TreeConfigError::TooManySizes);
+        }
         if (scenario.raise_depth > 4U) {
           return Result<bool, TreeConfigError>::failure(TreeConfigError::InvalidRaiseDepth);
         }
         if (scenario.minimum_bet.units() <= 0) {
           return Result<bool, TreeConfigError>::failure(TreeConfigError::InvalidMoney);
+        }
+        Money previous_bound{};
+        for (std::size_t index = 0; index < scenario.aggressive_target_rounding.size(); ++index) {
+          const auto &band = scenario.aggressive_target_rounding[index];
+          const bool unbounded = band.upper_bound_exclusive.units() == 0;
+          if (band.quantum.units() <= 0 ||
+              (unbounded && index + 1U != scenario.aggressive_target_rounding.size()) ||
+              (!unbounded && band.upper_bound_exclusive <= previous_bound)) {
+            return Result<bool, TreeConfigError>::failure(TreeConfigError::InvalidConfiguration);
+          }
+          if (!unbounded) {
+            previous_bound = band.upper_bound_exclusive;
+          }
         }
       }
     }

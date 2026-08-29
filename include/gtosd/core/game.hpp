@@ -68,7 +68,20 @@ struct ActionConfig {
   std::uint8_t raise_depth{0};
   AllInMode all_in_mode{AllInMode::Disabled};
   PotPercentage all_in_threshold{PotPercentage::from_basis_points(0).value()};
+  bool all_in_strict_boundary{true};
   Money minimum_bet{};
+  // Optional per-depth schedule for decisions facing a bet. Entry zero is the
+  // first raise, entry one the 3-bet, and so on. An empty schedule preserves
+  // the legacy behavior of reusing aggressive_sizes at every raise depth.
+  std::vector<std::vector<PotPercentage>> aggressive_sizes_by_raise_count;
+  struct RoundingBand {
+    // Zero means no upper bound and is valid only for the final band.
+    Money upper_bound_exclusive{};
+    Money quantum{};
+    friend bool operator==(const RoundingBand &, const RoundingBand &) = default;
+  };
+  std::vector<RoundingBand> aggressive_target_rounding;
+  MoneyRoundingMode aggressive_target_rounding_mode{MoneyRoundingMode::Nearest};
 };
 
 struct RakeConfig {

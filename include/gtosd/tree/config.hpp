@@ -32,7 +32,11 @@ struct ScenarioConfig {
   std::uint8_t raise_depth{0};
   AllInMode all_in_mode{AllInMode::Disabled};
   PotPercentage all_in_threshold{PotPercentage::from_basis_points(0).value()};
+  bool all_in_strict_boundary{true};
   Money minimum_bet{};
+  std::vector<std::vector<PotPercentage>> aggressive_sizes_by_raise_count;
+  std::vector<ActionConfig::RoundingBand> aggressive_target_rounding;
+  MoneyRoundingMode aggressive_target_rounding_mode{MoneyRoundingMode::Nearest};
 };
 
 struct StreetActionConfig {

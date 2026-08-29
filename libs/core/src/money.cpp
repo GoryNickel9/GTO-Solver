@@ -82,6 +82,26 @@ Result<Money, ArithmeticError> percent_of(const Money value, const std::uint32_t
   return Money::from_units(whole_product + rounded_remainder);
 }
 
+Result<Money, ArithmeticError> round_to_quantum(const Money value, const Money quantum,
+                                                const MoneyRoundingMode mode) {
+  if (quantum.units() <= 0) {
+    return Result<Money, ArithmeticError>::failure(ArithmeticError::PercentageOutOfRange);
+  }
+  const auto quotient = value.units() / quantum.units();
+  const auto remainder = value.units() % quantum.units();
+  std::int64_t rounded = quotient;
+  if (mode == MoneyRoundingMode::Up && remainder != 0) {
+    ++rounded;
+  } else if (mode == MoneyRoundingMode::Nearest &&
+             remainder >= (quantum.units() + 1) / 2) {
+    ++rounded;
+  }
+  if (rounded > std::numeric_limits<std::int64_t>::max() / quantum.units()) {
+    return Result<Money, ArithmeticError>::failure(ArithmeticError::Overflow);
+  }
+  return Money::from_units(rounded * quantum.units());
+}
+
 std::string format_money(const Money value) {
   std::ostringstream output;
   output << value.units() / Money::units_per_ante << '.' << std::setw(4) << std::setfill('0')

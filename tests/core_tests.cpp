@@ -54,6 +54,11 @@ void test_money_and_rake() {
   require(gtosd::percent_of(one_hundred, 5'000, 100'000).value() ==
               gtosd::Money::from_antes(50).value(),
           "50 percent bet");
+  require(gtosd::round_to_quantum(gtosd::Money::from_units(52'800).value(),
+                                  gtosd::Money::from_units(1'000).value(),
+                                  gtosd::MoneyRoundingMode::Nearest)
+              .value() == gtosd::Money::from_units(53'000).value(),
+          "money quantization is a reusable core primitive");
   const auto three = gtosd::Money::from_antes(3).value();
   require(gtosd::percent_of(three, 3'333, 100'000).value().units() == 9'999,
           "fixed point rounding");
@@ -78,7 +83,8 @@ void test_preflop_and_actions() {
   require(state.committed_total[1] == gtosd::Money::from_antes(2).value(), "BTN posts blind");
   require(gtosd::amount_to_call(state, 0) == ante, "CO calls one");
 
-  const gtosd::ActionConfig config{{pct(5'000)}, 2, gtosd::AllInMode::Disabled, pct(0), ante};
+  const gtosd::ActionConfig config{
+      {pct(5'000)}, 2, gtosd::AllInMode::Disabled, pct(0), true, ante};
   const auto actions = gtosd::legal_actions(state, config).value();
   require(actions[0].type == gtosd::ActionType::Fold, "fold facing bet");
   require(actions[1].type == gtosd::ActionType::Call, "call facing bet");
@@ -90,7 +96,8 @@ void test_preflop_and_actions() {
   require(called.pot == gtosd::Money::from_antes(4).value(), "call adds to pot");
   require(called.remaining_stacks[0] == gtosd::Money::from_antes(38).value(), "stack accounting");
 
-  const gtosd::ActionConfig no_raises{{pct(5'000)}, 0, gtosd::AllInMode::Disabled, pct(0), ante};
+  const gtosd::ActionConfig no_raises{
+      {pct(5'000)}, 0, gtosd::AllInMode::Disabled, pct(0), true, ante};
   const auto root_no_raises =
       gtosd::legal_actions(
           gtosd::make_hu_preflop_state(gtosd::Money::from_antes(40).value(), ante).value(),

@@ -87,6 +87,41 @@ void test_config_schema_contract() {
   require(round_trip.value().initial_pot == parsed.value().initial_pot,
           "round trip preserves money");
 
+  auto scheduled = parsed.value();
+  auto &scheduled_raise = scheduled.streets[0].players[0]
+      [static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)];
+  scheduled_raise.aggressive_sizes = {pct(3'300), pct(7'500)};
+  scheduled_raise.raise_depth = 2U;
+  scheduled_raise.aggressive_sizes_by_raise_count =
+      {{pct(3'300), pct(7'500)}, {pct(7'500)}};
+  const auto scheduled_round_trip =
+      gtosd::parse_tree_config_json(gtosd::serialize_tree_config_json(scheduled));
+  require(scheduled_round_trip.has_value() &&
+              scheduled_round_trip.value()
+                      .streets[0]
+                      .players[0][static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)]
+                      .aggressive_sizes_by_raise_count ==
+                  scheduled_raise.aggressive_sizes_by_raise_count,
+          "per-raise-count sizing schedule round trips");
+
+  scheduled_raise.aggressive_target_rounding = {
+      {gtosd::Money::from_units(100'000).value(), gtosd::Money::from_units(1'000).value()},
+      {gtosd::Money{}, gtosd::Money::from_units(10'000).value()}};
+  const auto rounded_round_trip =
+      gtosd::parse_tree_config_json(gtosd::serialize_tree_config_json(scheduled));
+  require(rounded_round_trip.has_value() &&
+              rounded_round_trip.value()
+                      .streets[0]
+                      .players[0][static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)]
+                      .aggressive_target_rounding ==
+                  scheduled_raise.aggressive_target_rounding,
+          "generic aggressive-target rounding policy round trips");
+
+  scheduled_raise.aggressive_sizes_by_raise_count = {{pct(7'500)}};
+  const auto invalid_schedule = gtosd::validate_tree_config(scheduled);
+  require(!invalid_schedule && invalid_schedule.error() == gtosd::TreeConfigError::TooManySizes,
+          "sizing schedule must cover every configured raise depth");
+
   auto duplicate_flop = parsed.value();
   duplicate_flop.flop[2] = duplicate_flop.flop[0];
   const auto invalid = gtosd::validate_tree_config(duplicate_flop);

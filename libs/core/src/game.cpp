@@ -317,15 +317,59 @@ std::string serialize_public_state(const PublicState &state) {
 
 Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
                                                      const ActionConfig &config) {
+  const bool valid_raise_schedule =
+      config.aggressive_sizes_by_raise_count.empty() ||
+      (config.aggressive_sizes_by_raise_count.size() == config.raise_depth &&
+       std::ranges::all_of(config.aggressive_sizes_by_raise_count,
+                           [](const auto &sizes) { return !sizes.empty() && sizes.size() <= 3U; }));
+  const bool valid_rounding = [&config] {
+    Money previous_bound{};
+    for (std::size_t index = 0; index < config.aggressive_target_rounding.size(); ++index) {
+      const auto &band = config.aggressive_target_rounding[index];
+      const bool unbounded = band.upper_bound_exclusive.units() == 0;
+      if (band.quantum.units() <= 0 || (unbounded && index + 1U != config.aggressive_target_rounding.size()) ||
+          (!unbounded && band.upper_bound_exclusive <= previous_bound)) {
+        return false;
+      }
+      if (!unbounded) {
+        previous_bound = band.upper_bound_exclusive;
+      }
+    }
+    return true;
+  }();
   if (!validate_state(state) || state.status != HandStatus::InProgress ||
       config.aggressive_sizes.size() > 3U || config.raise_depth > 4U ||
-      config.minimum_bet.units() <= 0) {
+      !valid_raise_schedule || !valid_rounding || config.minimum_bet.units() <= 0) {
     return Result<std::vector<Action>, GameError>::failure(GameError::InvalidConfiguration);
   }
   const auto player = state.player_to_act;
   const auto to_call = amount_to_call(state, player);
   const auto stack = state.remaining_stacks[player];
   std::vector<Action> actions;
+  const auto round_aggressive_payment = [&](const Money payment) -> Result<Money, GameError> {
+    if (config.aggressive_target_rounding.empty()) {
+      return Result<Money, GameError>::success(payment);
+    }
+    const auto target = checked_add(state.committed_this_street[player], payment);
+    if (!target) {
+      return Result<Money, GameError>::failure(target.error());
+    }
+    for (const auto &band : config.aggressive_target_rounding) {
+      if (band.upper_bound_exclusive.units() == 0 || target.value() < band.upper_bound_exclusive) {
+        const auto rounded = round_to_quantum(target.value(), band.quantum,
+                                              config.aggressive_target_rounding_mode);
+        if (!rounded || rounded.value() < state.committed_this_street[player]) {
+          return Result<Money, GameError>::failure(GameError::ArithmeticFailure);
+        }
+        const auto rounded_payment =
+            subtract_checked(rounded.value(), state.committed_this_street[player]);
+        return rounded_payment
+                   ? Result<Money, GameError>::success(rounded_payment.value())
+                   : Result<Money, GameError>::failure(GameError::ArithmeticFailure);
+      }
+    }
+    return Result<Money, GameError>::failure(GameError::InvalidConfiguration);
+  };
 
   if (to_call.units() == 0) {
     actions.push_back({ActionType::Check, Money{}, AllInKind::None, 0});
@@ -347,16 +391,18 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
   const auto push_increment =
       Money::from_units(stack.units() - std::min(stack.units(), to_call.units())).value();
   bool threshold_triggered = false;
-  if (config.all_in_threshold.basis_points() > 0U && state.pot.units() > 0) {
+  if (config.all_in_threshold.basis_points() > 0U && pot_after_call.units() > 0) {
     const auto threshold_amount =
-        percent_of(state.pot, config.all_in_threshold.basis_points(), 100'000U);
+        percent_of(pot_after_call, config.all_in_threshold.basis_points(), 100'000U);
     if (!threshold_amount) {
       return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
     }
-    // GTO+ defines "push X% pot" as the actor's complete remaining stack relative to the
-    // pot visible before that actor acts.  The call is part of the push; subtracting it and
-    // simultaneously adding it to the denominator changes the tree at facing-bet nodes.
-    threshold_triggered = stack < threshold_amount.value();
+    // A raise percentage is measured after completing the call. The push size is therefore
+    // the stack left above the call divided by that same pot-after-call. This is also the
+    // convention used by regular percentage raises below.
+    threshold_triggered = config.all_in_strict_boundary
+                              ? push_increment < threshold_amount.value()
+                              : push_increment <= threshold_amount.value();
   }
   const bool allow_regular = !(config.all_in_mode == AllInMode::Go && threshold_triggered);
   const bool regular_aggression_allowed =
@@ -364,7 +410,11 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
       (to_call.units() == 0 || config.raise_depth > state.raise_count_this_street);
 
   if (allow_regular && regular_aggression_allowed) {
-    for (const auto size : config.aggressive_sizes) {
+    const auto *active_sizes = &config.aggressive_sizes;
+    if (to_call.units() > 0 && !config.aggressive_sizes_by_raise_count.empty()) {
+      active_sizes = &config.aggressive_sizes_by_raise_count[state.raise_count_this_street];
+    }
+    for (const auto size : *active_sizes) {
       const auto size_bp = size.basis_points();
       const auto increment = percent_of(pot_after_call, size_bp, 100'000U);
       if (!increment) {
@@ -381,11 +431,22 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
       if (!total_result) {
         return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
       }
-      if (total_result.value() >= stack) {
+      const auto rounded_total = round_aggressive_payment(total_result.value());
+      if (!rounded_total) {
+        return Result<std::vector<Action>, GameError>::failure(rounded_total.error());
+      }
+      if (rounded_total.value() <= to_call ||
+          (to_call.units() == 0 && rounded_total.value() < config.minimum_bet) ||
+          (to_call.units() > 0 &&
+           rounded_total.value().units() - to_call.units() <
+               state.last_full_raise_increment.units())) {
+        continue;
+      }
+      if (rounded_total.value() >= stack) {
         add_unique_aggressive(actions, {ActionType::AllIn, stack, AllInKind::Raise, size_bp});
       } else {
         add_unique_aggressive(actions, {to_call.units() == 0 ? ActionType::Bet : ActionType::Raise,
-                                        total_result.value(), AllInKind::None, size_bp});
+                                        rounded_total.value(), AllInKind::None, size_bp});
       }
     }
   }

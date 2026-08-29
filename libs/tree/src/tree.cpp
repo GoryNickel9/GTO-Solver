@@ -27,7 +27,11 @@ ActionConfig to_action_config(const ScenarioConfig &source) {
   result.raise_depth = source.raise_depth;
   result.all_in_mode = source.all_in_mode;
   result.all_in_threshold = source.all_in_threshold;
+  result.all_in_strict_boundary = source.all_in_strict_boundary;
   result.minimum_bet = source.minimum_bet;
+  result.aggressive_sizes_by_raise_count = source.aggressive_sizes_by_raise_count;
+  result.aggressive_target_rounding = source.aggressive_target_rounding;
+  result.aggressive_target_rounding_mode = source.aggressive_target_rounding_mode;
   return result;
 }
 
@@ -85,6 +89,11 @@ public:
   }
 
   Result<PublicTree, TreeError> build() {
+    if (options_.reserve_nodes > options_.maximum_nodes ||
+        options_.reserve_nodes > std::numeric_limits<std::size_t>::max()) {
+      return Result<PublicTree, TreeError>::failure(TreeError::BuildLimitExceeded);
+    }
+    tree_.nodes.reserve(static_cast<std::size_t>(options_.reserve_nodes));
     const auto board = configured_board(tree_.config);
     const auto mask = card_mask(board);
     if (!mask || board.size() < 3U || board.size() > 5U ||
@@ -97,7 +106,16 @@ public:
     if (!state) {
       return Result<PublicTree, TreeError>::failure(TreeError::GameFailure);
     }
-    const auto root = expand(state.value(), 0);
+    Stabilizer root_stabilizer;
+    if (!options_.canonical_chance_permutations.empty()) {
+      if (options_.canonical_chance_permutations.size() > 24U) {
+        return Result<PublicTree, TreeError>::failure(TreeError::InvalidConfiguration);
+      }
+      for (std::size_t index = 0; index < options_.canonical_chance_permutations.size(); ++index) {
+        root_stabilizer.push_back(static_cast<std::uint8_t>(index));
+      }
+    }
+    const auto root = expand(state.value(), 0, root_stabilizer);
     if (!root) {
       return Result<PublicTree, TreeError>::failure(root.error());
     }
@@ -109,6 +127,14 @@ public:
   }
 
 private:
+  using Stabilizer = std::vector<std::uint8_t>;
+
+  CardId transform_suit(const CardId card, const std::uint8_t permutation) const {
+    const auto suit = options_.canonical_chance_permutations[permutation]
+                                                        [static_cast<std::size_t>(card.suit())];
+    return CardId::from_parts(card.rank(), static_cast<Suit>(suit));
+  }
+
   Result<NodeId, TreeError> add_node(const PublicNodeKind kind, const PublicState &state,
                                      const std::uint32_t depth) {
     if (tree_.nodes.size() >= options_.maximum_nodes) {
@@ -131,6 +157,8 @@ private:
       break;
     case PublicNodeKind::Chance:
       ++tree_.stats.chance_nodes;
+      ++tree_.stats.chance_nodes_by_street[static_cast<std::size_t>(state.street) -
+                                           static_cast<std::size_t>(Street::Flop)];
       break;
     case PublicNodeKind::TerminalFold:
       ++tree_.stats.terminal_fold_nodes;
@@ -142,7 +170,8 @@ private:
     return Result<NodeId, TreeError>::success(id);
   }
 
-  Result<NodeId, TreeError> expand(const PublicState &state, const std::uint32_t depth) {
+  Result<NodeId, TreeError> expand(const PublicState &state, const std::uint32_t depth,
+                                   const Stabilizer &stabilizer) {
     if (!validate_state(state)) {
       return Result<NodeId, TreeError>::failure(TreeError::GameFailure);
     }
@@ -160,15 +189,16 @@ private:
       return add_node(PublicNodeKind::TerminalShowdown, state, depth);
     }
     if (state.status == HandStatus::StreetComplete || state.status == HandStatus::AllInRunout) {
-      return expand_chance(state, depth);
+      return expand_chance(state, depth, stabilizer);
     }
     if (state.status != HandStatus::InProgress) {
       return Result<NodeId, TreeError>::failure(TreeError::GameFailure);
     }
-    return expand_decision(state, depth);
+    return expand_decision(state, depth, stabilizer);
   }
 
-  Result<NodeId, TreeError> expand_decision(const PublicState &state, const std::uint32_t depth) {
+  Result<NodeId, TreeError> expand_decision(const PublicState &state, const std::uint32_t depth,
+                                            const Stabilizer &stabilizer) {
     const auto node = add_node(PublicNodeKind::Decision, state, depth);
     if (!node) {
       return node;
@@ -180,6 +210,13 @@ private:
     if (!actions || actions.value().empty()) {
       return Result<NodeId, TreeError>::failure(TreeError::GameFailure);
     }
+    if (actions.value().size() >= PublicTreeStats::decision_action_bucket_count) {
+      return Result<NodeId, TreeError>::failure(TreeError::NodeOverflow);
+    }
+    ++tree_.stats
+          .decision_nodes_by_street_player_action[static_cast<std::size_t>(state.street) -
+                                                  static_cast<std::size_t>(Street::Flop)]
+                                                 [state.player_to_act][actions.value().size()];
 
     std::vector<PublicTreeEdge> edges;
     edges.reserve(actions.value().size());
@@ -188,7 +225,7 @@ private:
       if (!successor) {
         return Result<NodeId, TreeError>::failure(TreeError::GameFailure);
       }
-      const auto child = expand(successor.value(), depth + 1U);
+      const auto child = expand(successor.value(), depth + 1U, stabilizer);
       if (!child) {
         return child;
       }
@@ -207,7 +244,8 @@ private:
     return node;
   }
 
-  Result<NodeId, TreeError> expand_chance(const PublicState &state, const std::uint32_t depth) {
+  Result<NodeId, TreeError> expand_chance(const PublicState &state, const std::uint32_t depth,
+                                          const Stabilizer &stabilizer) {
     if (state.street == Street::River || std::popcount(state.board_mask) < 3 ||
         std::popcount(state.board_mask) >= 5) {
       return Result<NodeId, TreeError>::failure(TreeError::InvalidBoard);
@@ -219,26 +257,76 @@ private:
     const auto available_mask = full_deck_mask ^ state.board_mask;
     const auto total_outcomes = static_cast<std::uint32_t>(std::popcount(available_mask));
     std::vector<PublicTreeEdge> edges;
-    edges.reserve(total_outcomes);
+    edges.reserve(stabilizer.empty() ? total_outcomes : total_outcomes / 2U + 1U);
+    std::array<bool, 36U> consumed{};
     for (std::uint8_t index = 0; index < 36U; ++index) {
       const auto card = CardId::from_index(index).value();
-      if ((available_mask & card.mask()) == 0U) {
+      if ((available_mask & card.mask()) == 0U || consumed[index]) {
         continue;
       }
-      const auto successor = advance_chance_state(state, card);
+      CardId representative = card;
+      if (!stabilizer.empty()) {
+        for (const auto permutation : stabilizer) {
+          const auto transformed = transform_suit(card, permutation);
+          if ((available_mask & transformed.mask()) == 0U) {
+            return Result<NodeId, TreeError>::failure(TreeError::InvalidConfiguration);
+          }
+          representative = std::min(representative, transformed);
+        }
+      }
+      if (representative != card) {
+        continue;
+      }
+      Stabilizer child_stabilizer;
+      for (const auto permutation : stabilizer) {
+        if (transform_suit(representative, permutation) == representative) {
+          child_stabilizer.push_back(permutation);
+        }
+      }
+      const auto successor = advance_chance_state(state, representative);
       if (!successor) {
         return Result<NodeId, TreeError>::failure(successor.error());
       }
-      const auto child = expand(successor.value(), depth + 1U);
+      const auto child = expand(successor.value(), depth + 1U, child_stabilizer);
       if (!child) {
         return child;
       }
       PublicTreeEdge edge;
       edge.kind = PublicEdgeKind::ChanceCard;
       edge.child = child.value();
-      edge.chance_card = card;
-      edge.physical_outcome_count = 1;
+      edge.chance_card = representative;
       edge.total_legal_outcome_count = total_outcomes;
+      if (stabilizer.empty()) {
+        edge.chance_outcomes[0] = {representative, 0U};
+        edge.chance_outcome_count = 1U;
+      } else {
+        for (std::uint8_t physical_index = 0; physical_index < 36U; ++physical_index) {
+          const auto physical = CardId::from_index(physical_index).value();
+          if ((available_mask & physical.mask()) == 0U || consumed[physical_index]) {
+            continue;
+          }
+          std::uint8_t mapping = 0U;
+          bool in_orbit = physical == representative;
+          if (!in_orbit) {
+            for (const auto permutation : stabilizer) {
+              if (transform_suit(physical, permutation) == representative) {
+                mapping = permutation;
+                in_orbit = true;
+                break;
+              }
+            }
+          }
+          if (!in_orbit) {
+            continue;
+          }
+          if (edge.chance_outcome_count >= edge.chance_outcomes.size()) {
+            return Result<NodeId, TreeError>::failure(TreeError::NodeOverflow);
+          }
+          edge.chance_outcomes[edge.chance_outcome_count++] = {physical, mapping};
+          consumed[physical_index] = true;
+        }
+      }
+      edge.physical_outcome_count = edge.chance_outcome_count;
       edges.push_back(edge);
     }
     tree_.stats.edge_count += edges.size();
@@ -327,6 +415,19 @@ private:
                      source.action_edges_by_street[street])) {
         return false;
       }
+      if (!add_field(target.chance_nodes_by_street[street],
+                     source.chance_nodes_by_street[street])) {
+        return false;
+      }
+      for (std::size_t player = 0; player < 2U; ++player) {
+        for (std::size_t actions = 0; actions < PublicTreeStats::decision_action_bucket_count;
+             ++actions) {
+          if (!add_field(target.decision_nodes_by_street_player_action[street][player][actions],
+                         source.decision_nodes_by_street_player_action[street][player][actions])) {
+            return false;
+          }
+        }
+      }
     }
     target.maximum_depth = std::max(target.maximum_depth, source.maximum_depth);
     return true;
@@ -347,6 +448,8 @@ private:
       break;
     case PublicNodeKind::Chance:
       stats.chance_nodes = 1;
+      stats.chance_nodes_by_street[static_cast<std::size_t>(state.street) -
+                                   static_cast<std::size_t>(Street::Flop)] = 1;
       break;
     case PublicNodeKind::TerminalFold:
       stats.terminal_fold_nodes = 1;
@@ -392,6 +495,13 @@ private:
       return Result<PublicTreeStats, TreeError>::failure(TreeError::GameFailure);
     }
     const auto action_count = static_cast<std::uint64_t>(actions.value().size());
+    if (action_count >= PublicTreeStats::decision_action_bucket_count) {
+      return Result<PublicTreeStats, TreeError>::failure(TreeError::NodeOverflow);
+    }
+    ++stats.decision_nodes_by_street_player_action[static_cast<std::size_t>(state.street) -
+                                                   static_cast<std::size_t>(Street::Flop)]
+                                                  [state.player_to_act]
+                                                  [static_cast<std::size_t>(action_count)];
     stats.edge_count = action_count;
     const auto street_index =
         static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);

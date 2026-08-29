@@ -41,7 +41,8 @@ gtosd::RangeWeight weight(const std::int64_t value) {
 gtosd::ActionConfig config(const std::vector<std::int64_t> &sizes, const std::uint8_t raise_depth,
                            const gtosd::AllInMode mode = gtosd::AllInMode::Disabled,
                            const std::int64_t threshold_bp = 0,
-                           const gtosd::Money minimum_bet = units(1)) {
+                           const gtosd::Money minimum_bet = units(1),
+                           const bool strict_boundary = true) {
   gtosd::ActionConfig result;
   for (const auto size : sizes) {
     result.aggressive_sizes.push_back(pct(size));
@@ -49,6 +50,7 @@ gtosd::ActionConfig config(const std::vector<std::int64_t> &sizes, const std::ui
   result.raise_depth = raise_depth;
   result.all_in_mode = mode;
   result.all_in_threshold = pct(threshold_bp);
+  result.all_in_strict_boundary = strict_boundary;
   result.minimum_bet = minimum_bet;
   return result;
 }
@@ -203,6 +205,13 @@ void test_fixed_point_section_22_4() {
             "Go all-in replaces regular aggression only below threshold");
     require(has_type(go.value(), gtosd::ActionType::Check), "Go all-in preserves check");
   }
+  auto inclusive_boundary = scenario_state(gtosd::Street::Flop, 0, false, antes(100));
+  const auto inclusive = gtosd::legal_actions(
+      inclusive_boundary,
+      config({5'000}, 0, gtosd::AllInMode::Go, 10'000, units(1), false));
+  require(inclusive.has_value() && has_type(inclusive.value(), gtosd::ActionType::AllIn) &&
+              !has_type(inclusive.value(), gtosd::ActionType::Bet),
+          "inclusive all-in threshold triggers exactly at the boundary");
 
   auto add_state = scenario_state(gtosd::Street::Flop, 0, false, antes(40));
   const auto add =
@@ -223,27 +232,68 @@ void test_fixed_point_section_22_4() {
           "Go all-in preserves fold and call");
 
   auto gto_plus_root =
-      gtosd::make_hu_postflop_state(gtosd::Street::Flop, antes(40), antes(100)).value();
-  const auto gto_plus_go = config({5'000}, 1, gtosd::AllInMode::Go, 15'000);
-  const auto root_actions = gtosd::legal_actions(gto_plus_root, gto_plus_go).value();
+      gtosd::make_hu_postflop_state(gtosd::Street::Flop, antes(16), antes(80)).value();
+  auto gto_plus_add = config({3'300, 7'500}, 4, gtosd::AllInMode::Add, 20'000);
+  gto_plus_add.aggressive_sizes_by_raise_count =
+      {{pct(3'300), pct(7'500)}, {pct(7'500)}, {pct(7'500)}, {pct(7'500)}};
+  const auto root_actions = gtosd::legal_actions(gto_plus_root, gto_plus_add).value();
   const auto root_bet = std::ranges::find_if(root_actions, [](const auto &action) {
-    return action.type == gtosd::ActionType::Bet && action.amount == antes(20);
+    return action.type == gtosd::ActionType::Bet && action.amount == units(52'800);
   });
-  require(root_bet != root_actions.end(), "GTO+ reference root exposes bet 20");
-  const auto after_bet = gtosd::apply_action(gto_plus_root, *root_bet, gto_plus_go).value();
-  const auto facing_bet = gtosd::legal_actions(after_bet, gto_plus_go).value();
-  const auto raise_60 = std::ranges::find_if(facing_bet, [](const auto &action) {
-    return action.type == gtosd::ActionType::Raise && action.amount == antes(60);
+  require(root_bet != root_actions.end() && !has_type(root_actions, gtosd::ActionType::AllIn),
+          "500%-pot root push is not added below a 200% threshold");
+  const auto after_bet = gtosd::apply_action(gto_plus_root, *root_bet, gto_plus_add).value();
+  const auto facing_bet = gtosd::legal_actions(after_bet, gto_plus_add).value();
+  const auto raise_14 = std::ranges::find_if(facing_bet, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == units(140'448);
   });
-  require(raise_60 != facing_bet.end() && !has_type(facing_bet, gtosd::ActionType::AllIn),
-          "150% GTO+ threshold keeps raise 60 when push 100 is 166.67% of pot 60");
-  const auto after_raise = gtosd::apply_action(after_bet, *raise_60, gto_plus_go).value();
-  const auto facing_raise = gtosd::legal_actions(after_raise, gto_plus_go).value();
+  require(raise_14 != facing_bet.end() && !has_type(facing_bet, gtosd::ActionType::AllIn),
+          "280.83%-pot push is absent after the first 33%-pot bet");
+  const auto after_raise = gtosd::apply_action(after_bet, *raise_14, gto_plus_add).value();
+  const auto facing_raise = gtosd::legal_actions(after_raise, gto_plus_add).value();
+  const auto raise_47 = std::ranges::find_if(facing_raise, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == units(418'320);
+  });
+  const auto obsolete_raise_28 = std::ranges::find_if(facing_raise, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == units(233'144);
+  });
   const auto all_in_80 = std::ranges::find_if(facing_raise, [](const auto &action) {
-    return action.type == gtosd::ActionType::AllIn && action.amount == antes(80);
+    return action.type == gtosd::ActionType::AllIn && action.amount == units(747'200);
   });
-  require(all_in_80 != facing_raise.end() && !has_type(facing_raise, gtosd::ActionType::Raise),
-          "150% GTO+ threshold replaces regular aggression when push 80 is below 150% of pot 120");
+  require(raise_47 != facing_raise.end() && obsolete_raise_28 == facing_raise.end() &&
+              all_in_80 != facing_raise.end(),
+          "149.60%-pot push is added beside the configured 75%-pot later raise");
+
+  auto rounded_config = gto_plus_add;
+  rounded_config.aggressive_target_rounding = {
+      {units(100'000), units(1'000)}, {gtosd::Money{}, units(10'000)}};
+  const auto rounded_root_actions =
+      gtosd::legal_actions(gto_plus_root, rounded_config).value();
+  const auto rounded_bet = std::ranges::find_if(rounded_root_actions, [](const auto &action) {
+    return action.type == gtosd::ActionType::Bet && action.amount == units(53'000);
+  });
+  require(rounded_bet != rounded_root_actions.end(),
+          "generic target rounding converts 5.28 to 5.30");
+  const auto rounded_after_bet =
+      gtosd::apply_action(gto_plus_root, *rounded_bet, rounded_config).value();
+  const auto rounded_facing_bet =
+      gtosd::legal_actions(rounded_after_bet, rounded_config).value();
+  const auto rounded_raise_14 =
+      std::ranges::find_if(rounded_facing_bet, [](const auto &action) {
+        return action.type == gtosd::ActionType::Raise && action.amount == units(140'000);
+      });
+  require(rounded_raise_14 != rounded_facing_bet.end(),
+          "rounding applies to total committed target and produces raise-to 14");
+  const auto rounded_after_raise =
+      gtosd::apply_action(rounded_after_bet, *rounded_raise_14, rounded_config).value();
+  const auto rounded_facing_raise =
+      gtosd::legal_actions(rounded_after_raise, rounded_config).value();
+  const auto rounded_raise_47 =
+      std::ranges::find_if(rounded_facing_raise, [](const auto &action) {
+        return action.type == gtosd::ActionType::Raise && action.amount == units(417'000);
+      });
+  require(rounded_raise_47 != rounded_facing_raise.end(),
+          "later 75%-pot action rounds the raise-to target to 47");
 
   const auto below_min_raise = gtosd::legal_actions(raise_state, config({1'000}, 1)).value();
   require(!has_type(below_min_raise, gtosd::ActionType::Raise),

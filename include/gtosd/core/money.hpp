@@ -8,6 +8,7 @@
 namespace gtosd {
 
 enum class ArithmeticError : std::uint8_t { NegativeValue, PercentageOutOfRange, Overflow };
+enum class MoneyRoundingMode : std::uint8_t { Nearest, Down, Up };
 
 class RangeWeight {
 public:
@@ -59,6 +60,8 @@ private:
 [[nodiscard]] Result<Money, ArithmeticError> subtract_checked(Money lhs, Money rhs);
 [[nodiscard]] Result<Money, ArithmeticError> percent_of(Money value, std::uint32_t basis_points,
                                                         std::uint32_t maximum_basis_points);
+[[nodiscard]] Result<Money, ArithmeticError> round_to_quantum(Money value, Money quantum,
+                                                              MoneyRoundingMode mode);
 [[nodiscard]] std::string format_money(Money value);
 
 } // namespace gtosd
