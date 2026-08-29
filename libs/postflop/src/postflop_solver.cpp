@@ -6858,8 +6858,24 @@ private:
       std::array<ComboVector, 2> &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
+    std::uint64_t chance_outcomes = 0U;
+    if (canonical.kind == PublicNodeKind::Chance) {
+      for (const auto &edge : canonical.edges) {
+        chance_outcomes += edge.outcomes.size();
+      }
+    }
+    count_work_node(canonical.kind, chance_outcomes);
     if (canonical.kind == PublicNodeKind::TerminalFold ||
         canonical.kind == PublicNodeKind::TerminalShowdown) {
+      // A simultaneous public traversal visits this terminal once but still
+      // invokes one payoff kernel per player. Keep the two forms of work
+      // visible separately in the telemetry.
+      ++work_counters_.terminal_evaluations;
+      if (canonical.kind == PublicNodeKind::TerminalFold) {
+        ++work_counters_.fold_terminal_evaluations;
+      } else {
+        ++work_counters_.showdown_terminal_evaluations;
+      }
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         const auto error =
             canonical.kind == PublicNodeKind::TerminalFold
@@ -6989,6 +7005,15 @@ private:
     if (canonical.edges.size() != action_count) {
       return PostflopSolverError::InvalidConfiguration;
     }
+    const bool locked_root = is_locked_root(canonical);
+    const auto update_entries = static_cast<std::uint64_t>(
+        board.player_combos[actor].size() * action_count);
+    if (!locked_root) {
+      work_counters_.regret_update_entries += update_entries;
+    }
+    if (strategy_weight != 0.0) {
+      work_counters_.strategy_update_entries += update_entries;
+    }
     DecisionScratchLease scratch_lease(*this);
     auto &scratch = scratch_lease.get();
     auto &actor_action_values = scratch.action_values;
@@ -7051,7 +7076,19 @@ private:
             values_out[opponent][slot] + opponent_action_values[action][slot]);
       }
     }
-    const bool locked_root = is_locked_root(canonical);
+    if (buffers_.signed_scaled_regret) {
+      if (!scaled_action_major_state() || locked_root) {
+        return PostflopSolverError::InvalidConfiguration;
+      }
+      // The generic branch below is CFR+: it clips negative regret and treats
+      // scaled codes as raw values. DCFR needs the production signed updater,
+      // which applies both discounts, the regret weight and the reach-weighted
+      // average exactly once for this actor and iteration.
+      update_scaled_regrets(canonical, board, actor, values_out[actor],
+                            actor_action_values, strategies,
+                            &opponent_action_values, &reach, false);
+      return std::nullopt;
+    }
     for (std::size_t local = 0U;
          local < board.player_combos[actor].size(); ++local) {
       const auto slot = static_cast<std::size_t>(

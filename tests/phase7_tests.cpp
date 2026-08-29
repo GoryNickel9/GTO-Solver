@@ -3,12 +3,14 @@
 
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -28,6 +30,47 @@ void require(const bool condition, const std::string_view message) {
     throw std::runtime_error(std::string(message));
   }
 }
+
+class ScopedEnvironment final {
+public:
+  ScopedEnvironment(const char *const name, const char *const value)
+      : name_(name), previous_(read(name)) {
+    write(name_.c_str(), value);
+  }
+
+  ~ScopedEnvironment() {
+    write(name_.c_str(), previous_ ? previous_->c_str() : nullptr);
+  }
+
+  ScopedEnvironment(const ScopedEnvironment &) = delete;
+  ScopedEnvironment &operator=(const ScopedEnvironment &) = delete;
+
+private:
+  static std::optional<std::string> read(const char *const name) {
+#pragma warning(push)
+#pragma warning(disable : 4996)
+    const char *const value = std::getenv(name);
+#pragma warning(pop)
+    return value == nullptr ? std::nullopt
+                            : std::optional<std::string>{value};
+  }
+
+  static void write(const char *const name, const char *const value) {
+#ifdef _WIN32
+    if (_putenv_s(name, value == nullptr ? "" : value) != 0) {
+      throw std::runtime_error("failed to update diagnostic environment");
+    }
+#else
+    const int result = value == nullptr ? unsetenv(name) : setenv(name, value, 1);
+    if (result != 0) {
+      throw std::runtime_error("failed to update diagnostic environment");
+    }
+#endif
+  }
+
+  std::string name_;
+  std::optional<std::string> previous_;
+};
 
 std::uint16_t signed_code(const std::int16_t value) {
   return static_cast<std::uint16_t>(value);
@@ -395,6 +438,124 @@ void test_nontrivial_zero_sum_certification() {
           "unbounded core solve without a convergence target is rejected");
 }
 
+void test_simultaneous_dcfr_semantics() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_river_bet.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto parsed = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && parsed.has_value(),
+          "simultaneous DCFR fixture parses");
+
+  auto river_config = parsed.value();
+  river_config.turn = gtosd::parse_card("8s").value();
+  river_config.river = gtosd::parse_card("9h").value();
+  const auto half_pot = gtosd::PotPercentage::from_basis_points(5'000).value();
+  const auto full_pot = gtosd::PotPercentage::from_basis_points(10'000).value();
+  for (auto &player : river_config.streets[2].players) {
+    player[static_cast<std::size_t>(gtosd::BettingScenario::Lead)]
+        .aggressive_sizes = {half_pot, full_pot};
+    player[static_cast<std::size_t>(gtosd::BettingScenario::AfterCheck)]
+        .aggressive_sizes = {half_pot, full_pot};
+  }
+
+  auto ranges = gtosd::make_uniform_postflop_ranges();
+  const auto zero = gtosd::RangeWeight::from_basis_points(0).value();
+  const auto half = gtosd::RangeWeight::from_basis_points(5'000).value();
+  const auto combos = gtosd::all_combos();
+  const auto board_mask = river_config.flop[0].mask() |
+                          river_config.flop[1].mask() |
+                          river_config.flop[2].mask() |
+                          river_config.turn->mask() |
+                          river_config.river->mask();
+  for (std::size_t combo = 0U; combo < combos.size(); ++combo) {
+    const auto mask = combos[combo].first.mask() | combos[combo].second.mask();
+    if ((mask & board_mask) == 0U) {
+      ranges.players[1][combo] = combo % 3U == 0U ? zero : half;
+    }
+  }
+  require(gtosd::validate_postflop_ranges(river_config, ranges).has_value(),
+          "asymmetric simultaneous ranges are valid");
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 1U;
+  options.certification_interval = 1U;
+  options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
+  options.state_precision =
+      gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.dcfr_positive_regret_exponent = 1.9;
+  options.dcfr_average_exponent = 3.0;
+  options.parallel_action_depth = 0U;
+  const ScopedEnvironment simultaneous("GTOSD_DIAGNOSTIC_SIMULTANEOUS", "1");
+
+  const auto one_iteration =
+      gtosd::solve_postflop_exact(river_config, ranges, options);
+  require(one_iteration.has_value() &&
+              one_iteration.value().convergence.size() == 1U,
+          "one-iteration simultaneous DCFR solve certifies");
+  const auto &one = one_iteration.value();
+  const auto &certification = one.convergence.front();
+  require(std::isfinite(certification.normalized_nash_conv) &&
+              std::isfinite(certification.profile_value_antes[0]) &&
+              std::isfinite(certification.profile_value_antes[1]) &&
+              std::isfinite(certification.best_response_value_antes[0]) &&
+              std::isfinite(certification.best_response_value_antes[1]),
+          "simultaneous exact BR, dEV and root values are finite");
+  require(one.work_counters.decision_node_evaluations > 0U &&
+              one.work_counters.fold_terminal_evaluations > 0U &&
+              one.work_counters.showdown_terminal_evaluations > 0U &&
+              one.work_counters.regret_update_entries > 0U &&
+              one.work_counters.strategy_update_entries > 0U,
+          "simultaneous decision, fold, showdown and update work is counted");
+  require(std::ranges::any_of(
+              one.checkpoint.cumulative_regret_uint16,
+              [](const std::uint16_t code) {
+                return static_cast<std::int16_t>(code) < 0;
+              }),
+          "simultaneous DCFR preserves signed negative regrets");
+  const auto tree = gtosd::build_public_tree(river_config);
+  require(tree.has_value(), "simultaneous manual-average tree builds");
+  const auto &root = tree.value().nodes[tree.value().root];
+  require(root.edges.size() == 3U &&
+              std::ranges::any_of(tree.value().nodes, [](const auto &node) {
+                return node.kind == gtosd::PublicNodeKind::Decision &&
+                       node.edges.size() == 2U;
+              }),
+          "simultaneous fixture covers both three-action and two-action nodes");
+  const auto root_strategies = gtosd::query_postflop_strategies(
+      river_config, ranges, one.checkpoint, tree.value().root);
+  require(root_strategies.has_value() && !root_strategies.value().empty(),
+          "simultaneous root average strategy is queryable");
+  for (const auto probability : root_strategies.value().front().probabilities) {
+    require_near(probability, 1.0 / 3.0, 2.0e-4,
+                 "first simultaneous average equals the manual uniform strategy");
+  }
+
+  options.iterations = 3U;
+  const auto continuous =
+      gtosd::solve_postflop_exact(river_config, ranges, options);
+  const auto resumed = gtosd::solve_postflop_exact(
+      river_config, ranges, options, &one.checkpoint);
+  require(continuous.has_value() && resumed.has_value() &&
+              continuous.value().checkpoint.cumulative_regret_uint16 ==
+                  resumed.value().checkpoint.cumulative_regret_uint16 &&
+              continuous.value().checkpoint.cumulative_strategy_uint16 ==
+                  resumed.value().checkpoint.cumulative_strategy_uint16 &&
+              continuous.value().checkpoint.regret_node_scale ==
+                  resumed.value().checkpoint.regret_node_scale &&
+              continuous.value().checkpoint.strategy_node_scale ==
+                  resumed.value().checkpoint.strategy_node_scale,
+          "simultaneous DCFR discounts and averages apply once across resume");
+
+  auto chance_config = parsed.value();
+  const auto chance = gtosd::solve_postflop_exact(chance_config, options);
+  require(chance.has_value() &&
+              chance.value().work_counters.chance_node_evaluations > 0U &&
+              chance.value().work_counters.chance_outcome_evaluations > 0U,
+          "simultaneous canonical chance traversal is exact and counted");
+}
+
 } // namespace
 
 int main() {
@@ -405,6 +566,7 @@ int main() {
     test_invalid_solver_options_are_rejected();
     test_exact_check_only_solve_and_resume();
     test_nontrivial_zero_sum_certification();
+    test_simultaneous_dcfr_semantics();
     std::cout << "F7_POSTFLOP_PRODUCTION_TESTS=PASS\n"
               << "assertions=" << assertions << '\n';
     return 0;
