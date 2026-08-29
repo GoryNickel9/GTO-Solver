@@ -1,5 +1,9 @@
 # Performance
 
+Analisi trasversale corrente del motore generale, con profiling fixed-iteration,
+scaling thread, confronto algoritmico e limiti di telemetria:
+[`PERFORMANCE_ANALYSIS_2026-08-29.md`](../PERFORMANCE_ANALYSIS_2026-08-29.md).
+
 ## Principio di misura
 
 Le prestazioni vengono ottimizzate solo dopo profiling. Ogni misura registra
