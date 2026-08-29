@@ -92,12 +92,14 @@ if (-not ($allRelease -and $consistentFingerprint -and $consistentStateBytes)) {
 $referenceSeconds = [double]$specificationData.gto_plus_reference.elapsed_seconds
 $referenceMemory = [double]$specificationData.gto_plus_reference.solver_memory_bytes
 $solverStateBytes = [double]$runReports[0].solver_state_bytes
+$peakRssBytes = [double](($runReports | ForEach-Object { [uint64]$_.peak_rss_bytes } |
+    Measure-Object -Maximum).Maximum)
 $speedScore = 100.0 * $referenceSeconds / $median
-$memoryScore = 100.0 * $referenceMemory / $solverStateBytes
+$memoryScore = 100.0 * $referenceMemory / $peakRssBytes
 $speedGateSeconds = $referenceSeconds / 0.90
-$memoryGateBytes = $referenceMemory / 0.90
+$memoryGateBytes = $referenceMemory
 $speedGatePassed = $median -le $speedGateSeconds
-$memoryGatePassed = $solverStateBytes -le $memoryGateBytes
+$memoryGatePassed = $peakRssBytes -le $memoryGateBytes
 $referenceMetadataComplete = [bool]$specificationData.gto_plus_reference.metadata_complete
 # correctness_passed gates on the reference node EV selected by the
 # specification (gate_node, default the tree root). The all-node EV and
@@ -177,6 +179,7 @@ $summary = [ordered]@{
     median_elapsed_seconds = $median
     p95_elapsed_seconds = $p95
     solver_state_bytes = [uint64]$solverStateBytes
+    peak_rss_bytes = [uint64]$peakRssBytes
     speed_score_percent = $speedScore
     memory_score_percent = $memoryScore
     gto_plus_ev_checks = $runReports[0].gto_plus_ev_checks

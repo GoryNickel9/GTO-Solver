@@ -23,9 +23,9 @@
     "range_btn": "[3.0]86o[/3.0],[0.0]96o[/0.0],[15.0]96s[/15.0],[3.0]97o[/3.0],[13.0]97s[/13.0],[7.0]98o[/7.0],[23.0]A6o[/23.0],[27.0]A7o[/27.0],[0.0]A7s[/0.0],[15.0]A8o[/15.0],[17.0]A9o[/17.0],AA,[1.0]AJo[/1.0],[48.0]AKo[/48.0],AKs,[5.0]AQo[/5.0],[35.0]AQs[/35.0],[17.0]ATo[/17.0],[7.0]J7o[/7.0],[2.0]J7s[/2.0],[18.0]J8o[/18.0],[25.0]J8s[/25.0],[19.0]J9o[/19.0],[1.0]J9s[/1.0],[4.0]JJ[/4.0],[15.0]JTo[/15.0],[0.0]K6o[/0.0],[3.0]K7o[/3.0],[9.0]K8o[/9.0],[8.0]K9o[/8.0],[9.0]KJo[/9.0],[79.0]KK[/79.0],[21.0]KQo[/21.0],[17.0]KTo[/17.0],[5.0]Q8o[/5.0],[11.0]Q9o[/11.0],[29.0]QJo[/29.0],[34.0]QQ[/34.0],[13.0]QTo[/13.0],[6.0]T6o[/6.0],[2.0]T6s[/2.0],[12.0]T7o[/12.0],[2.0]T7s[/2.0],[19.0]T8o[/19.0],[22.0]T9o[/22.0],[7.0]TT[/7.0]"
   },
   "gtosd_run": {
-    "maximum_iterations": 5,
     "certification_interval": 1,
     "averaging_delay": 0,
+    "state_precision": "float24_regret_float16_strategy",
     "parallel_action_depth": 5,
     "maximum_solver_threads": 6,
     "independent_processes": 5,
@@ -79,11 +79,11 @@
     ]
   },
   "expected_layout": {
-    "game_fingerprint": "fnv1a64:db01987c7570ec46",
+    "game_fingerprint": "fnv1a64:250fcee14c115402",
     "physical_public_nodes": 378834,
     "canonical_public_nodes": 0,
     "information_sets": 36596832,
     "actions": 83318592,
-    "solver_state_bytes": 666548736
+    "solver_state_bytes": 416592960
   }
 }

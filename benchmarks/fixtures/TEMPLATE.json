@@ -10,6 +10,15 @@
     "effective_stack_antes": 100,
     "bet_size_percent_pot": 50,
     "raise_size_percent_pot": 50,
+    "aggressive_target_rounding": {
+      "mode": "nearest",
+      "bands": [
+        {
+          "upper_bound_exclusive_units": 0,
+          "quantum_units": 1
+        }
+      ]
+    },
     "maximum_raises_per_street": 1,
     "automatic_all_in": "disabled",
     "automatic_all_in_strict_boundary": false,
@@ -19,7 +28,6 @@
     "range_btn": "AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo"
   },
   "gtosd_run": {
-    "maximum_iterations": 200,
     "certification_interval": 20,
     "averaging_delay": 20,
     "parallel_action_depth": 5,
@@ -87,16 +95,20 @@
       "effective_stack_antes": "Stack effettivo in ante.",
       "bet_size_percent_pot": "Bet size in % del pot (50 = metà pot).",
       "raise_size_percent_pot": "Raise size in % del pot.",
+      "raise_size_percent_pot_by_raise_count": "Opzionale: una lista di size per ciascun raise count, es. [[33,75],[75]]. Se assente riusa raise_size_percent_pot.",
+      "aggressive_target_rounding": "Policy core opzionale: mode nearest/down/up e bande ordinate in unità monetarie; upper_bound_exclusive_units=0 indica l'ultima banda illimitata.",
       "maximum_raises_per_street": "Profondità raise per strada (AhKhQh: 1; th7d6s: 4).",
       "range_co": "Range CO: notazione hand class (AA-QQ,AKs-AQs,...) o export GTO+ con pesi ([73.0]77[/73.0]).",
       "range_btn": "Range BTN (stessa sintassi di range_co).",
-      "_note": "automatic_all_in (disabled), automatic_all_in_strict_boundary (false), final_bet_smoothing (disabled), rake_percent (0): non toccare."
+      "_note": "automatic_all_in: disabled oppure add/go_if_push_below_<N>_percent_pot_after_call; strict_boundary=true replica 'less than'. final_bet_smoothing e rake dipendono dal riferimento."
     },
     "gtosd_run": {
-      "_note": "Protocollo: normalmente NON si tocca. maximum_iterations è solo un cap di sicurezza: il benchmark passa sulla convergenza (dEV <= target_dev_percent -> stop_reason: converged), non sul numero di iterazioni."
+      "_note": "Protocollo: il benchmark non accetta un limite di iterazioni e termina solo alla prima certificazione con dEV strettamente inferiore a target_dev_percent."
     },
     "gto_plus_reference": {
       "elapsed_seconds": "Tempo GTO+ per il target (base del gate speed).",
+      "convergence_trace": "Opzionale: punti GTO+ osservati [{elapsed_seconds, dev_percent, dev_antes}] in ordine temporale; elapsed_seconds deve coincidere con il primo punto strettamente sotto target_dev_percent.",
+      "first_strictly_below_target": "Opzionale: copia esplicita del primo punto della convergence_trace con dev_percent < target_dev_percent.",
       "solver_memory_bytes": "Memoria GTO+ in byte (MB decimali: 8 MB = 8000000).",
       "target_dev_percent": "dEV target GTO+ in % (1.0): criterio di convergenza.",
       "gate_node": "Nodo che decide la correttezza (default: root). Non cambiare.",

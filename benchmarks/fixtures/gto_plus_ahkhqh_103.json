@@ -23,7 +23,7 @@
     "rake_percent": 0
   },
   "gtosd_run": {
-    "maximum_iterations": 200,
+    "state_precision": "action_major_float13_regret_float11_strategy",
     "certification_interval": 20,
     "averaging_delay": 20,
     "parallel_action_depth": 5,

@@ -1,0 +1,131 @@
+{
+  "schema": "gtosd.gto_plus_convergence_benchmark.v2",
+  "benchmark_id": "GTP-TSTC9D-101",
+  "source": "GTO+",
+  "fixture": {
+    "variant": "short_deck_hu_postflop",
+    "deck": "36_cards_6_to_ace",
+    "flop": [
+      "Ts",
+      "Tc",
+      "9d"
+    ],
+    "initial_pot_antes": 16,
+    "effective_stack_antes": 80,
+    "bet_size_percent_pot": [
+      33,
+      75
+    ],
+    "raise_size_percent_pot": [
+      33,
+      75
+    ],
+    "raise_size_percent_pot_by_raise_count": [
+      [33, 75],
+      [75],
+      [75],
+      [75]
+    ],
+    "aggressive_target_rounding": {
+      "mode": "nearest",
+      "bands": [
+        {
+          "upper_bound_exclusive_units": 100000,
+          "quantum_units": 1000
+        },
+        {
+          "upper_bound_exclusive_units": 0,
+          "quantum_units": 10000
+        }
+      ]
+    },
+    "maximum_raises_per_street": 4,
+    "automatic_all_in": "add_if_push_below_200_percent_pot_after_call",
+    "automatic_all_in_strict_boundary": true,
+    "final_bet_smoothing": "disabled",
+    "rake_percent": 0,
+    "range_co": "[63.0]66[/63.0],[63.0]77[/63.0],[63.0]88[/63.0],[62.0]99[/62.0],[0.0]86s[/0.0],[64.0]87s[/64.0],[9.0]96s[/9.0],[74.0]97s[/74.0],[94.0]98s[/94.0],[19.0]A6s[/19.0],[42.0]A7s[/42.0],[78.0]A8s[/78.0],[62.0]A9s[/62.0],[58.0]AA[/58.0],[33.0]AJo[/33.0],[92.0]AJs[/92.0],[3.0]AKo[/3.0],[98.0]AKs[/98.0],[55.0]AQo[/55.0],[88.0]AQs[/88.0],[23.0]ATo[/23.0],[70.0]ATs[/70.0],[27.0]J8s[/27.0],[66.0]J9s[/66.0],[72.0]JJ[/72.0],[40.0]JTo[/40.0],[87.0]JTs[/87.0],[55.0]K9s[/55.0],[30.0]KJo[/30.0],[76.0]KJs[/76.0],[63.0]KK[/63.0],[41.0]KQo[/41.0],[90.0]KQs[/90.0],[30.0]KTo[/30.0],[77.0]KTs[/77.0],[51.0]Q9s[/51.0],[31.0]QJo[/31.0],[67.0]QJs[/67.0],[78.0]QQ[/78.0],[26.0]QTo[/26.0],[69.0]QTs[/69.0],[65.0]T8s[/65.0],[28.0]T9o[/28.0],[78.0]T9s[/78.0],[65.0]TT[/65.0]",
+    "range_btn": "66,77,[88.0]88[/88.0],[79.0]99[/79.0],[87.0]76s[/87.0],86s,87s,96s,[31.0]97o[/31.0],[81.0]97s[/81.0],[88.0]98o[/88.0],[69.0]98s[/69.0],A6s,[78.0]A7s[/78.0],[38.0]A8o[/38.0],[71.0]A8s[/71.0],[66.0]A9o[/66.0],[58.0]A9s[/58.0],[87.0]AJo[/87.0],[93.0]AJs[/93.0],[63.0]AKo[/63.0],[94.0]AQo[/94.0],[61.0]AQs[/61.0],[94.0]ATo[/94.0],[61.0]ATs[/61.0],J7s,[83.0]J8s[/83.0],[57.0]J9o[/57.0],[66.0]J9s[/66.0],[70.0]JJ[/70.0],[85.0]JTo[/85.0],[79.0]JTs[/79.0],K6s,K7s,K8s,K9s,[100.0]KJo[/100.0],[50.0]KJs[/50.0],[97.0]KQo[/97.0],[49.0]KQs[/49.0],[100.0]KTo[/100.0],[44.0]KTs[/44.0],[68.0]Q6s[/68.0],[78.0]Q7s[/78.0],[93.0]Q8s[/93.0],[78.0]Q9s[/78.0],[86.0]QJo[/86.0],[74.0]QJs[/74.0],[64.0]QQ[/64.0],[89.0]QTo[/89.0],[78.0]QTs[/78.0],[11.0]T6s[/11.0],[98.0]T7s[/98.0],[29.0]T8o[/29.0],[70.0]T8s[/70.0],[73.0]T9o[/73.0],T9s,[72.0]TT[/72.0]"
+  },
+  "gtosd_run": {
+    "algorithm": "dcfr",
+    "dcfr_positive_regret_exponent": 1.9,
+    "dcfr_average_exponent": 3.0,
+    "diagnostic_iteration_limit": 170,
+    "certification_interval": 170,
+    "averaging_delay": 0,
+    "state_precision": "scaled_uint16_regret_strategy",
+    "enable_lossless_isomorphism": true,
+    "enable_canonical_public_dag": true,
+    "parallel_action_depth": 7,
+    "maximum_solver_threads": 8,
+    "independent_processes": 5,
+    "timer_scope": "run_solver"
+  },
+  "gto_plus_reference": {
+    "elapsed_seconds": 116.09,
+    "solver_memory_bytes": 2000000000,
+    "memory_unit": "decimal_mb",
+    "target_dev_percent": 1.0,
+    "target_definition": "maximum unilateral best-response gain divided by the initial pot",
+    "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed convergence trace, same machine as GTOSD benchmark",
+    "timing_scope": "click on Run Solver, tree already prepared, until complete consultable solution",
+    "superseded_elapsed_seconds": 108.54,
+    "convergence_trace_units": {
+      "dev_percent": "GTO+ displayed percent; display precision varies across captured points",
+      "dev_antes": "absolute dEV in ante, displayed to 0.001 ante"
+    },
+    "convergence_trace": [
+      {"elapsed_seconds": 5.0, "dev_percent": 44.6, "dev_antes": 7.128},
+      {"elapsed_seconds": 9.5, "dev_percent": 31.9, "dev_antes": 5.097},
+      {"elapsed_seconds": 14.34, "dev_percent": 20.80, "dev_antes": 3.335},
+      {"elapsed_seconds": 18.75, "dev_percent": 20.20, "dev_antes": 3.239},
+      {"elapsed_seconds": 23.43, "dev_percent": 12.00, "dev_antes": 1.926},
+      {"elapsed_seconds": 27.89, "dev_percent": 10.60, "dev_antes": 1.694},
+      {"elapsed_seconds": 32.57, "dev_percent": 9.29, "dev_antes": 1.486},
+      {"elapsed_seconds": 37.0, "dev_percent": 7.36, "dev_antes": 1.177},
+      {"elapsed_seconds": 42.10, "dev_percent": 9.33, "dev_antes": 1.494},
+      {"elapsed_seconds": 47.0, "dev_percent": 10.4, "dev_antes": 1.657},
+      {"elapsed_seconds": 52.0, "dev_percent": 4.87, "dev_antes": 0.780},
+      {"elapsed_seconds": 56.84, "dev_percent": 4.13, "dev_antes": 0.660},
+      {"elapsed_seconds": 61.62, "dev_percent": 3.31, "dev_antes": 0.530},
+      {"elapsed_seconds": 66.45, "dev_percent": 2.59, "dev_antes": 0.415},
+      {"elapsed_seconds": 71.70, "dev_percent": 2.18, "dev_antes": 0.349},
+      {"elapsed_seconds": 76.34, "dev_percent": 3.29, "dev_antes": 0.527},
+      {"elapsed_seconds": 81.0, "dev_percent": 3.22, "dev_antes": 0.516},
+      {"elapsed_seconds": 86.32, "dev_percent": 4.42, "dev_antes": 0.708},
+      {"elapsed_seconds": 91.57, "dev_percent": 2.32, "dev_antes": 0.371},
+      {"elapsed_seconds": 96.82, "dev_percent": 2.29, "dev_antes": 0.366},
+      {"elapsed_seconds": 101.32, "dev_percent": 1.60, "dev_antes": 0.257},
+      {"elapsed_seconds": 106.20, "dev_percent": 1.61, "dev_antes": 0.257},
+      {"elapsed_seconds": 111.40, "dev_percent": 1.13, "dev_antes": 0.181},
+      {"elapsed_seconds": 116.09, "dev_percent": 0.91, "dev_antes": 0.146}
+    ],
+    "first_strictly_below_target": {
+      "elapsed_seconds": 116.09,
+      "dev_percent": 0.91,
+      "dev_antes": 0.146
+    },
+    "metadata_complete": true,
+    "gate_node": "flop_co_root",
+    "ev_absolute_tolerance_antes": 0.05,
+    "action_frequency_absolute_tolerance_fraction": 0.01,
+    "display_precision_percent": 0.1,
+    "reference_nodes": [
+      {
+        "id": "flop_co_root",
+        "path": [],
+        "player": 0,
+        "ev_antes": 8.50165
+      }
+    ]
+  },
+  "expected_layout": {
+    "game_fingerprint": "fnv1a64:731bf9562e90e792",
+    "physical_public_nodes": 2791872,
+    "canonical_public_nodes": 1758624,
+    "information_sets": 145524152,
+    "actions": 366890152,
+    "solver_state_bytes": 1472605376
+  }
+}
