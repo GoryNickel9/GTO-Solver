@@ -2066,3 +2066,31 @@ Il criterio di reject immediato evita una seconda alternanza e run più lunghi.
 Il report `tstc9d-p4-{baseline,liveness}-a.json` è conservato fuori repo. Le
 fusioni già presenti (2/3-action, fixed river e decode-at-update quando la
 strategy non serve ai discendenti) restano; non viene mantenuto nuovo codice.
+
+## §8.59 P5 — microbenchmark signed13 + strategy11 (2026-08-29)
+
+**Decisione: ACCEPT del benchmark standalone; REJECT dell'integrazione nel
+solver.**
+
+`gtosd_signed_codec_benchmark` confronta, su 1.048.576 entry deterministiche,
+il backend node-scaled `int16/uint16` da 4 byte con un word little-endian da 3
+byte composto da regret signed E8M4 (13 bit) e strategy unsigned E5M6 (11
+bit). Misura update sequenziale decode/update/encode, decode random e errore di
+quantizzazione; non è collegato al solver e non modifica alcuna precisione
+production.
+
+Release MSVC 14.51, cinque ripetizioni, mediana CPU:
+
+| Operazione | i16/u16 | signed13/strategy11 | Delta packed |
+|---|---:|---:|---:|
+| update sequenziale, 1.048.576 entry | 6,597 ms | 11,418 ms | +73,1% |
+| throughput sequenziale | 1,184 GiB/s | 525,5 MiB/s | -56,6% |
+| decode random | 6,944 ms / 151,0 M/s | 7,813 ms / 134,2 M/s | -11,1% throughput |
+| byte stato/action | 4 | 3 | -25% |
+
+Errore assoluto regret sul fixture `[-48,48]`: node-scaled mean
+`0,000488387`, max `0,000976562`; signed13 mean `0,277688`, max `1,0`.
+Il risparmio RAM non compensa né il costo pack/unpack né la perdita numerica.
+Non vengono pertanto eseguiti smoke di convergenza o full TST con il codec.
+Il benchmark resta versionato come guardrail per future proposte SIMD o codec
+diversi; l'output grezzo è riproducibile con `--benchmark_repetitions=5`.

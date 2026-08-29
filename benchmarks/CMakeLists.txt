@@ -11,6 +11,11 @@ target_link_libraries(gtosd_benchmark_smoke
     benchmark::benchmark_main)
 gtosd_set_warnings(gtosd_benchmark_smoke)
 
+add_executable(gtosd_signed_codec_benchmark signed_codec_benchmark.cpp)
+target_link_libraries(gtosd_signed_codec_benchmark
+  PRIVATE benchmark::benchmark benchmark::benchmark_main)
+gtosd_set_warnings(gtosd_signed_codec_benchmark)
+
 add_test(NAME gtosd_benchmark_runner_smoke
   COMMAND gtosd_benchmark_smoke
     --benchmark_filter=BM_EvaluateSeven
