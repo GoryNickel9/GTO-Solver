@@ -1,5 +1,11 @@
 # Analisi prestazionale del motore generale — 2026-08-29
 
+> **Stato storico/superseded.** Questa analisi precede il freeze production
+> comune. Le tre fixture qui misurate non condividevano ancora tutti i parametri
+> matematici. Per la baseline confrontabile DCFR `1.5/0/2`, delay zero e otto
+> thread vedere
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+
 ## Analisi
 
 ### Obiettivo e perimetro

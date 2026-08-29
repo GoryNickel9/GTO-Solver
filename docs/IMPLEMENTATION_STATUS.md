@@ -5,9 +5,15 @@
 > storici e il gate prestazionale è normato da `GTO_PLUS_PARITY_JOURNEY.md`.
 > La build Release completa passa; il riferimento GTO+ passa 24 asserzioni,
 > fallback asimmetrico e root lock, con differenziale seriale/parallelo nullo.
-> La suite finale CTest è 18/18 PASS. Persistent scale, cache showdown e
+> La suite finale CTest è 20/20 PASS. Persistent scale, cache showdown e
 > action-liveness sono stati misurati e rimossi perché regressivi; il report
 > corrente è `NEXT_OPTIMIZATION_RESULTS_2026-08-29.md`.
+
+> **Aggiornamento 2026-08-29/30:** il contratto production e' congelato a DCFR
+> exact signed `1.5/0/2`, delay zero e otto thread per AHK/TH/TST. La baseline
+> normalizzata e' in `PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`. TH e TST
+> passano il root gate, AHK no (`+0,056125` ante a 2.000 iterazioni contro
+> tolleranza `0,05`); RBP resta bloccato e non e' stato prototipato.
 
 Aggiornato: 2026-08-29
 

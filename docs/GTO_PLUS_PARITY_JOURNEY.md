@@ -4,6 +4,14 @@ Aggiornato: 2026-08-29
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Baseline production comune 2026-08-29/30 (prevale per i nuovi confronti).**
+> Le tre fixture usano DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
+> average immediato e massimo otto thread. Il profilo TST `1.9/0/3` e i percorsi
+> DCFR+ sotto restano storici/superseded. Risultati e golden sono in
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+> TH e TST passano il root gate; AHK resta a delta `+0,056125` anche a 2.000
+> iterazioni contro tolleranza `0,05`. RBP resta quindi bloccato.
+
 > **Aggiornamento riferimento GTO+ 2026-08-28 (prevale sui riferimenti temporali
 > TSTC9D storici sotto).** La nuova curva GTO+ contiene 24 punti fra 5,00 s e
 > 116,09 s. Il primo punto strettamente sotto `Target dEV < 1%` è `0,91%`

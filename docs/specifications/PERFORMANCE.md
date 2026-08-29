@@ -1,5 +1,14 @@
 # Performance
 
+> **Baseline production corrente (2026-08-29/30).** AHKHQH, TH7D6S e TSTC9D
+> usano ora lo stesso DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
+> `averaging_delay=0` e massimo otto thread. Golden, curve fixed e time-to-target
+> sono in
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](../PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+> Le baseline DCFR+ e il profilo TST-specifico `1.9/0/3` riportati sotto sono
+> storici/superseded per confronti production comuni. Il gate resta bloccato dal
+> root EV AHKHQH signed/packed; RBP non e' stato avviato.
+
 Analisi trasversale corrente del motore generale, con profiling fixed-iteration,
 scaling thread, confronto algoritmico e limiti di telemetria:
 [`PERFORMANCE_ANALYSIS_2026-08-29.md`](../PERFORMANCE_ANALYSIS_2026-08-29.md).

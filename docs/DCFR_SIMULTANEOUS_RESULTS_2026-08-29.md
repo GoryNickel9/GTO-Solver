@@ -1,5 +1,12 @@
 # DCFR alternating vs simultaneous - risultati 2026-08-29
 
+> **Esperimento storico/superseded per la baseline production.** I risultati
+> sotto usano i profili precedenti alla normalizzazione comune. La decisione
+> alternating vs simultaneous resta valida per l'esperimento, ma tempi e curve
+> non sono confrontabili direttamente con DCFR signed `1.5/0/2`, delay zero,
+> documentato in
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+
 ## Decisione
 
 **REJECT.** Il percorso simultaneous corretto semanticamente non supera il primo
