@@ -1982,3 +1982,34 @@ La persistent scale può evitare un cambio di scala per circa il 19% delle
 entry osservate, ma deve comunque aggiornare i codici delle entry i cui regret
 cambiano. P2 viene quindi prototipata dietro flag e sarà respinta se il costo
 end-to-end non migliora: il solo rapporto di scale non dimostra uno speedup.
+
+## §8.56 P2 — persistent node scale (2026-08-29)
+
+**Decisione: REJECT; il percorso sperimentale è stato rimosso.**
+
+Il prototipo nello stesso binario conservava la scala precedente soltanto se
+il massimo aggiornato era ancora rappresentabile; ogni overflow ricadeva nel
+calcolo canonico. Non poteva evitare l'encoding delle entry modificate e
+produceva una trajectory quantizzata leggermente diversa, pur conservando
+layout, fingerprint, stato e gate locali.
+
+A/B alternato TSTC9D a 20 iterazioni, Release, otto thread:
+
+| Run | Traversal baseline | Traversal persistent | Elapsed baseline | Elapsed persistent |
+|---|---:|---:|---:|---:|
+| A | 16,267434 s | 15,953429 s | 22,316779 s | 21,947550 s |
+| B | 18,073703 s | 18,894711 s | 24,876982 s | 25,060325 s |
+| media dei due | 17,170568 s | 17,424070 s | 23,596880 s | 23,503937 s |
+
+Il traversal medio peggiora dell'1,48%; l'elapsed migliora dello 0,39%, entro
+il rumore e contraddetto dal run B. A iterazione 20 il dEV passa da
+16,817241% a 16,809043%, root da 0,445935759 a 0,445958535 ante e i nodi da
+29.490.340 a 29.487.706: differenze compatibili con la diversa quantizzazione,
+ma senza vantaggio prestazionale ripetibile. Peak RSS resta circa 1,969 GB e
+`solver_state_bytes` 1.472.605.376 B.
+
+I report grezzi `tstc9d-p2-{baseline,persistent}-{a,b}.json` sono conservati
+fuori repo. Poiché lo smoke non passa il gate prestazionale A/B, non vengono
+eseguiti 80/100 o full con questo candidato. Il successivo costo misurato da
+affrontare è la famiglia showdown; prima di una cache serve però verificare
+exact equality oltre al fingerprint e stimare il costo RAM bounded.
