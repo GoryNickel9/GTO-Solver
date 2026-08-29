@@ -40,6 +40,92 @@
 #endif
 
 namespace gtosd {
+
+bool detail::regret_match_signed_codes(const std::span<const std::uint16_t> raw_codes,
+                                       const std::span<double> strategy) noexcept {
+  if (raw_codes.empty() || raw_codes.size() != strategy.size()) {
+    return false;
+  }
+  double sum = 0.0;
+  for (std::size_t action = 0U; action < raw_codes.size(); ++action) {
+    const double positive = static_cast<double>(
+        std::max<std::int32_t>(0, static_cast<std::int16_t>(raw_codes[action])));
+    strategy[action] = positive;
+    sum += positive;
+  }
+  if (sum <= 0.0) {
+    std::fill(strategy.begin(), strategy.end(), 1.0 / static_cast<double>(strategy.size()));
+    return true;
+  }
+  const double inverse = 1.0 / sum;
+  for (double &probability : strategy) {
+    probability *= inverse;
+  }
+  return true;
+}
+
+bool detail::regret_match_signed_action_major(
+    const std::span<const std::uint16_t *const> action_sources,
+    const std::span<float *const> action_strategies, const std::size_t hand_count) noexcept {
+  if (action_sources.empty() || action_sources.size() > 8U ||
+      action_sources.size() != action_strategies.size() ||
+      std::ranges::any_of(action_sources, [](const auto *source) { return source == nullptr; }) ||
+      std::ranges::any_of(action_strategies,
+                          [](const auto *destination) { return destination == nullptr; })) {
+    return false;
+  }
+  const auto action_count = action_sources.size();
+  std::size_t hand = 0U;
+  const __m256 zero = _mm256_setzero_ps();
+  const __m256 one = _mm256_set1_ps(1.0F);
+  const __m256 uniform = _mm256_set1_ps(1.0F / static_cast<float>(action_count));
+  for (; hand + 8U <= hand_count; hand += 8U) {
+    std::array<__m256, 8U> regrets{};
+    __m256i integer_sum = _mm256_setzero_si256();
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      const __m256i signed_codes = _mm256_cvtepi16_epi32(_mm_loadu_si128(
+          reinterpret_cast<const __m128i *>(action_sources[action] + hand)));
+      const __m256i positive_codes =
+          _mm256_max_epi32(signed_codes, _mm256_setzero_si256());
+      integer_sum = _mm256_add_epi32(integer_sum, positive_codes);
+      regrets[action] = _mm256_cvtepi32_ps(positive_codes);
+    }
+    const __m256 sum = _mm256_cvtepi32_ps(integer_sum);
+    const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
+    const __m256 safe_sum = _mm256_blendv_ps(sum, one, no_positive);
+    const __m256 estimate = _mm256_rcp_ps(safe_sum);
+    const __m256 inverse = _mm256_mul_ps(
+        estimate,
+        _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      _mm256_storeu_ps(action_strategies[action] + hand,
+                       _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse), uniform,
+                                        no_positive));
+    }
+  }
+  for (; hand < hand_count; ++hand) {
+    std::uint32_t sum = 0U;
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      const auto code = static_cast<std::uint16_t>(std::max<std::int32_t>(
+          0, static_cast<std::int16_t>(action_sources[action][hand])));
+      action_strategies[action][hand] = static_cast<float>(code);
+      sum += static_cast<std::uint32_t>(code);
+    }
+    if (sum == 0U) {
+      const float tail_uniform = 1.0F / static_cast<float>(action_count);
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        action_strategies[action][hand] = tail_uniform;
+      }
+    } else {
+      const float inverse = 1.0F / static_cast<float>(sum);
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        action_strategies[action][hand] *= inverse;
+      }
+    }
+  }
+  return true;
+}
+
 namespace {
 
 constexpr std::size_t combo_count = 630U;
@@ -4341,6 +4427,22 @@ private:
       const auto *const state_source = average_strategy
                                            ? buffers_.scaled_strategy
                                            : buffers_.scaled_regret;
+      if constexpr (std::is_same_v<Scalar, float>) {
+        if (local_indexed && buffers_.signed_scaled_regret && !average_strategy) {
+          std::array<const std::uint16_t *, maximum_action_count> sources{};
+          std::array<float *, maximum_action_count> destinations{};
+          for (std::size_t action = 0U; action < action_count; ++action) {
+            sources[action] = state_source +
+                canonical_action_major_index(canonical, 0U, action);
+            destinations[action] = strategies[action].data();
+          }
+          if (detail::regret_match_signed_action_major(
+                  std::span<const std::uint16_t *const>(sources.data(), action_count),
+                  std::span<float *const>(destinations.data(), action_count), combos.size())) {
+            return;
+          }
+        }
+      }
       std::size_t local = 0U;
       if constexpr (std::is_same_v<Scalar, float>) {
         const __m256 zero = _mm256_setzero_ps();
@@ -9088,10 +9190,20 @@ private:
       const auto *const source =
           average ? buffers_.scaled_strategy : buffers_.scaled_regret;
       std::array<double, maximum_action_count> strategy{};
+      if (!average && buffers_.signed_scaled_regret) {
+        std::array<std::uint16_t, maximum_action_count> raw_codes{};
+        for (std::size_t action = 0; action < count; ++action) {
+          raw_codes[action] =
+              source[canonical_action_major_index(canonical, local, action)];
+        }
+        static_cast<void>(detail::regret_match_signed_codes(
+            std::span<const std::uint16_t>(raw_codes.data(), count),
+            std::span<double>(strategy.data(), count)));
+        return strategy;
+      }
       double sum = 0.0;
       for (std::size_t action = 0; action < count; ++action) {
-        const auto code =
-            source[canonical_action_major_index(canonical, local, action)];
+        const auto code = source[canonical_action_major_index(canonical, local, action)];
         strategy[action] = static_cast<double>(code);
         sum += strategy[action];
       }

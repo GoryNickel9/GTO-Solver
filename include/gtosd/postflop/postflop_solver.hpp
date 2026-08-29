@@ -9,10 +9,24 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace gtosd {
+
+namespace detail {
+
+// Shared signed-regret matching primitives used by the production canonical
+// current-policy loaders and their regression tests. Codes are stored in a
+// uint16 container but always interpreted semantically as int16.
+[[nodiscard]] bool regret_match_signed_codes(std::span<const std::uint16_t> raw_codes,
+                                             std::span<double> strategy) noexcept;
+[[nodiscard]] bool regret_match_signed_action_major(
+    std::span<const std::uint16_t *const> action_sources,
+    std::span<float *const> action_strategies, std::size_t hand_count) noexcept;
+
+} // namespace detail
 
 enum class PostflopSolverError : std::uint8_t {
   InvalidConfiguration,

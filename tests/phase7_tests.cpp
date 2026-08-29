@@ -1,6 +1,7 @@
 #include "gtosd/memory/memory.hpp"
 #include "gtosd/postflop/postflop_solver.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #ifndef GTOSD_SOURCE_DIR
 #define GTOSD_SOURCE_DIR "."
@@ -24,6 +26,75 @@ void require(const bool condition, const std::string_view message) {
   ++assertions;
   if (!condition) {
     throw std::runtime_error(std::string(message));
+  }
+}
+
+std::uint16_t signed_code(const std::int16_t value) {
+  return static_cast<std::uint16_t>(value);
+}
+
+void require_near(const double actual, const double expected, const double tolerance,
+                  const std::string_view message) {
+  require(std::abs(actual - expected) <= tolerance, message);
+}
+
+void test_signed_current_regret_matching() {
+  const auto check_scalar = [](const std::initializer_list<std::int16_t> signed_codes,
+                               const std::initializer_list<double> expected,
+                               const std::string_view message) {
+    std::vector<std::uint16_t> raw;
+    raw.reserve(signed_codes.size());
+    for (const auto code : signed_codes) {
+      raw.push_back(signed_code(code));
+    }
+    std::vector<double> strategy(raw.size(), 0.0);
+    require(gtosd::detail::regret_match_signed_codes(raw, strategy), message);
+    std::size_t action = 0U;
+    for (const double probability : expected) {
+      require_near(strategy[action++], probability, 1.0e-12, message);
+    }
+  };
+
+  check_scalar({-10, 5}, {0.0, 1.0}, "signed two-action negative regret clamps to zero");
+  check_scalar({-10, -5}, {0.5, 0.5}, "signed two-action all-negative state is uniform");
+  check_scalar({5, 15}, {0.25, 0.75}, "signed two-action positives normalize");
+  check_scalar({-20, 10, 30}, {0.0, 0.25, 0.75},
+               "signed three-action regrets normalize");
+  check_scalar({-20, -10, -1}, {1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0},
+               "signed three-action all-negative state is uniform");
+  check_scalar({-8, 4, 12, 0}, {0.0, 0.25, 0.75, 0.0},
+               "signed generic-arity regrets normalize");
+
+  constexpr std::size_t hands = 9U;
+  for (const std::size_t action_count : {2U, 3U, 4U}) {
+    std::vector<std::vector<std::uint16_t>> storage(
+        action_count, std::vector<std::uint16_t>(hands));
+    std::vector<std::vector<float>> output(action_count, std::vector<float>(hands, -1.0F));
+    std::vector<const std::uint16_t *> sources(action_count);
+    std::vector<float *> destinations(action_count);
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      for (std::size_t hand = 0U; hand < hands; ++hand) {
+        const auto magnitude = static_cast<std::int16_t>((action + 1U) * (hand + 1U));
+        storage[action][hand] = signed_code((hand + action) % 3U == 0U ? -magnitude : magnitude);
+      }
+      sources[action] = storage[action].data();
+      destinations[action] = output[action].data();
+    }
+    require(gtosd::detail::regret_match_signed_action_major(sources, destinations, hands),
+            "signed action-major SIMD plus scalar-tail decode succeeds");
+    for (std::size_t hand = 0U; hand < hands; ++hand) {
+      std::vector<std::uint16_t> oracle_codes(action_count);
+      std::vector<double> oracle(action_count, 0.0);
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        oracle_codes[action] = storage[action][hand];
+      }
+      require(gtosd::detail::regret_match_signed_codes(oracle_codes, oracle),
+              "signed scalar oracle succeeds");
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        require_near(output[action][hand], oracle[action], 2.0e-7,
+                     "signed SIMD and scalar oracle agree");
+      }
+    }
   }
 }
 
@@ -328,6 +399,7 @@ void test_nontrivial_zero_sum_certification() {
 
 int main() {
   try {
+    test_signed_current_regret_matching();
     test_config_specific_preflight();
     test_invalid_config_is_rejected();
     test_invalid_solver_options_are_rejected();

@@ -1876,3 +1876,38 @@ preparazione è `179,7229091 s`; i `26,5465579 s` di tree preparation sono
 fuori dal timer solver. Correttezza numerica e memoria passano; il tempo
 `116,09 s` e il limite `128,988889 s` falliscono. Il run è singolo e non viene
 presentato come mediana/p95.
+
+## §8.53 P0 — current strategy signed corretta (2026-08-29)
+
+**Decisione: ACCEPT come fix di correttezza, non come ottimizzazione.**
+
+Sul commit iniziale `8b2d025084cfedc0fc600fde999ca9706100ebe5`, il percorso
+puntuale `current_strategy(CanonicalPublicNode, ..., average=false)` leggeva i
+codici regret DCFR `uint16_t` senza reinterpretarli semanticamente come
+`int16_t`. I regret negativi diventavano quindi valori positivi molto grandi e
+rendevano invalida la certificazione diagnostica della current strategy.
+
+Il fix introduce primitive condivise di regret matching signed per il percorso
+scalare e per il blocco action-major AVX2. Entrambi applicano
+`max(0, int16(raw_code))`; il caso senza regret positivo resta uniforme. Il
+traversal DCFR, gli schedule, la quantizzazione e l'average strategy non sono
+stati modificati.
+
+Regression test Phase 7:
+
+- due azioni: `[-10,+5]`, `[-10,-5]`, `[+5,+15]`;
+- tre azioni: `[-20,+10,+30]`, `[-20,-10,-1]`;
+- arity generica a quattro azioni;
+- nove mani action-major, quindi otto lane AVX2 più tail scalare, confrontate
+  con oracle scalare.
+
+Validazione Release mirata:
+
+- `gtosd_phase7_tests`: PASS, 179 assertion;
+- `gtosd_gto_plus_reference_tests`: PASS, 24 assertion;
+- serial/parallel: delta regret e strategy `0`;
+- asymmetric-range node-owned ISO: PASS, 165.774 -> 46.065 public nodes.
+
+La curva current-vs-average precedente per DCFR standard resta ritirata. Va
+rigenerata con il binario corretto prima di attribuire il costo di convergenza
+alla dinamica regret o all'averaging.
