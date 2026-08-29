@@ -30,6 +30,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -757,6 +758,7 @@ struct TerminalComboData {
   std::vector<std::uint16_t> touched_by_rank_card;
   std::vector<std::uint8_t> first_card;
   std::vector<std::uint8_t> second_card;
+  std::uint16_t touched_rank_count{0U};
 
   void clear() {
     own_slot.clear();
@@ -770,6 +772,7 @@ struct TerminalComboData {
     touched_by_rank_card.clear();
     first_card.clear();
     second_card.clear();
+    touched_rank_count = 0U;
   }
 
   void reserve(const std::size_t size) {
@@ -2166,7 +2169,12 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
       metadata.second_card.push_back(static_cast<std::uint8_t>(second));
     }
     std::array<std::uint8_t, 36U * combo_count> touched{};
+    std::array<std::uint8_t, combo_count> touched_ranks{};
     for (std::size_t local = 0U; local < metadata.size(); ++local) {
+      if (touched_ranks[metadata.rank[local]] == 0U) {
+        touched_ranks[metadata.rank[local]] = 1U;
+        ++metadata.touched_rank_count;
+      }
       const std::array<std::uint16_t, 2> cells{
           metadata.first_by_rank[local], metadata.second_by_rank[local]};
       for (const auto cell : cells) {
@@ -2210,7 +2218,12 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
   }
   {
     std::array<std::uint8_t, 36U * combo_count> touched{};
+    std::array<std::uint8_t, combo_count> touched_ranks{};
     for (std::size_t local = 0U; local < active_metadata.size(); ++local) {
+      if (touched_ranks[active_metadata.rank[local]] == 0U) {
+        touched_ranks[active_metadata.rank[local]] = 1U;
+        ++active_metadata.touched_rank_count;
+      }
       const std::array<std::uint16_t, 2> cells{
           active_metadata.first_by_rank[local],
           active_metadata.second_by_rank[local]};
@@ -2372,6 +2385,65 @@ prepare_root_lock(const DiagnosticRootLock &lock, const DenseLayout &layout) {
   return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::success(
       std::move(prepared));
 }
+
+struct HotpathTelemetry {
+  std::uint64_t scale_checks = 0U;
+  std::uint64_t scale_unchanged = 0U;
+  std::uint64_t scale_changed = 0U;
+  std::uint64_t scale_rescale_required = 0U;
+  std::uint64_t scale_overflow_with_existing = 0U;
+  std::array<std::uint64_t, 6U> scale_relative_delta_buckets{};
+  std::uint64_t entries_reencoded = 0U;
+  std::uint64_t entries_reencoded_due_to_rescale = 0U;
+  std::uint64_t density_entries = 0U;
+  std::uint64_t density_exact_zero = 0U;
+  std::uint64_t density_positive_lt_1e6 = 0U;
+  std::uint64_t density_positive_lt_1e4 = 0U;
+  std::uint64_t density_whole_action_zero = 0U;
+  std::uint64_t skipped_actions = 0U;
+  std::uint64_t skipped_subtrees = 0U;
+  std::uint64_t skipped_action_entries = 0U;
+  std::uint64_t showdown_calls = 0U;
+  std::uint64_t showdown_hero_hands = 0U;
+  std::uint64_t showdown_opponent_hands = 0U;
+  std::uint64_t showdown_rank_cells = 0U;
+  std::uint64_t showdown_touched_rank_cells = 0U;
+  std::uint64_t showdown_touched_card_rank_cells = 0U;
+  std::uint64_t showdown_reach_hash_unique = 0U;
+  std::uint64_t showdown_reach_hash_repeats = 0U;
+
+  HotpathTelemetry &operator+=(const HotpathTelemetry &other) noexcept {
+#define GTOSD_ADD_PROFILE_FIELD(field) field += other.field
+    GTOSD_ADD_PROFILE_FIELD(scale_checks);
+    GTOSD_ADD_PROFILE_FIELD(scale_unchanged);
+    GTOSD_ADD_PROFILE_FIELD(scale_changed);
+    GTOSD_ADD_PROFILE_FIELD(scale_rescale_required);
+    GTOSD_ADD_PROFILE_FIELD(scale_overflow_with_existing);
+    for (std::size_t bucket = 0U; bucket < scale_relative_delta_buckets.size(); ++bucket) {
+      scale_relative_delta_buckets[bucket] += other.scale_relative_delta_buckets[bucket];
+    }
+    GTOSD_ADD_PROFILE_FIELD(entries_reencoded);
+    GTOSD_ADD_PROFILE_FIELD(entries_reencoded_due_to_rescale);
+    GTOSD_ADD_PROFILE_FIELD(density_entries);
+    GTOSD_ADD_PROFILE_FIELD(density_exact_zero);
+    GTOSD_ADD_PROFILE_FIELD(density_positive_lt_1e6);
+    GTOSD_ADD_PROFILE_FIELD(density_positive_lt_1e4);
+    GTOSD_ADD_PROFILE_FIELD(density_whole_action_zero);
+    GTOSD_ADD_PROFILE_FIELD(skipped_actions);
+    GTOSD_ADD_PROFILE_FIELD(skipped_subtrees);
+    GTOSD_ADD_PROFILE_FIELD(skipped_action_entries);
+    GTOSD_ADD_PROFILE_FIELD(showdown_calls);
+    GTOSD_ADD_PROFILE_FIELD(showdown_hero_hands);
+    GTOSD_ADD_PROFILE_FIELD(showdown_opponent_hands);
+    GTOSD_ADD_PROFILE_FIELD(showdown_rank_cells);
+    GTOSD_ADD_PROFILE_FIELD(showdown_touched_rank_cells);
+    GTOSD_ADD_PROFILE_FIELD(showdown_touched_card_rank_cells);
+    GTOSD_ADD_PROFILE_FIELD(showdown_reach_hash_unique);
+    GTOSD_ADD_PROFILE_FIELD(showdown_reach_hash_repeats);
+#undef GTOSD_ADD_PROFILE_FIELD
+    return *this;
+  }
+};
 
 template <std::size_t Capacity, bool PlayerIndexed = false,
           typename ComputeScalar = TraversalScalar<Capacity>>
@@ -2602,6 +2674,10 @@ public:
   mutable double prof_sync_seconds_ = 0.0;
   mutable double prof_wall_seconds_ = 0.0;
   mutable double prof_task_wall_seconds_ = 0.0;
+  mutable HotpathTelemetry prof_telemetry_{};
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  mutable std::unordered_set<std::uint64_t> prof_showdown_reach_hashes_{};
+#endif
 
   // Per-pass profile (GTOSD_PROFILE_HOTPATH=1): sums this traversal's and its
   // pool workers' counters (serial-equivalent), prints a per-pass breakdown
@@ -2634,6 +2710,94 @@ public:
         std::getenv("GTOSD_DIAGNOSTIC_CERTIFY_CURRENT") != nullptr;
 #pragma warning(pop)
     return enabled;
+  }
+
+  void profile_scale_transition(const float old_scale, const float new_scale,
+                                const double maximum, const double capacity,
+                                const std::uint64_t entry_count) const noexcept {
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (!hotpath_profiling_enabled()) {
+      return;
+    }
+    ++prof_telemetry_.scale_checks;
+    prof_telemetry_.entries_reencoded += entry_count;
+    if (std::bit_cast<std::uint32_t>(old_scale) ==
+        std::bit_cast<std::uint32_t>(new_scale)) {
+      ++prof_telemetry_.scale_unchanged;
+      ++prof_telemetry_.scale_relative_delta_buckets[0];
+    } else {
+      ++prof_telemetry_.scale_changed;
+      double relative_delta = std::numeric_limits<double>::infinity();
+      if (old_scale != 0.0F) {
+        relative_delta = std::abs(static_cast<double>(new_scale) - old_scale) /
+                         std::abs(static_cast<double>(old_scale));
+      }
+      const std::size_t bucket = relative_delta <= 1.0e-6 ? 1U
+          : relative_delta <= 1.0e-4 ? 2U
+          : relative_delta <= 1.0e-2 ? 3U
+          : relative_delta <= 1.0e-1 ? 4U : 5U;
+      ++prof_telemetry_.scale_relative_delta_buckets[bucket];
+    }
+    const bool overflow = old_scale > 0.0F && maximum > old_scale * capacity;
+    const bool required = maximum > 0.0 && (old_scale <= 0.0F || overflow);
+    if (required) {
+      ++prof_telemetry_.scale_rescale_required;
+      prof_telemetry_.entries_reencoded_due_to_rescale += entry_count;
+    }
+    if (overflow) {
+      ++prof_telemetry_.scale_overflow_with_existing;
+    }
+#else
+    static_cast<void>(old_scale);
+    static_cast<void>(new_scale);
+    static_cast<void>(maximum);
+    static_cast<void>(capacity);
+    static_cast<void>(entry_count);
+#endif
+  }
+
+  void profile_strategy_density(
+      const std::array<ComboVector, maximum_action_count> &strategies,
+      const std::size_t action_count, const std::size_t hand_count) const noexcept {
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (!hotpath_profiling_enabled()) {
+      return;
+    }
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      bool whole_action_zero = true;
+      for (std::size_t local = 0U; local < hand_count; ++local) {
+        const double probability = static_cast<double>(strategies[action][local]);
+        ++prof_telemetry_.density_entries;
+        if (probability == 0.0) {
+          ++prof_telemetry_.density_exact_zero;
+        } else {
+          whole_action_zero = false;
+          if (probability < 1.0e-6) {
+            ++prof_telemetry_.density_positive_lt_1e6;
+          } else if (probability < 1.0e-4) {
+            ++prof_telemetry_.density_positive_lt_1e4;
+          }
+        }
+      }
+      prof_telemetry_.density_whole_action_zero += whole_action_zero ? 1U : 0U;
+    }
+#else
+    static_cast<void>(strategies);
+    static_cast<void>(action_count);
+    static_cast<void>(hand_count);
+#endif
+  }
+
+  void profile_skipped_action(const std::size_t hand_count) const noexcept {
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (hotpath_profiling_enabled()) {
+      ++prof_telemetry_.skipped_actions;
+      ++prof_telemetry_.skipped_subtrees;
+      prof_telemetry_.skipped_action_entries += hand_count;
+    }
+#else
+    static_cast<void>(hand_count);
+#endif
   }
 
   void dump_per_pass_profile(const double wall_seconds) {
@@ -2670,6 +2834,7 @@ public:
     std::uint64_t average_only_entries = prof_average_only_entries_;
     std::uint64_t chance_calls = prof_chance_calls_;
     std::uint64_t chance_outcomes = prof_chance_outcomes_;
+    HotpathTelemetry telemetry = prof_telemetry_;
     for (const auto &worker : parallel_workers_) {
       strategy += worker->prof_strategy_seconds_;
       copy += worker->prof_copy_seconds_;
@@ -2700,6 +2865,7 @@ public:
       average_only_entries += worker->prof_average_only_entries_;
       chance_calls += worker->prof_chance_calls_;
       chance_outcomes += worker->prof_chance_outcomes_;
+      telemetry += worker->prof_telemetry_;
     }
     if (parallel_worker_ != nullptr) {
       strategy += parallel_worker_->prof_strategy_seconds_;
@@ -2731,6 +2897,7 @@ public:
       average_only_entries += parallel_worker_->prof_average_only_entries_;
       chance_calls += parallel_worker_->prof_chance_calls_;
       chance_outcomes += parallel_worker_->prof_chance_outcomes_;
+      telemetry += parallel_worker_->prof_telemetry_;
     }
     const double accounted = strategy + copy + terminal + value_update + chance + sync;
     std::fprintf(stderr,
@@ -2774,6 +2941,40 @@ public:
                  static_cast<unsigned long long>(zero_strategy_entries),
                  static_cast<unsigned long long>(strategy_entries),
                  static_cast<unsigned long long>(whole_zero_actions));
+    std::fprintf(
+        stderr,
+        "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
+        "  strategy density: zero=%llu positive<1e-6=%llu positive<1e-4=%llu total=%llu whole-zero=%llu skipped_actions=%llu skipped_subtrees=%llu skipped_entries=%llu\n"
+        "  showdown workload: calls=%llu hero=%llu opponent=%llu rank_cells=%llu touched_ranks=%llu touched_card_ranks=%llu reach_hash_unique=%llu reach_hash_repeats=%llu\n",
+        static_cast<unsigned long long>(telemetry.scale_checks),
+        static_cast<unsigned long long>(telemetry.scale_unchanged),
+        static_cast<unsigned long long>(telemetry.scale_changed),
+        static_cast<unsigned long long>(telemetry.scale_rescale_required),
+        static_cast<unsigned long long>(telemetry.scale_overflow_with_existing),
+        static_cast<unsigned long long>(telemetry.entries_reencoded),
+        static_cast<unsigned long long>(telemetry.entries_reencoded_due_to_rescale),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[0]),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[1]),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[2]),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[3]),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[4]),
+        static_cast<unsigned long long>(telemetry.scale_relative_delta_buckets[5]),
+        static_cast<unsigned long long>(telemetry.density_exact_zero),
+        static_cast<unsigned long long>(telemetry.density_positive_lt_1e6),
+        static_cast<unsigned long long>(telemetry.density_positive_lt_1e4),
+        static_cast<unsigned long long>(telemetry.density_entries),
+        static_cast<unsigned long long>(telemetry.density_whole_action_zero),
+        static_cast<unsigned long long>(telemetry.skipped_actions),
+        static_cast<unsigned long long>(telemetry.skipped_subtrees),
+        static_cast<unsigned long long>(telemetry.skipped_action_entries),
+        static_cast<unsigned long long>(telemetry.showdown_calls),
+        static_cast<unsigned long long>(telemetry.showdown_hero_hands),
+        static_cast<unsigned long long>(telemetry.showdown_opponent_hands),
+        static_cast<unsigned long long>(telemetry.showdown_rank_cells),
+        static_cast<unsigned long long>(telemetry.showdown_touched_rank_cells),
+        static_cast<unsigned long long>(telemetry.showdown_touched_card_rank_cells),
+        static_cast<unsigned long long>(telemetry.showdown_reach_hash_unique),
+        static_cast<unsigned long long>(telemetry.showdown_reach_hash_repeats));
     std::fprintf(stderr, "  task distribution: main=%llu/%.1fms",
                  static_cast<unsigned long long>(prof_tasks_),
                  prof_task_wall_seconds_ * 1000.0);
@@ -2820,6 +3021,10 @@ public:
     prof_sync_seconds_ = 0.0;
     prof_wall_seconds_ = 0.0;
     prof_task_wall_seconds_ = 0.0;
+    prof_telemetry_ = {};
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    prof_showdown_reach_hashes_.clear();
+#endif
     for (const auto &worker : parallel_workers_) {
       worker->prof_decisions_ = 0;
       worker->prof_actor_writes_ = 0;
@@ -2853,6 +3058,10 @@ public:
       worker->prof_sync_seconds_ = 0.0;
       worker->prof_wall_seconds_ = 0.0;
       worker->prof_task_wall_seconds_ = 0.0;
+      worker->prof_telemetry_ = {};
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+      worker->prof_showdown_reach_hashes_.clear();
+#endif
     }
     if (parallel_worker_ != nullptr) {
       parallel_worker_->prof_decisions_ = 0;
@@ -2887,6 +3096,10 @@ public:
       parallel_worker_->prof_sync_seconds_ = 0.0;
       parallel_worker_->prof_wall_seconds_ = 0.0;
       parallel_worker_->prof_task_wall_seconds_ = 0.0;
+      parallel_worker_->prof_telemetry_ = {};
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+      parallel_worker_->prof_showdown_reach_hashes_.clear();
+#endif
     }
   }
 
@@ -3932,6 +4145,12 @@ private:
       const float average_scale = maximum_average > 0.0
                                       ? static_cast<float>(maximum_average / 65535.0)
                                       : 0.0F;
+      const auto encoded_entries = static_cast<std::uint64_t>(
+          action_count * combos.size());
+      profile_scale_transition(static_cast<float>(old_scale), encoded_scale,
+                               maximum_magnitude, 32767.0, encoded_entries);
+      profile_scale_transition(static_cast<float>(old_average_scale), average_scale,
+                               maximum_average, 65535.0, encoded_entries);
       buffers_.regret_node_scale[scale_index] = encoded_scale;
       buffers_.strategy_node_scale[scale_index] = average_scale;
       if (encoded_scale > 0.0F && average_scale > 0.0F) {
@@ -6912,6 +7131,15 @@ private:
         prof_strategy_entries_ +=
             board.player_combos[decision.player].size() * action_count;
       }
+      if (decode_strategy_at_update) {
+        // Instrumented builds materialize a diagnostic copy after the timed
+        // fused decode. It is read-only telemetry and is compiled out of the
+        // Release timing binary.
+        load_canonical_current_strategies(canonical, board, updating_player,
+                                          strategies, true);
+      }
+      profile_strategy_density(strategies, action_count,
+                               board.player_combos[decision.player].size());
     }
     const auto paired_fold_action =
         static_cast<std::size_t>(decision.paired_fold_action);
@@ -7012,10 +7240,12 @@ private:
           fold_opponent_reach = &fold_actor_reach;
         }
         if (!actor_nonzero) {
+          profile_skipped_action(board.player_combos[updating_player].size());
           std::fill_n(action_values[action].begin(),
                       board.player_combos[updating_player].size(), Scalar{0});
         }
         if (!fold_nonzero) {
+          profile_skipped_action(board.player_combos[updating_player].size());
           std::fill_n(action_values[paired_fold_action].begin(),
                       board.player_combos[updating_player].size(), Scalar{0});
         }
@@ -7045,6 +7275,7 @@ private:
         continue;
       }
       if (decision.player != updating_player && !actor_nonzero) {
+        profile_skipped_action(board.player_combos[updating_player].size());
         std::fill_n(action_values[action].begin(),
                     board.player_combos[updating_player].size(), Scalar{0});
         continue;
@@ -7554,6 +7785,8 @@ private:
               .count();
       prof_strategy_entries_ += board.player_combos[decision.player].size() *
                                 action_count;
+      profile_strategy_density(strategies, action_count,
+                               board.player_combos[decision.player].size());
     }
     const auto paired_fold_action =
         static_cast<std::size_t>(decision.paired_fold_action);
@@ -7663,9 +7896,11 @@ private:
           fold_opponent_reach = &fold_actor_reach;
         }
         if (!actor_reach_nonzero) {
+          profile_skipped_action(board.player_combos[updating_player].size());
           zero_values_into(updating_player, action_values[action]);
         }
         if (!fold_reach_nonzero) {
+          profile_skipped_action(board.player_combos[updating_player].size());
           zero_values_into(updating_player, action_values[paired_fold_action]);
         }
         if (actor_reach_nonzero && fold_reach_nonzero) {
@@ -7702,6 +7937,7 @@ private:
         // this subtree are identically zero. The skipped average/discount step
         // changes only unreachable finite-iteration state; exact best-response
         // certification remains the acceptance authority.
+        profile_skipped_action(board.player_combos[updating_player].size());
         zero_values_into(updating_player, action_values[action]);
         continue;
       }
@@ -9466,6 +9702,51 @@ private:
     const auto rank_count = static_cast<std::size_t>(
         PlayerIndexed ? board.player_rank_count : board.rank_count);
     const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (hotpath_profiling_enabled()) {
+      const auto &hero_combos = PlayerIndexed
+                                    ? board.terminal_combos[updating_player]
+                                    : board.terminal_active_combos;
+      const auto &opponent_combos = PlayerIndexed
+                                        ? board.terminal_combos[opponent]
+                                        : board.terminal_active_combos;
+      ++prof_telemetry_.showdown_calls;
+      prof_telemetry_.showdown_hero_hands += hero_combos.size();
+      prof_telemetry_.showdown_opponent_hands += opponent_combos.size();
+      prof_telemetry_.showdown_rank_cells += rank_count;
+      prof_telemetry_.showdown_touched_rank_cells +=
+          opponent_combos.touched_rank_count;
+      prof_telemetry_.showdown_touched_card_rank_cells +=
+          opponent_combos.touched_by_rank_card.size();
+
+      // Hash the exact IEEE representation of the relevant opponent reach.
+      // Repeats are telemetry-only reuse candidates; no cached value is used.
+      std::uint64_t hash = 1469598103934665603ULL;
+      const auto mix = [&hash](const std::uint64_t value) {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+      };
+      mix(board_index);
+      mix(updating_player);
+      mix(opponent_combos.size());
+      for (std::size_t local = 0U; local < opponent_combos.size(); ++local) {
+        const auto slot = BoardLocal
+                              ? local
+                              : static_cast<std::size_t>(
+                                    opponent_combos.own_slot[local]);
+        if constexpr (std::is_same_v<Scalar, float>) {
+          mix(std::bit_cast<std::uint32_t>(opponent_reach[slot]));
+        } else {
+          mix(std::bit_cast<std::uint64_t>(opponent_reach[slot]));
+        }
+      }
+      if (prof_showdown_reach_hashes_.insert(hash).second) {
+        ++prof_telemetry_.showdown_reach_hash_unique;
+      } else {
+        ++prof_telemetry_.showdown_reach_hash_repeats;
+      }
+    }
+#endif
     if constexpr (PairedFold) {
       if (paired_fold_values_out == nullptr) {
         return PostflopSolverError::InvalidConfiguration;

@@ -1943,3 +1943,42 @@ run ufficiale con sola certificazione finale resta l'autorità temporale.
 I report grezzi sono conservati fuori dal repository in
 `next-optimization/reports/*-p05.json`; contengono per ogni checkpoint dEV,
 NashConv, profile EV, BR per player, work counter, traversal e certificazione.
+
+## §8.55 P1 — scale churn, strategy density e showdown reuse (2026-08-29)
+
+**Decisione: ACCEPT della telemetria; aprire P2 con aspettativa limitata e
+non introdurre ancora una cache showdown.**
+
+La build `windows-profile-current` espone contatori read-only sotto
+`GTOSD_ENABLE_HOTPATH_PROFILE`; il binario Release di timing compila via tutte
+le scansioni diagnostiche. La telemetria distingue scale bit-identiche,
+variazioni relative, overflow della scala esistente, entry ricodificate,
+densità della strategia, pruning esatto e workload showdown. Il fingerprint
+della reach usa tutti i bit IEEE delle entry avversarie nel dominio locale
+corretto e misura soltanto candidati di reuse: nessun valore è riusato.
+
+Smoke TSTC9D DCFR signed, due iterazioni, otto thread. Sommando i due pass del
+secondo aggiornamento:
+
+- scale: 902.106 check, 290.529 bit-identiche, 723.052 rescale richiesti;
+  409.655.611 delle 507.046.140 entry ricodificate (80,79%) appartengono a
+  nodi che eccedono la scala esistente;
+- density: 536.333.425 entry, 124.900.139 esattamente zero (23,28%), 2.114
+  positive sotto `1e-4`, 266.469 action interamente zero;
+- pruning: 194.027 action/subtree saltati, 51.134.555 entry di azione;
+- showdown: 891.296 chiamate, 500.747 fingerprint ripetuti (56,18%), ma con
+  forte asimmetria: 495.971/586.980 nel primo pass e 4.776/304.316 nel
+  secondo. Il dato è un upper bound hash-based worker-local, non autorizza
+  ancora una cache senza exact equality e A/B RAM.
+
+Il run diagnostico termina intenzionalmente a iterazione 2 e fallisce il
+target dEV; non è una misura di convergenza né un timing candidate. Il report
+grezzo è `next-optimization/reports/tstc9d-p1-telemetry.json` fuori repo.
+Build Release e profile dei target interessati PASS; Phase 7 PASS con 179
+assertion e reference GTO+ PASS con 24 assertion, incluso delta
+seriale/parallelo zero e test ISO asimmetrico.
+
+La persistent scale può evitare un cambio di scala per circa il 19% delle
+entry osservate, ma deve comunque aggiornare i codici delle entry i cui regret
+cambiano. P2 viene quindi prototipata dietro flag e sarà respinta se il costo
+end-to-end non migliora: il solo rapporto di scale non dimostra uno speedup.
