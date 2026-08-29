@@ -1046,6 +1046,10 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     double process_cpu_seconds{0.0};
   };
   std::map<std::uint64_t, RuntimeSample> runtime_samples;
+  const bool rbp_read_only_enabled =
+      environment_value("GTOSD_RBP_READ_ONLY_TELEMETRY").has_value();
+  gtosd::RbpReadOnlyTelemetry rbp_telemetry;
+  std::vector<gtosd::RbpReadOnlySnapshot> rbp_snapshots;
   double solver_cpu_started = 0.0;
   gtosd::PostflopSolveOptions options;
   options.iterations = spec.diagnostic_iteration_limit;
@@ -1087,6 +1091,19 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     std::cerr << "postflop benchmark-gto-plus failed: "
               << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
     return 1;
+  }
+  if (rbp_read_only_enabled) {
+    options.checkpoint_callback =
+        [&rbp_telemetry, &rbp_snapshots,
+         &prepared](const gtosd::PostflopCertification &,
+                    const gtosd::PostflopCheckpoint &checkpoint) {
+          auto observed = rbp_telemetry.observe(*prepared.value(), checkpoint);
+          if (!observed) {
+            return false;
+          }
+          rbp_snapshots.push_back(std::move(observed.value()));
+          return true;
+        };
   }
   std::cerr << "benchmark_phase=prepare_complete peak_rss_bytes="
             << gtosd::process_peak_rss_bytes() << '\n';
@@ -1467,6 +1484,67 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       spec.diagnostic_iteration_limit == 0U
           ? nlohmann::json(nullptr)
           : nlohmann::json(spec.diagnostic_iteration_limit);
+  const auto rbp_work_json = [](const gtosd::RbpReadOnlyWorkEstimate &work) {
+    return nlohmann::json{{"public_nodes", work.public_nodes},
+                          {"decision_nodes", work.decision_nodes},
+                          {"chance_nodes", work.chance_nodes},
+                          {"chance_outcomes", work.chance_outcomes},
+                          {"fold_terminals", work.fold_terminals},
+                          {"showdown_terminals", work.showdown_terminals},
+                          {"regret_entries", work.regret_entries},
+                          {"strategy_entries", work.strategy_entries}};
+  };
+  nlohmann::json rbp_observations = nlohmann::json::array();
+  for (const auto &snapshot : rbp_snapshots) {
+    nlohmann::json players = nlohmann::json::array();
+    for (const auto &player : snapshot.players) {
+      players.push_back(
+          {{"decisions", player.decisions},
+           {"actions", player.actions},
+           {"zero_policy_actions", player.zero_policy_actions},
+           {"negative_regret_actions", player.negative_regret_actions},
+           {"original_formula_candidates", player.original_formula_candidates},
+           {"candidate_fraction",
+            player.actions == 0U
+                ? 0.0
+                : static_cast<double>(player.original_formula_candidates) / player.actions},
+           {"decisions_with_candidates", player.decisions_with_candidates},
+           {"decisions_with_all_but_one_candidate",
+            player.decisions_with_all_but_one_candidate},
+           {"persistent_candidates", player.persistent_candidates},
+           {"new_candidates", player.new_candidates},
+           {"reactivated_candidates", player.reactivated_candidates},
+           {"candidates_by_street", player.candidates_by_street},
+           {"candidates_by_decision_action_count",
+            player.candidates_by_decision_action_count},
+           {"candidate_regret_antes",
+            {{"minimum", player.minimum_candidate_regret_antes},
+             {"mean", player.mean_candidate_regret_antes},
+             {"maximum", player.maximum_candidate_regret_antes}}},
+           {"threshold_multiple",
+            {{"minimum", player.minimum_threshold_multiple},
+             {"mean", player.mean_threshold_multiple},
+             {"maximum", player.maximum_threshold_multiple}}},
+           {"negative_regret_threshold_multiple",
+            {{"mean", player.mean_negative_regret_threshold_multiple},
+             {"maximum", player.maximum_negative_regret_threshold_multiple},
+             {"distance_of_closest_to_one",
+              1.0 - player.maximum_negative_regret_threshold_multiple}}},
+           {"structural_upper_bound", rbp_work_json(player.structural_upper_bound)}});
+    }
+    rbp_observations.push_back(
+        {{"iteration", snapshot.iteration},
+         {"players", std::move(players)},
+         {"structurally_unreachable_action_entries",
+          snapshot.structurally_unreachable_action_entries},
+         {"exact_zero_counterfactual_reach_available",
+          snapshot.exact_zero_counterfactual_reach_available},
+         {"exact_zero_counterfactual_reach_actions",
+          snapshot.exact_zero_counterfactual_reach_actions},
+         {"metadata_bytes", snapshot.metadata_bytes},
+         {"metadata_bytes_per_action", snapshot.metadata_bytes_per_action},
+         {"metadata_bytes_per_decision", snapshot.metadata_bytes_per_decision}});
+  }
   nlohmann::json report = {
       {"schema", "gtosd.gto_plus_convergence_run.v1"},
       {"benchmark_id", spec.benchmark_id},
@@ -1601,6 +1679,13 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       {"final_gto_plus_dev_percent", final_deviation.value() * 100.0},
       {"final_normalized_nash_conv", final.normalized_nash_conv},
       {"convergence", std::move(convergence)}};
+  report["rbp_read_only_audit"] =
+      {{"enabled", rbp_read_only_enabled},
+       {"mutates_solver_state", false},
+       {"changes_traversal_control_flow", false},
+       {"original_cfr_formula_is_sound_for_production_dcfr", false},
+       {"observation_scope", "exact certification checkpoints only"},
+       {"observations", std::move(rbp_observations)}};
 
   const auto temporary = destination.string() + ".tmp";
   {

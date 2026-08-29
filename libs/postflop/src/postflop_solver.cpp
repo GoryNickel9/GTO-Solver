@@ -13770,6 +13770,286 @@ PostflopPreparedTree::~PostflopPreparedTree() = default;
 PostflopPreparedTree::PostflopPreparedTree(PostflopPreparedTree &&) noexcept = default;
 PostflopPreparedTree &PostflopPreparedTree::operator=(PostflopPreparedTree &&) noexcept = default;
 
+struct RbpReadOnlyTelemetry::Impl {
+  std::vector<std::uint64_t> previous_candidates;
+  std::vector<std::uint64_t> ever_candidates;
+  std::uint64_t action_count{0};
+};
+
+RbpReadOnlyTelemetry::RbpReadOnlyTelemetry() : implementation_(std::make_unique<Impl>()) {}
+RbpReadOnlyTelemetry::~RbpReadOnlyTelemetry() = default;
+RbpReadOnlyTelemetry::RbpReadOnlyTelemetry(RbpReadOnlyTelemetry &&) noexcept = default;
+RbpReadOnlyTelemetry &RbpReadOnlyTelemetry::operator=(RbpReadOnlyTelemetry &&) noexcept = default;
+
+namespace {
+
+[[nodiscard]] std::uint64_t rbp_saturating_add(const std::uint64_t left,
+                                                const std::uint64_t right) noexcept {
+  return right > std::numeric_limits<std::uint64_t>::max() - left
+             ? std::numeric_limits<std::uint64_t>::max()
+             : left + right;
+}
+
+[[nodiscard]] std::uint64_t rbp_saturating_multiply(const std::uint64_t left,
+                                                     const std::uint64_t right) noexcept {
+  return left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left
+             ? std::numeric_limits<std::uint64_t>::max()
+             : left * right;
+}
+
+void rbp_add_work(RbpReadOnlyWorkEstimate &destination,
+                  const RbpReadOnlyWorkEstimate &source,
+                  const std::uint64_t multiplicity = 1U) noexcept {
+  const auto add = [multiplicity](std::uint64_t &value, const std::uint64_t increment) {
+    value = rbp_saturating_add(value, rbp_saturating_multiply(increment, multiplicity));
+  };
+  add(destination.public_nodes, source.public_nodes);
+  add(destination.decision_nodes, source.decision_nodes);
+  add(destination.chance_nodes, source.chance_nodes);
+  add(destination.chance_outcomes, source.chance_outcomes);
+  add(destination.fold_terminals, source.fold_terminals);
+  add(destination.showdown_terminals, source.showdown_terminals);
+  add(destination.regret_entries, source.regret_entries);
+  add(destination.strategy_entries, source.strategy_entries);
+}
+
+[[nodiscard]] bool rbp_bit(const std::vector<std::uint64_t> &bits,
+                           const std::uint64_t index) noexcept {
+  return (bits[static_cast<std::size_t>(index / 64U)] & (std::uint64_t{1} << (index % 64U))) != 0U;
+}
+
+void rbp_set_bit(std::vector<std::uint64_t> &bits, const std::uint64_t index) noexcept {
+  bits[static_cast<std::size_t>(index / 64U)] |= std::uint64_t{1} << (index % 64U);
+}
+
+} // namespace
+
+Result<RbpReadOnlySnapshot, PostflopSolverError>
+RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
+                              const PostflopCheckpoint &checkpoint) {
+  if (!prepared.implementation_ ||
+      checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+      checkpoint.algorithm != PostflopAlgorithm::Dcfr ||
+      checkpoint.action_count != checkpoint.cumulative_regret_uint16.size()) {
+    return Result<RbpReadOnlySnapshot, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+  const auto &layout = prepared.implementation_->layout;
+  const auto &graph = layout.canonical_public_graph;
+  if (!layout.uses_canonical_public_dag || graph.nodes.empty() ||
+      checkpoint.action_count != layout.actions ||
+      checkpoint.regret_node_scale.size() != layout.canonical_decision_nodes) {
+    return Result<RbpReadOnlySnapshot, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+
+  const auto word_count = static_cast<std::size_t>((layout.actions + 63U) / 64U);
+  if (implementation_->action_count != layout.actions) {
+    implementation_->previous_candidates.assign(word_count, 0U);
+    implementation_->ever_candidates.assign(word_count, 0U);
+    implementation_->action_count = layout.actions;
+  }
+  std::vector<std::uint64_t> current_candidates(word_count, 0U);
+
+  struct Bounds {
+    std::array<double, 2> minimum{std::numeric_limits<double>::infinity(),
+                                  std::numeric_limits<double>::infinity()};
+    std::array<double, 2> maximum{-std::numeric_limits<double>::infinity(),
+                                  -std::numeric_limits<double>::infinity()};
+  };
+  std::vector<Bounds> bounds(graph.nodes.size());
+  std::vector<RbpReadOnlyWorkEstimate> subtree_work(graph.nodes.size());
+  for (std::size_t index = graph.nodes.size(); index-- > 0U;) {
+    const auto &node = graph.nodes[index];
+    auto &node_bounds = bounds[index];
+    auto &work = subtree_work[index];
+    work.public_nodes = 1U;
+    if (node.kind == PublicNodeKind::TerminalFold) {
+      ++work.fold_terminals;
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        node_bounds.minimum[player] = node.fold_payoff_antes[player];
+        node_bounds.maximum[player] = node.fold_payoff_antes[player];
+      }
+      continue;
+    }
+    if (node.kind == PublicNodeKind::TerminalShowdown) {
+      ++work.showdown_terminals;
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        node_bounds.minimum[player] = *std::min_element(node.showdown_payoff_antes[player].begin(),
+                                                        node.showdown_payoff_antes[player].end());
+        node_bounds.maximum[player] = *std::max_element(node.showdown_payoff_antes[player].begin(),
+                                                        node.showdown_payoff_antes[player].end());
+      }
+      continue;
+    }
+    if (node.kind == PublicNodeKind::Decision) {
+      ++work.decision_nodes;
+      work.regret_entries = node.local_action_count;
+      work.strategy_entries = node.local_action_count;
+    } else {
+      ++work.chance_nodes;
+    }
+    for (const auto &edge : node.edges) {
+      for (const auto &outcome : edge.outcomes) {
+        if (outcome.child <= index || outcome.child >= graph.nodes.size()) {
+          return Result<RbpReadOnlySnapshot, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+        const auto multiplicity = static_cast<std::uint64_t>(outcome.physical_outcome_count);
+        rbp_add_work(work, subtree_work[outcome.child], multiplicity);
+        if (node.kind == PublicNodeKind::Chance) {
+          work.chance_outcomes = rbp_saturating_add(work.chance_outcomes, multiplicity);
+        }
+        for (std::uint8_t player = 0U; player < 2U; ++player) {
+          node_bounds.minimum[player] =
+              std::min(node_bounds.minimum[player], bounds[outcome.child].minimum[player]);
+          node_bounds.maximum[player] =
+              std::max(node_bounds.maximum[player], bounds[outcome.child].maximum[player]);
+        }
+      }
+    }
+  }
+
+  RbpReadOnlySnapshot snapshot;
+  snapshot.iteration = checkpoint.completed_iterations;
+  std::array<long double, 2> regret_sum{};
+  std::array<long double, 2> threshold_sum{};
+  std::array<long double, 2> negative_threshold_sum{};
+  std::array<std::uint64_t, 2> bounded_negative_count{};
+  std::array<bool, 2> has_candidate{};
+  for (const auto &node : graph.nodes) {
+    if (node.kind != PublicNodeKind::Decision) {
+      continue;
+    }
+    const auto player = node.decision.player;
+    auto &metrics = snapshot.players[player];
+    const auto action_count = static_cast<std::size_t>(node.decision.action_count);
+    const auto local_count = action_count == 0U ? 0U : node.local_action_count / action_count;
+    metrics.decisions += local_count;
+    metrics.actions += node.local_action_count;
+    const auto scale_index = static_cast<std::size_t>(node.state_scale_index);
+    const double scale = checkpoint.regret_node_scale[scale_index];
+    const auto street = static_cast<std::size_t>(
+        std::clamp(std::popcount(layout.boards[node.board_index].mask) - 3, 0, 2));
+    std::array<double, maximum_action_count> payoff_bounds{};
+    std::array<RbpReadOnlyWorkEstimate, maximum_action_count> action_work{};
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      double action_maximum = -std::numeric_limits<double>::infinity();
+      for (const auto &outcome : node.edges[action].outcomes) {
+        action_maximum = std::max(action_maximum, bounds[outcome.child].maximum[player]);
+        rbp_add_work(action_work[action], subtree_work[outcome.child],
+                     outcome.physical_outcome_count);
+      }
+      payoff_bounds[action] = action_maximum - bounds[&node - graph.nodes.data()].minimum[player];
+    }
+    for (std::size_t local = 0U; local < local_count; ++local) {
+      bool any_positive = false;
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto index = node.decision.action_base + action * local_count + local;
+        any_positive = any_positive ||
+                       static_cast<std::int16_t>(checkpoint.cumulative_regret_uint16[index]) > 0;
+      }
+      std::uint64_t decision_candidates = 0U;
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto index = node.decision.action_base + action * local_count + local;
+        const auto code = static_cast<std::int16_t>(checkpoint.cumulative_regret_uint16[index]);
+        if (any_positive && code <= 0) {
+          ++metrics.zero_policy_actions;
+        }
+        if (code >= 0 || !any_positive) {
+          continue;
+        }
+        ++metrics.negative_regret_actions;
+        const double regret = static_cast<double>(code) * scale;
+        const double payoff_bound = payoff_bounds[action];
+        if (payoff_bound > 0.0) {
+          const double negative_threshold_multiple = -regret / payoff_bound;
+          negative_threshold_sum[player] += negative_threshold_multiple;
+          ++bounded_negative_count[player];
+          metrics.maximum_negative_regret_threshold_multiple =
+              std::max(metrics.maximum_negative_regret_threshold_multiple,
+                       negative_threshold_multiple);
+        }
+        if (!(payoff_bound > 0.0) || -regret < payoff_bound) {
+          continue;
+        }
+        ++decision_candidates;
+        ++metrics.original_formula_candidates;
+        ++metrics.candidates_by_street[street];
+        ++metrics.candidates_by_decision_action_count[action_count];
+        rbp_set_bit(current_candidates, index);
+        if (rbp_bit(implementation_->previous_candidates, index)) {
+          ++metrics.persistent_candidates;
+        } else if (rbp_bit(implementation_->ever_candidates, index)) {
+          ++metrics.reactivated_candidates;
+        } else {
+          ++metrics.new_candidates;
+        }
+        rbp_add_work(metrics.structural_upper_bound, action_work[action]);
+        const double threshold_multiple = -regret / payoff_bound;
+        regret_sum[player] += regret;
+        threshold_sum[player] += threshold_multiple;
+        if (!has_candidate[player]) {
+          metrics.minimum_candidate_regret_antes = regret;
+          metrics.maximum_candidate_regret_antes = regret;
+          metrics.minimum_threshold_multiple = threshold_multiple;
+          metrics.maximum_threshold_multiple = threshold_multiple;
+          has_candidate[player] = true;
+        } else {
+          metrics.minimum_candidate_regret_antes =
+              std::min(metrics.minimum_candidate_regret_antes, regret);
+          metrics.maximum_candidate_regret_antes =
+              std::max(metrics.maximum_candidate_regret_antes, regret);
+          metrics.minimum_threshold_multiple =
+              std::min(metrics.minimum_threshold_multiple, threshold_multiple);
+          metrics.maximum_threshold_multiple =
+              std::max(metrics.maximum_threshold_multiple, threshold_multiple);
+        }
+      }
+      if (decision_candidates != 0U) {
+        ++metrics.decisions_with_candidates;
+        if (decision_candidates + 1U == action_count) {
+          ++metrics.decisions_with_all_but_one_candidate;
+        }
+      }
+    }
+  }
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    auto &metrics = snapshot.players[player];
+    if (metrics.original_formula_candidates != 0U) {
+      metrics.mean_candidate_regret_antes = static_cast<double>(
+          regret_sum[player] / metrics.original_formula_candidates);
+      metrics.mean_threshold_multiple = static_cast<double>(
+          threshold_sum[player] / metrics.original_formula_candidates);
+    }
+    if (bounded_negative_count[player] != 0U) {
+      metrics.mean_negative_regret_threshold_multiple = static_cast<double>(
+          negative_threshold_sum[player] / bounded_negative_count[player]);
+    }
+  }
+  for (std::size_t word = 0U; word < word_count; ++word) {
+    implementation_->ever_candidates[word] |= current_candidates[word];
+  }
+  implementation_->previous_candidates.swap(current_candidates);
+  snapshot.metadata_bytes = metadata_bytes();
+  snapshot.metadata_bytes_per_action =
+      layout.actions == 0U ? 0.0 : static_cast<double>(snapshot.metadata_bytes) / layout.actions;
+  snapshot.metadata_bytes_per_decision =
+      layout.information_sets == 0U
+          ? 0.0
+          : static_cast<double>(snapshot.metadata_bytes) / layout.information_sets;
+  return Result<RbpReadOnlySnapshot, PostflopSolverError>::success(std::move(snapshot));
+}
+
+std::uint64_t RbpReadOnlyTelemetry::metadata_bytes() const noexcept {
+  if (!implementation_) {
+    return 0U;
+  }
+  return static_cast<std::uint64_t>(implementation_->previous_candidates.capacity() +
+                                    implementation_->ever_candidates.capacity()) *
+         sizeof(std::uint64_t);
+}
+
 Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
 prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                       const bool enable_lossless_isomorphism,

@@ -69,6 +69,78 @@ struct PostflopCertification;
 struct PostflopCheckpoint;
 class PostflopPreparedTree;
 
+// Read-only diagnostic for the original CFR regret-based-pruning condition.
+// It never participates in traversal, regret updates, strategy averaging or
+// checkpoint serialization.  In particular, observations made on DCFR state
+// are eligibility proxies only: the original CFR proof does not cover the
+// production discount schedule.
+struct RbpReadOnlyWorkEstimate {
+  std::uint64_t public_nodes{0};
+  std::uint64_t decision_nodes{0};
+  std::uint64_t chance_nodes{0};
+  std::uint64_t chance_outcomes{0};
+  std::uint64_t fold_terminals{0};
+  std::uint64_t showdown_terminals{0};
+  std::uint64_t regret_entries{0};
+  std::uint64_t strategy_entries{0};
+};
+
+struct RbpReadOnlyPlayerSnapshot {
+  std::uint64_t decisions{0};
+  std::uint64_t actions{0};
+  std::uint64_t zero_policy_actions{0};
+  std::uint64_t negative_regret_actions{0};
+  std::uint64_t original_formula_candidates{0};
+  std::uint64_t decisions_with_candidates{0};
+  std::uint64_t decisions_with_all_but_one_candidate{0};
+  std::uint64_t persistent_candidates{0};
+  std::uint64_t new_candidates{0};
+  std::uint64_t reactivated_candidates{0};
+  std::array<std::uint64_t, 3> candidates_by_street{};
+  std::array<std::uint64_t, 9> candidates_by_decision_action_count{};
+  double minimum_candidate_regret_antes{0.0};
+  double mean_candidate_regret_antes{0.0};
+  double maximum_candidate_regret_antes{0.0};
+  double minimum_threshold_multiple{0.0};
+  double mean_threshold_multiple{0.0};
+  double maximum_threshold_multiple{0.0};
+  double mean_negative_regret_threshold_multiple{0.0};
+  double maximum_negative_regret_threshold_multiple{0.0};
+  RbpReadOnlyWorkEstimate structural_upper_bound{};
+};
+
+struct RbpReadOnlySnapshot {
+  std::uint64_t iteration{0};
+  std::array<RbpReadOnlyPlayerSnapshot, 2> players{};
+  std::uint64_t structurally_unreachable_action_entries{0};
+  // Exact opponent counterfactual zero reach is deliberately not inferred
+  // from a zero current-policy action.  This post-state audit does not retain
+  // the traversal reach vectors, so the metric is explicitly unavailable.
+  bool exact_zero_counterfactual_reach_available{false};
+  std::uint64_t exact_zero_counterfactual_reach_actions{0};
+  std::uint64_t metadata_bytes{0};
+  double metadata_bytes_per_action{0.0};
+  double metadata_bytes_per_decision{0.0};
+};
+
+class RbpReadOnlyTelemetry final {
+public:
+  RbpReadOnlyTelemetry();
+  ~RbpReadOnlyTelemetry();
+  RbpReadOnlyTelemetry(RbpReadOnlyTelemetry &&) noexcept;
+  RbpReadOnlyTelemetry &operator=(RbpReadOnlyTelemetry &&) noexcept;
+  RbpReadOnlyTelemetry(const RbpReadOnlyTelemetry &) = delete;
+  RbpReadOnlyTelemetry &operator=(const RbpReadOnlyTelemetry &) = delete;
+
+  [[nodiscard]] Result<RbpReadOnlySnapshot, PostflopSolverError>
+  observe(const PostflopPreparedTree &prepared, const PostflopCheckpoint &checkpoint);
+  [[nodiscard]] std::uint64_t metadata_bytes() const noexcept;
+
+private:
+  struct Impl;
+  std::unique_ptr<Impl> implementation_;
+};
+
 // F10.4 diagnostic external root lock: fixes the tree-root strategy of the
 // CO player to externally observed combo-per-combo probabilities. This is a
 // diagnostic-only constraint (controlled posteriors); it never changes the
@@ -293,6 +365,7 @@ private:
   friend Result<PostflopNodeAnalysis, PostflopSolverError>
   analyze_postflop_node(PostflopPreparedTree &, const PostflopCheckpoint &, NodeId);
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
+  friend class RbpReadOnlyTelemetry;
   friend std::shared_ptr<const PublicTree>
   prepared_postflop_public_tree(const std::shared_ptr<PostflopPreparedTree> &);
 };

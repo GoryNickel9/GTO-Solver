@@ -587,6 +587,121 @@ void test_simultaneous_dcfr_semantics() {
           "simultaneous canonical chance traversal is exact and counted");
 }
 
+void test_rbp_read_only_telemetry() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_river_bet.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto config = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && config.has_value(),
+          "RBP audit fixture parses");
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  const auto prepared = gtosd::prepare_postflop_tree(config.value(), ranges, true, true);
+  require(prepared.has_value(), "RBP audit canonical tree prepares");
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 3U;
+  options.certification_interval = 1U;
+  options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
+  options.state_precision =
+      gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.dcfr_positive_regret_exponent = 1.5;
+  options.dcfr_average_exponent = 2.0;
+  options.parallel_action_depth = 0U;
+  const auto baseline = gtosd::solve_postflop_exact(*prepared.value(), options);
+  require(baseline.has_value(), "RBP audit OFF baseline solves");
+
+  gtosd::RbpReadOnlyTelemetry telemetry;
+  std::vector<gtosd::RbpReadOnlySnapshot> snapshots;
+  options.checkpoint_callback =
+      [&telemetry, &snapshots, &prepared](const gtosd::PostflopCertification &,
+                                         const gtosd::PostflopCheckpoint &checkpoint) {
+        auto observed = telemetry.observe(*prepared.value(), checkpoint);
+        if (!observed) {
+          return false;
+        }
+        snapshots.push_back(std::move(observed.value()));
+        return true;
+      };
+  const auto instrumented = gtosd::solve_postflop_exact(*prepared.value(), options);
+  require(instrumented.has_value() && snapshots.size() == 3U,
+          "RBP audit ON observes every requested iteration");
+  const auto &off = baseline.value();
+  const auto &on = instrumented.value();
+  require(off.checkpoint.cumulative_regret_uint16 ==
+              on.checkpoint.cumulative_regret_uint16 &&
+              off.checkpoint.cumulative_strategy_uint16 ==
+                  on.checkpoint.cumulative_strategy_uint16 &&
+              off.checkpoint.regret_node_scale == on.checkpoint.regret_node_scale &&
+              off.checkpoint.strategy_node_scale == on.checkpoint.strategy_node_scale,
+          "RBP audit ON is byte-identical across all four signed buffers");
+  require(off.checkpoint.completed_iterations == on.checkpoint.completed_iterations &&
+              off.work_counters.visited_nodes == on.work_counters.visited_nodes &&
+              off.work_counters.decision_node_evaluations ==
+                  on.work_counters.decision_node_evaluations &&
+              off.work_counters.chance_node_evaluations ==
+                  on.work_counters.chance_node_evaluations &&
+              off.work_counters.showdown_terminal_evaluations ==
+                  on.work_counters.showdown_terminal_evaluations &&
+              off.work_counters.regret_update_entries ==
+                  on.work_counters.regret_update_entries &&
+              off.work_counters.strategy_update_entries ==
+                  on.work_counters.strategy_update_entries,
+          "RBP audit ON preserves iterations and traversal work counters");
+  require(off.convergence.size() == on.convergence.size(),
+          "RBP audit ON preserves certification count");
+  for (std::size_t index = 0U; index < off.convergence.size(); ++index) {
+    require(off.convergence[index].profile_value_antes ==
+                on.convergence[index].profile_value_antes &&
+                off.convergence[index].best_response_value_antes ==
+                    on.convergence[index].best_response_value_antes &&
+                off.convergence[index].normalized_nash_conv ==
+                    on.convergence[index].normalized_nash_conv,
+            "RBP audit ON preserves root values, exact BR and convergence");
+  }
+  require(!snapshots.back().exact_zero_counterfactual_reach_available &&
+              snapshots.back().exact_zero_counterfactual_reach_actions == 0U &&
+              snapshots.back().structurally_unreachable_action_entries == 0U,
+          "RBP audit keeps exact zero reach separate from legal regret candidates");
+  require(snapshots.back().metadata_bytes_per_action <= 0.26,
+          "RBP persistence metadata remains two bitsets");
+
+  auto synthetic = on.checkpoint;
+  for (std::size_t node = 0U; node < synthetic.regret_node_scale.size(); ++node) {
+    synthetic.regret_node_scale[node] = 1.0e6F;
+  }
+  const auto regret_before = synthetic.cumulative_regret_uint16;
+  const auto strategy_before = synthetic.cumulative_strategy_uint16;
+  const auto regret_scale_before = synthetic.regret_node_scale;
+  const auto strategy_scale_before = synthetic.strategy_node_scale;
+  gtosd::RbpReadOnlyTelemetry toy_telemetry;
+  const auto toy = toy_telemetry.observe(*prepared.value(), synthetic);
+  require(toy.has_value() && regret_before == synthetic.cumulative_regret_uint16 &&
+              strategy_before == synthetic.cumulative_strategy_uint16 &&
+              regret_scale_before == synthetic.regret_node_scale &&
+              strategy_scale_before == synthetic.strategy_node_scale,
+          "RBP counters never mutate checkpoint state");
+  const auto toy_candidates = toy.value().players[0].original_formula_candidates +
+                              toy.value().players[1].original_formula_candidates;
+  require(toy_candidates > 0U,
+          "RBP toy detector interprets negative signed codes as candidates");
+
+  options.checkpoint_callback = {};
+  options.parallel_action_depth = 1U;
+  const auto parallel = gtosd::solve_postflop_exact(*prepared.value(), options);
+  require(parallel.has_value() &&
+              parallel.value().checkpoint.cumulative_regret_uint16 ==
+                  off.checkpoint.cumulative_regret_uint16 &&
+              parallel.value().checkpoint.cumulative_strategy_uint16 ==
+                  off.checkpoint.cumulative_strategy_uint16 &&
+              parallel.value().checkpoint.regret_node_scale ==
+                  off.checkpoint.regret_node_scale &&
+              parallel.value().checkpoint.strategy_node_scale ==
+                  off.checkpoint.strategy_node_scale,
+          "RBP audit leaves deterministic serial and parallel state invariant");
+}
+
 } // namespace
 
 int main() {
@@ -598,6 +713,7 @@ int main() {
     test_exact_check_only_solve_and_resume();
     test_nontrivial_zero_sum_certification();
     test_simultaneous_dcfr_semantics();
+    test_rbp_read_only_telemetry();
     std::cout << "F7_POSTFLOP_PRODUCTION_TESTS=PASS\n"
               << "assertions=" << assertions << '\n';
     return 0;
