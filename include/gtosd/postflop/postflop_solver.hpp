@@ -161,6 +161,70 @@ struct DiagnosticRootLock {
   std::vector<DiagnosticRootLockEntry> entries;
 };
 
+enum class PostflopReplayProducer : std::uint8_t {
+  Fold,
+  Showdown,
+  DecisionSubtree,
+  Chance,
+  TransformedChanceOrSubtree
+};
+
+// Diagnostic-only, bounded capture of real production decision-node updates.
+// It is inert unless the replay build gate and this runtime option are both on.
+struct PostflopRealNodeReplayCapture {
+  std::uint64_t seed{0x47544f5344524e52ULL};
+  std::uint64_t maximum_samples{384};
+  std::uint64_t samples_per_stratum{2};
+  std::uint64_t sampling_modulus{257};
+  std::vector<std::uint64_t> iterations;
+};
+
+struct PostflopRealNodeReplaySample {
+  std::uint64_t iteration{0};
+  NodeId representative_node{0};
+  std::uint64_t board_mask{0};
+  std::uint64_t structural_signature{0};
+  std::uint8_t street{0};
+  std::uint8_t update_player{0};
+  std::uint8_t actor{0};
+  std::uint8_t action_count{0};
+  std::uint16_t hand_count{0};
+  double regret_update_weight{1.0};
+  double strategy_weight{0.0};
+  double positive_regret_discount{1.0};
+  double negative_regret_discount{1.0};
+  float old_regret_scale{0.0F};
+  float old_strategy_scale{0.0F};
+  float resulting_regret_scale{0.0F};
+  float resulting_strategy_scale{0.0F};
+  std::vector<PostflopReplayProducer> producers;
+  std::vector<std::uint16_t> old_regret_codes;
+  std::vector<std::uint16_t> old_strategy_codes;
+  std::vector<float> current_policy;
+  std::vector<float> actor_reach;
+  std::vector<float> opponent_reach;
+  std::vector<float> action_values;
+  std::vector<float> current_values;
+  std::vector<float> immediate_regret_delta;
+  std::vector<float> average_contribution;
+  std::vector<float> resulting_regret_values;
+  std::vector<float> resulting_strategy_values;
+  std::vector<std::uint16_t> resulting_regret_codes;
+  std::vector<std::uint16_t> resulting_strategy_codes;
+  std::vector<float> parent_returned_values;
+};
+
+struct PostflopRealNodeReplayCorpus {
+  std::uint32_t format_major{1};
+  std::uint32_t format_minor{0};
+  std::string game_fingerprint;
+  std::uint64_t seed{0};
+  std::uint64_t maximum_samples{0};
+  std::uint64_t eligible_updates{0};
+  std::uint64_t retained_updates{0};
+  std::vector<PostflopRealNodeReplaySample> samples;
+};
+
 struct PostflopSolveOptions {
   // Zero means target-driven with no iteration limit. This mode requires one
   // convergence target and stops only when a certification satisfies it, or
@@ -189,6 +253,7 @@ struct PostflopSolveOptions {
   // external probabilities for the whole solve. The pointer must outlive the
   // solve call. Default nullptr = unconstrained solve.
   const DiagnosticRootLock *diagnostic_root_lock{nullptr};
+  const PostflopRealNodeReplayCapture *diagnostic_real_node_replay{nullptr};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>
@@ -292,6 +357,7 @@ struct PostflopSolveResult {
   double maximum_normalization_error{0.0};
   PostflopSolveTimings timings;
   PostflopStopReason stop_reason{PostflopStopReason::Completed};
+  std::optional<PostflopRealNodeReplayCorpus> diagnostic_real_node_replay;
 };
 
 struct PostflopStrategyQuery {

@@ -131,6 +131,9 @@ endif()
 
 add_executable(gtosd_phase10_tests phase10_tests.cpp)
 target_link_libraries(gtosd_phase10_tests PRIVATE gtosd::storage)
+if(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  target_compile_definitions(gtosd_phase10_tests PRIVATE GTOSD_ENABLE_REAL_NODE_REPLAY=1)
+endif()
 gtosd_set_warnings(gtosd_phase10_tests)
 add_test(NAME gtosd_phase10_tests COMMAND gtosd_phase10_tests)
 set_tests_properties(gtosd_phase10_tests

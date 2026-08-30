@@ -2475,6 +2475,129 @@ struct HotpathTelemetry {
   }
 };
 
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+[[nodiscard]] constexpr std::uint64_t replay_mix(std::uint64_t value) noexcept {
+  value ^= value >> 30U;
+  value *= 0xbf58476d1ce4e5b9ULL;
+  value ^= value >> 27U;
+  value *= 0x94d049bb133111ebULL;
+  return value ^ (value >> 31U);
+}
+
+class RealNodeReplayCollector final {
+public:
+  RealNodeReplayCollector(const PostflopRealNodeReplayCapture &options, std::string fingerprint)
+      : options_(options) {
+    corpus_.game_fingerprint = std::move(fingerprint);
+    corpus_.seed = options.seed;
+    corpus_.maximum_samples = options.maximum_samples;
+  }
+
+  [[nodiscard]] bool eligible(const std::uint64_t iteration, const NodeId representative_node,
+                              const std::uint64_t board_mask,
+                              const std::uint8_t update_player) const noexcept {
+    if (options_.maximum_samples == 0U || options_.samples_per_stratum == 0U ||
+        (!options_.iterations.empty() &&
+         std::ranges::find(options_.iterations, iteration) == options_.iterations.end())) {
+      return false;
+    }
+    const auto score = replay_mix(options_.seed ^
+                                  (static_cast<std::uint64_t>(representative_node) << 17U) ^
+                                  board_mask ^ (static_cast<std::uint64_t>(update_player) << 61U));
+    const auto modulus = std::max<std::uint64_t>(1U, options_.sampling_modulus);
+    // Flop updates are structurally rare, so retain all of them before the
+    // bounded stratum reservoir. Turn/river use the deterministic hash gate.
+    return std::popcount(board_mask) == 3 || score % modulus == 0U;
+  }
+
+  void retain(PostflopRealNodeReplaySample sample) {
+    const auto dynamic_class = [&] {
+      bool positive = false;
+      bool negative = false;
+      std::uint16_t maximum = 0U;
+      for (const auto raw : sample.old_regret_codes) {
+        const auto code = static_cast<std::int16_t>(raw);
+        positive = positive || code > 0;
+        negative = negative || code < 0;
+        maximum = std::max<std::uint16_t>(maximum, static_cast<std::uint16_t>(std::abs(code)));
+      }
+      if (maximum == 0U) {
+        return std::uint64_t{0};
+      }
+      if (positive && negative) {
+        return std::uint64_t{4};
+      }
+      if (maximum < 256U) {
+        return std::uint64_t{1};
+      }
+      return maximum < 8192U ? std::uint64_t{2} : std::uint64_t{3};
+    }();
+    std::uint64_t producer_mask = 0U;
+    for (const auto producer : sample.producers) {
+      producer_mask |= 1ULL << static_cast<std::uint8_t>(producer);
+    }
+    const std::uint64_t stratum = static_cast<std::uint64_t>(sample.street) |
+                                  (static_cast<std::uint64_t>(sample.action_count) << 4U) |
+                                  (static_cast<std::uint64_t>(sample.update_player) << 8U) |
+                                  (dynamic_class << 9U) | (producer_mask << 13U) |
+                                  ((sample.iteration & 0xffffULL) << 20U);
+    const auto score = replay_mix(options_.seed ^ sample.structural_signature ^
+                                  (sample.iteration << 32U));
+    std::scoped_lock lock(mutex_);
+    ++corpus_.eligible_updates;
+    std::size_t same_stratum = 0U;
+    std::optional<std::size_t> worst_same;
+    for (std::size_t index = 0U; index < retained_.size(); ++index) {
+      if (retained_[index].stratum == stratum) {
+        ++same_stratum;
+        if (!worst_same || retained_[index].score > retained_[*worst_same].score) {
+          worst_same = index;
+        }
+      }
+    }
+    if (same_stratum >= options_.samples_per_stratum) {
+      if (worst_same && score < retained_[*worst_same].score) {
+        retained_[*worst_same] = Retained{score, stratum, std::move(sample)};
+      }
+      return;
+    }
+    if (retained_.size() < options_.maximum_samples) {
+      retained_.push_back(Retained{score, stratum, std::move(sample)});
+      return;
+    }
+    const auto worst = std::ranges::max_element(retained_, {}, &Retained::score);
+    if (worst != retained_.end() && score < worst->score) {
+      *worst = Retained{score, stratum, std::move(sample)};
+    }
+  }
+
+  [[nodiscard]] PostflopRealNodeReplayCorpus finish() {
+    std::scoped_lock lock(mutex_);
+    std::ranges::sort(retained_, [](const Retained &left, const Retained &right) {
+      return std::tie(left.stratum, left.score) < std::tie(right.stratum, right.score);
+    });
+    corpus_.samples.clear();
+    corpus_.samples.reserve(retained_.size());
+    for (auto &entry : retained_) {
+      corpus_.samples.push_back(std::move(entry.sample));
+    }
+    corpus_.retained_updates = corpus_.samples.size();
+    return std::move(corpus_);
+  }
+
+private:
+  struct Retained {
+    std::uint64_t score{0};
+    std::uint64_t stratum{0};
+    PostflopRealNodeReplaySample sample;
+  };
+  PostflopRealNodeReplayCapture options_;
+  PostflopRealNodeReplayCorpus corpus_;
+  std::vector<Retained> retained_;
+  std::mutex mutex_;
+};
+#endif
+
 template <std::size_t Capacity, bool PlayerIndexed = false,
           typename ComputeScalar = TraversalScalar<Capacity>>
 class DenseTraversal {
@@ -2573,9 +2696,17 @@ public:
   DenseTraversal(DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta = nullptr,
                  const std::uint8_t parallel_action_depth = 0U,
-                 const PreparedRootLock *root_lock = nullptr, const bool pin_worker_threads = false)
+                 const PreparedRootLock *root_lock = nullptr, const bool pin_worker_threads = false
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+                 , std::shared_ptr<RealNodeReplayCollector> replay_collector = nullptr
+#endif
+                 )
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
-        root_lock_(root_lock), pin_worker_threads_(pin_worker_threads) {
+        root_lock_(root_lock), pin_worker_threads_(pin_worker_threads)
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+        , replay_collector_(std::move(replay_collector))
+#endif
+        {
     if (deferred_regret_delta_ != nullptr) {
       deferred_regret_touched_flags_.resize(deferred_regret_delta_->size(), 0U);
     }
@@ -2594,7 +2725,11 @@ public:
           for (std::size_t index = 0U; index < worker_count; ++index) {
             parallel_workers_.push_back(std::make_unique<DenseTraversal>(
                 LeafWorkerTag{}, layout_, buffers_, nullptr, root_lock_, parallel_shared_,
-                static_cast<std::uint8_t>(index + 1U), pin_worker_threads_));
+                static_cast<std::uint8_t>(index + 1U), pin_worker_threads_
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+                , replay_collector_
+#endif
+                ));
           }
           return;
         }
@@ -2602,7 +2737,11 @@ public:
         parallel_shared_ = std::make_shared<ParallelTaskQueue>();
         parallel_worker_ = std::make_unique<DenseTraversal>(
             layout_, buffers_, &parallel_regret_delta_,
-            static_cast<std::uint8_t>(parallel_action_depth - 1U), root_lock_, pin_worker_threads_);
+            static_cast<std::uint8_t>(parallel_action_depth - 1U), root_lock_, pin_worker_threads_
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+            , replay_collector_
+#endif
+            );
         parallel_thread_ = std::jthread([this] { run_worker_loop(); });
       } else {
         // Physical tree: a pool of independent workers, each with its own
@@ -2624,7 +2763,11 @@ public:
           parallel_workers_.push_back(std::make_unique<DenseTraversal>(
               LeafWorkerTag{}, layout_, buffers_,
               has_deltas ? &parallel_worker_deltas_[index] : nullptr, root_lock_, parallel_shared_,
-              static_cast<std::uint8_t>(index + 1U), pin_worker_threads_));
+              static_cast<std::uint8_t>(index + 1U), pin_worker_threads_
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+              , replay_collector_
+#endif
+              ));
         }
       }
     }
@@ -2635,11 +2778,19 @@ public:
   DenseTraversal(LeafWorkerTag, DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta, const PreparedRootLock *root_lock,
                  std::shared_ptr<ParallelTaskQueue> shared_queue,
-                 const std::uint8_t worker_logical_processor, const bool pin_worker_threads)
+                 const std::uint8_t worker_logical_processor, const bool pin_worker_threads
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+                 , std::shared_ptr<RealNodeReplayCollector> replay_collector
+#endif
+                 )
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
         root_lock_(root_lock), parallel_shared_(std::move(shared_queue)),
         worker_logical_processor_(worker_logical_processor),
-        pin_worker_threads_(pin_worker_threads) {
+        pin_worker_threads_(pin_worker_threads)
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+        , replay_collector_(std::move(replay_collector))
+#endif
+        {
     if (deferred_regret_delta_ != nullptr) {
       deferred_regret_touched_flags_.resize(deferred_regret_delta_->size(), 0U);
     }
@@ -2661,6 +2812,28 @@ public:
       parallel_thread_.join();
     }
   }
+
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  void set_replay_iteration(const std::uint64_t iteration) noexcept {
+    replay_iteration_ = iteration;
+    for (auto &worker : parallel_workers_) {
+      worker->replay_iteration_ = iteration;
+    }
+    if (parallel_worker_ != nullptr) {
+      parallel_worker_->set_replay_iteration(iteration);
+    }
+  }
+
+  void set_replay_collector(std::shared_ptr<RealNodeReplayCollector> collector) {
+    replay_collector_ = collector;
+    for (auto &worker : parallel_workers_) {
+      worker->replay_collector_ = collector;
+    }
+    if (parallel_worker_ != nullptr) {
+      parallel_worker_->set_replay_collector(std::move(collector));
+    }
+  }
+#endif
 
   // Per-node timing instrumentation (GTOSD_PROFILE_HOTPATH=1): accumulated
   // on every thread that runs cfr_decision, so totals are serial-equivalent.
@@ -4322,6 +4495,96 @@ private:
       double maximum_average = 0.0;
       const double old_average_scale =
           static_cast<double>(buffers_.strategy_node_scale[scale_index]);
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+      std::optional<PostflopRealNodeReplaySample> replay_sample;
+      if (replay_collector_ != nullptr &&
+          replay_collector_->eligible(replay_iteration_, canonical.representative_node, board.mask,
+                                      player)) {
+        if (decode_current_strategy) {
+          load_canonical_current_strategies(canonical, board, player, scratch, true);
+        }
+        PostflopRealNodeReplaySample captured;
+        captured.iteration = replay_iteration_;
+        captured.representative_node = canonical.representative_node;
+        captured.board_mask = board.mask;
+        captured.street = static_cast<std::uint8_t>(std::clamp(std::popcount(board.mask), 3, 5));
+        captured.update_player = player;
+        captured.actor = canonical.decision.player;
+        captured.action_count = static_cast<std::uint8_t>(action_count);
+        captured.hand_count = static_cast<std::uint16_t>(combos.size());
+        captured.regret_update_weight = regret_update_weight_;
+        captured.strategy_weight = strategy_weight_;
+        captured.positive_regret_discount = positive_regret_discount_;
+        captured.negative_regret_discount = negative_regret_discount_;
+        captured.old_regret_scale = static_cast<float>(old_scale);
+        captured.old_strategy_scale = static_cast<float>(old_average_scale);
+        const auto entries = action_count * combos.size();
+        captured.old_regret_codes.resize(entries);
+        captured.old_strategy_codes.resize(entries);
+        captured.current_policy.resize(entries);
+        captured.action_values.resize(entries);
+        captured.immediate_regret_delta.resize(entries);
+        captured.average_contribution.resize(entries);
+        captured.actor_reach.resize(combos.size());
+        captured.opponent_reach.resize(combos.size());
+        captured.current_values.resize(combos.size());
+        captured.producers.resize(action_count, PostflopReplayProducer::DecisionSubtree);
+        std::uint64_t signature = replay_mix(canonical.representative_node) ^ replay_mix(board.mask);
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          const auto *const old_regret_source =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+          const auto *const old_strategy_source =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+          if (action < canonical.edges.size() && !canonical.edges[action].outcomes.empty()) {
+            const auto &edge = canonical.edges[action];
+            const bool transformed = std::ranges::any_of(edge.outcomes, [this](const auto &outcome) {
+              return !identity_automorphism(outcome.physical_to_child_automorphism);
+            });
+            if (transformed) {
+              captured.producers[action] =
+                  PostflopReplayProducer::TransformedChanceOrSubtree;
+            } else {
+              const auto kind =
+                  layout_.canonical_public_graph.nodes[edge.outcomes.front().child].kind;
+              captured.producers[action] =
+                  kind == PublicNodeKind::TerminalFold       ? PostflopReplayProducer::Fold
+                  : kind == PublicNodeKind::TerminalShowdown ? PostflopReplayProducer::Showdown
+                  : kind == PublicNodeKind::Chance           ? PostflopReplayProducer::Chance
+                                                             : PostflopReplayProducer::DecisionSubtree;
+            }
+          }
+          signature ^= replay_mix(static_cast<std::uint64_t>(captured.producers[action]) + action);
+          for (std::size_t local = 0U; local < combos.size(); ++local) {
+            const auto entry = action * combos.size() + local;
+            const auto slot = BoardLocal ? local : value_slot(combos[local], player);
+            captured.old_regret_codes[entry] = old_regret_source[local];
+            captured.old_strategy_codes[entry] = old_strategy_source[local];
+            captured.current_policy[entry] = static_cast<float>(scratch[action][local]);
+            captured.action_values[entry] = static_cast<float>(action_values[action][slot]);
+            captured.immediate_regret_delta[entry] =
+                static_cast<float>(action_values[action][slot] - values[slot]);
+            captured.average_contribution[entry] = static_cast<float>(
+                strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
+                static_cast<double>(scratch[action][local]));
+          }
+        }
+        const auto opponent = static_cast<std::uint8_t>(1U - player);
+        for (std::size_t local = 0U; local < combos.size(); ++local) {
+          const auto slot = BoardLocal ? local : value_slot(combos[local], player);
+          captured.actor_reach[local] =
+              static_cast<float>((*(*average_reach)[player])[slot]);
+          const auto opponent_slot = layout_.player_flop_slot[opponent][combos[local]];
+          captured.opponent_reach[local] =
+              opponent_slot >= 0
+                  ? static_cast<float>((*(*average_reach)[opponent])[
+                        static_cast<std::size_t>(opponent_slot)])
+                  : 0.0F;
+          captured.current_values[local] = static_cast<float>(values[slot]);
+        }
+        captured.structural_signature = signature;
+        replay_sample = std::move(captured);
+      }
+#endif
       if constexpr (std::is_same_v<Scalar, float>) {
         const auto &slots =
             PlayerIndexed ? board.player_flop_slots[player] : board.player_active_slots[player];
@@ -4854,6 +5117,19 @@ private:
           }
         }
       }
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+      if (replay_sample) {
+        for (std::size_t local = 0U; local < combos.size(); ++local) {
+          const auto slot = BoardLocal ? local : value_slot(combos[local], player);
+          replay_sample->current_values[local] = static_cast<float>(values[slot]);
+          for (std::size_t action = 0U; action < action_count; ++action) {
+            const auto entry = action * combos.size() + local;
+            replay_sample->immediate_regret_delta[entry] =
+                static_cast<float>(action_values[action][slot] - values[slot]);
+          }
+        }
+      }
+#endif
       const auto scaled_scale_started = profile_scaled ? std::chrono::steady_clock::now()
                                                        : std::chrono::steady_clock::time_point{};
       if (profile_scaled) {
@@ -4895,6 +5171,41 @@ private:
         ++prof_scaled_calls_by_action_[action_count];
         prof_scaled_entries_by_action_[action_count] += scaled_entries;
       };
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+      const auto finish_replay_capture = [&] {
+        if (!replay_sample || replay_collector_ == nullptr) {
+          return;
+        }
+        auto &captured = *replay_sample;
+        captured.resulting_regret_scale = encoded_scale;
+        captured.resulting_strategy_scale = average_scale;
+        const auto entries = action_count * combos.size();
+        captured.resulting_regret_values.resize(entries);
+        captured.resulting_strategy_values.resize(entries);
+        captured.resulting_regret_codes.resize(entries);
+        captured.resulting_strategy_codes.resize(entries);
+        captured.parent_returned_values.resize(combos.size());
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          const auto *const regret_source =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+          const auto *const strategy_source =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+          for (std::size_t local = 0U; local < combos.size(); ++local) {
+            const auto entry = action * combos.size() + local;
+            captured.resulting_regret_values[entry] = static_cast<float>(scratch[action][local]);
+            captured.resulting_strategy_values[entry] =
+                static_cast<float>(average_values[action][local]);
+            captured.resulting_regret_codes[entry] = regret_source[local];
+            captured.resulting_strategy_codes[entry] = strategy_source[local];
+          }
+        }
+        for (std::size_t local = 0U; local < combos.size(); ++local) {
+          const auto slot = BoardLocal ? local : value_slot(combos[local], player);
+          captured.parent_returned_values[local] = static_cast<float>(values[slot]);
+        }
+        replay_collector_->retain(std::move(captured));
+      };
+#endif
       if (encoded_scale > 0.0F && average_scale > 0.0F) {
         const double regret_inverse = 1.0 / static_cast<double>(encoded_scale);
         const double average_inverse = 1.0 / static_cast<double>(average_scale);
@@ -4944,6 +5255,9 @@ private:
                            0.0, 65535.0));
           }
         }
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+        finish_replay_capture();
+#endif
         finish_scaled_profile();
         return;
       }
@@ -5016,6 +5330,9 @@ private:
           }
         }
       }
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+      finish_replay_capture();
+#endif
       finish_scaled_profile();
       return;
     }
@@ -13314,6 +13631,10 @@ private:
   double strategy_weight_{0.0};
   double positive_regret_discount_{1.0};
   double negative_regret_discount_{1.0};
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  std::shared_ptr<RealNodeReplayCollector> replay_collector_;
+  std::uint64_t replay_iteration_{0U};
+#endif
 };
 
 template <std::size_t Capacity, bool PlayerIndexed, typename Scalar = TraversalScalar<Capacity>>
@@ -13344,6 +13665,10 @@ std::array<std::array<Scalar, Capacity>, 2> initial_reach(const DenseLayout &lay
 class DenseTraversalRunner {
 public:
   virtual ~DenseTraversalRunner() = default;
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  virtual void set_replay_iteration(std::uint64_t iteration) noexcept = 0;
+  virtual void set_replay_collector(std::shared_ptr<RealNodeReplayCollector> collector) = 0;
+#endif
   [[nodiscard]] virtual Result<bool, PostflopSolverError>
   cfr(std::uint8_t updating_player, double strategy_weight, double regret_update_weight,
       double positive_regret_discount, double negative_regret_discount) = 0;
@@ -13368,12 +13693,29 @@ public:
   TypedDenseTraversalRunner(DenseLayout &layout, const ActionBuffers buffers,
                             std::vector<double> *deferred_regret_delta,
                             const std::uint8_t parallel_action_depth,
-                            const PreparedRootLock *root_lock)
-      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock, false),
+                            const PreparedRootLock *root_lock
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+                            , std::shared_ptr<RealNodeReplayCollector> replay_collector = nullptr
+#endif
+                            )
+      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock, false
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+                   , std::move(replay_collector)
+#endif
+                   ),
         reach_(initial_reach<Capacity, PlayerIndexed, ComputeScalar>(layout)),
         root_(layout.tree.root),
         physical_node_count_(layout.uses_canonical_public_dag ? 0U : layout.tree.stats.node_count) {
   }
+
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  void set_replay_iteration(const std::uint64_t iteration) noexcept override {
+    traversal_.set_replay_iteration(iteration);
+  }
+  void set_replay_collector(std::shared_ptr<RealNodeReplayCollector> collector) override {
+    traversal_.set_replay_collector(std::move(collector));
+  }
+#endif
 
   Result<bool, PostflopSolverError> cfr(const std::uint8_t updating_player,
                                         const double strategy_weight,
@@ -15432,6 +15774,23 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   auto traversal = make_dense_traversal_runner(
       layout.value(), buffers, deferred_delta_needed ? &deferred_regret_delta : nullptr,
       options.parallel_action_depth, prepared_root_lock.get());
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  std::shared_ptr<RealNodeReplayCollector> replay_collector;
+  if (options.diagnostic_real_node_replay != nullptr) {
+    if (!buffers.signed_scaled_regret || options.algorithm != PostflopAlgorithm::Dcfr) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    replay_collector = std::make_shared<RealNodeReplayCollector>(
+        *options.diagnostic_real_node_replay, layout.value().fingerprint);
+    traversal->set_replay_collector(replay_collector);
+  }
+#else
+  if (options.diagnostic_real_node_replay != nullptr) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+#endif
   std::fprintf(stderr, "solver_phase=traversal_ready\n");
   result.timings.layout_seconds = 0.0;
   result.timings.initialization_seconds =
@@ -15520,6 +15879,9 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
           PostflopSolverError::NumericalFailure);
     }
     ++iteration;
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+    traversal->set_replay_iteration(iteration);
+#endif
     const auto traversal_started = std::chrono::steady_clock::now();
     const double effective_iteration =
         iteration > options.averaging_delay
@@ -15790,6 +16152,11 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   }
   result.maximum_normalization_error =
       std::max(traversal->maximum_normalization_error(), normalization_error.value());
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+  if (replay_collector != nullptr) {
+    result.diagnostic_real_node_replay = replay_collector->finish();
+  }
+#endif
   result.checkpoint = std::move(checkpoint);
   result.timings.finalization_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - finalization_started)

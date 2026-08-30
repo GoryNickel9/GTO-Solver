@@ -236,6 +236,53 @@ void test_hs_dcfr30_schedule_and_resume() {
           "HS-DCFR(30) resume is byte-equivalent to a continuous run");
 }
 
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+void test_real_node_replay_capture_is_bounded_and_authoritative() {
+  const auto config = make_small_config();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  auto prepared = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  gtosd::PostflopRealNodeReplayCapture capture;
+  capture.maximum_samples = 12U;
+  capture.samples_per_stratum = 2U;
+  capture.sampling_modulus = 1U;
+  capture.iterations = {1U, 2U};
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 2U;
+  options.certification_interval = 2U;
+  options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
+  options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.diagnostic_real_node_replay = &capture;
+  const auto solved = gtosd::solve_postflop_exact(*prepared, options);
+  require(solved.has_value() && solved.value().diagnostic_real_node_replay.has_value(),
+          "replay-gated DCFR solve returns a corpus");
+  const auto &corpus = *solved.value().diagnostic_real_node_replay;
+  require(!corpus.samples.empty() && corpus.samples.size() <= capture.maximum_samples &&
+              corpus.retained_updates == corpus.samples.size(),
+          "real-node replay capture is nonempty and bounded");
+  for (const auto &sample : corpus.samples) {
+    const auto entries = static_cast<std::size_t>(sample.action_count) * sample.hand_count;
+    require(sample.iteration == 1U || sample.iteration == 2U,
+            "replay only retains selected relative iterations");
+    require(sample.producers.size() == sample.action_count &&
+                sample.old_regret_codes.size() == entries &&
+                sample.old_strategy_codes.size() == entries &&
+                sample.current_policy.size() == entries && sample.action_values.size() == entries &&
+                sample.resulting_regret_values.size() == entries &&
+                sample.resulting_strategy_values.size() == entries &&
+                sample.resulting_regret_codes.size() == entries &&
+                sample.resulting_strategy_codes.size() == entries &&
+                sample.current_values.size() == sample.hand_count &&
+                sample.parent_returned_values.size() == sample.hand_count,
+            "replay sample stores complete action-major input and authoritative output");
+    require(std::bit_cast<std::uint32_t>(sample.old_regret_scale) !=
+                    std::bit_cast<std::uint32_t>(-0.0F) &&
+                std::bit_cast<std::uint32_t>(sample.resulting_regret_scale) !=
+                    std::bit_cast<std::uint32_t>(-0.0F),
+            "replay scales use canonical nonnegative representation");
+  }
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -245,6 +292,9 @@ int main() {
     test_empty_range_rejected();
     test_architectural_topology_is_read_only_and_disjoint();
     test_hs_dcfr30_schedule_and_resume();
+#if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
+    test_real_node_replay_capture_is_bounded_and_authoritative();
+#endif
     std::cout << "phase10 assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {
