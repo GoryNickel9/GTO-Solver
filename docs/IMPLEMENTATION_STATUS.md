@@ -1,10 +1,18 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Audit RBP 2026-08-30:** implementata soltanto telemetria read-only ai
+> checkpoint, con stato solver byte-identico OFF/ON. AHKHQH, TH7D6S e TSTC9D
+> hanno zero action entry che garantiscano almeno un'iterazione di pruning con
+> la formula CFR originale. Esito **Categoria C**: RBP non e' applicabile in
+> modo sound al DCFR production `1.5/0/2`; il pruning effettivo resta non
+> implementato e nessun gate e' sbloccato. Evidenza in
+> `RBP_READ_ONLY_AUDIT_2026-08-30.md`.
+
 > **Aggiornamento root 2026-08-30:** corretto il dispatch del root prepared dal
 > browser fisico al layout production canonico. AHK target @80 e' ora
 > `19,108987 / 19,15`, delta `-0,041013`, Root PASS; TH e TST restano Root PASS,
-> CTest Release 20/20. Il prerequisito root per RBP e' superato; RBP non e'
-> stato ancora implementato. Dettagli in
+> CTest Release 20/20. Il prerequisito root per l'audit RBP e' superato; il
+> pruning RBP non e' implementato. Dettagli in
 > `AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`.
 
 > **Verifica documentale:** 2026-08-29, piano P0-P7 chiuso con Esito B.
@@ -20,9 +28,10 @@
 > exact signed `1.5/0/2`, delay zero e otto thread per AHK/TH/TST. La baseline
 > normalizzata e' in `PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`. Il Root FAIL
 > AHK e il blocco RBP della prima versione del report sono superseded dal fix
-> prepared-root 2026-08-30; RBP non e' stato ancora prototipato.
+> prepared-root 2026-08-30. L'audit RBP read-only successivo ha Esito C e non
+> modifica il motore production.
 
-Aggiornato: 2026-08-29
+Aggiornato: 2026-08-30
 
 Le specifiche tecniche canoniche sono indicizzate in
 [`specifications/README.md`](specifications/README.md). Questo documento
