@@ -53,6 +53,10 @@ constexpr WorkloadShape workload_shapes[] = {
     {"small", 24U, 48U, 48U},
     {"medium", 80U, 220U, 220U},
     {"large", 220U, 500U, 500U},
+    // Observed TSTC9D river maxima, in both asymmetric player-pass
+    // orientations: rank cells / hero combos / opponent combos.
+    {"tst_p0", 36U, 358U, 301U},
+    {"tst_p1", 36U, 301U, 358U},
 };
 
 struct ComboData {
@@ -112,11 +116,17 @@ struct Fixture {
   explicit Fixture(const WorkloadShape shape)
       : shape(shape), opponent(shape.opponent_hands), hero(shape.hero_hands),
         opponent_reach(shape.opponent_hands),
+        parent_reach(shape.opponent_hands),
+        action_strategy(shape.opponent_hands),
+        level1_reference_child(shape.opponent_hands),
+        level1_candidate_child(shape.opponent_hands),
         touched(shape.opponent_hands * 2U), baseline(make_scratch()),
         candidate(make_scratch()), four_lane(make_four_lane_scratch()),
         production_batch_accum(make_four_lane_accum_scratch()),
         production_two_card(make_four_lane_scratch()),
-        production_shared_reach(make_scratch()) {
+        production_shared_reach(make_scratch()),
+        level1_reference_summary(make_scratch()),
+        level1_candidate_summary(make_scratch()) {
     for (auto &reach : lane_reaches) {
       reach.resize(shape.opponent_hands);
     }
@@ -133,6 +143,12 @@ struct Fixture {
       scratch = make_scratch();
     }
     for (auto &scratch : production_same_reach_shared) {
+      scratch = make_scratch();
+    }
+    for (auto &scratch : level1_reference_output) {
+      scratch = make_scratch();
+    }
+    for (auto &scratch : level1_candidate_output) {
       scratch = make_scratch();
     }
     for (auto &output : production_two_card_output) {
@@ -152,6 +168,10 @@ struct Fixture {
           static_cast<std::uint16_t>(local)};
       opponent_reach[local] =
           static_cast<float>(((local * 29U + 17U) % 997U) + 1U) / 997.0F;
+      parent_reach[local] =
+          static_cast<float>(((local * 41U + 23U) % 991U) + 1U) / 991.0F;
+      action_strategy[local] =
+          static_cast<float>(((local * 53U + 31U) % 983U) + 1U) / 983.0F;
       for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
         lane_reaches[lane][local] = static_cast<float>(
             ((local * (29U + lane * 12U) + 17U + lane * 101U) % 997U) + 1U) /
@@ -256,6 +276,7 @@ struct Fixture {
         std::abort();
       }
     }
+    validate_terminal_reach_level1();
   }
 
   [[nodiscard]] Scratch make_scratch() const {
@@ -656,6 +677,128 @@ struct Fixture {
     finish_production_avx2(scratch, reach, payoff);
   }
 
+  void materialize_level1_child(std::vector<float> &child) const {
+    std::size_t local = 0U;
+    for (; local + 4U <= shape.opponent_hands; local += 4U) {
+      const __m256d parents =
+          _mm256_cvtps_pd(_mm_loadu_ps(parent_reach.data() + local));
+      const __m256d strategies =
+          _mm256_cvtps_pd(_mm_loadu_ps(action_strategy.data() + local));
+      _mm_storeu_ps(child.data() + local,
+                    _mm256_cvtpd_ps(_mm256_mul_pd(parents, strategies)));
+    }
+    for (; local < shape.opponent_hands; ++local) {
+      child[local] = static_cast<float>(
+          static_cast<double>(parent_reach[local]) *
+          static_cast<double>(action_strategy[local]));
+    }
+  }
+
+  void materialize_level1_view(Scratch &summary,
+                               std::vector<float> &child) const {
+    std::fill(summary.totals.begin(), summary.totals.end(), 0.0F);
+    summary.prefix[0] = 0.0F;
+    std::fill_n(summary.card_prefix.begin(), card_count, 0.0F);
+    const auto accumulate_one = [&](const std::size_t local) {
+      const float weight = child[local];
+      summary.totals[opponent_columns.rank[local]] += weight;
+      summary.by_card[opponent_columns.first_by_rank[local]] += weight;
+      summary.by_card[opponent_columns.second_by_rank[local]] += weight;
+    };
+    std::size_t local = 0U;
+    for (; local + 4U <= shape.opponent_hands; local += 4U) {
+      const __m256d parents =
+          _mm256_cvtps_pd(_mm_loadu_ps(parent_reach.data() + local));
+      const __m256d strategies =
+          _mm256_cvtps_pd(_mm_loadu_ps(action_strategy.data() + local));
+      _mm_storeu_ps(child.data() + local,
+                    _mm256_cvtpd_ps(_mm256_mul_pd(parents, strategies)));
+      accumulate_one(local);
+      accumulate_one(local + 1U);
+      accumulate_one(local + 2U);
+      accumulate_one(local + 3U);
+    }
+    for (; local < shape.opponent_hands; ++local) {
+      child[local] = static_cast<float>(
+          static_cast<double>(parent_reach[local]) *
+          static_cast<double>(action_strategy[local]));
+      accumulate_one(local);
+    }
+    prepare_production_prefix(summary);
+  }
+
+  void reset_level1_summary(Scratch &summary) const {
+    for (const auto cell : touched) {
+      summary.by_card[cell] = 0.0F;
+    }
+  }
+
+  void run_terminal_reach_reference(const std::size_t query_count) {
+    materialize_level1_child(level1_reference_child);
+    for (std::size_t query = 0U; query < query_count; ++query) {
+      run_production_reference(level1_reference_output[query],
+                               level1_reference_child,
+                               production_lane_payoffs[query]);
+    }
+  }
+
+  void run_terminal_reach_candidate(const std::size_t query_count) {
+    materialize_level1_view(level1_candidate_summary,
+                            level1_candidate_child);
+    for (std::size_t query = 0U; query < query_count; ++query) {
+      produce_production_avx2(level1_candidate_summary,
+                              level1_candidate_output[query],
+                              level1_candidate_child,
+                              production_lane_payoffs[query]);
+    }
+    reset_level1_summary(level1_candidate_summary);
+  }
+
+  void validate_terminal_reach_level1() {
+    materialize_level1_child(level1_reference_child);
+    accumulate_production_scalar(level1_reference_summary,
+                                 level1_reference_child);
+    prepare_production_prefix(level1_reference_summary);
+    materialize_level1_view(level1_candidate_summary,
+                            level1_candidate_child);
+
+    const auto same_bits = [](const std::vector<float> &left,
+                              const std::vector<float> &right) {
+      return left.size() == right.size() &&
+             std::memcmp(left.data(), right.data(),
+                         left.size() * sizeof(float)) == 0;
+    };
+    if (!same_bits(level1_reference_child, level1_candidate_child) ||
+        !same_bits(level1_reference_summary.totals,
+                   level1_candidate_summary.totals) ||
+        !same_bits(level1_reference_summary.by_card,
+                   level1_candidate_summary.by_card) ||
+        !same_bits(level1_reference_summary.prefix,
+                   level1_candidate_summary.prefix) ||
+        !same_bits(level1_reference_summary.card_prefix,
+                   level1_candidate_summary.card_prefix)) {
+      std::abort();
+    }
+    for (std::size_t query = 0U; query < batch_lane_count; ++query) {
+      produce_production_avx2(level1_reference_summary,
+                              level1_reference_output[query],
+                              level1_reference_child,
+                              production_lane_payoffs[query]);
+      produce_production_avx2(level1_candidate_summary,
+                              level1_candidate_output[query],
+                              level1_candidate_child,
+                              production_lane_payoffs[query]);
+      if (!same_bits(level1_reference_output[query].rank_base,
+                     level1_candidate_output[query].rank_base) ||
+          !same_bits(level1_reference_output[query].output,
+                     level1_candidate_output[query].output)) {
+        std::abort();
+      }
+    }
+    reset_level1_summary(level1_reference_summary);
+    reset_level1_summary(level1_candidate_summary);
+  }
+
   void accumulate_four_interleaved(std::vector<float> &totals,
                                    std::vector<float> &by_card) const {
     std::fill(totals.begin(), totals.end(), 0.0F);
@@ -893,6 +1036,10 @@ struct Fixture {
   ComboColumns opponent_columns;
   ComboColumns hero_columns;
   std::vector<float> opponent_reach;
+  std::vector<float> parent_reach;
+  std::vector<float> action_strategy;
+  std::vector<float> level1_reference_child;
+  std::vector<float> level1_candidate_child;
   std::vector<std::uint16_t> touched;
   Scratch baseline;
   Scratch candidate;
@@ -904,6 +1051,10 @@ struct Fixture {
   std::array<Scratch, batch_lane_count> production_same_reach_reference;
   std::array<Scratch, batch_lane_count> production_same_reach_shared;
   Scratch production_shared_reach;
+  Scratch level1_reference_summary;
+  Scratch level1_candidate_summary;
+  std::array<Scratch, batch_lane_count> level1_reference_output;
+  std::array<Scratch, batch_lane_count> level1_candidate_output;
   std::array<std::vector<float>, batch_lane_count>
       production_two_card_output;
   FourLaneAccumScratch production_batch_accum;
@@ -914,7 +1065,9 @@ Fixture &fixture(const std::size_t workload) {
   static Fixture small(workload_shapes[0]);
   static Fixture medium(workload_shapes[1]);
   static Fixture large(workload_shapes[2]);
-  Fixture *const fixtures[] = {&small, &medium, &large};
+  static Fixture tst_p0(workload_shapes[3]);
+  static Fixture tst_p1(workload_shapes[4]);
+  Fixture *const fixtures[] = {&small, &medium, &large, &tst_p0, &tst_p1};
   return *fixtures[workload];
 }
 
@@ -1077,6 +1230,62 @@ void BM_ShowdownFourBatchTwoCardAvx2(benchmark::State &state,
   publish_four_lane_metrics(state, data);
 }
 
+void publish_terminal_reach_metrics(benchmark::State &state,
+                                    const Fixture &data,
+                                    const std::size_t query_count) {
+  const auto terminal_queries = state.iterations() * query_count;
+  state.SetItemsProcessed(terminal_queries);
+  state.counters["terminal_queries_per_second"] = benchmark::Counter(
+      static_cast<double>(terminal_queries), benchmark::Counter::kIsRate);
+  state.counters["queries_per_reach"] = static_cast<double>(query_count);
+  state.counters["rank_cells"] = static_cast<double>(data.shape.rank_count);
+  state.counters["hero_hands"] = static_cast<double>(data.shape.hero_hands);
+  state.counters["opponent_hands"] =
+      static_cast<double>(data.shape.opponent_hands);
+  state.counters["touched_rank_card_cells"] =
+      static_cast<double>(data.touched.size());
+  const auto summary_floats =
+      data.shape.rank_count + data.shape.rank_count * card_count +
+      (data.shape.rank_count + 1U) +
+      (data.shape.rank_count + 1U) * card_count;
+  state.counters["view_incremental_bytes"] =
+      static_cast<double>(summary_floats * sizeof(float));
+}
+
+void BM_TerminalReachReference(benchmark::State &state,
+                               const std::size_t workload,
+                               const std::size_t query_count) {
+  auto &data = fixture(workload);
+  for (auto _ : state) {
+    static_cast<void>(_);
+    data.run_terminal_reach_reference(query_count);
+    benchmark::DoNotOptimize(data.level1_reference_child.data());
+    for (std::size_t query = 0U; query < query_count; ++query) {
+      benchmark::DoNotOptimize(
+          data.level1_reference_output[query].output.data());
+    }
+    benchmark::ClobberMemory();
+  }
+  publish_terminal_reach_metrics(state, data, query_count);
+}
+
+void BM_TerminalReachView(benchmark::State &state,
+                          const std::size_t workload,
+                          const std::size_t query_count) {
+  auto &data = fixture(workload);
+  for (auto _ : state) {
+    static_cast<void>(_);
+    data.run_terminal_reach_candidate(query_count);
+    benchmark::DoNotOptimize(data.level1_candidate_child.data());
+    for (std::size_t query = 0U; query < query_count; ++query) {
+      benchmark::DoNotOptimize(
+          data.level1_candidate_output[query].output.data());
+    }
+    benchmark::ClobberMemory();
+  }
+  publish_terminal_reach_metrics(state, data, query_count);
+}
+
 BENCHMARK_CAPTURE(BM_ShowdownBaseline, small, 0U);
 BENCHMARK_CAPTURE(BM_ShowdownBaseline, medium, 1U);
 BENCHMARK_CAPTURE(BM_ShowdownBaseline, large, 2U);
@@ -1104,5 +1313,13 @@ BENCHMARK_CAPTURE(BM_ShowdownFourBatchAccumProductionFinish, large, 2U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchTwoCardAvx2, small, 0U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchTwoCardAvx2, medium, 1U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchTwoCardAvx2, large, 2U);
+BENCHMARK_CAPTURE(BM_TerminalReachReference, tst_p0_q1, 3U, 1U);
+BENCHMARK_CAPTURE(BM_TerminalReachView, tst_p0_q1, 3U, 1U);
+BENCHMARK_CAPTURE(BM_TerminalReachReference, tst_p0_q4, 3U, 4U);
+BENCHMARK_CAPTURE(BM_TerminalReachView, tst_p0_q4, 3U, 4U);
+BENCHMARK_CAPTURE(BM_TerminalReachReference, tst_p1_q1, 4U, 1U);
+BENCHMARK_CAPTURE(BM_TerminalReachView, tst_p1_q1, 4U, 1U);
+BENCHMARK_CAPTURE(BM_TerminalReachReference, tst_p1_q4, 4U, 4U);
+BENCHMARK_CAPTURE(BM_TerminalReachView, tst_p1_q4, 4U, 4U);
 
 } // namespace
