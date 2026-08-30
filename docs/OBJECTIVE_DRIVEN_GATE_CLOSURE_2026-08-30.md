@@ -61,7 +61,7 @@ annullare il gate RAM production.
 | 1 | worst correctness 156.825x | scomposizione chance | distinguere identity/transform/multiplicity | identity <=4,4e-16; transformed 1,56e-7; multiplicity zero | root cause confermata | invariato |
 | 2 | reuse con reach non invariante | rivalutare outcome con reach opponent distinto | payoff <=1e-11, BR/profile exact | TST@5 6,143e-9 -> -8,88e-16; TST@20 -> -3,39e-15; target -> 3,22e-15 | PROMOTE `40104f0` | correctness `(2,156825x) -> (0,0)` |
 | 3 | certification aumentata | BR actor fast path | -5..15% certification, bit-identico | tre A/B: certification mediana 9,6249 -> 9,0981 s; solver 27,9039 -> 26,1106 s | PROMOTE `c9acfe3` | correctness invariata; time migliorato ma FAIL TST |
-| 4 | traversal TST dominante | signed state pass fusion | eliminare almeno una passata >=5% traversal | updater già fuso; 396,8 ms / 26.103,8 ms = 1,52% wall profilato | CLOSE | invariato |
+| 4 | traversal TST dominante | signed state pass fusion | eliminare almeno una passata >=5% traversal | misura iniziale attribuiva erroneamente il costo river a `value+update`; candidato riaperto per una misura ai boundary reali | INCONCLUSIVE -> loop 13 | invariato |
 | 5 | certification duplicata | pair profile+BR dello stesso player | -20..35% certification, bit-identico | tre A/B: cert mediana 9,96 -> 7,75 s; exact differential e zero-rake mirror PASS | PROMOTE `4a7e851` | performance migliora, TST time ancora FAIL |
 | 6 | terminal/showdown dominante | frontier batching 4-lane | iniziale 2,2..2,9x kernel sintetico | benchmark non faithful: baseline scalarizza prefix/output già AVX2 production; coverage root-local 53,695% | CLOSE autonomo; tooling conservato `0b71489` | informazione acquisita, F invariato |
 | 7 | distinct-outcome tail seriale | flat worklist exact + nested pool | -15..30% certification residua | tre A/B con binari distinti: cert mediana 7,148 -> 5,904 s; payoff/BR/profile bit-identici | PROMOTE `0d51fd6` | performance migliora, TST time ancora FAIL |
@@ -69,6 +69,21 @@ annullare il gate RAM production.
 | 9 | validare il cost model terminal-lane | benchmark production-faithful | >=2,0x medium/large, bit-identico | accumulation-only 0,895..0,933x; 2-card x 4-root mediana 1,846x medium e 1,584x large | REJECT production; tooling PROMOTE `91caf7e` | informazione acquisita, F invariato |
 | 10 | verificare whole-river lane occupancy | topology/kernel-shape telemetry width 4/2 | coverage sufficiente a >=30% traversal | 167.992 root: zero quartetti; width-2 copre 34,1305% del lavoro, massimo ideale 17,065% | REJECT entrambe; telemetry PROMOTE `18751d8` | blocker corrente dimostrato |
 | 11 | nuovo correctness/stability FAIL | paired certification stack frames | rimuovere overflow senza cambiare valori o stack process | phase7 pre-fix `0xC00000FD`; post-fix 3/3 PASS; oracle legacy/paired PASS | PROMOTE `19fe8ea` | correctness/stability ripristinata; F torna allo stato precedente |
+| 12 | terminale dominante | same-reach aggregation sharing | kernel exact >=2x e reuse sufficiente nel regime target | large Level 1 circa 2,0x; ultimi 40 player-pass target: 160.392 repeat / 23.170.982 showdown = 0,6922% | REJECT production; tooling PROMOTE `782acf0` | F invariato; upper bound <1% terminale |
+| 13 | signed-state cost ignoto | full state-pass fusion | eliminare una passata completa exact con upside >=5% traversal | @20: signed 19.015,0 / 43.823,4 ms = 43,39%; encode 5.605,3 ms = 12,79%; la scala globale impone la seconda fase | CLOSE; telemetry PROMOTE `5ae7629` | F invariato; rappresentazione exact invariata |
+
+Candidate pool dell'ultima iterazione, ordinato per expected information gain:
+
+| Ipotesi | Gain obiettivo atteso | Confidenza | Costo impl./valid. | Rischio numerico/RAM | Generalità | Evidenza precedente | Esito |
+|---|---:|---:|---|---|---|---|---|
+| share aggregation fra showdown con reach identico | 0-8% traversal prima della coverage | media | medio/medio | basso/basso | alta | repeat elevati nei primi pass | REJECT dopo coverage target 0,6922% |
+| full signed pass fusion / scratch-free recompute | 5-15% traversal | media | alto/alto | alto/basso | alta | attribuzione timer incompleta | CLOSE: scala globale e encode 12,79% |
+| joint reach/rank-card + signed tile layout | 20-40% traversal teorico | bassa | molto alto/molto alto | alto/alto | alta | terminale 57,19% e signed 43,39% | DEFER: manca prova end-to-end >=30% |
+
+La priorità sperimentale ha scelto prima i due candidati con costo Level 1
+contenuto e informazione capace di chiudere un'intera famiglia. Il terzo non è
+stato mutato in production: senza una prova di layout, ordine IEEE e RAM
+rischierebbe di combinare due cambiamenti non differenziabili.
 
 ## 5. AHK correctness audit
 
@@ -203,9 +218,32 @@ a tre. Max scan e average non sono passate complete separate: la prima passata
 produce entrambi gli scratch e i massimi; la seconda deve attendere le scale
 globali definitive prima di quantizzare e scrivere i due code.
 
-Il profilo TST@20 attribuisce all'intero signed update `396,8 ms` su
-`26.103,8 ms` wall (`1,52%`). Anche eliminarlo interamente, cosa non exact,
-resterebbe sotto la soglia economica. `full state-pass fusion` è quindi CLOSE.
+La prima attribuzione (`396,8 ms / 26.103,8 ms = 1,52%`) era errata: il timer
+river includeva l'updater in `value+update`. La telemetria compile-time ora
+misura direttamente i boundary della funzione signed. Aggregato su tutti i 40
+player-pass TST fixed@20:
+
+| Boundary | Tempo CPU-equivalent | Quota lavoro nominato |
+|---|---:|---:|
+| calculate/update/max/average | 12.673,2 ms | 28,92% |
+| scale compute/telemetry | 736,5 ms | 1,68% |
+| encode/writeback | 5.605,3 ms | 12,79% |
+| signed totale | 19.015,0 ms | 43,39% |
+
+Il denominatore omogeneo è `43.823,4 ms` di subpart CPU-equivalent; il wall
+dei 40 pass è `27.644,1 ms`. Sono state elaborate `6.393.749.957` entry in
+`10.955.244` chiamate. Il traffico algoritmico contato ai confini signed è
+circa `24,02 B/entry` (`8E + 16 B/node` state e `16E` scratch), oltre agli
+input action/current/reach.
+
+La correzione del cost model riapre ma non promuove la fusion. La scala finale
+è definita dal massimo di tutte le entry del nodo; quantizzare durante la prima
+passata cambierebbe scale, rounding o richiederebbe una riscrittura dei code.
+La sola seconda passata vale al massimo il `12,79%` del lavoro nominato, già
+insufficiente per il gap traversal >=30%, e non è eliminabile byte-exact con la
+rappresentazione corrente. Ricalcolare gli update nella seconda fase evita lo
+scratch ma duplica decode, gather e aritmetica. `full state-pass fusion` è
+quindi CLOSE per questa rappresentazione, non perché l'updater sia irrilevante.
 
 ## 9. Ranking architetturale
 
@@ -219,7 +257,8 @@ resterebbe sotto la soglia economica. `full state-pass fusion` è quindi CLOSE.
 | four-lane whole river | zero gruppi compatibili da quattro | alta dopo telemetry | molto alto/alto RAM | REJECT |
 | two-lane whole river | <=17,065% river work a 2x ideale | alta dopo telemetry | molto alto/alto RAM | REJECT |
 | four-lane joint certification | 8-18% certification residua | media-bassa | alto/alto | CLOSE per economics |
-| full state-pass fusion | <=1,52% traversal assoluto | alta | alto/alto | CLOSE |
+| same-reach showdown aggregation | circa 2x kernel, ma <1% terminale target | alta | medio/basso | REJECT; tooling `782acf0` |
+| full state-pass fusion | signed 43,39%; seconda fase 12,79%; nessuna eliminazione exact | alta | alto/alto | CLOSE; telemetry `5ae7629` |
 | paired certification out-parameters | correctness/stability, nessun gain rivendicato | alta | basso/basso | PROMOTE `19fe8ea` |
 
 Il benchmark four-lane conserva valore come proof-of-concept bit-identica con
@@ -242,6 +281,16 @@ small/medium/large. Tre processi baseline/candidate alternati danno:
 La sola accumulation batched e quattro finish production è regressiva
 (`0,895..0,933x`). Il large non raggiunge neppure la soglia `1,74x` richiesta
 con occupancy teorica 100%, quindi il broker terminale è economicamente morto.
+
+Il benchmark same-reach separa invece l'aggregation reach-dependent dal
+producer payoff-dependent. L'oracle confronta bit per bit quattro output con
+payoff distinti. Nel run finale la mediana large passa da `15.569 ns` CPU a
+`7.785 ns` (circa `2,00x`; run precedente `2,15x`). Questo dimostra il kernel,
+non la coverage. La telemetria di reuse distance mostra che il vantaggio è
+concentrato nelle prime iterazioni; nel regime target degli ultimi 40
+player-pass soltanto `160.392 / 23.170.982 = 0,6922%` delle chiamate ripete un
+reach. Anche rendendo gratuita ogni aggregation ripetuta, l'upper bound resta
+inferiore all'1% del terminale: integrazione production REJECT.
 
 La telemetry compile-time del river subtree usa descriptor strutturali
 internati con full equality; reach, payoff, amount, offset e metadata fisici
@@ -270,7 +319,12 @@ di almeno circa 30%, non dimostrata dalle famiglie rimaste.
 - decision-node rounding come root cause: REJECT, il primo salto è chance;
 - terminal payoff correction: REJECT, terminali già entro circa 1e-15;
 - post-hoc zero-sum/mirror/tolerance change: vietati e non implementati;
-- full state-pass fusion: CLOSE, nessuna passata completa eliminabile exact;
+- same-reach aggregation: REJECT production; il kernel exact è circa `2x`
+  large ma il reuse target è soltanto `0,6922%`; benchmark PROMOTE `782acf0`;
+- full state-pass fusion: CLOSE dopo misura corretta; signed totale `43,39%`,
+  encode/writeback `12,79%`, ma il massimo globale del nodo rende la seconda
+  fase necessaria per conservare scale, rounding e byte finali; telemetry
+  PROMOTE `5ae7629`;
 - same-player profile+BR pair: PROMOTE, commit `4a7e851`;
 - four-lane terminal proof-of-concept e frontier telemetry: tooling PROMOTE
   `0b71489`, integrazione production CLOSE;
@@ -328,6 +382,11 @@ durante full CTest a 18751d8:
 dopo out-parameter recursion a 19fe8ea:
   phase7 3/3 PASS e differential legacy/paired PASS; F torna allo stato
   precedente senza variazioni matematiche osservate.
+
+dopo same-reach e signed-pass telemetry:
+  F invariato; il reuse target limita il primo candidato a <1% del terminale.
+  Il secondo corregge il cost model (signed 43,39%, non 1,52%), ma nessuna
+  passata >=30% è eliminabile exact con la rappresentazione corrente.
 ```
 
 Il peggioramento temporale del fix è accettato soltanto perché correctness è il
@@ -367,6 +426,12 @@ sotto il limite totale.
 - frontier occupancy TST@20: 40 player-pass, coverage quartet root-local
   `53,695%`;
 - production-faithful showdown oracle: `memcmp` PASS small/medium/large;
+- same-reach showdown oracle: bit identity PASS small/medium/large; tre
+  repetition finali, large CPU mediana `15.569 -> 7.785 ns`;
+- TST fixed@20 reuse-distance: PASS diagnostico; il target autorevole degli
+  ultimi 40 player-pass misura `0,6922%` repeat;
+- TST fixed@20 signed-boundary profile: 40 player-pass, `6.393.749.957` entry,
+  calculate `12.673,2 ms`, scale `736,5 ms`, encode `5.605,3 ms`;
 - tre processi alternati production sequential/two-card: medium `1,846x`,
   large `1,584x`, REJECT;
 - topology telemetry TST fixed@1: zero quartetti; pair work coverage
@@ -384,6 +449,8 @@ sotto il limite totale.
   bit-exact legacy/paired e mirror zero-rake;
 - build Release completa post-stack-fix: PASS;
 - full CTest Release finale a `19fe8ea`: **20/20 PASS in 202,66 s**;
+- build Release completo post-telemetry: PASS; full CTest finale a `5ae7629`:
+  **20/20 PASS in 192,11 s**, incluso benchmark smoke e reference differential;
 - TST@80 mid: payoff/RAM/state PASS;
 - AHK/TH target sanity: correctness PASS;
 - TST target correctness: PASS;
@@ -406,10 +473,13 @@ player-pass pieno, pari al numero totale di decision node riportato dal layout:
 non emerge una seconda valutazione dello stesso decision state da eliminare.
 
 Il prossimo singolo passo ad alta priorità richiede quindi una fase
-architetturale distinta: progettare un nuovo layout reach/rank-card che elimini
-scatter e ricostruzioni terminali mantenendo contemporaneamente hero-SIMD,
-state serializzato invariato, ordine IEEE per lane e margine RAM. Prima di una
-mutazione production deve avere una prova statica e un benchmark end-to-end con
-upside traversal almeno `30%`; nessun candidato rimasto in questa fase soddisfa
-questa soglia. Ogni outcome trasformato continua a richiedere il reach opponent
-reale o una prova di invarianza bytewise.
+architetturale distinta: progettare un layout reach/rank-card e signed-state
+con un producer tile-local capace di mantenere insieme hero-SIMD, scala exact,
+state serializzato invariato, ordine IEEE e margine RAM. Il cost model ora
+identifica due budget reali, terminale `57,19%` e signed `43,39%` del lavoro
+nominato, ma i candidati isolati chiusi eliminano rispettivamente <1% e al
+massimo una fase del 12,79%. Prima di una mutazione production serve una prova
+statica e un benchmark end-to-end con upside traversal almeno `30%`; nessun
+candidato rimasto in questa fase soddisfa la soglia. Ogni outcome trasformato
+continua a richiedere il reach opponent reale o una prova di invarianza
+bytewise.
