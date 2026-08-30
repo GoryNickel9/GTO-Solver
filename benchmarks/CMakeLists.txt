@@ -1,4 +1,5 @@
 find_package(benchmark CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 
 add_executable(gtosd_benchmark_smoke benchmark_smoke.cpp)
 target_link_libraries(gtosd_benchmark_smoke
@@ -37,6 +38,10 @@ add_executable(gtosd_tile_state_pipeline_benchmark
 target_link_libraries(gtosd_tile_state_pipeline_benchmark
   PRIVATE benchmark::benchmark)
 gtosd_set_warnings(gtosd_tile_state_pipeline_benchmark)
+
+add_executable(gtosd_real_node_state_replay real_node_state_replay.cpp)
+target_link_libraries(gtosd_real_node_state_replay PRIVATE nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_real_node_state_replay)
 
 add_test(NAME gtosd_exact_state_representation_benchmark_smoke
   COMMAND gtosd_exact_state_representation_benchmark

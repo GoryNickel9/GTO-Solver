@@ -1049,6 +1049,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   std::vector<gtosd::RbpReadOnlySnapshot> rbp_snapshots;
   double solver_cpu_started = 0.0;
   gtosd::PostflopSolveOptions options;
+  gtosd::PostflopRealNodeReplayCapture replay_capture;
   options.iterations = spec.diagnostic_iteration_limit;
   options.averaging_delay = spec.averaging_delay;
   options.certification_interval = spec.certification_interval;
@@ -1063,6 +1064,37 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   options.parallel_action_depth = spec.parallel_action_depth;
   options.enable_lossless_isomorphism = spec.enable_lossless_isomorphism;
   options.enable_canonical_public_dag = spec.enable_canonical_public_dag;
+  const auto replay_output_path = environment_value("GTOSD_REAL_NODE_REPLAY_OUTPUT");
+  if (replay_output_path) {
+    replay_capture.iterations = spec.diagnostic_iteration_limit == 0U
+                                    ? std::vector<std::uint64_t>{1U, 20U, 80U, 160U, 200U}
+                                    : std::vector<std::uint64_t>{
+                                          1U,
+                                          std::max<std::uint64_t>(
+                                              1U, spec.diagnostic_iteration_limit / 2U),
+                                          spec.diagnostic_iteration_limit};
+    std::ranges::sort(replay_capture.iterations);
+    replay_capture.iterations.erase(
+        std::unique(replay_capture.iterations.begin(), replay_capture.iterations.end()),
+        replay_capture.iterations.end());
+    if (const auto maximum = environment_value("GTOSD_REAL_NODE_REPLAY_MAX_SAMPLES")) {
+      const auto parsed = parse_u64(*maximum);
+      if (!parsed || *parsed == 0U) {
+        std::cerr << "postflop real-node replay failed: invalid_maximum_samples\n";
+        return 2;
+      }
+      replay_capture.maximum_samples = *parsed;
+    }
+    if (const auto modulus = environment_value("GTOSD_REAL_NODE_REPLAY_MODULUS")) {
+      const auto parsed = parse_u64(*modulus);
+      if (!parsed || *parsed == 0U) {
+        std::cerr << "postflop real-node replay failed: invalid_sampling_modulus\n";
+        return 2;
+      }
+      replay_capture.sampling_modulus = *parsed;
+    }
+    options.diagnostic_real_node_replay = &replay_capture;
+  }
   options.progress_callback = [&config, &runtime_samples,
                                &solver_cpu_started](const gtosd::PostflopCertification &point) {
     runtime_samples[point.iteration] = {
@@ -1112,6 +1144,101 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                          : gtosd::postflop_solver_error_name(solved.error()))
               << '\n';
     return 1;
+  }
+
+  if (replay_output_path) {
+    if (!solved.value().diagnostic_real_node_replay) {
+      std::cerr << "postflop real-node replay failed: capture_unavailable\n";
+      return 2;
+    }
+    const auto producer_name = [](const gtosd::PostflopReplayProducer producer) {
+      switch (producer) {
+      case gtosd::PostflopReplayProducer::Fold:
+        return "fold";
+      case gtosd::PostflopReplayProducer::Showdown:
+        return "showdown";
+      case gtosd::PostflopReplayProducer::DecisionSubtree:
+        return "decision_subtree";
+      case gtosd::PostflopReplayProducer::Chance:
+        return "chance";
+      case gtosd::PostflopReplayProducer::TransformedChanceOrSubtree:
+        return "transformed_chance_or_subtree";
+      }
+      return "unknown";
+    };
+    const auto &corpus = *solved.value().diagnostic_real_node_replay;
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto &sample : corpus.samples) {
+      std::vector<std::string> producers;
+      producers.reserve(sample.producers.size());
+      for (const auto producer : sample.producers) {
+        producers.emplace_back(producer_name(producer));
+      }
+      samples.push_back({
+          {"iteration", sample.iteration},
+          {"representative_node", sample.representative_node},
+          {"board_mask", sample.board_mask},
+          {"structural_signature", sample.structural_signature},
+          {"street", sample.street},
+          {"update_player", sample.update_player},
+          {"actor", sample.actor},
+          {"action_count", sample.action_count},
+          {"hand_count", sample.hand_count},
+          {"regret_update_weight", sample.regret_update_weight},
+          {"strategy_weight", sample.strategy_weight},
+          {"positive_regret_discount", sample.positive_regret_discount},
+          {"negative_regret_discount", sample.negative_regret_discount},
+          {"old_regret_scale", sample.old_regret_scale},
+          {"old_strategy_scale", sample.old_strategy_scale},
+          {"resulting_regret_scale", sample.resulting_regret_scale},
+          {"resulting_strategy_scale", sample.resulting_strategy_scale},
+          {"producers", std::move(producers)},
+          {"old_regret_codes", sample.old_regret_codes},
+          {"old_strategy_codes", sample.old_strategy_codes},
+          {"current_policy", sample.current_policy},
+          {"actor_reach", sample.actor_reach},
+          {"opponent_reach", sample.opponent_reach},
+          {"action_values", sample.action_values},
+          {"current_values", sample.current_values},
+          {"immediate_regret_delta", sample.immediate_regret_delta},
+          {"average_contribution", sample.average_contribution},
+          {"resulting_regret_values", sample.resulting_regret_values},
+          {"resulting_strategy_values", sample.resulting_strategy_values},
+          {"resulting_regret_codes", sample.resulting_regret_codes},
+          {"resulting_strategy_codes", sample.resulting_strategy_codes},
+          {"parent_returned_values", sample.parent_returned_values}});
+    }
+    const nlohmann::json output{
+        {"schema", "gtosd.real_node_replay.v1"},
+        {"format_major", corpus.format_major},
+        {"format_minor", corpus.format_minor},
+        {"game_fingerprint", corpus.game_fingerprint},
+        {"seed", corpus.seed},
+        {"maximum_samples", corpus.maximum_samples},
+        {"sampling_modulus", replay_capture.sampling_modulus},
+        {"capture_iterations", replay_capture.iterations},
+        {"eligible_updates", corpus.eligible_updates},
+        {"retained_updates", corpus.retained_updates},
+        {"samples", std::move(samples)}};
+    const std::filesystem::path replay_destination(*replay_output_path);
+    if (!replay_destination.parent_path().empty()) {
+      std::error_code directory_error;
+      std::filesystem::create_directories(replay_destination.parent_path(), directory_error);
+      if (directory_error) {
+        std::cerr << "postflop real-node replay failed: io_failure\n";
+        return 2;
+      }
+    }
+    std::ofstream replay_stream(replay_destination, std::ios::binary | std::ios::trunc);
+    if (!replay_stream) {
+      std::cerr << "postflop real-node replay failed: io_failure\n";
+      return 2;
+    }
+    replay_stream << output.dump();
+    if (!replay_stream) {
+      std::cerr << "postflop real-node replay failed: io_failure\n";
+      return 2;
+    }
   }
 
   if (environment_value("GTOSD_ARCHITECTURAL_SHADOW").has_value()) {
