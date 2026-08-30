@@ -15123,11 +15123,13 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   }
   std::fprintf(stderr, "solver_phase=prepare_ranks_complete\n");
   if (layout.value().uses_canonical_public_dag) {
+    constexpr std::array<std::size_t, 4U> state_tile_sizes{8U, 16U, 32U, 64U};
     const SuitPermutation identity{};
     std::uint64_t decision_edges = 0U;
     std::uint64_t identity_decision_edges = 0U;
     std::array<std::uint64_t, maximum_action_count + 1U> decision_nodes_by_actions{};
     std::array<std::uint64_t, maximum_action_count + 1U> state_entries_by_actions{};
+    std::array<std::uint64_t, state_tile_sizes.size()> state_tiles{};
     for (const auto &node : layout.value().canonical_public_graph.nodes) {
       if (node.kind != PublicNodeKind::Decision) {
         continue;
@@ -15136,6 +15138,15 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       if (action_count <= maximum_action_count) {
         ++decision_nodes_by_actions[action_count];
         state_entries_by_actions[action_count] += node.local_action_count;
+      }
+      if (action_count == 0U || node.local_action_count % action_count != 0U) {
+        return Result<PostflopSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto hand_count = static_cast<std::uint64_t>(node.local_action_count / action_count);
+      for (std::size_t tile_index = 0U; tile_index < state_tile_sizes.size(); ++tile_index) {
+        const auto tile_size = static_cast<std::uint64_t>(state_tile_sizes[tile_index]);
+        state_tiles[tile_index] += (hand_count + tile_size - 1U) / tile_size;
       }
       const bool river_decision = std::popcount(layout.value().boards[node.board_index].mask) == 5U;
       if (river_decision && node.edges.size() != action_count) {
@@ -15175,6 +15186,18 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
             action_count, static_cast<unsigned long long>(decision_nodes_by_actions[action_count]),
             static_cast<unsigned long long>(state_entries_by_actions[action_count]));
       }
+    }
+    for (std::size_t tile_index = 0U; tile_index < state_tile_sizes.size(); ++tile_index) {
+      const auto tile_count = state_tiles[tile_index];
+      const auto code_bytes = layout.value().actions * sizeof(std::uint16_t) * 2U;
+      const auto scale_bytes = tile_count * sizeof(float) * 2U;
+      std::fprintf(stderr,
+                   "solver_profile=state_tiles hands_per_tile=%zu tiles=%llu "
+                   "code_bytes=%llu scale_bytes=%llu total_state_bytes=%llu\n",
+                   state_tile_sizes[tile_index], static_cast<unsigned long long>(tile_count),
+                   static_cast<unsigned long long>(code_bytes),
+                   static_cast<unsigned long long>(scale_bytes),
+                   static_cast<unsigned long long>(code_bytes + scale_bytes));
     }
   }
   PostflopCheckpoint checkpoint;
