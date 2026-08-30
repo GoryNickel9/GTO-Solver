@@ -2419,6 +2419,7 @@ struct HotpathTelemetry {
   std::uint64_t river_frontier_full_batches = 0U;
   std::uint64_t river_frontier_tail_lanes = 0U;
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  std::array<std::uint64_t, 6U> showdown_reuse_distance_buckets{};
   std::uint64_t river_topology_sites = 0U;
   std::uint64_t river_topology_roots = 0U;
   std::uint64_t river_topology_groups = 0U;
@@ -2469,6 +2470,11 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(river_frontier_full_batches);
     GTOSD_ADD_PROFILE_FIELD(river_frontier_tail_lanes);
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    for (std::size_t bucket = 0U;
+         bucket < showdown_reuse_distance_buckets.size(); ++bucket) {
+      showdown_reuse_distance_buckets[bucket] +=
+          other.showdown_reuse_distance_buckets[bucket];
+    }
     GTOSD_ADD_PROFILE_FIELD(river_topology_sites);
     GTOSD_ADD_PROFILE_FIELD(river_topology_roots);
     GTOSD_ADD_PROFILE_FIELD(river_topology_groups);
@@ -2705,6 +2711,11 @@ public:
   mutable double prof_value_update_seconds_ = 0.0;
   mutable double prof_value_accumulate_seconds_ = 0.0;
   mutable double prof_regret_update_seconds_ = 0.0;
+  mutable double prof_scaled_calculate_seconds_ = 0.0;
+  mutable double prof_scaled_scale_seconds_ = 0.0;
+  mutable double prof_scaled_encode_seconds_ = 0.0;
+  mutable std::uint64_t prof_scaled_update_calls_ = 0U;
+  mutable std::uint64_t prof_scaled_update_entries_ = 0U;
   mutable double prof_average_update_seconds_ = 0.0;
   mutable double prof_average_only_seconds_ = 0.0;
   mutable double prof_terminal_seconds_ = 0.0;
@@ -2722,6 +2733,9 @@ public:
   mutable HotpathTelemetry prof_telemetry_{};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
   mutable std::unordered_set<std::uint64_t> prof_showdown_reach_hashes_{};
+  mutable std::unordered_map<std::uint64_t, std::uint64_t>
+      prof_showdown_reach_last_sequence_{};
+  mutable std::uint64_t prof_showdown_reach_sequence_ = 0U;
   mutable std::vector<std::uint32_t> prof_river_topology_class_cache_{};
   mutable std::vector<std::uint64_t> prof_river_topology_work_cache_{};
   mutable std::map<std::vector<std::uint64_t>, std::uint32_t>
@@ -3048,6 +3062,11 @@ public:
     double value_update = prof_value_update_seconds_;
     double value_accumulate = prof_value_accumulate_seconds_;
     double regret_update = prof_regret_update_seconds_;
+    double scaled_calculate = prof_scaled_calculate_seconds_;
+    double scaled_scale = prof_scaled_scale_seconds_;
+    double scaled_encode = prof_scaled_encode_seconds_;
+    std::uint64_t scaled_update_calls = prof_scaled_update_calls_;
+    std::uint64_t scaled_update_entries = prof_scaled_update_entries_;
     double average_update = prof_average_update_seconds_;
     double average_only = prof_average_only_seconds_;
     double chance = prof_chance_seconds_;
@@ -3079,6 +3098,11 @@ public:
       value_update += worker->prof_value_update_seconds_;
       value_accumulate += worker->prof_value_accumulate_seconds_;
       regret_update += worker->prof_regret_update_seconds_;
+      scaled_calculate += worker->prof_scaled_calculate_seconds_;
+      scaled_scale += worker->prof_scaled_scale_seconds_;
+      scaled_encode += worker->prof_scaled_encode_seconds_;
+      scaled_update_calls += worker->prof_scaled_update_calls_;
+      scaled_update_entries += worker->prof_scaled_update_entries_;
       average_update += worker->prof_average_update_seconds_;
       average_only += worker->prof_average_only_seconds_;
       chance += worker->prof_chance_seconds_;
@@ -3111,6 +3135,11 @@ public:
       value_update += parallel_worker_->prof_value_update_seconds_;
       value_accumulate += parallel_worker_->prof_value_accumulate_seconds_;
       regret_update += parallel_worker_->prof_regret_update_seconds_;
+      scaled_calculate += parallel_worker_->prof_scaled_calculate_seconds_;
+      scaled_scale += parallel_worker_->prof_scaled_scale_seconds_;
+      scaled_encode += parallel_worker_->prof_scaled_encode_seconds_;
+      scaled_update_calls += parallel_worker_->prof_scaled_update_calls_;
+      scaled_update_entries += parallel_worker_->prof_scaled_update_entries_;
       average_update += parallel_worker_->prof_average_update_seconds_;
       average_only += parallel_worker_->prof_average_only_seconds_;
       chance += parallel_worker_->prof_chance_seconds_;
@@ -3173,6 +3202,22 @@ public:
                  static_cast<unsigned long long>(zero_strategy_entries),
                  static_cast<unsigned long long>(strategy_entries),
                  static_cast<unsigned long long>(whole_zero_actions));
+    const auto scaled_state_bytes =
+        scaled_update_entries * 8U + scaled_update_calls * 16U;
+    const auto scaled_scratch_bytes = scaled_update_entries * 16U;
+    std::fprintf(
+        stderr,
+        "  signed state passes: calls=%llu entries=%llu calculate=%.1fms scale=%.1fms encode_writeback=%.1fms state_bytes=%llu scratch_bytes=%llu bytes_per_entry=%.3f passes_per_action_array=2\n",
+        static_cast<unsigned long long>(scaled_update_calls),
+        static_cast<unsigned long long>(scaled_update_entries),
+        scaled_calculate * 1000.0, scaled_scale * 1000.0,
+        scaled_encode * 1000.0,
+        static_cast<unsigned long long>(scaled_state_bytes),
+        static_cast<unsigned long long>(scaled_scratch_bytes),
+        scaled_update_entries == 0U
+            ? 0.0
+            : static_cast<double>(scaled_state_bytes + scaled_scratch_bytes) /
+                  static_cast<double>(scaled_update_entries));
     std::fprintf(
         stderr,
         "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
@@ -3213,6 +3258,21 @@ public:
         static_cast<unsigned long long>(telemetry.river_frontier_full_batches),
         static_cast<unsigned long long>(telemetry.river_frontier_tail_lanes));
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    std::fprintf(
+        stderr,
+        "  showdown reach reuse distance: d1=%llu d2-4=%llu d5-16=%llu d17-64=%llu d65-256=%llu d257+=%llu\n",
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[0]),
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[1]),
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[2]),
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[3]),
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[4]),
+        static_cast<unsigned long long>(
+            telemetry.showdown_reuse_distance_buckets[5]));
     std::fprintf(
         stderr,
         "  river subtree compatibility: sites=%llu roots=%llu groups=%llu singleton=%llu full_batches=%llu tail_lanes=%llu batchable_roots=%llu padded_slots=%llu ineligible=%llu lane_occupancy=%.6f work_occupancy=%.6f pairs=%llu pair_batchable_roots=%llu pair_lane_occupancy=%.6f pair_work_coverage=%.6f\n",
@@ -3281,6 +3341,11 @@ public:
     prof_value_update_seconds_ = 0.0;
     prof_value_accumulate_seconds_ = 0.0;
     prof_regret_update_seconds_ = 0.0;
+    prof_scaled_calculate_seconds_ = 0.0;
+    prof_scaled_scale_seconds_ = 0.0;
+    prof_scaled_encode_seconds_ = 0.0;
+    prof_scaled_update_calls_ = 0U;
+    prof_scaled_update_entries_ = 0U;
     prof_average_update_seconds_ = 0.0;
     prof_average_only_seconds_ = 0.0;
     prof_terminal_seconds_ = 0.0;
@@ -3298,6 +3363,8 @@ public:
     prof_telemetry_ = {};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
     prof_showdown_reach_hashes_.clear();
+    prof_showdown_reach_last_sequence_.clear();
+    prof_showdown_reach_sequence_ = 0U;
 #endif
     for (const auto &worker : parallel_workers_) {
       worker->prof_decisions_ = 0;
@@ -3318,6 +3385,11 @@ public:
       worker->prof_value_update_seconds_ = 0.0;
       worker->prof_value_accumulate_seconds_ = 0.0;
       worker->prof_regret_update_seconds_ = 0.0;
+      worker->prof_scaled_calculate_seconds_ = 0.0;
+      worker->prof_scaled_scale_seconds_ = 0.0;
+      worker->prof_scaled_encode_seconds_ = 0.0;
+      worker->prof_scaled_update_calls_ = 0U;
+      worker->prof_scaled_update_entries_ = 0U;
       worker->prof_average_update_seconds_ = 0.0;
       worker->prof_average_only_seconds_ = 0.0;
       worker->prof_terminal_seconds_ = 0.0;
@@ -3335,6 +3407,8 @@ public:
       worker->prof_telemetry_ = {};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
       worker->prof_showdown_reach_hashes_.clear();
+      worker->prof_showdown_reach_last_sequence_.clear();
+      worker->prof_showdown_reach_sequence_ = 0U;
 #endif
     }
     if (parallel_worker_ != nullptr) {
@@ -3356,6 +3430,11 @@ public:
       parallel_worker_->prof_value_update_seconds_ = 0.0;
       parallel_worker_->prof_value_accumulate_seconds_ = 0.0;
       parallel_worker_->prof_regret_update_seconds_ = 0.0;
+      parallel_worker_->prof_scaled_calculate_seconds_ = 0.0;
+      parallel_worker_->prof_scaled_scale_seconds_ = 0.0;
+      parallel_worker_->prof_scaled_encode_seconds_ = 0.0;
+      parallel_worker_->prof_scaled_update_calls_ = 0U;
+      parallel_worker_->prof_scaled_update_entries_ = 0U;
       parallel_worker_->prof_average_update_seconds_ = 0.0;
       parallel_worker_->prof_average_only_seconds_ = 0.0;
       parallel_worker_->prof_terminal_seconds_ = 0.0;
@@ -3373,6 +3452,8 @@ public:
       parallel_worker_->prof_telemetry_ = {};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
       parallel_worker_->prof_showdown_reach_hashes_.clear();
+      parallel_worker_->prof_showdown_reach_last_sequence_.clear();
+      parallel_worker_->prof_showdown_reach_sequence_ = 0U;
 #endif
     }
   }
@@ -3757,6 +3838,12 @@ private:
       if (average_scratch == nullptr || average_reach == nullptr) {
         return;
       }
+      const bool profile_scaled = hotpath_profiling_enabled();
+      const auto scaled_calculate_started =
+          profile_scaled ? std::chrono::steady_clock::now()
+                         : std::chrono::steady_clock::time_point{};
+      const auto scaled_entries = static_cast<std::uint64_t>(
+          action_count * combos.size());
       auto &average_values = *average_scratch;
       double maximum_magnitude = 0.0;
       double maximum_average = 0.0;
@@ -4420,6 +4507,13 @@ private:
           }
         }
       }
+      const auto scaled_scale_started =
+          profile_scaled ? std::chrono::steady_clock::now()
+                         : std::chrono::steady_clock::time_point{};
+      if (profile_scaled) {
+        prof_scaled_calculate_seconds_ += std::chrono::duration<double>(
+            scaled_scale_started - scaled_calculate_started).count();
+      }
       const float encoded_scale = maximum_magnitude > 0.0
                                       ? static_cast<float>(maximum_magnitude / 32767.0)
                                       : 0.0F;
@@ -4434,6 +4528,22 @@ private:
                                maximum_average, 65535.0, encoded_entries);
       buffers_.regret_node_scale[scale_index] = encoded_scale;
       buffers_.strategy_node_scale[scale_index] = average_scale;
+      const auto scaled_encode_started =
+          profile_scaled ? std::chrono::steady_clock::now()
+                         : std::chrono::steady_clock::time_point{};
+      if (profile_scaled) {
+        prof_scaled_scale_seconds_ += std::chrono::duration<double>(
+            scaled_encode_started - scaled_scale_started).count();
+      }
+      const auto finish_scaled_profile = [&] {
+        if (!profile_scaled) {
+          return;
+        }
+        prof_scaled_encode_seconds_ += std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - scaled_encode_started).count();
+        ++prof_scaled_update_calls_;
+        prof_scaled_update_entries_ += scaled_entries;
+      };
       if (encoded_scale > 0.0F && average_scale > 0.0F) {
         const double regret_inverse =
             1.0 / static_cast<double>(encoded_scale);
@@ -4499,6 +4609,7 @@ private:
                 0.0, 65535.0));
           }
         }
+        finish_scaled_profile();
         return;
       }
       if (!(encoded_scale > 0.0F)) {
@@ -4574,6 +4685,7 @@ private:
           }
         }
       }
+      finish_scaled_profile();
       return;
     }
     double maximum = 0.0;
@@ -10445,6 +10557,20 @@ private:
         ++prof_telemetry_.showdown_reach_hash_unique;
       } else {
         ++prof_telemetry_.showdown_reach_hash_repeats;
+      }
+      const auto sequence = ++prof_showdown_reach_sequence_;
+      const auto previous = prof_showdown_reach_last_sequence_.find(hash);
+      if (previous != prof_showdown_reach_last_sequence_.end()) {
+        const auto distance = sequence - previous->second;
+        const std::size_t bucket = distance == 1U ? 0U
+            : distance <= 4U ? 1U
+            : distance <= 16U ? 2U
+            : distance <= 64U ? 3U
+            : distance <= 256U ? 4U : 5U;
+        ++prof_telemetry_.showdown_reuse_distance_buckets[bucket];
+        previous->second = sequence;
+      } else {
+        prof_showdown_reach_last_sequence_.emplace(hash, sequence);
       }
     }
 #endif
