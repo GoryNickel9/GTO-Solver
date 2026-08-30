@@ -2359,6 +2359,18 @@ struct HotpathTelemetry {
   std::uint64_t river_frontier_full_batches = 0U;
   std::uint64_t river_frontier_tail_lanes = 0U;
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  std::uint64_t exact_state_entries = 0U;
+  std::uint64_t regret_prequantized_changed = 0U;
+  std::uint64_t strategy_prequantized_changed = 0U;
+  std::uint64_t regret_final_code_changed = 0U;
+  std::uint64_t strategy_final_code_changed = 0U;
+  std::array<std::uint64_t, 7U> regret_boundary_distance_buckets{};
+  std::array<std::uint64_t, 7U> strategy_boundary_distance_buckets{};
+  std::array<std::uint64_t, 3U> exact_entries_by_street{};
+  std::array<std::uint64_t, 3U> regret_code_changed_by_street{};
+  std::array<std::uint64_t, 3U> strategy_code_changed_by_street{};
+  // Direct producer root: fold, showdown, decision, chance, transformed chance.
+  std::array<std::uint64_t, 5U> producer_entries{};
   std::array<std::uint64_t, 6U> showdown_reuse_distance_buckets{};
   std::uint64_t river_topology_sites = 0U;
   std::uint64_t river_topology_roots = 0U;
@@ -2416,6 +2428,23 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(river_frontier_full_batches);
     GTOSD_ADD_PROFILE_FIELD(river_frontier_tail_lanes);
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    GTOSD_ADD_PROFILE_FIELD(exact_state_entries);
+    GTOSD_ADD_PROFILE_FIELD(regret_prequantized_changed);
+    GTOSD_ADD_PROFILE_FIELD(strategy_prequantized_changed);
+    GTOSD_ADD_PROFILE_FIELD(regret_final_code_changed);
+    GTOSD_ADD_PROFILE_FIELD(strategy_final_code_changed);
+    for (std::size_t bucket = 0U; bucket < regret_boundary_distance_buckets.size(); ++bucket) {
+      regret_boundary_distance_buckets[bucket] += other.regret_boundary_distance_buckets[bucket];
+      strategy_boundary_distance_buckets[bucket] += other.strategy_boundary_distance_buckets[bucket];
+    }
+    for (std::size_t street = 0U; street < exact_entries_by_street.size(); ++street) {
+      exact_entries_by_street[street] += other.exact_entries_by_street[street];
+      regret_code_changed_by_street[street] += other.regret_code_changed_by_street[street];
+      strategy_code_changed_by_street[street] += other.strategy_code_changed_by_street[street];
+    }
+    for (std::size_t producer = 0U; producer < producer_entries.size(); ++producer) {
+      producer_entries[producer] += other.producer_entries[producer];
+    }
     for (std::size_t bucket = 0U; bucket < showdown_reuse_distance_buckets.size(); ++bucket) {
       showdown_reuse_distance_buckets[bucket] += other.showdown_reuse_distance_buckets[bucket];
     }
@@ -2933,6 +2962,116 @@ public:
 #endif
   }
 
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  [[nodiscard]] static std::size_t rounding_boundary_bucket(const double normalized) noexcept {
+    if (!std::isfinite(normalized)) {
+      return 0U;
+    }
+    const double fraction = normalized - std::floor(normalized);
+    const double distance = std::abs(fraction - 0.5);
+    return distance <= 0x1p-20 ? 0U
+           : distance <= 0x1p-16 ? 1U
+           : distance <= 0x1p-12 ? 2U
+           : distance <= 0x1p-8  ? 3U
+           : distance <= 0x1p-4  ? 4U
+           : distance <= 0.25    ? 5U
+                                 : 6U;
+  }
+
+  template <bool BoardLocal>
+  void profile_exact_state_representation(
+      const CanonicalPublicNode &canonical, const BoardData &board, const std::uint8_t player,
+      const std::size_t action_count,
+      const std::array<ComboVector, maximum_action_count> &regret_values,
+      const std::array<ComboVector, maximum_action_count> &average_values,
+      const float old_regret_scale, const float old_average_scale, const float regret_scale,
+      const float average_scale) const noexcept {
+    static_cast<void>(BoardLocal);
+    if (!hotpath_profiling_enabled()) {
+      return;
+    }
+    const auto hand_count = board.player_combos[player].size();
+    const auto vectorized = std::is_same_v<Scalar, float> ? hand_count - hand_count % 8U : 0U;
+    const auto regret_inverse = regret_scale > 0.0F ? 1.0 / static_cast<double>(regret_scale) : 0.0;
+    const auto average_inverse = average_scale > 0.0F ? 1.0 / static_cast<double>(average_scale) : 0.0;
+    const float regret_inverse_float = static_cast<float>(regret_inverse);
+    const float average_inverse_float = static_cast<float>(average_inverse);
+    const auto board_cards = std::popcount(board.mask);
+    const auto street = static_cast<std::size_t>(std::clamp(board_cards, 3, 5) - 3);
+
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      const auto *const old_regret =
+          buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+      const auto *const old_average =
+          buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+      std::size_t producer = 2U;
+      if (action < canonical.edges.size() && !canonical.edges[action].outcomes.empty()) {
+        const auto &edge = canonical.edges[action];
+        const bool transformed = std::ranges::any_of(edge.outcomes, [this](const auto &outcome) {
+          return !identity_automorphism(outcome.physical_to_child_automorphism);
+        });
+        if (transformed) {
+          producer = 4U;
+        } else {
+          const auto &child = layout_.canonical_public_graph.nodes[edge.outcomes.front().child];
+          producer = child.kind == PublicNodeKind::TerminalFold       ? 0U
+                     : child.kind == PublicNodeKind::TerminalShowdown ? 1U
+                     : child.kind == PublicNodeKind::Chance           ? 3U
+                                                                      : 2U;
+        }
+      }
+      prof_telemetry_.producer_entries[producer] += hand_count;
+
+      for (std::size_t local = 0U; local < hand_count; ++local) {
+        const float regret = static_cast<float>(regret_values[action][local]);
+        const float average = static_cast<float>(average_values[action][local]);
+        const float decoded_regret =
+            static_cast<float>(static_cast<std::int16_t>(old_regret[local])) * old_regret_scale;
+        const float decoded_average = static_cast<float>(old_average[local]) * old_average_scale;
+        prof_telemetry_.regret_prequantized_changed +=
+            std::bit_cast<std::uint32_t>(regret) != std::bit_cast<std::uint32_t>(decoded_regret)
+                ? 1U
+                : 0U;
+        prof_telemetry_.strategy_prequantized_changed +=
+            std::bit_cast<std::uint32_t>(average) != std::bit_cast<std::uint32_t>(decoded_average)
+                ? 1U
+                : 0U;
+
+        double normalized_regret = 0.0;
+        double normalized_average = 0.0;
+        if (regret_scale > 0.0F) {
+          normalized_regret = local < vectorized
+                                  ? static_cast<double>(regret * regret_inverse_float)
+                                  : static_cast<double>(regret) * regret_inverse;
+        }
+        if (average_scale > 0.0F) {
+          normalized_average = local < vectorized
+                                   ? static_cast<double>(average * average_inverse_float)
+                                   : static_cast<double>(average) * average_inverse;
+        }
+        const auto regret_code = static_cast<std::int16_t>(std::clamp(
+            std::nearbyint(normalized_regret), -32767.0, 32767.0));
+        const auto average_code = static_cast<std::uint16_t>(
+            std::clamp(std::nearbyint(normalized_average), 0.0, 65535.0));
+        const bool regret_changed =
+            static_cast<std::uint16_t>(regret_code) != old_regret[local];
+        const bool average_changed = average_code != old_average[local];
+        prof_telemetry_.regret_final_code_changed += regret_changed ? 1U : 0U;
+        prof_telemetry_.strategy_final_code_changed += average_changed ? 1U : 0U;
+        prof_telemetry_.regret_code_changed_by_street[street] += regret_changed ? 1U : 0U;
+        prof_telemetry_.strategy_code_changed_by_street[street] += average_changed ? 1U : 0U;
+        ++prof_telemetry_.regret_boundary_distance_buckets[rounding_boundary_bucket(
+            std::abs(normalized_regret))];
+        ++prof_telemetry_.strategy_boundary_distance_buckets[rounding_boundary_bucket(
+            normalized_average)];
+      }
+    }
+    const auto entries = static_cast<std::uint64_t>(action_count * hand_count);
+    prof_telemetry_.exact_state_entries += entries;
+    prof_telemetry_.exact_entries_by_street[street] += entries;
+  }
+#endif
+
   void profile_strategy_density(const std::array<ComboVector, maximum_action_count> &strategies,
                                 const std::size_t action_count,
                                 const std::size_t hand_count) const noexcept {
@@ -3207,6 +3346,48 @@ public:
         static_cast<unsigned long long>(telemetry.river_frontier_full_batches),
         static_cast<unsigned long long>(telemetry.river_frontier_tail_lanes));
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    std::fprintf(
+        stderr,
+        "  exact state representation: entries=%llu prequant_changed=[%llu,%llu] "
+        "code_changed=[%llu,%llu] safe_early_finalized=0\n"
+        "    boundary_distance regret=[%llu,%llu,%llu,%llu,%llu,%llu,%llu] "
+        "strategy=[%llu,%llu,%llu,%llu,%llu,%llu,%llu]\n"
+        "    street entries=[%llu,%llu,%llu] regret_changed=[%llu,%llu,%llu] "
+        "strategy_changed=[%llu,%llu,%llu]\n"
+        "    producer entries fold=%llu showdown=%llu decision=%llu chance=%llu transformed=%llu\n",
+        static_cast<unsigned long long>(telemetry.exact_state_entries),
+        static_cast<unsigned long long>(telemetry.regret_prequantized_changed),
+        static_cast<unsigned long long>(telemetry.strategy_prequantized_changed),
+        static_cast<unsigned long long>(telemetry.regret_final_code_changed),
+        static_cast<unsigned long long>(telemetry.strategy_final_code_changed),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[0]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[1]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[2]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[3]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[4]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[5]),
+        static_cast<unsigned long long>(telemetry.regret_boundary_distance_buckets[6]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[0]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[1]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[2]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[3]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[4]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[5]),
+        static_cast<unsigned long long>(telemetry.strategy_boundary_distance_buckets[6]),
+        static_cast<unsigned long long>(telemetry.exact_entries_by_street[0]),
+        static_cast<unsigned long long>(telemetry.exact_entries_by_street[1]),
+        static_cast<unsigned long long>(telemetry.exact_entries_by_street[2]),
+        static_cast<unsigned long long>(telemetry.regret_code_changed_by_street[0]),
+        static_cast<unsigned long long>(telemetry.regret_code_changed_by_street[1]),
+        static_cast<unsigned long long>(telemetry.regret_code_changed_by_street[2]),
+        static_cast<unsigned long long>(telemetry.strategy_code_changed_by_street[0]),
+        static_cast<unsigned long long>(telemetry.strategy_code_changed_by_street[1]),
+        static_cast<unsigned long long>(telemetry.strategy_code_changed_by_street[2]),
+        static_cast<unsigned long long>(telemetry.producer_entries[0]),
+        static_cast<unsigned long long>(telemetry.producer_entries[1]),
+        static_cast<unsigned long long>(telemetry.producer_entries[2]),
+        static_cast<unsigned long long>(telemetry.producer_entries[3]),
+        static_cast<unsigned long long>(telemetry.producer_entries[4]));
     std::fprintf(stderr,
                  "  showdown reach reuse distance: d1=%llu d2-4=%llu d5-16=%llu d17-64=%llu "
                  "d65-256=%llu d257+=%llu\n",
@@ -4688,6 +4869,12 @@ private:
                                32767.0, encoded_entries);
       profile_scale_transition(static_cast<float>(old_average_scale), average_scale,
                                maximum_average, 65535.0, encoded_entries);
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+      profile_exact_state_representation<BoardLocal>(
+          canonical, board, player, action_count, scratch, average_values,
+          static_cast<float>(old_scale), static_cast<float>(old_average_scale), encoded_scale,
+          average_scale);
+#endif
       buffers_.regret_node_scale[scale_index] = encoded_scale;
       buffers_.strategy_node_scale[scale_index] = average_scale;
       const auto scaled_encode_started = profile_scaled ? std::chrono::steady_clock::now()
