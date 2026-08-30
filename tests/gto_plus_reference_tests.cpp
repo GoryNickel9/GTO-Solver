@@ -407,6 +407,8 @@ void test_prepared_compressed_root_analysis_matches_certification() {
           "production signed DCFR root differential solves");
 
   const auto &certification = solved.value().convergence.back();
+  require(std::abs(certification.expected_payoff_sum_antes) < 1.0e-11,
+          "compressed canonical certification evaluates distinct transformed reaches exactly");
   const auto direct = gtosd::analyze_postflop_node(
       config, ranges, solved.value().checkpoint, 0U);
   const auto browser_tree = gtosd::prepared_postflop_public_tree(prepared);

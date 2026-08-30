@@ -9244,8 +9244,41 @@ private:
       for (const auto &outcome : edge.outcomes) {
         const double probability =
             static_cast<double>(outcome.physical_outcome_count) / denominator;
+        const ComboVector *outcome_values = &child_values[index];
+        std::optional<ComboVector> distinct_outcome_values;
+        std::optional<std::array<ComboVector, 2>> distinct_outcome_reach;
+        // A representative child is reusable only while the opponent reach
+        // that parameterizes its counterfactual values is exactly invariant.
+        // Quantized strategy updates can break suit-orbit reach symmetry even
+        // though the public game and source ranges are isomorphic. Evaluating
+        // the transformed outcome with its actual reach preserves the exact
+        // profile/BR semantics without disabling canonical public storage.
+        if (std::addressof(outcome) != std::addressof(edge.outcomes.front())) {
+          distinct_outcome_reach = transform_reach(
+              {*reach[0], *reach[1]},
+              outcome.physical_to_child_automorphism);
+          const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
+          const std::size_t opponent_slots =
+              PlayerIndexed ? layout_.player_flop_count[opponent] : Capacity;
+          const bool same_opponent_reach = std::equal(
+              distinct_outcome_reach->at(opponent).begin(),
+              distinct_outcome_reach->at(opponent).begin() + opponent_slots,
+              representative_reaches[index][opponent].begin());
+          if (!same_opponent_reach) {
+            auto evaluated_outcome = policy_canonical(
+                edge.outcomes.front().child, updating_player,
+                {&distinct_outcome_reach->at(0U),
+                 &distinct_outcome_reach->at(1U)},
+                best_response);
+            if (!evaluated_outcome) {
+              return evaluated_outcome;
+            }
+            distinct_outcome_values = std::move(evaluated_outcome.value());
+            outcome_values = &*distinct_outcome_values;
+          }
+        }
         accumulate_transformed_values_to_parent(
-            values, child_values[index],
+            values, *outcome_values,
             outcome.physical_to_child_automorphism, updating_player, board,
             outcome.chance_card, probability);
       }
