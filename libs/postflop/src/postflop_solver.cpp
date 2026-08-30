@@ -2720,6 +2720,16 @@ public:
     return enabled;
   }
 
+  [[nodiscard]] static bool
+  diagnostic_flat_certification_worklist_only() noexcept {
+#pragma warning(push)
+#pragma warning(disable : 4996)
+    static const bool enabled =
+        std::getenv("GTOSD_DIAGNOSTIC_FLAT_CERT_WORKLIST_ONLY") != nullptr;
+#pragma warning(pop)
+    return enabled;
+  }
+
   void profile_scale_transition(const float old_scale, const float new_scale,
                                 const double maximum, const double capacity,
                                 const std::uint64_t entry_count) const noexcept {
@@ -9221,24 +9231,69 @@ private:
     PairValues values{zeroed_values(updating_player),
                       zeroed_values(updating_player)};
     const std::size_t edge_count = canonical.edges.size();
-    auto representative_reaches =
-        std::make_unique_for_overwrite<std::array<ComboVector, 2>[]>(edge_count);
-    auto child_values = std::make_unique<PairValues[]>(edge_count);
+    const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
+    const std::size_t opponent_slots =
+        PlayerIndexed ? layout_.player_flop_count[opponent] : Capacity;
+    struct WorkItem {
+      WorkItem() noexcept : child{} {}
+      std::uint32_t child;
+      std::array<ComboVector, 2> reach;
+      PairValues values;
+    };
+    std::size_t maximum_work_items = 0U;
+    for (const auto &edge : canonical.edges) {
+      maximum_work_items += edge.outcomes.size();
+    }
+    std::vector<WorkItem> work_items;
+    work_items.reserve(maximum_work_items);
+    std::vector<std::vector<std::size_t>> outcome_work_items(edge_count);
     for (std::size_t index = 0U; index < edge_count; ++index) {
       const auto &edge = canonical.edges[index];
       if (edge.outcomes.empty()) {
         return PairResult::failure(PostflopSolverError::InvalidConfiguration);
       }
-      representative_reaches[index] = transform_reach(
+      outcome_work_items[index].resize(edge.outcomes.size());
+      const std::size_t representative_index = work_items.size();
+      work_items.emplace_back();
+      work_items.back().child = edge.outcomes.front().child;
+      work_items.back().reach = transform_reach(
           {*reach[0], *reach[1]},
           edge.outcomes.front().physical_to_child_automorphism);
+      outcome_work_items[index][0U] = representative_index;
+      std::size_t outcome_index = 0U;
+      for (const auto &outcome : edge.outcomes) {
+        if (outcome_index++ == 0U) {
+          continue;
+        }
+        auto distinct_reach = transform_reach(
+            {*reach[0], *reach[1]},
+            outcome.physical_to_child_automorphism);
+        const bool same_opponent_reach = std::equal(
+            distinct_reach[opponent].begin(),
+            distinct_reach[opponent].begin() + opponent_slots,
+            work_items[representative_index].reach[opponent].begin());
+        if (same_opponent_reach) {
+          outcome_work_items[index][outcome_index - 1U] = representative_index;
+          continue;
+        }
+        outcome_work_items[index][outcome_index - 1U] = work_items.size();
+        work_items.emplace_back();
+        work_items.back().child = edge.outcomes.front().child;
+        work_items.back().reach = std::move(distinct_reach);
+      }
     }
-    const std::size_t worker_count = parallel_workers_.size();
-    if (std::popcount(board.mask) == 3U && worker_count > 0U &&
-        edge_count > 1U) {
+    const std::size_t available_worker_count =
+        parallel_workers_.empty() ? parallel_pool_size_
+                                  : parallel_workers_.size();
+    const bool nested_worklist = std::popcount(board.mask) != 3U;
+    const std::size_t worker_count =
+        diagnostic_flat_certification_worklist_only() && nested_worklist
+            ? 0U
+            : available_worker_count;
+    if (worker_count > 0U && work_items.size() > 1U) {
       const std::size_t task_count =
-          std::min(edge_count, worker_count + 1U);
-      std::atomic<std::size_t> next_edge{1U};
+          std::min(work_items.size(), worker_count + 1U);
+      std::atomic<std::size_t> next_item{1U};
       std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
       std::vector<std::future<TraversalResult>> futures;
       tasks.reserve(task_count - 1U);
@@ -9246,23 +9301,27 @@ private:
       for (std::size_t task_index = 1U; task_index < task_count;
            ++task_index) {
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
-            [edges = &canonical.edges, reaches = representative_reaches.get(),
-             results = child_values.get(), next = &next_edge, edge_count,
-             updating_player](DenseTraversal &self) {
+            [items = work_items.data(), next = &next_item,
+             item_count = work_items.size(), updating_player,
+             root_pool_size = worker_count](DenseTraversal &self) {
+              const std::size_t previous_pool_size = self.parallel_pool_size_;
+              self.parallel_pool_size_ = root_pool_size;
               while (true) {
                 const std::size_t index =
                     next->fetch_add(1U, std::memory_order_relaxed);
-                if (index >= edge_count) {
+                if (index >= item_count) {
                   break;
                 }
                 auto child = self.policy_canonical_profile_br_pair(
-                    (*edges)[index].outcomes.front().child, updating_player,
-                    {&reaches[index][0], &reaches[index][1]});
+                    items[index].child, updating_player,
+                    {&items[index].reach[0], &items[index].reach[1]});
                 if (!child) {
+                  self.parallel_pool_size_ = previous_pool_size;
                   return TraversalResult::failure(child.error());
                 }
-                results[index] = std::move(child.value());
+                items[index].values = std::move(child.value());
               }
+              self.parallel_pool_size_ = previous_pool_size;
               return TraversalResult::success(ComboVector{});
             });
         futures.push_back(task.get_future());
@@ -9271,27 +9330,26 @@ private:
       dispatch_parallel_tasks(tasks);
       std::optional<PostflopSolverError> main_error;
       auto first_child = policy_canonical_profile_br_pair(
-          canonical.edges[0U].outcomes.front().child, updating_player,
-          {&representative_reaches[0U][0], &representative_reaches[0U][1]});
+          work_items[0U].child, updating_player,
+          {&work_items[0U].reach[0], &work_items[0U].reach[1]});
       if (!first_child) {
         main_error = first_child.error();
       } else {
-        child_values[0U] = std::move(first_child.value());
+        work_items[0U].values = std::move(first_child.value());
       }
       while (!main_error) {
         const std::size_t index =
-            next_edge.fetch_add(1U, std::memory_order_relaxed);
-        if (index >= edge_count) {
+            next_item.fetch_add(1U, std::memory_order_relaxed);
+        if (index >= work_items.size()) {
           break;
         }
         auto child = policy_canonical_profile_br_pair(
-            canonical.edges[index].outcomes.front().child, updating_player,
-            {&representative_reaches[index][0],
-             &representative_reaches[index][1]});
+            work_items[index].child, updating_player,
+            {&work_items[index].reach[0], &work_items[index].reach[1]});
         if (!child) {
           main_error = child.error();
         } else {
-          child_values[index] = std::move(child.value());
+          work_items[index].values = std::move(child.value());
         }
       }
       std::optional<PostflopSolverError> worker_error;
@@ -9306,53 +9364,27 @@ private:
         return PairResult::failure(main_error ? *main_error : *worker_error);
       }
     } else {
-      for (std::size_t index = 0U; index < edge_count; ++index) {
+      for (std::size_t index = 0U; index < work_items.size(); ++index) {
         auto child = policy_canonical_profile_br_pair(
-            canonical.edges[index].outcomes.front().child, updating_player,
-            {&representative_reaches[index][0],
-             &representative_reaches[index][1]});
+            work_items[index].child, updating_player,
+            {&work_items[index].reach[0], &work_items[index].reach[1]});
         if (!child) {
           return child;
         }
-        child_values[index] = std::move(child.value());
+        work_items[index].values = std::move(child.value());
       }
     }
-    const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
-    const std::size_t opponent_slots =
-        PlayerIndexed ? layout_.player_flop_count[opponent] : Capacity;
     for (std::size_t index = 0U; index < edge_count; ++index) {
       const auto &edge = canonical.edges[index];
+      std::size_t outcome_index = 0U;
       for (const auto &outcome : edge.outcomes) {
         const double probability =
             static_cast<double>(outcome.physical_outcome_count) / denominator;
-        const PairValues *outcome_values = &child_values[index];
-        std::optional<PairValues> distinct_outcome_values;
-        std::optional<std::array<ComboVector, 2>> distinct_outcome_reach;
-        if (std::addressof(outcome) !=
-            std::addressof(edge.outcomes.front())) {
-          distinct_outcome_reach = transform_reach(
-              {*reach[0], *reach[1]},
-              outcome.physical_to_child_automorphism);
-          const bool same_opponent_reach = std::equal(
-              distinct_outcome_reach->at(opponent).begin(),
-              distinct_outcome_reach->at(opponent).begin() + opponent_slots,
-              representative_reaches[index][opponent].begin());
-          if (!same_opponent_reach) {
-            auto evaluated_outcome = policy_canonical_profile_br_pair(
-                edge.outcomes.front().child, updating_player,
-                {&distinct_outcome_reach->at(0U),
-                 &distinct_outcome_reach->at(1U)});
-            if (!evaluated_outcome) {
-              return evaluated_outcome;
-            }
-            distinct_outcome_values =
-                std::move(evaluated_outcome.value());
-            outcome_values = &*distinct_outcome_values;
-          }
-        }
+        const auto &outcome_values =
+            work_items[outcome_work_items[index][outcome_index++]].values;
         for (std::size_t lane = 0U; lane < 2U; ++lane) {
           accumulate_transformed_values_to_parent(
-              values[lane], (*outcome_values)[lane],
+              values[lane], outcome_values[lane],
               outcome.physical_to_child_automorphism, updating_player, board,
               outcome.chance_card, probability);
         }
