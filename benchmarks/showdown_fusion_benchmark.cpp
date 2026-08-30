@@ -115,7 +115,8 @@ struct Fixture {
         touched(shape.opponent_hands * 2U), baseline(make_scratch()),
         candidate(make_scratch()), four_lane(make_four_lane_scratch()),
         production_batch_accum(make_four_lane_accum_scratch()),
-        production_two_card(make_four_lane_scratch()) {
+        production_two_card(make_four_lane_scratch()),
+        production_shared_reach(make_scratch()) {
     for (auto &reach : lane_reaches) {
       reach.resize(shape.opponent_hands);
     }
@@ -126,6 +127,12 @@ struct Fixture {
       scratch = make_scratch();
     }
     for (auto &scratch : production_batch_finish) {
+      scratch = make_scratch();
+    }
+    for (auto &scratch : production_same_reach_reference) {
+      scratch = make_scratch();
+    }
+    for (auto &scratch : production_same_reach_shared) {
       scratch = make_scratch();
     }
     for (auto &output : production_two_card_output) {
@@ -223,6 +230,22 @@ struct Fixture {
     }
     run_batch_accum_production_finish();
     run_batch_two_card_avx2();
+    for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
+      run_production_reference(production_same_reach_reference[lane],
+                               opponent_reach,
+                               production_lane_payoffs[lane]);
+    }
+    run_same_reach_shared_aggregation();
+    for (std::size_t local = 0U; local < shape.hero_hands; ++local) {
+      for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
+        if (std::bit_cast<std::uint32_t>(
+                production_same_reach_reference[lane].output[local]) !=
+            std::bit_cast<std::uint32_t>(
+                production_same_reach_shared[lane].output[local])) {
+          std::abort();
+        }
+      }
+    }
     for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
       const auto bytes = shape.hero_hands * sizeof(float);
       if (std::memcmp(production_reference[lane].output.data(),
@@ -487,9 +510,7 @@ struct Fixture {
     }
   }
 
-  void finish_production_avx2(Scratch &scratch,
-                              const std::vector<float> &reach,
-                              const PayoffTriple payoff) const {
+  void prepare_production_prefix(Scratch &scratch) const {
     for (std::size_t rank = 0U; rank < shape.rank_count; ++rank) {
       scratch.prefix[rank + 1U] =
           scratch.prefix[rank] + scratch.totals[rank];
@@ -509,15 +530,20 @@ struct Fixture {
             scratch.by_card[source + card];
       }
     }
+  }
+
+  void produce_production_avx2(const Scratch &prepared, Scratch &output,
+                               const std::vector<float> &reach,
+                               const PayoffTriple payoff) const {
     const float lane_win = static_cast<float>(payoff.win);
     const float lane_tie = static_cast<float>(payoff.tie);
     const float lane_loss = static_cast<float>(payoff.loss);
-    const float total_reach = scratch.prefix[shape.rank_count];
+    const float total_reach = prepared.prefix[shape.rank_count];
     for (std::size_t rank = 0U; rank < shape.rank_count; ++rank) {
-      scratch.rank_base[rank] =
-          scratch.prefix[rank] * lane_win +
-          scratch.totals[rank] * lane_tie +
-          (total_reach - scratch.prefix[rank + 1U]) * lane_loss;
+      output.rank_base[rank] =
+          prepared.prefix[rank] * lane_win +
+          prepared.totals[rank] * lane_tie +
+          (total_reach - prepared.prefix[rank + 1U]) * lane_loss;
     }
 
     const __m256 zero = _mm256_setzero_ps();
@@ -528,7 +554,7 @@ struct Fixture {
         static_cast<float>(payoff.loss - payoff.tie));
     const __m256 normalization = _mm256_set1_ps(inverse_normalization);
     const float *const all_by_card =
-        scratch.card_prefix.data() + shape.rank_count * card_count;
+        prepared.card_prefix.data() + shape.rank_count * card_count;
     std::size_t local = 0U;
     for (; local + 8U <= shape.hero_hands; local += 8U) {
       const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
@@ -548,12 +574,12 @@ struct Fixture {
       const __m256i second_by_rank =
           load_indices(hero_columns.second_by_rank);
       const __m256 invalid_lower = _mm256_add_ps(
-          _mm256_i32gather_ps(scratch.card_prefix.data(), first_by_rank, 4),
-          _mm256_i32gather_ps(scratch.card_prefix.data(), second_by_rank, 4));
+          _mm256_i32gather_ps(prepared.card_prefix.data(), first_by_rank, 4),
+          _mm256_i32gather_ps(prepared.card_prefix.data(), second_by_rank, 4));
       const __m256 invalid_tie = _mm256_sub_ps(
           _mm256_add_ps(
-              _mm256_i32gather_ps(scratch.by_card.data(), first_by_rank, 4),
-              _mm256_i32gather_ps(scratch.by_card.data(), second_by_rank, 4)),
+              _mm256_i32gather_ps(prepared.by_card.data(), first_by_rank, 4),
+              _mm256_i32gather_ps(prepared.by_card.data(), second_by_rank, 4)),
           own_reaches);
       const __m256i ranks = load_indices(hero_columns.rank);
       const __m256i rank_offsets =
@@ -567,14 +593,14 @@ struct Fixture {
                         _mm256_i32gather_ps(all_by_card, second_cards, 4)),
           own_reaches);
       __m256 numerator =
-          _mm256_i32gather_ps(scratch.rank_base.data(), ranks, 4);
+          _mm256_i32gather_ps(output.rank_base.data(), ranks, 4);
       numerator = _mm256_add_ps(
           numerator, _mm256_mul_ps(invalid_lower, lower_coefficient));
       numerator = _mm256_add_ps(
           numerator, _mm256_mul_ps(invalid_tie, tie_coefficient));
       numerator =
           _mm256_sub_ps(numerator, _mm256_mul_ps(invalid_all, loss));
-      _mm256_storeu_ps(scratch.output.data() + local,
+      _mm256_storeu_ps(output.output.data() + local,
                        _mm256_mul_ps(numerator, normalization));
     }
     for (; local < shape.hero_hands; ++local) {
@@ -583,23 +609,43 @@ struct Fixture {
                                   ? 0.0F
                                   : reach[opponent_slot];
       const float invalid_lower =
-          scratch.card_prefix[hero_columns.first_by_rank[local]] +
-          scratch.card_prefix[hero_columns.second_by_rank[local]];
+          prepared.card_prefix[hero_columns.first_by_rank[local]] +
+          prepared.card_prefix[hero_columns.second_by_rank[local]];
       const float invalid_tie =
-          scratch.by_card[hero_columns.first_by_rank[local]] +
-          scratch.by_card[hero_columns.second_by_rank[local]] - own_reach;
+          prepared.by_card[hero_columns.first_by_rank[local]] +
+          prepared.by_card[hero_columns.second_by_rank[local]] - own_reach;
       const float invalid_all =
-          scratch.card_prefix[hero_columns.first_all[local]] +
-          scratch.card_prefix[hero_columns.second_all[local]] - own_reach;
+          prepared.card_prefix[hero_columns.first_all[local]] +
+          prepared.card_prefix[hero_columns.second_all[local]] - own_reach;
       const float numerator =
-          scratch.rank_base[hero_columns.rank[local]] +
+          output.rank_base[hero_columns.rank[local]] +
           invalid_lower * static_cast<float>(payoff.loss - payoff.win) +
           invalid_tie * static_cast<float>(payoff.loss - payoff.tie) -
           invalid_all * lane_loss;
-      scratch.output[local] = numerator * inverse_normalization;
+      output.output[local] = numerator * inverse_normalization;
     }
+  }
+
+  void finish_production_avx2(Scratch &scratch,
+                              const std::vector<float> &reach,
+                              const PayoffTriple payoff) const {
+    prepare_production_prefix(scratch);
+    produce_production_avx2(scratch, scratch, reach, payoff);
     for (const auto cell : touched) {
       scratch.by_card[cell] = 0.0F;
+    }
+  }
+
+  void run_same_reach_shared_aggregation() {
+    accumulate_production_scalar(production_shared_reach, opponent_reach);
+    prepare_production_prefix(production_shared_reach);
+    for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
+      produce_production_avx2(production_shared_reach,
+                              production_same_reach_shared[lane],
+                              opponent_reach, production_lane_payoffs[lane]);
+    }
+    for (const auto cell : touched) {
+      production_shared_reach.by_card[cell] = 0.0F;
     }
   }
 
@@ -855,6 +901,9 @@ struct Fixture {
   FourLaneScratch four_lane;
   std::array<Scratch, batch_lane_count> production_reference;
   std::array<Scratch, batch_lane_count> production_batch_finish;
+  std::array<Scratch, batch_lane_count> production_same_reach_reference;
+  std::array<Scratch, batch_lane_count> production_same_reach_shared;
+  Scratch production_shared_reach;
   std::array<std::vector<float>, batch_lane_count>
       production_two_card_output;
   FourLaneAccumScratch production_batch_accum;
@@ -967,6 +1016,38 @@ void BM_ShowdownFourProductionSequential(benchmark::State &state,
   publish_four_lane_metrics(state, data);
 }
 
+void BM_ShowdownFourSameReachSequential(benchmark::State &state,
+                                        const std::size_t workload) {
+  auto &data = fixture(workload);
+  for (auto _ : state) {
+    static_cast<void>(_);
+    for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
+      data.run_production_reference(
+          data.production_same_reach_reference[lane], data.opponent_reach,
+          production_lane_payoffs[lane]);
+      benchmark::DoNotOptimize(
+          data.production_same_reach_reference[lane].output.data());
+    }
+    benchmark::ClobberMemory();
+  }
+  publish_four_lane_metrics(state, data);
+}
+
+void BM_ShowdownFourSameReachSharedAggregation(
+    benchmark::State &state, const std::size_t workload) {
+  auto &data = fixture(workload);
+  for (auto _ : state) {
+    static_cast<void>(_);
+    data.run_same_reach_shared_aggregation();
+    for (std::size_t lane = 0U; lane < batch_lane_count; ++lane) {
+      benchmark::DoNotOptimize(
+          data.production_same_reach_shared[lane].output.data());
+    }
+    benchmark::ClobberMemory();
+  }
+  publish_four_lane_metrics(state, data);
+}
+
 void BM_ShowdownFourBatchAccumProductionFinish(
     benchmark::State &state, const std::size_t workload) {
   auto &data = fixture(workload);
@@ -1011,6 +1092,12 @@ BENCHMARK_CAPTURE(BM_ShowdownFourLaneBatch, large, 2U);
 BENCHMARK_CAPTURE(BM_ShowdownFourProductionSequential, small, 0U);
 BENCHMARK_CAPTURE(BM_ShowdownFourProductionSequential, medium, 1U);
 BENCHMARK_CAPTURE(BM_ShowdownFourProductionSequential, large, 2U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSequential, small, 0U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSequential, medium, 1U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSequential, large, 2U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSharedAggregation, small, 0U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSharedAggregation, medium, 1U);
+BENCHMARK_CAPTURE(BM_ShowdownFourSameReachSharedAggregation, large, 2U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchAccumProductionFinish, small, 0U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchAccumProductionFinish, medium, 1U);
 BENCHMARK_CAPTURE(BM_ShowdownFourBatchAccumProductionFinish, large, 2U);
