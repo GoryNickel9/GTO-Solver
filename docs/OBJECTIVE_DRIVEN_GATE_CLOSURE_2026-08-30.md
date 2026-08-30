@@ -66,6 +66,9 @@ annullare il gate RAM production.
 | 6 | terminal/showdown dominante | frontier batching 4-lane | iniziale 2,2..2,9x kernel sintetico | benchmark non faithful: baseline scalarizza prefix/output già AVX2 production; coverage root-local 53,695% | CLOSE autonomo; tooling conservato `0b71489` | informazione acquisita, F invariato |
 | 7 | distinct-outcome tail seriale | flat worklist exact + nested pool | -15..30% certification residua | tre A/B con binari distinti: cert mediana 7,148 -> 5,904 s; payoff/BR/profile bit-identici | PROMOTE `0d51fd6` | performance migliora, TST time ancora FAIL |
 | 8 | traversal target > limite anche con certification gratuita | whole-river lanes / cross-root broker / continuation | richiede >=30% traversal | hero-SIMD già 8-wide, state disgiunto richiede gather, RAM margin ~27 MB; upper bound credibile 0..13% | REJECT/CLOSE fino a nuovo cost model faithful | blocker architetturale distinto |
+| 9 | validare il cost model terminal-lane | benchmark production-faithful | >=2,0x medium/large, bit-identico | accumulation-only 0,895..0,933x; 2-card x 4-root mediana 1,846x medium e 1,584x large | REJECT production; tooling PROMOTE `91caf7e` | informazione acquisita, F invariato |
+| 10 | verificare whole-river lane occupancy | topology/kernel-shape telemetry width 4/2 | coverage sufficiente a >=30% traversal | 167.992 root: zero quartetti; width-2 copre 34,1305% del lavoro, massimo ideale 17,065% | REJECT entrambe; telemetry PROMOTE `18751d8` | blocker corrente dimostrato |
+| 11 | nuovo correctness/stability FAIL | paired certification stack frames | rimuovere overflow senza cambiare valori o stack process | phase7 pre-fix `0xC00000FD`; post-fix 3/3 PASS; oracle legacy/paired PASS | PROMOTE `19fe8ea` | correctness/stability ripristinata; F torna allo stato precedente |
 
 ## 5. AHK correctness audit
 
@@ -212,10 +215,12 @@ resterebbe sotto la soglia economica. `full state-pass fusion` è quindi CLOSE.
 | same-player profile+BR pair | 20-35% certification | medio-alta | medio/medio-basso | PROMOTE `4a7e851` |
 | flat distinct worklist + nested pool | 15-30% certification residua | alta dopo A/B | medio/medio-basso | PROMOTE `0d51fd6` |
 | frontier batching sola accumulation | <=6-7% traversal root-local | alta sull'upper bound | alto/medio | CLOSE |
-| cross-root terminal broker | <=12-13% traversal ideale | bassa | alto/alto | MEASURE, insufficiente da solo |
-| four-lane whole river | 0-10% pratico non dimostrato | bassa | molto alto/alto RAM | REJECT come integrazione minima |
+| cross-root terminal broker | kernel large 1,584x anche a occupancy ideale | alta dopo benchmark faithful | alto/alto | REJECT |
+| four-lane whole river | zero gruppi compatibili da quattro | alta dopo telemetry | molto alto/alto RAM | REJECT |
+| two-lane whole river | <=17,065% river work a 2x ideale | alta dopo telemetry | molto alto/alto RAM | REJECT |
 | four-lane joint certification | 8-18% certification residua | media-bassa | alto/alto | CLOSE per economics |
 | full state-pass fusion | <=1,52% traversal assoluto | alta | alto/alto | CLOSE |
+| paired certification out-parameters | correctness/stability, nessun gain rivendicato | alta | basso/basso | PROMOTE `19fe8ea` |
 
 Il benchmark four-lane conserva valore come proof-of-concept bit-identica con
 quattro reach e payoff distinti, ma non come prova prestazionale production:
@@ -223,6 +228,34 @@ la baseline sintetica usa prefix/output scalari, mentre production usa AVX2 su
 otto card/hero. La telemetria su 40 player-pass misura `22.132.502` showdown in
 `6.231.136` river root; solo `53,695%` cade in quartetti root-local. Non è stato
 promosso alcun path sulla proiezione non faithful.
+
+Il Level 1 successivo replica invece il kernel production: accumulation nello
+stesso ordine, prefix AVX2 su otto card, output AVX2 su otto hero, metadata SoA,
+slot invalidi e payoff `double` lane-specific. L'oracle usa `memcmp` completo
+small/medium/large. Tre processi baseline/candidate alternati danno:
+
+| Workload | production sequential mediana | 2-card x 4-root mediana | speedup |
+|---|---:|---:|---:|
+| medium | 7.542 ns | 4.085 ns | 1,846x |
+| large | 18.363 ns | 11.592 ns | 1,584x |
+
+La sola accumulation batched e quattro finish production è regressiva
+(`0,895..0,933x`). Il large non raggiunge neppure la soglia `1,74x` richiesta
+con occupancy teorica 100%, quindi il broker terminale è economicamente morto.
+
+La telemetry compile-time del river subtree usa descriptor strutturali
+internati con full equality; reach, payoff, amount, offset e metadata fisici
+restano input lane-local e non autorizzano riuso. Nel primo player-pass TST:
+
+- `167.992` root in `135.861` gruppi;
+- `104.236` singleton;
+- `31.119` coppie e `506` terne, quindi **zero quartetti**;
+- width-2: `31.625` pair, `63.250` root accoppiabili;
+- coverage work-weighted width-2 `34,1305%`.
+
+Senza cross-lane result reuse, vietato dal contratto, un kernel width-2 ha
+speedup ideale massimo `2x`: l'upper bound diventa quindi `17,065%` del lavoro
+river e ancora meno del traversal completo. Anche questa famiglia è CLOSE.
 
 Anche rendendo gratuita la certification, il traversal target post-fix
 misurato (`183,04 s`) supera il limite solver (`128,989 s`). Nessuna candidate
@@ -244,8 +277,18 @@ di almeno circa 30%, non dimostrata dalle famiglie rimaste.
 - flat distinct-outcome worklist + nested read-only pool: PROMOTE `0d51fd6`;
 - whole-river four-lane: REJECT come minima integrazione per perdita hero-SIMD,
   gather state e rischio RAM;
-- cross-root broker: MEASURE soltanto, upper bound insufficiente senza un nuovo
-  benchmark production-faithful.
+- cross-root broker: REJECT dopo benchmark production-faithful, kernel large
+  sotto soglia anche assumendo occupancy 100%;
+- benchmark production-faithful: tooling PROMOTE `91caf7e`, accumulation-only
+  e terminal 2-card x 4-root REJECT;
+- whole-river width-4: REJECT, nessun quartetto structural/kernel-compatible;
+- whole-river width-2: REJECT, upper bound ideale `17,065%` del river work;
+- river subtree compatibility telemetry: PROMOTE `18751d8`, interamente
+  compilata fuori dal build Release normale.
+- paired certification stack fix: PROMOTE `19fe8ea`; la ricorsione interna ora
+  scrive in due buffer forniti dal chiamante invece di restituire due
+  `ComboVector` per valore a ogni frame. Nessun aumento dello stack process,
+  fallback legacy o rilassamento dei gate.
 
 La regressione generica nel reference test usa un DAG realmente compresso,
 DCFR signed e `ScaledUint16RegretStrategy`; richiede payoff-sum `<1e-11` senza
@@ -271,6 +314,20 @@ dopo certification pair + worklist/nested:
   correctness invariata; certification TST@20 9.96 -> 7.75 -> 5.90 s nelle
   rispettive mediane; il target solver resta proiettato ampiamente >1.0 perché
   il solo traversal target noto vale circa 1.419x il limite.
+
+dopo Level 1 faithful + topology telemetry:
+  F invariato; terminal four-lane max 1.584x large, whole-river width-4 senza
+  quartetti e width-2 limitato idealmente a 17.065% del river work. Nessuna
+  candidate attraversa la soglia economica per Level 2.
+
+durante full CTest a 18751d8:
+  nuovo correctness/stability FAIL: phase7 termina con 0xC00000FD. Il test
+  legacy PASS e il paired flat-only FAIL localizzano il problema nei grandi
+  return value ricorsivi, non nel pool annidato.
+
+dopo out-parameter recursion a 19fe8ea:
+  phase7 3/3 PASS e differential legacy/paired PASS; F torna allo stato
+  precedente senza variazioni matematiche osservate.
 ```
 
 Il peggioramento temporale del fix è accettato soltanto perché correctness è il
@@ -298,7 +355,7 @@ sotto il limite totale.
 ## 13. Validazione
 
 - build Release `gto_cli` e `gtosd_gto_plus_reference_tests`: PASS;
-- full CTest Release finale a `0d51fd6`: 20/20 PASS in 210,70 s;
+- full CTest Release a `0d51fd6`: 20/20 PASS in 210,70 s;
 - reference test completo: PASS, 24 assertion più regression zero-sum;
 - TST fixed @5 e @20: correctness differential PASS;
 - tre TST@20 baseline/candidate alternati: exact-value differential PASS;
@@ -309,6 +366,24 @@ sotto il limite totale.
   reach e payoff lane-specific; timing non usato come production evidence;
 - frontier occupancy TST@20: 40 player-pass, coverage quartet root-local
   `53,695%`;
+- production-faithful showdown oracle: `memcmp` PASS small/medium/large;
+- tre processi alternati production sequential/two-card: medium `1,846x`,
+  large `1,584x`, REJECT;
+- topology telemetry TST fixed@1: zero quartetti; pair work coverage
+  `34,1305%`; il correctness FAIL del run è atteso perché fixed@1 non è una
+  prova di convergenza;
+- build profile `/W4 /WX`: PASS; build Release completa con telemetry esclusa:
+  PASS;
+- reference suite Release post-telemetry: PASS in `97,70 s`;
+- full CTest a `18751d8`: 19/20, `gtosd_phase7_tests` riproduce stack overflow
+  Windows `0xC00000FD`; legacy certification PASS e flat-worklist-only paired
+  FAIL, quindi il pool annidato è escluso;
+- paired out-parameter fix: `gtosd_phase7_tests` PASS in tre processi
+  consecutivi (`16,38 / 16,24 / 16,75 s`), 215 assertion per processo;
+- reference suite Release post-stack-fix: PASS in `98,42 s`, incluso oracle
+  bit-exact legacy/paired e mirror zero-rake;
+- build Release completa post-stack-fix: PASS;
+- full CTest Release finale a `19fe8ea`: **20/20 PASS in 202,66 s**;
 - TST@80 mid: payoff/RAM/state PASS;
 - AHK/TH target sanity: correctness PASS;
 - TST target correctness: PASS;
@@ -325,9 +400,16 @@ Gate chiusi: correctness formale AHK e TST, dEV, Root, layout, convergence,
 solver state e RAM cap; TH fixed@80 rientra nel tempo nel sanity finale. Gate
 aperto: TST solver time. La five-process resta congelata.
 
-Il prossimo singolo passo ad alta priorità è una fase distinta di ricerca per
-un benchmark 2D-tiling production-faithful (hero SIMD x subtree lanes) e
-telemetria di compatibilità degli interi river subtree. Deve dimostrare almeno
-circa 30% traversal end-to-end prima di una mutazione production; non basta
-accelerare la sola accumulation terminale. Ogni outcome trasformato continua a
-richiedere il reach opponent reale o una prova di invarianza bytewise.
+Il 2D-tiling production-faithful e la compatibilità degli interi river subtree
+sono ora misurati e chiusi. Il traversal visita `630.596` decision node nel
+player-pass pieno, pari al numero totale di decision node riportato dal layout:
+non emerge una seconda valutazione dello stesso decision state da eliminare.
+
+Il prossimo singolo passo ad alta priorità richiede quindi una fase
+architetturale distinta: progettare un nuovo layout reach/rank-card che elimini
+scatter e ricostruzioni terminali mantenendo contemporaneamente hero-SIMD,
+state serializzato invariato, ordine IEEE per lane e margine RAM. Prima di una
+mutazione production deve avere una prova statica e un benchmark end-to-end con
+upside traversal almeno `30%`; nessun candidato rimasto in questa fase soddisfa
+questa soglia. Ogni outcome trasformato continua a richiedere il reach opponent
+reale o una prova di invarianza bytewise.
