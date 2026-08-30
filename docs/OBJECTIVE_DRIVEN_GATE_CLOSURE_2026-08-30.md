@@ -74,6 +74,8 @@ annullare il gate RAM production.
 | 14 | terminal+reach dataflow | `TerminalReachView` q=1/q=4 | q=1 >=2,2x per sostenere >=30% traversal | q=1 wall `1,010x` P0 e `0,978x` P1; q=4 circa `1,71x`; oracle bitwise PASS | REJECT production; benchmark PROMOTE `1e1d264` | F invariato |
 | 15 | signed family 43,39% | tile dominance / hierarchical encode / recompute | updater-only >=3,2405x | dominance/recompute upper bound <30%; hierarchical recupera al massimo il 15,08% wall dall'occupancy | CLOSE a Level 0 | F invariato |
 | 16 | pipeline terminal-to-state | opponent reach pack + direct value sink | coverage e speedup composti >=30% traversal | leaf coverage 38,40%; signed 40,66%; opponent 36,17%; upper bound generoso circa 26,6% | REJECT; telemetry PROMOTE `4a0ce8c` | F invariato |
+| 17 | traversal TST ratio 1,958 | recursive sink / flat arena / hero-tiled treelet | identificare una famiglia exact con ceiling >=30% | sink opponent ceiling bandwidth 20,25%; arena flat circa 28,7 MB prima dei metadata; solo hero tiling supera appena Level 0 con ceiling 34,76% | sink e arena CLOSE; hero tiling a Level 1 | F invariato, informazione acquisita |
+| 18 | verificare il ceiling hero-tiled | treelet depth-3 tile 32/64 | exact, RAM <=16 MB/8 worker e >=1,50x P0/P1 | oracle bitwise PASS; RAM max 1.623.488 B; speedup P0 0,958/0,971x, P1 0,861/0,867x | REJECT al Level 1; tooling conservato | F invariato |
 
 Candidate pool dell'ultima iterazione, ordinato per expected information gain:
 
@@ -92,6 +94,19 @@ La successiva iterazione ha risolto il `DEFER`: il Level 1 della reach view e
 la coverage river dimostrano che anche la pipeline congiunta resta sotto la
 soglia economica. Non rimane una mutazione production autorizzata nell'attuale
 rappresentazione.
+
+L'iterazione architetturale successiva ha generato tre ipotesi indipendenti:
+
+| Ipotesi | Gain atteso | Confidenza | Costo impl./valid. | Rischio numerico/RAM | Generalità | Prior evidence | Esito |
+|---|---:|---:|---|---|---|---|---|
+| recursive hierarchical opponent sink | 0-20,25% traversal | media | medio/alto | medio/basso | alta | 50,42% delle entry river è opponent, ma il boundary risparmia solo `8N` byte/nodo | CLOSE: ceiling sotto il 30% |
+| flat bottom-up river arena | 10-30% traversal | bassa | molto alto/molto alto | alto/alto | alta | reach top-down e value bottom-up; circa 28,7 MB/8 board prima dei metadata | CLOSE: margine RAM TST circa 27 MB e nessuna nuova località |
+| bounded hero-tiled treelet | 30-34,76% ceiling teorico | bassa | medio/medio | alto/basso | alta | round-trip action values fino a 101,86 GB/@20, ma array cache-hot e 10-12 tile walk | REJECT: Level 1 0,861-0,971x |
+
+La selezione ha privilegiato l'hero tiling perché era l'unico candidato con
+ceiling teorico sopra la soglia. Il benchmark ha mantenuto parentesi IEEE,
+massimi globali prima dell'encode, scratch signed completi e reach distinti;
+il risultato negativo chiude la famiglia senza una mutazione production.
 
 ## 5. AHK correctness audit
 
@@ -392,6 +407,15 @@ di almeno circa 30%, non dimostrata dalle famiglie rimaste.
 - terminal-to-state direct sink: REJECT dopo coverage; anche con assunzioni
   volutamente favorevoli l'upper bound composto è circa `26,6%`; telemetry
   PROMOTE `4a0ce8c`;
+- recursive hierarchical opponent sink: CLOSE staticamente; estende la
+  coverage strutturale ai non-leaf ma il ceiling bandwidth è circa `20,25%`
+  e non elimina terminal, signed update o le barriere IEEE dei nodi annidati;
+- flat bottom-up arena: CLOSE staticamente; la DFS corrente è già board-local
+  e il payload minimo circa `28,7 MB` prima dei metadata supera il margine RAM
+  TST disponibile;
+- bounded hero-tiled treelet: REJECT al Level 1; oracle bitwise e RAM PASS, ma
+  tile 32/64 misurano `0,958/0,971x` P0 e `0,861/0,867x` P1 contro gate
+  `1,50x`; benchmark tooling conservato;
 - same-player profile+BR pair: PROMOTE, commit `4a7e851`;
 - four-lane terminal proof-of-concept e frontier telemetry: tooling PROMOTE
   `0b71489`, integrazione production CLOSE;
@@ -461,6 +485,11 @@ dopo TerminalReachView, arity e sink coverage:
   F invariato; q=1 è circa 1,0x, soltanto il 40,66% massimo delle value-entry
   river è leaf-eleggibile e l'upper bound combinato resta circa 26,6%.
   Nessun candidato corrente supera il gate economico per Level 2.
+
+dopo audit sink/arena e hero-tiled Level 1:
+  F invariato; sink opponent e arena flat sono chiusi staticamente, mentre
+  il solo ceiling >30% è falsificato da speedup 0,861-0,971x. Nessuna mutazione
+  production corrente è autorizzata.
 ```
 
 Il peggioramento temporale del fix è accettato soltanto perché correctness è il
@@ -512,6 +541,10 @@ sotto il limite totale.
   q=1 circa `1,0x`, q=4 circa `1,71x`, REJECT;
 - river terminal sink coverage: 40 player-pass; all `38,40%`, signed
   `40,66%`, opponent `36,17%`;
+- hero-tiled treelet Level 1: oracle bitwise PASS su reach/summary, root,
+  regret/average scratch, scale e codici; sette repetition, tile 32/64 sotto
+  baseline in entrambi gli orientamenti; RAM arena massima `1.623.488 B` per
+  otto worker; smoke benchmark più showdown smoke 2/2 PASS;
 - tre processi alternati production sequential/two-card: medium `1,846x`,
   large `1,584x`, REJECT;
 - topology telemetry TST fixed@1: zero quartetti; pair work coverage
@@ -533,6 +566,8 @@ sotto il limite totale.
   **20/20 PASS in 192,11 s**, incluso benchmark smoke e reference differential;
 - build Release completo dopo reach-view/sink telemetry: PASS; full CTest a
   `4a0ce8c`: **20/20 PASS in 193,85 s**;
+- build Release finale post-Level-1: PASS; full CTest a `ea657f7`:
+  **21/21 PASS in 193,72 s**, incluso il nuovo treelet smoke;
 - TST@80 mid: payoff/RAM/state PASS;
 - AHK/TH target sanity: correctness PASS;
 - TST target correctness: PASS;
@@ -555,16 +590,17 @@ player-pass pieno, pari al numero totale di decision node riportato dal layout:
 non emerge una seconda valutazione dello stesso decision state da eliminare.
 
 Il prossimo singolo passo ad alta priorità richiede quindi una fase
-architetturale distinta: progettare un layout reach/rank-card e signed-state
-con un producer tile-local capace di mantenere insieme hero-SIMD, scala exact,
-state serializzato invariato, ordine IEEE e margine RAM. Il cost model ora
+architetturale distinta. Il layout reach/rank-card e signed-state tile-local è
+stato ora falsificato nella forma bounded treelet: conserva hero-SIMD, scala
+exact, stato serializzato, ordine IEEE e margine RAM, ma non riduce il tempo.
+Il cost model ora
 identifica due budget reali, terminale `57,19%` e signed `43,39%` del lavoro
 nominato. Sono ora chiusi anche il layout reach q=1, le tre varianti
-updater-only e la pipeline river leaf congiunta: rispettivamente circa `1,0x`,
-upper bound sotto soglia e circa `26,6%` massimo composto. Per riaprire la
-performance serve quindi una rappresentazione nuova che agisca anche sui
-river node non-leaf o una riduzione algoritmica exact non ancora identificata;
-deve avere una prova statica e un benchmark end-to-end con upside traversal
-almeno `30%` prima di qualsiasi mutazione production. Ogni outcome trasformato
-continua a richiedere il reach opponent reale o una prova di invarianza
-bytewise.
+updater-only, la pipeline river leaf congiunta, il recursive sink e l'arena
+flat: rispettivamente circa `1,0x`, upper bound sotto soglia, circa `26,6%`,
+ceiling `20,25%` e rischio RAM oltre margine. Per riaprire la performance serve
+una riduzione algoritmica exact non ancora identificata che agisca insieme sui
+due budget dominanti senza moltiplicare i tree walk; deve avere una prova
+statica e un benchmark end-to-end con upside traversal almeno `30%` prima di
+qualsiasi mutazione production. Ogni outcome trasformato continua a richiedere
+il reach opponent reale o una prova di invarianza bytewise.
