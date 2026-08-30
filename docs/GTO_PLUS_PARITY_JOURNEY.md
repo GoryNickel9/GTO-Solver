@@ -4,6 +4,15 @@ Aggiornato: 2026-08-30
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Exact state representation loop 2026-08-30.** **EXACT REPRESENTATION
+> BLOCKER PROVEN.** Il codec node-global byte-identico richiede almeno 32 bit
+> per regret e 31 per strategy prima della scala finale; il saving ideale sui
+> due `float` è 1,5625%. Gli shadow exact misurano al massimo `1,024x` (recompute
+> `0,896x`), sotto `1,3x`; TST@202 cambia ancora l'83,018% dei regret code.
+> Nessuna integrazione production o rebaseline. Il prossimo studio deve essere
+> separato e può valutare un nuovo formato non byte-identico. Evidenza:
+> [`EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
+
 > **Architectural traversal/dataflow loop 2026-08-30 — stato operativo
 > corrente.** Il precedente cumulative loop è **EXHAUSTED con blocker
 > architetturale**; non è corretto continuare con micro-ottimizzazioni dello

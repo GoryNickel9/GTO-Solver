@@ -1,5 +1,12 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Exact state decision 2026-08-30:** **EXACT REPRESENTATION BLOCKER PROVEN**
+> per `ScaledUint16RegretStrategy` byte-identico. Retain, recompute, mixed,
+> sparse e hierarchical non superano i gate shadow/economici; production resta
+> invariata. Il prossimo passo è una task separata sul nuovo formato state e
+> sulle scale semantics, non un'altra variante dello stesso dataflow. Vedere
+> [`EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
+
 > **Architectural traversal loop 2026-08-30:** il cumulative objective loop è
 > **EXHAUSTED con blocker architetturale**. Non va riaperta un'altra
 > micro-ottimizzazione della rappresentazione node/action/value/state corrente.

@@ -1,5 +1,14 @@
 # Performance
 
+> **Frozen exact-state decision — 2026-08-30.** Il pass
+> `prequantized values -> node-global scale -> encode` di
+> `ScaledUint16RegretStrategy` è strutturale sotto checkpoint byte-identico.
+> Lower bound 32+31 bit/entry; shadow exact massimo `1,024x`, sotto `1,3x`.
+> Non riaprire retain, recompute, provisional tile, sparse journal o delayed
+> finalization senza nuova prova che superi i gate del report
+> [`../EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](../EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
+> Un codec o scale semantics diversi richiedono una baseline nuova esplicita.
+
 > **Direzione architetturale 2026-08-30.** Il cumulative optimization loop è
 > **EXHAUSTED con blocker architetturale**. Streaming/rank fusion, treelet,
 > liveness/cache, batching locale e varianti state/update già respinte non sono
