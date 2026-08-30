@@ -2435,6 +2435,12 @@ struct HotpathTelemetry {
   std::uint64_t river_topology_work = 0U;
   std::uint64_t river_topology_padded_work = 0U;
   std::uint64_t river_topology_ineligible_roots = 0U;
+  std::uint64_t river_decision_value_entries = 0U;
+  std::uint64_t river_all_terminal_value_entries = 0U;
+  std::uint64_t river_signed_value_entries = 0U;
+  std::uint64_t river_all_terminal_signed_value_entries = 0U;
+  std::uint64_t river_opponent_value_entries = 0U;
+  std::uint64_t river_all_terminal_opponent_value_entries = 0U;
 #endif
 
   HotpathTelemetry &operator+=(const HotpathTelemetry &other) noexcept {
@@ -2490,6 +2496,12 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(river_topology_work);
     GTOSD_ADD_PROFILE_FIELD(river_topology_padded_work);
     GTOSD_ADD_PROFILE_FIELD(river_topology_ineligible_roots);
+    GTOSD_ADD_PROFILE_FIELD(river_decision_value_entries);
+    GTOSD_ADD_PROFILE_FIELD(river_all_terminal_value_entries);
+    GTOSD_ADD_PROFILE_FIELD(river_signed_value_entries);
+    GTOSD_ADD_PROFILE_FIELD(river_all_terminal_signed_value_entries);
+    GTOSD_ADD_PROFILE_FIELD(river_opponent_value_entries);
+    GTOSD_ADD_PROFILE_FIELD(river_all_terminal_opponent_value_entries);
 #endif
 #undef GTOSD_ADD_PROFILE_FIELD
     return *this;
@@ -2716,6 +2728,10 @@ public:
   mutable double prof_scaled_encode_seconds_ = 0.0;
   mutable std::uint64_t prof_scaled_update_calls_ = 0U;
   mutable std::uint64_t prof_scaled_update_entries_ = 0U;
+  mutable std::array<std::uint64_t, maximum_action_count + 1U>
+      prof_scaled_calls_by_action_{};
+  mutable std::array<std::uint64_t, maximum_action_count + 1U>
+      prof_scaled_entries_by_action_{};
   mutable double prof_average_update_seconds_ = 0.0;
   mutable double prof_average_only_seconds_ = 0.0;
   mutable double prof_terminal_seconds_ = 0.0;
@@ -3067,6 +3083,8 @@ public:
     double scaled_encode = prof_scaled_encode_seconds_;
     std::uint64_t scaled_update_calls = prof_scaled_update_calls_;
     std::uint64_t scaled_update_entries = prof_scaled_update_entries_;
+    auto scaled_calls_by_action = prof_scaled_calls_by_action_;
+    auto scaled_entries_by_action = prof_scaled_entries_by_action_;
     double average_update = prof_average_update_seconds_;
     double average_only = prof_average_only_seconds_;
     double chance = prof_chance_seconds_;
@@ -3103,6 +3121,12 @@ public:
       scaled_encode += worker->prof_scaled_encode_seconds_;
       scaled_update_calls += worker->prof_scaled_update_calls_;
       scaled_update_entries += worker->prof_scaled_update_entries_;
+      for (std::size_t action = 0U; action <= maximum_action_count; ++action) {
+        scaled_calls_by_action[action] +=
+            worker->prof_scaled_calls_by_action_[action];
+        scaled_entries_by_action[action] +=
+            worker->prof_scaled_entries_by_action_[action];
+      }
       average_update += worker->prof_average_update_seconds_;
       average_only += worker->prof_average_only_seconds_;
       chance += worker->prof_chance_seconds_;
@@ -3140,6 +3164,12 @@ public:
       scaled_encode += parallel_worker_->prof_scaled_encode_seconds_;
       scaled_update_calls += parallel_worker_->prof_scaled_update_calls_;
       scaled_update_entries += parallel_worker_->prof_scaled_update_entries_;
+      for (std::size_t action = 0U; action <= maximum_action_count; ++action) {
+        scaled_calls_by_action[action] +=
+            parallel_worker_->prof_scaled_calls_by_action_[action];
+        scaled_entries_by_action[action] +=
+            parallel_worker_->prof_scaled_entries_by_action_[action];
+      }
       average_update += parallel_worker_->prof_average_update_seconds_;
       average_only += parallel_worker_->prof_average_only_seconds_;
       chance += parallel_worker_->prof_chance_seconds_;
@@ -3218,6 +3248,14 @@ public:
             ? 0.0
             : static_cast<double>(scaled_state_bytes + scaled_scratch_bytes) /
                   static_cast<double>(scaled_update_entries));
+    std::fprintf(stderr, "  signed state arity:");
+    for (std::size_t action = 1U; action <= maximum_action_count; ++action) {
+      std::fprintf(stderr, " a%zu_calls=%llu a%zu_entries=%llu", action,
+                   static_cast<unsigned long long>(scaled_calls_by_action[action]),
+                   action,
+                   static_cast<unsigned long long>(scaled_entries_by_action[action]));
+    }
+    std::fprintf(stderr, "\n");
     std::fprintf(
         stderr,
         "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
@@ -3308,6 +3346,21 @@ public:
             : static_cast<double>(
                   telemetry.river_topology_pair_batchable_work) /
                   static_cast<double>(telemetry.river_topology_work));
+    std::fprintf(
+        stderr,
+        "  river terminal sink coverage: all_entries=%llu all_terminal=%llu signed_entries=%llu signed_all_terminal=%llu opponent_entries=%llu opponent_all_terminal=%llu\n",
+        static_cast<unsigned long long>(
+            telemetry.river_decision_value_entries),
+        static_cast<unsigned long long>(
+            telemetry.river_all_terminal_value_entries),
+        static_cast<unsigned long long>(
+            telemetry.river_signed_value_entries),
+        static_cast<unsigned long long>(
+            telemetry.river_all_terminal_signed_value_entries),
+        static_cast<unsigned long long>(
+            telemetry.river_opponent_value_entries),
+        static_cast<unsigned long long>(
+            telemetry.river_all_terminal_opponent_value_entries));
 #endif
     std::fprintf(stderr, "  task distribution: main=%llu/%.1fms",
                  static_cast<unsigned long long>(prof_tasks_),
@@ -3346,6 +3399,8 @@ public:
     prof_scaled_encode_seconds_ = 0.0;
     prof_scaled_update_calls_ = 0U;
     prof_scaled_update_entries_ = 0U;
+    prof_scaled_calls_by_action_.fill(0U);
+    prof_scaled_entries_by_action_.fill(0U);
     prof_average_update_seconds_ = 0.0;
     prof_average_only_seconds_ = 0.0;
     prof_terminal_seconds_ = 0.0;
@@ -3390,6 +3445,8 @@ public:
       worker->prof_scaled_encode_seconds_ = 0.0;
       worker->prof_scaled_update_calls_ = 0U;
       worker->prof_scaled_update_entries_ = 0U;
+      worker->prof_scaled_calls_by_action_.fill(0U);
+      worker->prof_scaled_entries_by_action_.fill(0U);
       worker->prof_average_update_seconds_ = 0.0;
       worker->prof_average_only_seconds_ = 0.0;
       worker->prof_terminal_seconds_ = 0.0;
@@ -3435,6 +3492,8 @@ public:
       parallel_worker_->prof_scaled_encode_seconds_ = 0.0;
       parallel_worker_->prof_scaled_update_calls_ = 0U;
       parallel_worker_->prof_scaled_update_entries_ = 0U;
+      parallel_worker_->prof_scaled_calls_by_action_.fill(0U);
+      parallel_worker_->prof_scaled_entries_by_action_.fill(0U);
       parallel_worker_->prof_average_update_seconds_ = 0.0;
       parallel_worker_->prof_average_only_seconds_ = 0.0;
       parallel_worker_->prof_terminal_seconds_ = 0.0;
@@ -4543,6 +4602,8 @@ private:
             std::chrono::steady_clock::now() - scaled_encode_started).count();
         ++prof_scaled_update_calls_;
         prof_scaled_update_entries_ += scaled_entries;
+        ++prof_scaled_calls_by_action_[action_count];
+        prof_scaled_entries_by_action_[action_count] += scaled_entries;
       };
       if (encoded_scale > 0.0F && average_scale > 0.0F) {
         const double regret_inverse =
@@ -7716,6 +7777,40 @@ private:
       }
     }
 
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (profile) {
+      bool all_children_terminal = true;
+      for (std::size_t action = 0U; action < action_count; ++action) {
+        const auto &outcome = canonical.edges[action].outcomes.front();
+        const auto kind =
+            layout_.canonical_public_graph.nodes[outcome.child].kind;
+        all_children_terminal =
+            all_children_terminal &&
+            (kind == PublicNodeKind::TerminalFold ||
+             kind == PublicNodeKind::TerminalShowdown);
+      }
+      const auto value_entries = static_cast<std::uint64_t>(
+          action_count * board.player_combos[updating_player].size());
+      prof_telemetry_.river_decision_value_entries += value_entries;
+      if (all_children_terminal) {
+        prof_telemetry_.river_all_terminal_value_entries += value_entries;
+      }
+      if (decision.player == updating_player) {
+        prof_telemetry_.river_signed_value_entries += value_entries;
+        if (all_children_terminal) {
+          prof_telemetry_.river_all_terminal_signed_value_entries +=
+              value_entries;
+        }
+      } else {
+        prof_telemetry_.river_opponent_value_entries += value_entries;
+        if (all_children_terminal) {
+          prof_telemetry_.river_all_terminal_opponent_value_entries +=
+              value_entries;
+        }
+      }
+    }
+#endif
+
     const auto value_started = profile ? std::chrono::steady_clock::now()
                                        : std::chrono::steady_clock::time_point{};
     const auto updating_count = board.player_combos[updating_player].size();
@@ -7745,8 +7840,9 @@ private:
       return PostflopSolverError::InvalidConfiguration;
     }
     if (profile) {
-      prof_value_update_seconds_ += std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - value_started).count();
+      const auto completed = std::chrono::steady_clock::now();
+      prof_value_update_seconds_ +=
+          std::chrono::duration<double>(completed - value_started).count();
     }
     return std::nullopt;
   }
