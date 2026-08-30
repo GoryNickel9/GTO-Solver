@@ -4,6 +4,18 @@ Aggiornato: 2026-08-30
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Architectural traversal/dataflow loop 2026-08-30 — stato operativo
+> corrente.** Il precedente cumulative loop è **EXHAUSTED con blocker
+> architetturale**; non è corretto continuare con micro-ottimizzazioni dello
+> stesso layout. La telemetria generale trova su TST 335.984 river work unit e
+> batchability byte strict width-4 `0,589% / 53,839% / 98,831%` per
+> local/frontier/global. Il wavefront shadow su subtree reali è byte-exact ma i
+> mediani width-4 sono solo `1,116x/1,327x`, sotto il gate `1,50x`; il traversal
+> compilato ha ceiling end-to-end `2,94%`; la continuation exact disponibile è
+> chiusa dal global node scale e dall'ordine di update. Nessuna integrazione
+> production o rebaseline è stata autorizzata. Vedere
+> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
+
 > **Checkpoint final-head omogeneo 2026-08-30 — prevale su tutti i checkpoint
 > sottostanti per lo stato corrente.** I tre benchmark target-driven sono stati
 > rieseguiti in tre processi separati, uno alla volta, sul binario

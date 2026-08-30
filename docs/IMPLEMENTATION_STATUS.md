@@ -1,5 +1,16 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Architectural traversal loop 2026-08-30:** il cumulative objective loop è
+> **EXHAUSTED con blocker architetturale**. Non va riaperta un'altra
+> micro-ottimizzazione della rappresentazione node/action/value/state corrente.
+> Il nuovo studio ha misurato batchability local/frontier/global, disgiunzione,
+> byte traffic, RAM e tre famiglie architetturali. Il wavefront shadow è exact
+> ma fallisce il gate sui workload mediani (`1,116x/1,327x` a width 4); un
+> compiled plan elimina al massimo il `2,94%` del traversal; la continuation
+> exact disponibile non elimina abbastanza materializzazione. Nessun percorso
+> production è stato modificato. Evidenza e ledger:
+> `ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`.
+
 > **Revalidation final-head 2026-08-30:** le tre fixture sono state eseguite
 > target-driven sullo stesso binario Release da
 > `6508bddd039d44ecb941acded4b5b16d39f4f7e8`. AHKHQH chiude @80 in
@@ -64,7 +75,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; 3 gate rossi** | Final-head comune DCFR exact signed `1.5/0/2`: AHK `0,655665% @80`, root `19,108984`, `0,670928 s`; TH `0,806385% @80`, root `8,221632`, `17,645055 s`; TST `0,991863% @202`, root `8,494698`, payoff-sum `3,22e-15`, `208,111772 s` (`174,926380` traversal + `32,780800` certification), stato `1.472.605.376 B`, peak RSS `1.969.922.048 B`. TST supera il limite `128,988889 s` del `61,3409%`; AHK/TH time PASS. `memory_gate` peak-RSS-vs-GTO+ FAIL per AHK/TH. Full CTest 21/21 PASS | Chiudere prima i due hard memory gate oppure formalizzare normativamente il diverso cap desktop; poi serve una riduzione exact del traversal TST. F11+ e cinque processi restano congelati |
+| GTO+ parity gate | **NON SUPERATO; TST time blocker in scope** | Final-head comune DCFR exact signed `1.5/0/2`: AHK `0,655665% @80`, root `19,108984`, `0,670928 s`; TH `0,806385% @80`, root `8,221632`, `17,645055 s`; TST `0,991863% @202`, root `8,494698`, payoff-sum `3,22e-15`, `208,111772 s` (`174,926380` traversal + `32,780800` certification), stato `1.472.605.376 B`, peak RSS `1.969.922.048 B`. TST supera il limite `128,988889 s` del `61,3409%`; AHK/TH time PASS. Il confronto peak-RSS-vs-campo-memory GTO+ è deferred e non viene reinterpretato; cap desktop e state PASS. Full CTest 21/21 PASS | Il cumulative loop è EXHAUSTED: proseguire solo con una nuova rappresentazione exact dello state/dataflow che superi il ceiling documentato. F11+ e cinque processi restano congelati |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 

@@ -1,5 +1,15 @@
 # Performance
 
+> **Direzione architetturale 2026-08-30.** Il cumulative optimization loop è
+> **EXHAUSTED con blocker architetturale**. Streaming/rank fusion, treelet,
+> liveness/cache, batching locale e varianti state/update già respinte non sono
+> il prossimo passo. Il feasibility loop ha falsificato bounded wavefront puro,
+> compiled traversal e continuation exact disponibile rispetto ai threshold
+> richiesti, lasciando production invariata. Ogni lavoro successivo deve prima
+> dimostrare un nuovo state/dataflow ceiling exact e RAM-feasible; protocollo,
+> byte model e risultati sono in
+> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](../ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
+
 > **Revalidation production final-head 2026-08-30 — stato corrente.** Sul
 > binario Release da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`, AHKHQH
 > converge @80 in `0,670928 s`, TH7D6S @80 in `17,645055 s` e TSTC9D @202 in
