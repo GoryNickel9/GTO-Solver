@@ -22,9 +22,10 @@ namespace detail {
 // uint16 container but always interpreted semantically as int16.
 [[nodiscard]] bool regret_match_signed_codes(std::span<const std::uint16_t> raw_codes,
                                              std::span<double> strategy) noexcept;
-[[nodiscard]] bool regret_match_signed_action_major(
-    std::span<const std::uint16_t *const> action_sources,
-    std::span<float *const> action_strategies, std::size_t hand_count) noexcept;
+[[nodiscard]] bool
+regret_match_signed_action_major(std::span<const std::uint16_t *const> action_sources,
+                                 std::span<float *const> action_strategies,
+                                 std::size_t hand_count) noexcept;
 
 } // namespace detail
 
@@ -150,8 +151,8 @@ struct DiagnosticRootLockEntry {
   std::vector<std::string> action_labels;
   std::vector<double> probabilities;
 
-  friend bool operator==(const DiagnosticRootLockEntry &, const DiagnosticRootLockEntry &) =
-      default;
+  friend bool operator==(const DiagnosticRootLockEntry &,
+                         const DiagnosticRootLockEntry &) = default;
 };
 
 struct DiagnosticRootLock {
@@ -309,6 +310,85 @@ struct PostflopLayoutEstimate {
   std::uint64_t strategy_bytes{0};
 };
 
+// Read-only topology row for architectural traversal feasibility studies.
+// A work unit is one canonical turn-to-river representative subtree evaluated
+// for one alternating-update player.  No solver state is allocated or read.
+struct PostflopRiverWorkUnit {
+  std::uint32_t source_chance_node{0};
+  std::uint32_t river_root_node{0};
+  std::uint64_t board_mask{0};
+  std::uint64_t structural_signature{0};
+  std::uint64_t relaxed_signature{0};
+  std::uint64_t payoff_signature{0};
+  std::uint64_t state_shape_signature{0};
+  std::uint64_t state_begin{0};
+  std::uint64_t state_end{0};
+  std::uint64_t showdown_work{0};
+  std::uint64_t action_entries{0};
+  std::uint64_t value_entries{0};
+  std::uint64_t state_entries{0};
+  std::uint64_t terminal_bytes{0};
+  std::uint64_t value_bytes{0};
+  std::uint64_t state_bytes{0};
+  std::uint64_t reach_bytes{0};
+  std::uint32_t public_nodes{0};
+  std::uint32_t decision_nodes{0};
+  std::uint32_t showdown_terminals{0};
+  std::uint32_t chance_descendants{0};
+  std::uint32_t identity_transforms{0};
+  std::uint32_t nonidentity_transforms{0};
+  std::uint16_t live_hero_combos{0};
+  std::uint16_t live_opponent_combos{0};
+  std::uint16_t rank_count{0};
+  std::uint16_t source_sibling_count{0};
+  std::uint8_t actor{0};
+  std::uint8_t update_player{0};
+  std::uint8_t action_count{0};
+  std::uint8_t terminal_child_pattern{0};
+  bool state_interval_present{false};
+  bool root_transform_identity{true};
+};
+
+struct PostflopArchitecturalTopology {
+  std::vector<PostflopRiverWorkUnit> river_work_units;
+  std::uint64_t analyzed_public_nodes{0};
+  std::uint64_t temporary_metadata_bytes{0};
+  std::uint64_t invalid_or_cyclic_units{0};
+  std::uint64_t control_plan_ops{0};
+  std::uint64_t control_plan_bytes{0};
+  std::uint64_t recursive_control_checksum{0};
+  std::uint64_t linear_control_checksum{0};
+  double recursive_control_seconds{0.0};
+  double linear_control_seconds{0.0};
+};
+
+struct PostflopArchitecturalShadowSample {
+  std::string workload_class;
+  std::uint8_t update_player{0};
+  std::uint8_t batch_width{0};
+  std::uint64_t structural_signature{0};
+  std::uint64_t modeled_bytes{0};
+  std::uint64_t copied_state_bytes{0};
+  std::uint64_t copied_scale_bytes{0};
+  std::uint64_t descriptor_bytes{0};
+  double local_schedule_seconds{0.0};
+  double global_frontier_seconds{0.0};
+  double speedup{0.0};
+  bool parent_values_bit_equal{false};
+  bool regret_codes_bit_equal{false};
+  bool strategy_codes_bit_equal{false};
+  bool regret_scales_bit_equal{false};
+  bool strategy_scales_bit_equal{false};
+  std::vector<std::uint32_t> river_root_nodes;
+  std::vector<std::uint32_t> source_chance_nodes;
+};
+
+struct PostflopArchitecturalShadowReport {
+  std::vector<PostflopArchitecturalShadowSample> samples;
+  std::uint64_t repetitions{0};
+  std::uint64_t additional_bytes{0};
+};
+
 struct PostflopComboAnalysis {
   ComboId combo{0};
   double reach_weight{0.0};
@@ -365,6 +445,11 @@ private:
   friend Result<PostflopNodeAnalysis, PostflopSolverError>
   analyze_postflop_node(PostflopPreparedTree &, const PostflopCheckpoint &, NodeId);
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
+  friend Result<PostflopArchitecturalTopology, PostflopSolverError>
+  inspect_postflop_architectural_topology(const PostflopPreparedTree &);
+  friend Result<PostflopArchitecturalShadowReport, PostflopSolverError>
+  benchmark_postflop_architectural_shadow(PostflopPreparedTree &, PostflopCheckpoint &,
+                                          std::uint8_t, std::uint64_t);
   friend class RbpReadOnlyTelemetry;
   friend std::shared_ptr<const PublicTree>
   prepared_postflop_public_tree(const std::shared_ptr<PostflopPreparedTree> &);
@@ -377,6 +462,21 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
 
 [[nodiscard]] PostflopLayoutEstimate
 prepared_postflop_layout_estimate(const PostflopPreparedTree &prepared);
+
+// Explicit external inspector used by architecture tooling. It does not
+// participate in traversal and its temporary rows are released by the caller.
+[[nodiscard]] Result<PostflopArchitecturalTopology, PostflopSolverError>
+inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared);
+
+// Diagnostic-only Level-1 shadow. It snapshots and restores the selected
+// disjoint state ranges, compares current local scheduling with a bounded
+// global frontier on real production reach/state/board data, and never leaves
+// checkpoint bytes modified.
+[[nodiscard]] Result<PostflopArchitecturalShadowReport, PostflopSolverError>
+benchmark_postflop_architectural_shadow(PostflopPreparedTree &prepared,
+                                        PostflopCheckpoint &checkpoint,
+                                        std::uint8_t batch_width = 8U,
+                                        std::uint64_t repetitions = 3U);
 
 [[nodiscard]] std::shared_ptr<const PublicTree>
 prepared_postflop_public_tree(const std::shared_ptr<PostflopPreparedTree> &prepared);

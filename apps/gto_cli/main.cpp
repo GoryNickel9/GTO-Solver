@@ -29,11 +29,13 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 #ifdef _WIN32
@@ -48,10 +50,10 @@ LONG WINAPI report_unhandled_exception(EXCEPTION_POINTERS *exception) {
   void *frames[64]{};
   const auto frame_count = CaptureStackBackTrace(0U, 64U, frames, nullptr);
   const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-  const auto address = reinterpret_cast<std::uintptr_t>(
-      exception != nullptr && exception->ExceptionRecord != nullptr
-          ? exception->ExceptionRecord->ExceptionAddress
-          : nullptr);
+  const auto address =
+      reinterpret_cast<std::uintptr_t>(exception != nullptr && exception->ExceptionRecord != nullptr
+                                           ? exception->ExceptionRecord->ExceptionAddress
+                                           : nullptr);
   const auto code = exception != nullptr && exception->ExceptionRecord != nullptr
                         ? exception->ExceptionRecord->ExceptionCode
                         : 0U;
@@ -89,8 +91,7 @@ std::optional<std::string> environment_value(const char *const name) {
 #pragma warning(disable : 4996)
   const char *const value = std::getenv(name);
 #pragma warning(pop)
-  return value == nullptr ? std::nullopt
-                          : std::optional<std::string>{value};
+  return value == nullptr ? std::nullopt : std::optional<std::string>{value};
 }
 
 std::optional<gtosd::PostflopBenchmark> parse_memory_benchmark(std::string_view text);
@@ -609,10 +610,10 @@ ParsedAllInSpec parse_all_in_spec(const std::string_view text) {
   constexpr std::string_view add_prefix{"add_if_push_below_"};
   constexpr std::string_view go_prefix{"go_if_push_below_"};
   constexpr std::string_view suffix{"_percent_pot_after_call"};
-  const auto mode = text.starts_with(add_prefix)
-                        ? gtosd::AllInMode::Add
-                        : (text.starts_with(go_prefix) ? gtosd::AllInMode::Go
-                                                       : gtosd::AllInMode::Disabled);
+  const auto mode =
+      text.starts_with(add_prefix)
+          ? gtosd::AllInMode::Add
+          : (text.starts_with(go_prefix) ? gtosd::AllInMode::Go : gtosd::AllInMode::Disabled);
   const auto prefix = mode == gtosd::AllInMode::Add ? add_prefix : go_prefix;
   if (mode == gtosd::AllInMode::Disabled || !text.ends_with(suffix)) {
     return {};
@@ -740,9 +741,9 @@ std::optional<gtosd::PostflopRange> parse_hand_class_range(const std::string_vie
   return range;
 }
 
-std::optional<std::vector<gtosd::PotPercentage>>
-parse_size_list(const nlohmann::json &value, const std::int64_t minimum,
-                const std::int64_t maximum) {
+std::optional<std::vector<gtosd::PotPercentage>> parse_size_list(const nlohmann::json &value,
+                                                                 const std::int64_t minimum,
+                                                                 const std::int64_t maximum) {
   std::vector<gtosd::PotPercentage> sizes;
   const auto append = [&](const nlohmann::json &entry) -> bool {
     if (!entry.is_number_integer()) {
@@ -752,8 +753,8 @@ parse_size_list(const nlohmann::json &value, const std::int64_t minimum,
     if (percent < minimum || percent > maximum) {
       return false;
     }
-    const auto size = gtosd::PotPercentage::from_basis_points(
-        static_cast<std::uint32_t>(percent * 100));
+    const auto size =
+        gtosd::PotPercentage::from_basis_points(static_cast<std::uint32_t>(percent * 100));
     if (!size) {
       return false;
     }
@@ -844,10 +845,10 @@ gtosd::PostflopTreeConfig make_convergence_config(const nlohmann::json &fixture,
   config.effective_stack =
       gtosd::Money::from_antes(fixture["effective_stack_antes"].get<std::int64_t>()).value();
   config.rake.enabled = true;
-  config.rake.percentage = gtosd::RangeWeight::from_basis_points(
-                               static_cast<std::uint32_t>(
-                                   fixture["rake_percent"].get<std::int64_t>() * 100))
-                               .value();
+  config.rake.percentage =
+      gtosd::RangeWeight::from_basis_points(
+          static_cast<std::uint32_t>(fixture["rake_percent"].get<std::int64_t>() * 100))
+          .value();
   config.rake.cap = gtosd::Money{};
   const auto bet_sizes = parse_size_list(fixture["bet_size_percent_pot"], 1, 100).value();
   const auto raise_sizes = parse_size_list(fixture["raise_size_percent_pot"], 1, 200).value();
@@ -877,14 +878,12 @@ gtosd::PostflopTreeConfig make_convergence_config(const nlohmann::json &fixture,
         scenario.raise_depth = 0U;
         scenario.all_in_mode = all_in.mode;
         scenario.all_in_threshold = threshold;
-        scenario.all_in_strict_boundary =
-            fixture["automatic_all_in_strict_boundary"].get<bool>();
+        scenario.all_in_strict_boundary = fixture["automatic_all_in_strict_boundary"].get<bool>();
         scenario.minimum_bet = minimum_bet;
         scenario.aggressive_target_rounding = rounding.bands;
         scenario.aggressive_target_rounding_mode = rounding.mode;
       }
-      player[static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)].raise_depth =
-          raise_depth;
+      player[static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)].raise_depth = raise_depth;
       player[static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)]
           .aggressive_sizes_by_raise_count = raise_size_schedule;
     }
@@ -995,9 +994,8 @@ nlohmann::json initial_street_action_catalog(const gtosd::PublicTree &tree) {
       actions.push_back({{"label", label},
                          {"type", action_type_name(edge.action.type)},
                          {"amount_units", edge.action.amount.units()},
-                         {"amount_antes",
-                          static_cast<double>(edge.action.amount.units()) /
-                              static_cast<double>(gtosd::Money::units_per_ante)},
+                         {"amount_antes", static_cast<double>(edge.action.amount.units()) /
+                                              static_cast<double>(gtosd::Money::units_per_ante)},
                          {"requested_basis_points", edge.action.requested_basis_points},
                          {"all_in_kind", static_cast<std::uint8_t>(edge.action.all_in_kind)}});
       const auto &child = tree.nodes[static_cast<std::size_t>(edge.child)];
@@ -1046,8 +1044,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     double process_cpu_seconds{0.0};
   };
   std::map<std::uint64_t, RuntimeSample> runtime_samples;
-  const bool rbp_read_only_enabled =
-      environment_value("GTOSD_RBP_READ_ONLY_TELEMETRY").has_value();
+  const bool rbp_read_only_enabled = environment_value("GTOSD_RBP_READ_ONLY_TELEMETRY").has_value();
   gtosd::RbpReadOnlyTelemetry rbp_telemetry;
   std::vector<gtosd::RbpReadOnlySnapshot> rbp_snapshots;
   double solver_cpu_started = 0.0;
@@ -1068,9 +1065,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   options.enable_canonical_public_dag = spec.enable_canonical_public_dag;
   options.progress_callback = [&config, &runtime_samples,
                                &solver_cpu_started](const gtosd::PostflopCertification &point) {
-    runtime_samples[point.iteration] =
-        {gtosd::process_current_rss_bytes(), gtosd::process_peak_rss_bytes(),
-         std::max(0.0, gtosd::process_cpu_seconds() - solver_cpu_started)};
+    runtime_samples[point.iteration] = {
+        gtosd::process_current_rss_bytes(), gtosd::process_peak_rss_bytes(),
+        std::max(0.0, gtosd::process_cpu_seconds() - solver_cpu_started)};
     const auto deviation = gtosd::normalized_max_deviation_gain(point, config.initial_pot);
     if (deviation) {
       std::cerr << "certification iteration=" << point.iteration
@@ -1079,36 +1076,34 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   };
 
   const auto started = std::chrono::steady_clock::now();
-  const bool requires_physical_analysis_tree =
-      std::ranges::any_of(spec.reference_nodes,
-                          [](const auto &node) { return !node.path.empty(); });
-  std::cerr << "benchmark_phase=prepare_start peak_rss_bytes="
-            << gtosd::process_peak_rss_bytes() << '\n';
+  const bool requires_physical_analysis_tree = std::ranges::any_of(
+      spec.reference_nodes, [](const auto &node) { return !node.path.empty(); });
+  std::cerr << "benchmark_phase=prepare_start peak_rss_bytes=" << gtosd::process_peak_rss_bytes()
+            << '\n';
   const auto prepared = gtosd::prepare_postflop_tree(
-      config, spec.ranges, spec.enable_lossless_isomorphism,
-      spec.enable_canonical_public_dag, requires_physical_analysis_tree);
+      config, spec.ranges, spec.enable_lossless_isomorphism, spec.enable_canonical_public_dag,
+      requires_physical_analysis_tree);
   if (!prepared) {
     std::cerr << "postflop benchmark-gto-plus failed: "
               << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
     return 1;
   }
   if (rbp_read_only_enabled) {
-    options.checkpoint_callback =
-        [&rbp_telemetry, &rbp_snapshots,
-         &prepared](const gtosd::PostflopCertification &,
-                    const gtosd::PostflopCheckpoint &checkpoint) {
-          auto observed = rbp_telemetry.observe(*prepared.value(), checkpoint);
-          if (!observed) {
-            return false;
-          }
-          rbp_snapshots.push_back(std::move(observed.value()));
-          return true;
-        };
+    options.checkpoint_callback = [&rbp_telemetry, &rbp_snapshots,
+                                   &prepared](const gtosd::PostflopCertification &,
+                                              const gtosd::PostflopCheckpoint &checkpoint) {
+      auto observed = rbp_telemetry.observe(*prepared.value(), checkpoint);
+      if (!observed) {
+        return false;
+      }
+      rbp_snapshots.push_back(std::move(observed.value()));
+      return true;
+    };
   }
-  std::cerr << "benchmark_phase=prepare_complete peak_rss_bytes="
-            << gtosd::process_peak_rss_bytes() << '\n';
+  std::cerr << "benchmark_phase=prepare_complete peak_rss_bytes=" << gtosd::process_peak_rss_bytes()
+            << '\n';
   solver_cpu_started = gtosd::process_cpu_seconds();
-  const auto solved = gtosd::solve_postflop_exact(*prepared.value(), options);
+  auto solved = gtosd::solve_postflop_exact(*prepared.value(), options);
   const double wall_elapsed_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   if (!solved || solved.value().convergence.empty()) {
@@ -1117,6 +1112,72 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                          : gtosd::postflop_solver_error_name(solved.error()))
               << '\n';
     return 1;
+  }
+
+  if (environment_value("GTOSD_ARCHITECTURAL_SHADOW").has_value()) {
+    std::uint8_t shadow_width = 8U;
+    if (const auto width_text = environment_value("GTOSD_ARCHITECTURAL_SHADOW_WIDTH")) {
+      const auto parsed = parse_u64(*width_text);
+      if (!parsed || (*parsed != 2U && *parsed != 4U && *parsed != 8U)) {
+        std::cerr << "postflop architectural shadow failed: invalid_width\n";
+        return 2;
+      }
+      shadow_width = static_cast<std::uint8_t>(*parsed);
+    }
+    auto shadow = gtosd::benchmark_postflop_architectural_shadow(
+        *prepared.value(), solved.value().checkpoint, shadow_width, 3U);
+    if (!shadow) {
+      std::cerr << "postflop architectural shadow failed: "
+                << gtosd::postflop_solver_error_name(shadow.error()) << '\n';
+      return 1;
+    }
+    nlohmann::json samples = nlohmann::json::array();
+    bool exact = true;
+    for (const auto &sample : shadow.value().samples) {
+      const bool sample_exact = sample.parent_values_bit_equal && sample.regret_codes_bit_equal &&
+                                sample.strategy_codes_bit_equal && sample.regret_scales_bit_equal &&
+                                sample.strategy_scales_bit_equal;
+      exact = exact && sample_exact;
+      samples.push_back({{"workload_class", sample.workload_class},
+                         {"update_player", sample.update_player},
+                         {"batch_width", sample.batch_width},
+                         {"structural_signature", sample.structural_signature},
+                         {"modeled_bytes", sample.modeled_bytes},
+                         {"copied_state_bytes", sample.copied_state_bytes},
+                         {"copied_scale_bytes", sample.copied_scale_bytes},
+                         {"descriptor_bytes", sample.descriptor_bytes},
+                         {"local_schedule_seconds", sample.local_schedule_seconds},
+                         {"global_frontier_seconds", sample.global_frontier_seconds},
+                         {"speedup", sample.speedup},
+                         {"parent_values_bit_equal", sample.parent_values_bit_equal},
+                         {"regret_codes_bit_equal", sample.regret_codes_bit_equal},
+                         {"strategy_codes_bit_equal", sample.strategy_codes_bit_equal},
+                         {"regret_scales_bit_equal", sample.regret_scales_bit_equal},
+                         {"strategy_scales_bit_equal", sample.strategy_scales_bit_equal},
+                         {"river_root_nodes", sample.river_root_nodes},
+                         {"source_chance_nodes", sample.source_chance_nodes}});
+      std::cerr << "ARCH-SHADOW workload=" << sample.workload_class
+                << " update_player=" << static_cast<unsigned>(sample.update_player)
+                << " width=" << static_cast<unsigned>(sample.batch_width)
+                << " local_ms=" << sample.local_schedule_seconds * 1000.0
+                << " global_ms=" << sample.global_frontier_seconds * 1000.0
+                << " speedup=" << sample.speedup << " exact=" << (sample_exact ? "pass" : "fail")
+                << '\n';
+    }
+    const nlohmann::json shadow_output{{"schema", "gtosd.architectural_traversal_shadow.v1"},
+                                       {"benchmark_id", spec.benchmark_id},
+                                       {"repetitions", shadow.value().repetitions},
+                                       {"additional_bytes", shadow.value().additional_bytes},
+                                       {"exact", exact},
+                                       {"samples", std::move(samples)}};
+    std::ofstream shadow_report(std::string(report_path) + ".architectural-shadow.json",
+                                std::ios::binary | std::ios::trunc);
+    shadow_report << shadow_output.dump(2) << '\n';
+    if (!shadow_report || !exact) {
+      std::cerr << "postflop architectural shadow failed: "
+                << (exact ? "report_io_failure" : "differential_mismatch") << '\n';
+      return exact ? 1 : 4;
+    }
   }
 
   const auto &result = solved.value();
@@ -1142,15 +1203,14 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       result.public_tree.node_count == spec.expected_physical_public_nodes &&
       result.canonical_public_nodes == spec.expected_canonical_public_nodes &&
       (spec.expected_decision_node_scales == 0U ||
-       result.checkpoint.decision_node_count ==
-           spec.expected_decision_node_scales) &&
+       result.checkpoint.decision_node_count == spec.expected_decision_node_scales) &&
       result.information_sets == spec.expected_information_sets &&
-      result.actions == spec.expected_actions && solver_state_bytes == spec.expected_solver_state_bytes &&
+      result.actions == spec.expected_actions &&
+      solver_state_bytes == spec.expected_solver_state_bytes &&
       result.checkpoint.game_fingerprint == spec.expected_game_fingerprint;
-  const bool converged =
-      final_deviation.value() < spec.target_percent / 100.0 &&
-      (result.stop_reason == gtosd::PostflopStopReason::Converged ||
-       spec.diagnostic_fixed_iterations);
+  const bool converged = final_deviation.value() < spec.target_percent / 100.0 &&
+                         (result.stop_reason == gtosd::PostflopStopReason::Converged ||
+                          spec.diagnostic_fixed_iterations);
   const auto public_tree = gtosd::prepared_postflop_public_tree(prepared.value());
   if (requires_physical_analysis_tree && !public_tree) {
     std::cerr << "postflop benchmark-gto-plus failed: missing_analysis_tree\n";
@@ -1192,22 +1252,20 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       actions.push_back({{"label", action_label(action)},
                          {"type", action_type_name(action.type)},
                          {"amount_units", action.amount.units()},
-                         {"amount_antes",
-                          static_cast<double>(action.amount.units()) /
-                              static_cast<double>(gtosd::Money::units_per_ante)},
+                         {"amount_antes", static_cast<double>(action.amount.units()) /
+                                              static_cast<double>(gtosd::Money::units_per_ante)},
                          {"requested_basis_points", action.requested_basis_points},
                          {"all_in_kind", static_cast<std::uint8_t>(action.all_in_kind)}});
     }
-    action_catalog.push_back(
-        {{"history", nlohmann::json::array()},
-         {"player_to_act", analyses.front().player_to_act},
-         {"pot_units", config.initial_pot.units()},
-         {"pot_antes", static_cast<double>(config.initial_pot.units()) /
-                            static_cast<double>(gtosd::Money::units_per_ante)},
-         {"remaining_stack_units",
-          {config.effective_stack.units(), config.effective_stack.units()}},
-         {"committed_this_street_units", {0, 0}},
-         {"actions", std::move(actions)}});
+    action_catalog.push_back({{"history", nlohmann::json::array()},
+                              {"player_to_act", analyses.front().player_to_act},
+                              {"pot_units", config.initial_pot.units()},
+                              {"pot_antes", static_cast<double>(config.initial_pot.units()) /
+                                                static_cast<double>(gtosd::Money::units_per_ante)},
+                              {"remaining_stack_units",
+                               {config.effective_stack.units(), config.effective_stack.units()}},
+                              {"committed_this_street_units", {0, 0}},
+                              {"actions", std::move(actions)}});
   }
 
   const auto ev_check = [ev_tolerance = spec.ev_tolerance](const double measured,
@@ -1225,9 +1283,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     if (!reference_node.ev_antes) {
       continue;
     }
-    ev_checks[reference_node.id] =
-        ev_check(analyses[index].gto_plus_ev_antes[reference_node.player],
-                 reference_node.ev_antes.value());
+    ev_checks[reference_node.id] = ev_check(
+        analyses[index].gto_plus_ev_antes[reference_node.player], reference_node.ev_antes.value());
   }
   const auto action_frequencies_json = [](const gtosd::PostflopNodeAnalysis &analysis) {
     nlohmann::json frequencies = nlohmann::json::object();
@@ -1305,10 +1362,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         // 0.001), so the weighted reference sum carries a rounding budget:
         // the aggregate tolerance is the per-node tolerance plus that budget
         // (worst case over all display-rounded products).
-        const double display_ev_step =
-            (spec.display_precision_percent / 100.0) *
-            static_cast<double>(config.initial_pot.units()) /
-            static_cast<double>(gtosd::Money::units_per_ante);
+        const double display_ev_step = (spec.display_precision_percent / 100.0) *
+                                       static_cast<double>(config.initial_pot.units()) /
+                                       static_cast<double>(gtosd::Money::units_per_ante);
         constexpr double kDisplayFrequencyStep = 0.001;
         for (std::size_t index = 0; index < spec.reference_nodes.size(); ++index) {
           const auto &child = spec.reference_nodes[index];
@@ -1316,10 +1372,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
             continue;
           }
           const auto &label = child.path.front();
-          const double reference_frequency =
-              gate_it->actions.contains(label)
-                  ? gate_it->actions.at(label)
-                  : std::numeric_limits<double>::quiet_NaN();
+          const double reference_frequency = gate_it->actions.contains(label)
+                                                 ? gate_it->actions.at(label)
+                                                 : std::numeric_limits<double>::quiet_NaN();
           const double measured_frequency =
               gate_measured.value(label, std::numeric_limits<double>::quiet_NaN());
           const double measured_ev = analyses[index].gto_plus_ev_antes[child.player];
@@ -1329,9 +1384,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
           }
           weighted_measured += measured_frequency * measured_ev;
           weighted_reference += reference_frequency * child.ev_antes.value();
-          display_rounding_budget +=
-              std::abs(reference_frequency) * display_ev_step +
-              std::abs(child.ev_antes.value()) * kDisplayFrequencyStep;
+          display_rounding_budget += std::abs(reference_frequency) * display_ev_step +
+                                     std::abs(child.ev_antes.value()) * kDisplayFrequencyStep;
           components.push_back(nlohmann::json{{"id", child.id},
                                               {"path", child.path},
                                               {"reference_frequency", reference_frequency},
@@ -1360,16 +1414,15 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   // posteriors are identical.
   const bool ev_correctness_passed =
       unconditional_ev_checks.empty()
-          ? std::ranges::all_of(ev_checks.items(), [](const auto &entry) {
-              return entry.value().value("passed", false);
-            })
+          ? std::ranges::all_of(
+                ev_checks.items(),
+                [](const auto &entry) { return entry.value().value("passed", false); })
           : unconditional_ev_checks[spec.gate_node_id].value("passed", false);
   // The correctness gate is the GTO+ EV of the gate reference node (the tree
   // root, resolved by spec.gate_node_id). It stays the structural gate: the
   // aggregate weighted check above is the EV correctness criterion.
   const bool gate_ev_passed =
-      ev_checks.contains(spec.gate_node_id) &&
-      ev_checks[spec.gate_node_id].value("passed", false);
+      ev_checks.contains(spec.gate_node_id) && ev_checks[spec.gate_node_id].value("passed", false);
   const bool correctness_passed = layout_matches && result.maximum_normalization_error <= 1.0e-11 &&
                                   std::isfinite(final.normalized_nash_conv) &&
                                   std::abs(final.expected_payoff_sum_antes) <= 1.0e-11 &&
@@ -1386,9 +1439,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     const double deviation_percent = deviation.value() * 100.0;
     best_deviation_percent = std::min(best_deviation_percent, deviation_percent);
     const auto runtime = runtime_samples.find(point.iteration);
-    const RuntimeSample sample = runtime != runtime_samples.end()
-                                     ? runtime->second
-                                     : RuntimeSample{};
+    const RuntimeSample sample =
+        runtime != runtime_samples.end() ? runtime->second : RuntimeSample{};
     const double traversal_iterations_per_second =
         point.traversal_elapsed_seconds > 0.0
             ? static_cast<double>(point.iteration) / point.traversal_elapsed_seconds
@@ -1397,61 +1449,48 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         point.solver_elapsed_seconds > 0.0
             ? static_cast<double>(point.iteration) / point.solver_elapsed_seconds
             : 0.0;
-    const double nodes_per_second =
-        point.traversal_elapsed_seconds > 0.0
-            ? static_cast<double>(point.work_counters.visited_nodes) /
-                  point.traversal_elapsed_seconds
-            : 0.0;
-    convergence.push_back({{"iteration", point.iteration},
-                           {"solver_elapsed_seconds", point.solver_elapsed_seconds},
-                           {"traversal_elapsed_seconds", point.traversal_elapsed_seconds},
-                           {"certification_elapsed_seconds",
-                            point.certification_elapsed_seconds},
-                           {"process_cpu_seconds", sample.process_cpu_seconds},
-                           {"current_rss_bytes", sample.current_rss_bytes},
-                           {"peak_rss_bytes", sample.peak_rss_bytes},
-                           {"solver_iterations_per_second", solver_iterations_per_second},
-                           {"traversal_iterations_per_second",
-                            traversal_iterations_per_second},
-                           {"average_traversal_seconds_per_iteration",
-                            point.iteration > 0U
-                                ? point.traversal_elapsed_seconds /
-                                      static_cast<double>(point.iteration)
-                                : 0.0},
-                           {"visited_nodes_per_second", nodes_per_second},
-                           {"gto_plus_dev_fraction", deviation.value()},
-                           {"gto_plus_dev_percent", deviation_percent},
-                           {"best_gto_plus_dev_percent_so_far", best_deviation_percent},
-                           {"normalized_nash_conv", point.normalized_nash_conv},
-                           {"profile_value_co_antes", point.profile_value_antes[0]},
-                           {"profile_value_btn_antes", point.profile_value_antes[1]},
-                           {"best_response_value_co_antes",
-                            point.best_response_value_antes[0]},
-                           {"best_response_value_btn_antes",
-                            point.best_response_value_antes[1]},
-                           {"expected_payoff_sum_antes", point.expected_payoff_sum_antes},
-                           {"deviation_gain_co_antes",
-                            point.best_response_value_antes[0] - point.profile_value_antes[0]},
-                           {"deviation_gain_btn_antes",
-                            point.best_response_value_antes[1] - point.profile_value_antes[1]},
-                           {"work_counters",
-                            {{"visited_nodes", point.work_counters.visited_nodes},
-                             {"decision_node_evaluations",
-                              point.work_counters.decision_node_evaluations},
-                             {"chance_node_evaluations",
-                              point.work_counters.chance_node_evaluations},
-                             {"chance_outcome_evaluations",
-                              point.work_counters.chance_outcome_evaluations},
-                             {"terminal_evaluations",
-                              point.work_counters.terminal_evaluations},
-                             {"fold_terminal_evaluations",
-                              point.work_counters.fold_terminal_evaluations},
-                             {"showdown_terminal_evaluations",
-                              point.work_counters.showdown_terminal_evaluations},
-                             {"regret_update_entries",
-                              point.work_counters.regret_update_entries},
-                             {"strategy_update_entries",
-                              point.work_counters.strategy_update_entries}}}});
+    const double nodes_per_second = point.traversal_elapsed_seconds > 0.0
+                                        ? static_cast<double>(point.work_counters.visited_nodes) /
+                                              point.traversal_elapsed_seconds
+                                        : 0.0;
+    convergence.push_back(
+        {{"iteration", point.iteration},
+         {"solver_elapsed_seconds", point.solver_elapsed_seconds},
+         {"traversal_elapsed_seconds", point.traversal_elapsed_seconds},
+         {"certification_elapsed_seconds", point.certification_elapsed_seconds},
+         {"process_cpu_seconds", sample.process_cpu_seconds},
+         {"current_rss_bytes", sample.current_rss_bytes},
+         {"peak_rss_bytes", sample.peak_rss_bytes},
+         {"solver_iterations_per_second", solver_iterations_per_second},
+         {"traversal_iterations_per_second", traversal_iterations_per_second},
+         {"average_traversal_seconds_per_iteration",
+          point.iteration > 0U
+              ? point.traversal_elapsed_seconds / static_cast<double>(point.iteration)
+              : 0.0},
+         {"visited_nodes_per_second", nodes_per_second},
+         {"gto_plus_dev_fraction", deviation.value()},
+         {"gto_plus_dev_percent", deviation_percent},
+         {"best_gto_plus_dev_percent_so_far", best_deviation_percent},
+         {"normalized_nash_conv", point.normalized_nash_conv},
+         {"profile_value_co_antes", point.profile_value_antes[0]},
+         {"profile_value_btn_antes", point.profile_value_antes[1]},
+         {"best_response_value_co_antes", point.best_response_value_antes[0]},
+         {"best_response_value_btn_antes", point.best_response_value_antes[1]},
+         {"expected_payoff_sum_antes", point.expected_payoff_sum_antes},
+         {"deviation_gain_co_antes",
+          point.best_response_value_antes[0] - point.profile_value_antes[0]},
+         {"deviation_gain_btn_antes",
+          point.best_response_value_antes[1] - point.profile_value_antes[1]},
+         {"work_counters",
+          {{"visited_nodes", point.work_counters.visited_nodes},
+           {"decision_node_evaluations", point.work_counters.decision_node_evaluations},
+           {"chance_node_evaluations", point.work_counters.chance_node_evaluations},
+           {"chance_outcome_evaluations", point.work_counters.chance_outcome_evaluations},
+           {"terminal_evaluations", point.work_counters.terminal_evaluations},
+           {"fold_terminal_evaluations", point.work_counters.fold_terminal_evaluations},
+           {"showdown_terminal_evaluations", point.work_counters.showdown_terminal_evaluations},
+           {"regret_update_entries", point.work_counters.regret_update_entries},
+           {"strategy_update_entries", point.work_counters.strategy_update_entries}}}});
   }
 
   // GTO+ reports the memory consumed by the complete solve, not only the
@@ -1480,19 +1519,15 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
 
   const bool diagnostic_simultaneous =
       environment_value("GTOSD_DIAGNOSTIC_SIMULTANEOUS").has_value();
-  const nlohmann::json iteration_limit =
-      spec.diagnostic_iteration_limit == 0U
-          ? nlohmann::json(nullptr)
-          : nlohmann::json(spec.diagnostic_iteration_limit);
+  const nlohmann::json iteration_limit = spec.diagnostic_iteration_limit == 0U
+                                             ? nlohmann::json(nullptr)
+                                             : nlohmann::json(spec.diagnostic_iteration_limit);
   const auto rbp_work_json = [](const gtosd::RbpReadOnlyWorkEstimate &work) {
-    return nlohmann::json{{"public_nodes", work.public_nodes},
-                          {"decision_nodes", work.decision_nodes},
-                          {"chance_nodes", work.chance_nodes},
-                          {"chance_outcomes", work.chance_outcomes},
-                          {"fold_terminals", work.fold_terminals},
-                          {"showdown_terminals", work.showdown_terminals},
-                          {"regret_entries", work.regret_entries},
-                          {"strategy_entries", work.strategy_entries}};
+    return nlohmann::json{
+        {"public_nodes", work.public_nodes},     {"decision_nodes", work.decision_nodes},
+        {"chance_nodes", work.chance_nodes},     {"chance_outcomes", work.chance_outcomes},
+        {"fold_terminals", work.fold_terminals}, {"showdown_terminals", work.showdown_terminals},
+        {"regret_entries", work.regret_entries}, {"strategy_entries", work.strategy_entries}};
   };
   nlohmann::json rbp_observations = nlohmann::json::array();
   for (const auto &snapshot : rbp_snapshots) {
@@ -1509,14 +1544,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                 ? 0.0
                 : static_cast<double>(player.original_formula_candidates) / player.actions},
            {"decisions_with_candidates", player.decisions_with_candidates},
-           {"decisions_with_all_but_one_candidate",
-            player.decisions_with_all_but_one_candidate},
+           {"decisions_with_all_but_one_candidate", player.decisions_with_all_but_one_candidate},
            {"persistent_candidates", player.persistent_candidates},
            {"new_candidates", player.new_candidates},
            {"reactivated_candidates", player.reactivated_candidates},
            {"candidates_by_street", player.candidates_by_street},
-           {"candidates_by_decision_action_count",
-            player.candidates_by_decision_action_count},
+           {"candidates_by_decision_action_count", player.candidates_by_decision_action_count},
            {"candidate_regret_antes",
             {{"minimum", player.minimum_candidate_regret_antes},
              {"mean", player.mean_candidate_regret_antes},
@@ -1553,13 +1586,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        {{"configuration", build_configuration_name()},
         {"compiler", compiler_identity()},
         {"api_version", std::string(gtosd::api_version_string)}}},
-      {"algorithm", spec.algorithm == gtosd::PostflopAlgorithm::HsDcfr30
-                        ? "exact_hs_dcfr_30"
-                    : spec.algorithm == gtosd::PostflopAlgorithm::Dcfr
-                        ? "exact_dcfr"
-                        : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus
-                               ? "exact_dcfr_plus"
-                               : "exact_cfr_plus")},
+      {"algorithm",
+       spec.algorithm == gtosd::PostflopAlgorithm::HsDcfr30 ? "exact_hs_dcfr_30"
+       : spec.algorithm == gtosd::PostflopAlgorithm::Dcfr
+           ? "exact_dcfr"
+           : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus ? "exact_dcfr_plus"
+                                                                   : "exact_cfr_plus")},
       {"dcfr_parameters",
        {{"alpha", spec.dcfr_positive_regret_exponent},
         {"beta", 0.0},
@@ -1569,7 +1601,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
            ? "action_major_scaled_uint16_regret_strategy_float32_compute"
        : spec.state_precision ==
-                 gtosd::PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy
+               gtosd::PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy
            ? "action_major_float13_regret_float11_strategy_float32_compute"
        : spec.state_precision == gtosd::PostflopStatePrecision::Float13RegretFloat11Strategy
            ? "float13_regret_float11_strategy_float32_compute"
@@ -1623,16 +1655,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"visited_nodes_per_second", visited_nodes_per_second}}},
       {"work_counters",
        {{"visited_nodes", result.work_counters.visited_nodes},
-        {"decision_node_evaluations",
-         result.work_counters.decision_node_evaluations},
+        {"decision_node_evaluations", result.work_counters.decision_node_evaluations},
         {"chance_node_evaluations", result.work_counters.chance_node_evaluations},
-        {"chance_outcome_evaluations",
-         result.work_counters.chance_outcome_evaluations},
+        {"chance_outcome_evaluations", result.work_counters.chance_outcome_evaluations},
         {"terminal_evaluations", result.work_counters.terminal_evaluations},
-        {"fold_terminal_evaluations",
-         result.work_counters.fold_terminal_evaluations},
-        {"showdown_terminal_evaluations",
-         result.work_counters.showdown_terminal_evaluations},
+        {"fold_terminal_evaluations", result.work_counters.fold_terminal_evaluations},
+        {"showdown_terminal_evaluations", result.work_counters.showdown_terminal_evaluations},
         {"regret_update_entries", result.work_counters.regret_update_entries},
         {"strategy_update_entries", result.work_counters.strategy_update_entries}}},
       {"iteration_limit", iteration_limit},
@@ -1672,20 +1700,20 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"reference_bytes", spec.reference_memory_bytes},
         {"passed", peak_rss_bytes <= spec.reference_memory_bytes}}},
       {"transient_regret_delta_bytes",
-       result.actions * sizeof(double) * static_cast<std::uint64_t>(spec.parallel_action_depth + 1U)},
+       result.actions * sizeof(double) *
+           static_cast<std::uint64_t>(spec.parallel_action_depth + 1U)},
       {"peak_rss_bytes", peak_rss_bytes},
       {"current_rss_bytes", current_rss_bytes},
       {"final_gto_plus_dev_fraction", final_deviation.value()},
       {"final_gto_plus_dev_percent", final_deviation.value() * 100.0},
       {"final_normalized_nash_conv", final.normalized_nash_conv},
       {"convergence", std::move(convergence)}};
-  report["rbp_read_only_audit"] =
-      {{"enabled", rbp_read_only_enabled},
-       {"mutates_solver_state", false},
-       {"changes_traversal_control_flow", false},
-       {"original_cfr_formula_is_sound_for_production_dcfr", false},
-       {"observation_scope", "exact certification checkpoints only"},
-       {"observations", std::move(rbp_observations)}};
+  report["rbp_read_only_audit"] = {{"enabled", rbp_read_only_enabled},
+                                   {"mutates_solver_state", false},
+                                   {"changes_traversal_control_flow", false},
+                                   {"original_cfr_formula_is_sound_for_production_dcfr", false},
+                                   {"observation_scope", "exact certification checkpoints only"},
+                                   {"observations", std::move(rbp_observations)}};
 
   const auto temporary = destination.string() + ".tmp";
   {
@@ -1789,8 +1817,7 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
       reference_frequencies.value("flop_btn_after_co_bet_20", nlohmann::json{}) !=
           nlohmann::json{{"fold", 0.374}, {"call_20", 0.626}, {"raise_60", 0.0}} ||
       run.contains("maximum_iterations") || certification_interval != 20U ||
-      averaging_delay != 20U ||
-      parallel_action_depth != 5U || maximum_solver_threads != 6U ||
+      averaging_delay != 20U || parallel_action_depth != 5U || maximum_solver_threads != 6U ||
       reference.value("target_definition", std::string{}) !=
           "maximum unilateral best-response gain divided by the initial pot" ||
       !immutable_fixture_matches) {
@@ -1814,16 +1841,17 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
   spec.maximum_solver_threads = maximum_solver_threads;
   spec.config = make_gto_plus_parity_config();
   spec.ranges = make_gto_plus_parity_ranges();
-  spec.reference_nodes = {
-      {"flop_co_root", {}, 0, 19.15, {{"check", 0.803}, {"bet_20", 0.197}}},
-      {"flop_btn_after_co_check", {"check"}, 1, 21.65, {}},
-      {"flop_btn_after_co_bet_20", {"bet_20"}, 1, 17.51,
-       {{"fold", 0.374}, {"call_20", 0.626}, {"raise_60", 0.0}}}};
+  spec.reference_nodes = {{"flop_co_root", {}, 0, 19.15, {{"check", 0.803}, {"bet_20", 0.197}}},
+                          {"flop_btn_after_co_check", {"check"}, 1, 21.65, {}},
+                          {"flop_btn_after_co_bet_20",
+                           {"bet_20"},
+                           1,
+                           17.51,
+                           {{"fold", 0.374}, {"call_20", 0.626}, {"raise_60", 0.0}}}};
   spec.expected_game_fingerprint = expected.value("game_fingerprint", std::string{});
   spec.expected_physical_public_nodes = expected.value("physical_public_nodes", std::uint64_t{0});
   spec.expected_canonical_public_nodes = expected.value("canonical_public_nodes", std::uint64_t{0});
-  spec.expected_decision_node_scales =
-      expected.value("decision_node_scales", std::uint64_t{0});
+  spec.expected_decision_node_scales = expected.value("decision_node_scales", std::uint64_t{0});
   spec.expected_information_sets = expected.value("information_sets", std::uint64_t{0});
   spec.expected_actions = expected.value("actions", std::uint64_t{0});
   spec.expected_solver_state_bytes = expected.value("solver_state_bytes", std::uint64_t{0});
@@ -1837,17 +1865,15 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
     std::ifstream input(specification_path, std::ios::binary);
     input >> specification;
     if (!input || !specification.is_object() ||
-        specification.value("schema", std::string{}) !=
-            "gtosd.gto_plus_convergence_benchmark.v2" ||
+        specification.value("schema", std::string{}) != "gtosd.gto_plus_convergence_benchmark.v2" ||
         specification.value("source", std::string{}) != "GTO+" ||
         !specification.contains("benchmark_id") || !specification["benchmark_id"].is_string() ||
         !matches_benchmark_id_pattern(
             specification["benchmark_id"].get_ref<const std::string &>()) ||
         !specification.contains("fixture") || !specification["fixture"].is_object() ||
         !specification.contains("gto_plus_reference") ||
-        !specification["gto_plus_reference"].is_object() ||
-        !specification.contains("gtosd_run") || !specification["gtosd_run"].is_object() ||
-        !specification.contains("expected_layout") ||
+        !specification["gto_plus_reference"].is_object() || !specification.contains("gtosd_run") ||
+        !specification["gtosd_run"].is_object() || !specification.contains("expected_layout") ||
         !specification["expected_layout"].is_object()) {
       std::cerr << "postflop benchmark-gto-plus failed: specification_mismatch\n";
       return 2;
@@ -1873,16 +1899,12 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   spec.display_precision_percent = reference.value("display_precision_percent", -1.0);
   spec.certification_interval = run.value("certification_interval", std::uint64_t{0});
   spec.averaging_delay = run.value("averaging_delay", std::uint64_t{0});
-  spec.diagnostic_iteration_limit =
-      run.value("diagnostic_iteration_limit", std::uint64_t{0});
+  spec.diagnostic_iteration_limit = run.value("diagnostic_iteration_limit", std::uint64_t{0});
   spec.parallel_action_depth = run.value("parallel_action_depth", std::uint8_t{0});
   spec.maximum_solver_threads = run.value("maximum_solver_threads", std::uint8_t{0});
-  spec.enable_lossless_isomorphism =
-      run.value("enable_lossless_isomorphism", true);
-  spec.enable_canonical_public_dag =
-      run.value("enable_canonical_public_dag", true);
-  const auto diagnostic_iteration_override =
-      environment_value("GTOSD_DIAGNOSTIC_ITERATION_LIMIT");
+  spec.enable_lossless_isomorphism = run.value("enable_lossless_isomorphism", true);
+  spec.enable_canonical_public_dag = run.value("enable_canonical_public_dag", true);
+  const auto diagnostic_iteration_override = environment_value("GTOSD_DIAGNOSTIC_ITERATION_LIMIT");
   if (diagnostic_iteration_override) {
     const auto parsed = parse_u64(*diagnostic_iteration_override);
     if (!parsed || *parsed == 0U) {
@@ -1905,8 +1927,7 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   }
   spec.diagnostic_fixed_iterations =
       environment_value("GTOSD_DIAGNOSTIC_FIXED_ITERATIONS").has_value();
-  if (spec.diagnostic_fixed_iterations &&
-      spec.diagnostic_iteration_limit == 0U) {
+  if (spec.diagnostic_fixed_iterations && spec.diagnostic_iteration_limit == 0U) {
     std::cerr << "postflop benchmark-gto-plus failed: "
                  "fixed_iterations_without_limit\n";
     return 2;
@@ -1922,8 +1943,7 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
     std::cerr << "postflop benchmark-gto-plus failed: invalid_algorithm\n";
     return 2;
   }
-  spec.dcfr_positive_regret_exponent =
-      run.value("dcfr_positive_regret_exponent", 1.5);
+  spec.dcfr_positive_regret_exponent = run.value("dcfr_positive_regret_exponent", 1.5);
   spec.dcfr_average_exponent = run.value("dcfr_average_exponent", 2.0);
   const auto state_precision = run.value("state_precision", std::string{"float32"});
   if (state_precision == "float24_regret_float16_strategy") {
@@ -1933,8 +1953,7 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   } else if (state_precision == "scaled_uint16_regret_strategy") {
     spec.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
   } else if (state_precision == "action_major_float13_regret_float11_strategy") {
-    spec.state_precision =
-        gtosd::PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
+    spec.state_precision = gtosd::PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
   } else if (state_precision != "float32") {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_state_precision\n";
     return 2;
@@ -1942,8 +1961,7 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   spec.expected_game_fingerprint = expected.value("game_fingerprint", std::string{});
   spec.expected_physical_public_nodes = expected.value("physical_public_nodes", std::uint64_t{0});
   spec.expected_canonical_public_nodes = expected.value("canonical_public_nodes", std::uint64_t{0});
-  spec.expected_decision_node_scales =
-      expected.value("decision_node_scales", std::uint64_t{0});
+  spec.expected_decision_node_scales = expected.value("decision_node_scales", std::uint64_t{0});
   spec.expected_information_sets = expected.value("information_sets", std::uint64_t{0});
   spec.expected_actions = expected.value("actions", std::uint64_t{0});
   spec.expected_solver_state_bytes = expected.value("solver_state_bytes", std::uint64_t{0});
@@ -1953,11 +1971,9 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
       return !reference.contains("first_strictly_below_target");
     }
     const auto &trace = reference["convergence_trace"];
-    if (!trace.is_array() || trace.empty() ||
-        !reference.contains("first_strictly_below_target") ||
+    if (!trace.is_array() || trace.empty() || !reference.contains("first_strictly_below_target") ||
         !reference["first_strictly_below_target"].is_object() ||
-        !fixture.contains("initial_pot_antes") ||
-        !fixture["initial_pot_antes"].is_number()) {
+        !fixture.contains("initial_pot_antes") || !fixture["initial_pot_antes"].is_number()) {
       return false;
     }
     const double initial_pot = fixture["initial_pot_antes"].get<double>();
@@ -2001,8 +2017,8 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
                     (*first_below)["dev_percent"].get<double>()) < 1.0e-12 &&
            std::abs(declared["dev_antes"].get<double>() -
                     (*first_below)["dev_antes"].get<double>()) < 1.0e-12 &&
-           std::abs(spec.reference_seconds -
-                    (*first_below)["elapsed_seconds"].get<double>()) < 1.0e-12;
+           std::abs(spec.reference_seconds - (*first_below)["elapsed_seconds"].get<double>()) <
+               1.0e-12;
   }();
   if (!valid_convergence_trace) {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_reference_convergence_trace\n";
@@ -2013,8 +2029,7 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
       spec.maximum_solver_threads == 0 ||
       static_cast<std::uint16_t>(spec.parallel_action_depth) + 1U >
           static_cast<std::uint16_t>(spec.maximum_solver_threads) ||
-      !std::isfinite(spec.target_percent) ||
-      std::abs(spec.target_percent - 1.0) > 1.0e-12 ||
+      !std::isfinite(spec.target_percent) || std::abs(spec.target_percent - 1.0) > 1.0e-12 ||
       !std::isfinite(spec.reference_seconds) || spec.reference_seconds <= 0.0 ||
       spec.reference_memory_bytes == 0 || spec.target_definition.empty() ||
       !std::isfinite(spec.ev_tolerance) || spec.ev_tolerance <= 0.0 ||
@@ -2024,8 +2039,8 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
     return 2;
   }
   if (!std::isfinite(spec.dcfr_positive_regret_exponent) ||
-      spec.dcfr_positive_regret_exponent < 0.0 ||
-      !std::isfinite(spec.dcfr_average_exponent) || spec.dcfr_average_exponent < 0.0) {
+      spec.dcfr_positive_regret_exponent < 0.0 || !std::isfinite(spec.dcfr_average_exponent) ||
+      spec.dcfr_average_exponent < 0.0) {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_dcfr_parameters\n";
     return 2;
   }
@@ -2049,9 +2064,9 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
     return cards[0] != cards[1] && cards[0] != cards[2] && cards[1] != cards[2];
   }();
   const auto all_in = parse_all_in_spec(fixture.value("automatic_all_in", std::string{}));
-  const bool valid_rounding = !fixture.contains("aggressive_target_rounding") ||
-                              parse_rounding_policy(fixture["aggressive_target_rounding"])
-                                  .has_value();
+  const bool valid_rounding =
+      !fixture.contains("aggressive_target_rounding") ||
+      parse_rounding_policy(fixture["aggressive_target_rounding"]).has_value();
   const auto range_co = parse_hand_class_range(fixture.value("range_co", std::string{}));
   const auto range_btn = parse_hand_class_range(fixture.value("range_btn", std::string{}));
   const auto integer_in_range = [&fixture](const char *const key, const std::int64_t minimum,
@@ -2087,18 +2102,17 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
            static_cast<std::size_t>(fixture["maximum_raises_per_street"].get<std::int64_t>()), 1,
            200)
            .has_value());
-  const bool fixture_ok =
-      fixture.value("variant", std::string{}) == "short_deck_hu_postflop" &&
-      fixture.value("deck", std::string{}) == "36_cards_6_to_ace" &&
-      integer_in_range("initial_pot_antes", 2, 1'000'000) &&
-      integer_in_range("effective_stack_antes", 1, 1'000'000) &&
-      size_list_ok("bet_size_percent_pot", 1, 100) &&
-      size_list_ok("raise_size_percent_pot", 1, 200) &&
-      valid_raise_depth &&
-      integer_in_range("rake_percent", 0, 100) && valid_card_list && range_co.has_value() &&
-      range_btn.has_value() && all_in.valid && valid_raise_schedule && valid_rounding &&
-      fixture["automatic_all_in_strict_boundary"].is_boolean() &&
-      (smoothing == "disabled" || smoothing == "enabled");
+  const bool fixture_ok = fixture.value("variant", std::string{}) == "short_deck_hu_postflop" &&
+                          fixture.value("deck", std::string{}) == "36_cards_6_to_ace" &&
+                          integer_in_range("initial_pot_antes", 2, 1'000'000) &&
+                          integer_in_range("effective_stack_antes", 1, 1'000'000) &&
+                          size_list_ok("bet_size_percent_pot", 1, 100) &&
+                          size_list_ok("raise_size_percent_pot", 1, 200) && valid_raise_depth &&
+                          integer_in_range("rake_percent", 0, 100) && valid_card_list &&
+                          range_co.has_value() && range_btn.has_value() && all_in.valid &&
+                          valid_raise_schedule && valid_rounding &&
+                          fixture["automatic_all_in_strict_boundary"].is_boolean() &&
+                          (smoothing == "disabled" || smoothing == "enabled");
   if (!fixture_ok) {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_fixture\n";
     return 2;
@@ -2110,9 +2124,9 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   }
   const auto valid_reference_id = [](const std::string &id) {
     return !id.empty() && std::ranges::all_of(id, [](const char character) {
-             return (character >= 'a' && character <= 'z') ||
-                    (character >= '0' && character <= '9') || character == '_';
-           });
+      return (character >= 'a' && character <= 'z') || (character >= '0' && character <= '9') ||
+             character == '_';
+    });
   };
   std::set<std::string> reference_ids;
   for (const auto &entry : reference["reference_nodes"]) {
@@ -2177,17 +2191,16 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   // or the reference node with an empty path (the tree root) by default.
   spec.gate_node_id = reference.value("gate_node", std::string{});
   if (spec.gate_node_id.empty()) {
-    const auto root_node = std::ranges::find_if(
-        spec.reference_nodes, [](const auto &node) { return node.path.empty(); });
+    const auto root_node = std::ranges::find_if(spec.reference_nodes,
+                                                [](const auto &node) { return node.path.empty(); });
     if (root_node == spec.reference_nodes.end() || !root_node->ev_antes) {
       std::cerr << "postflop benchmark-gto-plus failed: invalid_gate_node\n";
       return 2;
     }
     spec.gate_node_id = root_node->id;
   } else {
-    const auto gate = std::ranges::find_if(spec.reference_nodes, [&](const auto &node) {
-      return node.id == spec.gate_node_id;
-    });
+    const auto gate = std::ranges::find_if(
+        spec.reference_nodes, [&](const auto &node) { return node.id == spec.gate_node_id; });
     if (gate == spec.reference_nodes.end() || !gate->ev_antes) {
       std::cerr << "postflop benchmark-gto-plus failed: invalid_gate_node\n";
       return 2;
@@ -2370,6 +2383,330 @@ int run_gto_plus_layout_preflight(const char *const specification_path,
   return 0;
 }
 
+int run_gto_plus_architecture_topology(const char *const specification_path,
+                                       const char *const report_path) {
+  nlohmann::json specification;
+  try {
+    std::ifstream input(specification_path, std::ios::binary);
+    input >> specification;
+    if (!input || !specification.is_object() ||
+        specification.value("schema", std::string{}) != "gtosd.gto_plus_convergence_benchmark.v2" ||
+        !specification.contains("fixture") || !specification["fixture"].is_object() ||
+        !specification.contains("gtosd_run") || !specification["gtosd_run"].is_object()) {
+      std::cerr << "postflop architecture-gto-plus failed: specification_mismatch\n";
+      return 2;
+    }
+  } catch (const nlohmann::json::exception &) {
+    std::cerr << "postflop architecture-gto-plus failed: invalid_specification_json\n";
+    return 2;
+  }
+
+  const auto &fixture = specification["fixture"];
+  const auto &run = specification["gtosd_run"];
+  const auto all_in = parse_all_in_spec(fixture.value("automatic_all_in", std::string{}));
+  const auto range_co = parse_hand_class_range(fixture.value("range_co", std::string{}));
+  const auto range_btn = parse_hand_class_range(fixture.value("range_btn", std::string{}));
+  if (!all_in.valid || !range_co || !range_btn || !fixture.contains("flop") ||
+      !fixture["flop"].is_array() || fixture["flop"].size() != 3U) {
+    std::cerr << "postflop architecture-gto-plus failed: invalid_fixture\n";
+    return 2;
+  }
+  gtosd::PostflopTreeConfig config;
+  try {
+    config = make_convergence_config(fixture, all_in);
+  } catch (const std::exception &) {
+    std::cerr << "postflop architecture-gto-plus failed: invalid_fixture\n";
+    return 2;
+  }
+  const auto ranges = make_convergence_ranges(*range_co, *range_btn);
+  const bool enable_isomorphism = run.value("enable_lossless_isomorphism", true);
+  const bool enable_canonical_dag = run.value("enable_canonical_public_dag", true);
+  const auto started = std::chrono::steady_clock::now();
+  auto prepared =
+      gtosd::prepare_postflop_tree(config, ranges, enable_isomorphism, enable_canonical_dag, false);
+  if (!prepared) {
+    std::cerr << "postflop architecture-gto-plus failed: "
+              << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
+    return 1;
+  }
+  auto topology = gtosd::inspect_postflop_architectural_topology(*prepared.value());
+  if (!topology) {
+    std::cerr << "postflop architecture-gto-plus failed: "
+              << gtosd::postflop_solver_error_name(topology.error()) << '\n';
+    return 1;
+  }
+
+  using Unit = gtosd::PostflopRiverWorkUnit;
+  using GroupKey = std::array<std::uint64_t, 7>;
+  constexpr std::size_t frontier_source_window = 64U;
+  constexpr std::array<std::size_t, 4> widths{1U, 2U, 4U, 8U};
+  constexpr std::size_t metric_count = 6U;
+  const auto metrics = [](const Unit &unit) {
+    const auto bytes = unit.terminal_bytes + unit.value_bytes + unit.state_bytes + unit.reach_bytes;
+    return std::array<long double, metric_count>{1.0L,
+                                                 static_cast<long double>(unit.showdown_work),
+                                                 static_cast<long double>(unit.action_entries),
+                                                 static_cast<long double>(unit.value_entries),
+                                                 static_cast<long double>(unit.state_entries),
+                                                 static_cast<long double>(bytes)};
+  };
+  constexpr std::array<const char *, metric_count> metric_names{
+      "unit", "showdown_work", "action_entries", "value_entries", "state_entries", "bytes"};
+
+  std::map<std::uint32_t, std::uint64_t> source_ordinals;
+  for (const auto &unit : topology.value().river_work_units) {
+    if (!source_ordinals.contains(unit.source_chance_node)) {
+      source_ordinals.emplace(unit.source_chance_node, source_ordinals.size());
+    }
+  }
+
+  const auto make_scope = [&](const std::string_view scope, const bool relaxed) {
+    std::map<GroupKey, std::vector<const Unit *>> groups;
+    for (const auto &unit : topology.value().river_work_units) {
+      std::uint64_t scope_id = 0U;
+      if (scope == "local") {
+        scope_id = unit.source_chance_node;
+      } else if (scope == "frontier") {
+        scope_id = source_ordinals.at(unit.source_chance_node) / frontier_source_window;
+      }
+      const auto signature = relaxed ? unit.relaxed_signature : unit.structural_signature;
+      const auto state_shape = relaxed ? 0U : unit.state_shape_signature;
+      GroupKey key{scope_id,
+                   signature,
+                   state_shape,
+                   unit.update_player,
+                   unit.action_count,
+                   unit.terminal_child_pattern,
+                   unit.root_transform_identity ? 0U : 1U};
+      groups[key].push_back(&unit);
+    }
+
+    std::array<long double, metric_count> totals{};
+    for (const auto &unit : topology.value().river_work_units) {
+      const auto value = metrics(unit);
+      for (std::size_t metric = 0U; metric < metric_count; ++metric) {
+        totals[metric] += value[metric];
+      }
+    }
+    nlohmann::json width_reports = nlohmann::json::array();
+    for (const auto width : widths) {
+      std::array<long double, metric_count> batchable{};
+      std::uint64_t padded_lanes = 0U;
+      std::uint64_t full_batches = 0U;
+      for (const auto &[key, members] : groups) {
+        static_cast<void>(key);
+        const auto full_count = (members.size() / width) * width;
+        const auto padded = ((members.size() + width - 1U) / width) * width;
+        padded_lanes += padded;
+        full_batches += members.size() / width;
+        if (full_count == 0U) {
+          continue;
+        }
+        std::array<long double, metric_count> group_totals{};
+        for (const auto *const member : members) {
+          const auto value = metrics(*member);
+          for (std::size_t metric = 0U; metric < metric_count; ++metric) {
+            group_totals[metric] += value[metric];
+          }
+        }
+        const long double fraction =
+            static_cast<long double>(full_count) / static_cast<long double>(members.size());
+        for (std::size_t metric = 0U; metric < metric_count; ++metric) {
+          batchable[metric] += group_totals[metric] * fraction;
+        }
+      }
+      nlohmann::json coverage;
+      for (std::size_t metric = 0U; metric < metric_count; ++metric) {
+        coverage[metric_names[metric]] =
+            totals[metric] == 0.0L ? 0.0 : static_cast<double>(batchable[metric] / totals[metric]);
+      }
+      width_reports.push_back(
+          {{"width", width},
+           {"full_batches", full_batches},
+           {"padded_lanes", padded_lanes},
+           {"lane_occupancy", padded_lanes == 0U
+                                  ? 0.0
+                                  : static_cast<double>(topology.value().river_work_units.size()) /
+                                        static_cast<double>(padded_lanes)},
+           {"batchable_coverage", std::move(coverage)}});
+    }
+
+    std::map<std::size_t, std::uint64_t> group_size_histogram;
+    for (const auto &[key, members] : groups) {
+      static_cast<void>(key);
+      ++group_size_histogram[members.size()];
+    }
+    nlohmann::json histogram = nlohmann::json::array();
+    for (const auto &[size, count] : group_size_histogram) {
+      histogram.push_back({{"batch_size", size}, {"signature_groups", count}});
+    }
+    return nlohmann::json{{"scope", scope},
+                          {"signature", relaxed ? "variable_lane" : "strict"},
+                          {"group_count", groups.size()},
+                          {"group_size_histogram", std::move(histogram)},
+                          {"widths", std::move(width_reports)}};
+  };
+
+  std::array<std::uint64_t, 2> overlap_units{};
+  std::array<std::uint64_t, 2> interval_units{};
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    std::vector<const Unit *> ordered;
+    for (const auto &unit : topology.value().river_work_units) {
+      if (unit.update_player == player && unit.state_interval_present) {
+        ordered.push_back(&unit);
+      }
+    }
+    std::ranges::sort(ordered, {}, &Unit::state_begin);
+    std::uint64_t previous_end = 0U;
+    bool has_previous = false;
+    for (const auto *const unit : ordered) {
+      ++interval_units[player];
+      if (has_previous && unit->state_begin < previous_end) {
+        ++overlap_units[player];
+      }
+      previous_end = std::max(previous_end, unit->state_end);
+      has_previous = true;
+    }
+  }
+
+  nlohmann::json samples = nlohmann::json::array();
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    std::vector<const Unit *> player_units;
+    for (const auto &unit : topology.value().river_work_units) {
+      if (unit.update_player == player) {
+        player_units.push_back(&unit);
+      }
+    }
+    std::ranges::sort(player_units, [&](const Unit *left, const Unit *right) {
+      return metrics(*left)[5] < metrics(*right)[5];
+    });
+    if (!player_units.empty()) {
+      for (const auto &[label, index] : std::array<std::pair<const char *, std::size_t>, 2>{
+               std::pair{"median", player_units.size() / 2U},
+               std::pair{"heavy", player_units.size() - 1U}}) {
+        const auto &unit = *player_units[index];
+        samples.push_back({{"label", label},
+                           {"update_player", player},
+                           {"source_chance_node", unit.source_chance_node},
+                           {"river_root_node", unit.river_root_node},
+                           {"actor", unit.actor},
+                           {"action_count", unit.action_count},
+                           {"hero_combos", unit.live_hero_combos},
+                           {"opponent_combos", unit.live_opponent_combos},
+                           {"showdown_work", unit.showdown_work},
+                           {"action_entries", unit.action_entries},
+                           {"value_entries", unit.value_entries},
+                           {"state_entries", unit.state_entries},
+                           {"modeled_bytes", static_cast<std::uint64_t>(metrics(unit)[5])}});
+      }
+    }
+  }
+
+  const std::filesystem::path report_file(report_path);
+  const auto dataset_path = report_file.string() + ".units.csv";
+  std::ofstream dataset(dataset_path, std::ios::binary | std::ios::trunc);
+  dataset << "source_chance_node,river_root_node,update_player,actor,action_count,"
+             "hero_combos,opponent_combos,board_mask,rank_count,terminal_pattern,"
+             "structural_signature,relaxed_signature,payoff_signature,state_shape,"
+             "root_transform_identity,identity_transforms,nonidentity_transforms,"
+             "public_nodes,decision_nodes,showdown_terminals,chance_descendants,"
+             "state_begin,state_end,showdown_work,action_entries,value_entries,"
+             "state_entries,terminal_bytes,value_bytes,state_bytes,reach_bytes\n";
+  for (const auto &unit : topology.value().river_work_units) {
+    dataset << unit.source_chance_node << ',' << unit.river_root_node << ','
+            << static_cast<unsigned>(unit.update_player) << ',' << static_cast<unsigned>(unit.actor)
+            << ',' << static_cast<unsigned>(unit.action_count) << ',' << unit.live_hero_combos
+            << ',' << unit.live_opponent_combos << ',' << unit.board_mask << ',' << unit.rank_count
+            << ',' << static_cast<unsigned>(unit.terminal_child_pattern) << ','
+            << unit.structural_signature << ',' << unit.relaxed_signature << ','
+            << unit.payoff_signature << ',' << unit.state_shape_signature << ','
+            << (unit.root_transform_identity ? 1 : 0) << ',' << unit.identity_transforms << ','
+            << unit.nonidentity_transforms << ',' << unit.public_nodes << ',' << unit.decision_nodes
+            << ',' << unit.showdown_terminals << ',' << unit.chance_descendants << ','
+            << unit.state_begin << ',' << unit.state_end << ',' << unit.showdown_work << ','
+            << unit.action_entries << ',' << unit.value_entries << ',' << unit.state_entries << ','
+            << unit.terminal_bytes << ',' << unit.value_bytes << ',' << unit.state_bytes << ','
+            << unit.reach_bytes << '\n';
+  }
+  if (!dataset) {
+    std::cerr << "postflop architecture-gto-plus failed: dataset_io_failure\n";
+    return 1;
+  }
+
+  const double elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  nlohmann::json batchability = nlohmann::json::array();
+  for (const auto scope : {"local", "frontier", "global"}) {
+    batchability.push_back(make_scope(scope, false));
+    batchability.push_back(make_scope(scope, true));
+  }
+  const nlohmann::json output{
+      {"schema", "gtosd.architectural_traversal_topology.v1"},
+      {"benchmark_id", specification.value("benchmark_id", std::string{})},
+      {"work_unit_definition", "canonical_turn_to_river_root_per_update_player"},
+      {"signature_policy",
+       {{"strict", "control shape plus exact capacities and state shape"},
+        {"variable_lane", "control shape with lane-local capacities and offsets"},
+        {"payoff", "values are lane-local payload and never shared"},
+        {"board", "identity is lane-local; rank/capacity class is strict shape"}}},
+      {"frontier_definition",
+       {{"kind", "bounded_canonical_source_window"},
+        {"source_window", frontier_source_window},
+        {"note", "Scheduling upper bound after reach descriptors are available; not current DFS "
+                 "simultaneity."}}},
+      {"work_units", topology.value().river_work_units.size()},
+      {"turn_chance_sites", source_ordinals.size()},
+      {"analyzed_public_node_visits", topology.value().analyzed_public_nodes},
+      {"invalid_or_cyclic_units", topology.value().invalid_or_cyclic_units},
+      {"temporary_metadata_bytes", topology.value().temporary_metadata_bytes},
+      {"compiled_control_plan",
+       {{"ops", topology.value().control_plan_ops},
+        {"bytes", topology.value().control_plan_bytes},
+        {"recursive_seconds", topology.value().recursive_control_seconds},
+        {"linear_seconds", topology.value().linear_control_seconds},
+        {"speedup", topology.value().linear_control_seconds == 0.0
+                        ? 0.0
+                        : topology.value().recursive_control_seconds /
+                              topology.value().linear_control_seconds},
+        {"checksum_equal",
+         topology.value().recursive_control_checksum == topology.value().linear_control_checksum},
+        {"scope", "control-only ceiling; excludes reach, values, state and transforms"}}},
+      {"dataset_csv", dataset_path},
+      {"batchability", std::move(batchability)},
+      {"independence",
+       {{"fully_independent",
+         "same-source siblings with disjoint state; parent reduces in canonical order"},
+        {"conditionally_independent", "different-source units with disjoint state after forward "
+                                      "reach discovery and continuation capture"},
+        {"not_reorderable", "overlapping state interval or invalid topology"},
+        {"player_0_interval_units", interval_units[0]},
+        {"player_0_overlap_units", overlap_units[0]},
+        {"player_1_interval_units", interval_units[1]},
+        {"player_1_overlap_units", overlap_units[1]}}},
+      {"byte_model",
+       {{"scalar_bytes", sizeof(float)},
+        {"regret_code_bytes", sizeof(std::uint16_t)},
+        {"strategy_code_bytes", sizeof(std::uint16_t)},
+        {"counts_cache_hits", false},
+        {"counts_checkpoint_conversion", false}}},
+      {"representative_samples", std::move(samples)},
+      {"elapsed_seconds", elapsed_seconds},
+      {"peak_rss_bytes", gtosd::process_peak_rss_bytes()}};
+  std::ofstream report(report_path, std::ios::binary | std::ios::trunc);
+  report << output.dump(2) << '\n';
+  if (!report) {
+    std::cerr << "postflop architecture-gto-plus failed: report_io_failure\n";
+    return 1;
+  }
+  std::cout << "GTOSD_ARCHITECTURAL_TOPOLOGY_1"
+            << " benchmark_id=" << specification.value("benchmark_id", std::string{})
+            << " work_units=" << topology.value().river_work_units.size()
+            << " sites=" << source_ordinals.size()
+            << " metadata_bytes=" << topology.value().temporary_metadata_bytes
+            << " elapsed_seconds=" << elapsed_seconds << '\n';
+  return topology.value().invalid_or_cyclic_units == 0U ? 0 : 4;
+}
+
 int run_root_lock_diagnostic(const char *const config_path, const char *const lock_path,
                              const char *const iterations_text, const char *const report_path) {
   std::string config_error;
@@ -2402,7 +2739,8 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
     return 2;
   }
 
-  const auto range_co = parse_hand_class_range(lock_json["range_co"].get_ref<const std::string &>());
+  const auto range_co =
+      parse_hand_class_range(lock_json["range_co"].get_ref<const std::string &>());
   const auto range_btn =
       parse_hand_class_range(lock_json["range_btn"].get_ref<const std::string &>());
   if (!range_co || !range_btn) {
@@ -2527,7 +2865,8 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
     std::cerr << "postflop root-lock-diagnostic failed: reference_node_not_found id=flop_co_root\n";
     return 1;
   }
-  const auto root_analysis = gtosd::analyze_postflop_node(*prepared.value(), result.checkpoint, *root_node);
+  const auto root_analysis =
+      gtosd::analyze_postflop_node(*prepared.value(), result.checkpoint, *root_node);
   if (!root_analysis) {
     std::cerr << "postflop root-lock-diagnostic failed: node_ev_analysis_failure\n";
     return 1;
@@ -2540,33 +2879,33 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
                 << '\n';
       return 1;
     }
-    const auto analysis = node.path.empty()
-                              ? root_analysis
-                              : gtosd::analyze_postflop_node(*prepared.value(), result.checkpoint,
-                                                             *resolved);
+    const auto analysis =
+        node.path.empty()
+            ? root_analysis
+            : gtosd::analyze_postflop_node(*prepared.value(), result.checkpoint, *resolved);
     if (!analysis) {
       std::cerr << "postflop root-lock-diagnostic failed: node_ev_analysis_failure\n";
       return 1;
     }
     const auto &value = analysis.value();
-    const double gto_plus_reference =
-        reference_ev.contains(node.id) ? reference_ev[node.id].get<double>()
-                                       : std::numeric_limits<double>::quiet_NaN();
+    const double gto_plus_reference = reference_ev.contains(node.id)
+                                          ? reference_ev[node.id].get<double>()
+                                          : std::numeric_limits<double>::quiet_NaN();
     const double measured = value.gto_plus_ev_antes[node.player];
     nlohmann::json frequencies = nlohmann::json::object();
     for (std::size_t action = 0; action < value.actions.size(); ++action) {
       frequencies[action_label(value.actions[action])] = value.action_frequencies[action];
     }
-    reference_json.push_back({{"id", node.id},
-                              {"path", node.path},
-                              {"player", node.player},
-                              {"measured_ev_antes", measured},
-                              {"gto_plus_reference_ev_antes", gto_plus_reference},
-                              {"delta_ev_antes", measured - gto_plus_reference},
-                              {"within_0_05_ante_tolerance",
-                               std::isfinite(gto_plus_reference) &&
-                                   std::abs(measured - gto_plus_reference) <= 0.05},
-                              {"action_frequencies", std::move(frequencies)}});
+    reference_json.push_back(
+        {{"id", node.id},
+         {"path", node.path},
+         {"player", node.player},
+         {"measured_ev_antes", measured},
+         {"gto_plus_reference_ev_antes", gto_plus_reference},
+         {"delta_ev_antes", measured - gto_plus_reference},
+         {"within_0_05_ante_tolerance",
+          std::isfinite(gto_plus_reference) && std::abs(measured - gto_plus_reference) <= 0.05},
+         {"action_frequencies", std::move(frequencies)}});
   }
 
   // F10.4 validation point 1: exact combo coverage and locked-probability
@@ -2582,9 +2921,9 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
       return 1;
     }
     const auto combo_id = static_cast<gtosd::ComboId>(std::distance(combos.begin(), combo_it));
-    const auto combo_analysis = std::ranges::find_if(
-        root_analysis.value().combos,
-        [combo_id](const auto &combo) { return combo.combo == combo_id; });
+    const auto combo_analysis =
+        std::ranges::find_if(root_analysis.value().combos,
+                             [combo_id](const auto &combo) { return combo.combo == combo_id; });
     if (combo_analysis == root_analysis.value().combos.end()) {
       std::cerr << "postflop root-lock-diagnostic failed: strategy_query_failure\n";
       return 1;
@@ -2595,15 +2934,15 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
       measured_probabilities[label] = combo_analysis->action_probabilities[action];
       const auto it = std::ranges::find(entry.action_labels, label);
       if (it != entry.action_labels.end()) {
-        const auto delta = std::abs(combo_analysis->action_probabilities[action] -
-                                    entry.probabilities[static_cast<std::size_t>(
-                                        it - entry.action_labels.begin())]);
+        const auto delta = std::abs(
+            combo_analysis->action_probabilities[action] -
+            entry.probabilities[static_cast<std::size_t>(it - entry.action_labels.begin())]);
         max_absolute_probability_delta = std::max(max_absolute_probability_delta, delta);
       }
     }
-    locked_verification.push_back({{"combo", gtosd::format_card(entry.combo.first) +
-                                                 gtosd::format_card(entry.combo.second)},
-                                   {"measured_probabilities", std::move(measured_probabilities)}});
+    locked_verification.push_back(
+        {{"combo", gtosd::format_card(entry.combo.first) + gtosd::format_card(entry.combo.second)},
+         {"measured_probabilities", std::move(measured_probabilities)}});
   }
   const bool locked_probabilities_reproduced = max_absolute_probability_delta <= 1.0e-6;
 
@@ -2635,15 +2974,15 @@ int run_root_lock_diagnostic(const char *const config_path, const char *const lo
        [&result, &config] {
          nlohmann::json trajectory = nlohmann::json::array();
          for (const auto &point : result.convergence) {
-           const auto deviation =
-               gtosd::normalized_max_deviation_gain(point, config->initial_pot);
-           trajectory.push_back({{"iteration", point.iteration},
-                                 {"profile_value_antes", point.profile_value_antes},
-                                 {"best_response_value_antes", point.best_response_value_antes},
-                                 {"nash_conv_antes", point.nash_conv_antes},
-                                 {"normalized_nash_conv", point.normalized_nash_conv},
-                                 {"deviation_percent", deviation ? deviation.value() * 100.0
-                                                                 : std::numeric_limits<double>::quiet_NaN()}});
+           const auto deviation = gtosd::normalized_max_deviation_gain(point, config->initial_pot);
+           trajectory.push_back(
+               {{"iteration", point.iteration},
+                {"profile_value_antes", point.profile_value_antes},
+                {"best_response_value_antes", point.best_response_value_antes},
+                {"nash_conv_antes", point.nash_conv_antes},
+                {"normalized_nash_conv", point.normalized_nash_conv},
+                {"deviation_percent", deviation ? deviation.value() * 100.0
+                                                : std::numeric_limits<double>::quiet_NaN()}});
          }
          return trajectory;
        }()},
@@ -3523,6 +3862,10 @@ int run_cli(const int argc, const char *const argv[]) {
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "layout-gto-plus") {
     return run_gto_plus_layout_preflight(argv[3], argv[4]);
+  }
+  if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "architecture-gto-plus") {
+    return run_gto_plus_architecture_topology(argv[3], argv[4]);
   }
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "benchmark-config") {

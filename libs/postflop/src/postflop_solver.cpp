@@ -18,10 +18,10 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <functional>
-#include <iomanip>
+#include <future>
 #include <immintrin.h>
+#include <iomanip>
 #include <limits>
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
 #include <map>
@@ -87,10 +87,9 @@ bool detail::regret_match_signed_action_major(
     std::array<__m256, 8U> regrets{};
     __m256i integer_sum = _mm256_setzero_si256();
     for (std::size_t action = 0U; action < action_count; ++action) {
-      const __m256i signed_codes = _mm256_cvtepi16_epi32(_mm_loadu_si128(
-          reinterpret_cast<const __m128i *>(action_sources[action] + hand)));
-      const __m256i positive_codes =
-          _mm256_max_epi32(signed_codes, _mm256_setzero_si256());
+      const __m256i signed_codes = _mm256_cvtepi16_epi32(
+          _mm_loadu_si128(reinterpret_cast<const __m128i *>(action_sources[action] + hand)));
+      const __m256i positive_codes = _mm256_max_epi32(signed_codes, _mm256_setzero_si256());
       integer_sum = _mm256_add_epi32(integer_sum, positive_codes);
       regrets[action] = _mm256_cvtepi32_ps(positive_codes);
     }
@@ -99,19 +98,18 @@ bool detail::regret_match_signed_action_major(
     const __m256 safe_sum = _mm256_blendv_ps(sum, one, no_positive);
     const __m256 estimate = _mm256_rcp_ps(safe_sum);
     const __m256 inverse = _mm256_mul_ps(
-        estimate,
-        _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
+        estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
     for (std::size_t action = 0U; action < action_count; ++action) {
-      _mm256_storeu_ps(action_strategies[action] + hand,
-                       _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse), uniform,
-                                        no_positive));
+      _mm256_storeu_ps(
+          action_strategies[action] + hand,
+          _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse), uniform, no_positive));
     }
   }
   for (; hand < hand_count; ++hand) {
     std::uint32_t sum = 0U;
     for (std::size_t action = 0U; action < action_count; ++action) {
-      const auto code = static_cast<std::uint16_t>(std::max<std::int32_t>(
-          0, static_cast<std::int16_t>(action_sources[action][hand])));
+      const auto code = static_cast<std::uint16_t>(
+          std::max<std::int32_t>(0, static_cast<std::int16_t>(action_sources[action][hand])));
       action_strategies[action][hand] = static_cast<float>(code);
       sum += static_cast<std::uint32_t>(code);
     }
@@ -142,8 +140,7 @@ constexpr std::size_t compact_player_combo_capacity = 384U;
 constexpr std::size_t large_range_capacity = 512U;
 constexpr double units_per_ante = 10'000.0;
 using DenseComboVector = std::array<double, combo_count>;
-template <std::size_t Capacity>
-using TraversalScalar = double;
+template <std::size_t Capacity> using TraversalScalar = double;
 template <std::size_t Capacity>
 using TraversalComboVector = std::array<TraversalScalar<Capacity>, Capacity>;
 
@@ -185,10 +182,8 @@ struct ActionBuffers {
   void scale_strategy(double factor) const;
 };
 
-
 [[nodiscard]] std::uint32_t compact_word(const std::uint8_t *const bytes) noexcept {
-  return static_cast<std::uint32_t>(bytes[0]) |
-         (static_cast<std::uint32_t>(bytes[1]) << 8U) |
+  return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8U) |
          (static_cast<std::uint32_t>(bytes[2]) << 16U);
 }
 
@@ -225,8 +220,8 @@ void store_compact_word(std::uint8_t *const bytes, const std::uint32_t word) noe
     const auto unbiased_exponent = -15 - static_cast<int>(leading_zeroes);
     const auto normalized = mantissa << (leading_zeroes + 1U);
     const auto fraction = (normalized & 0x3fU) << 46U;
-    return std::bit_cast<double>(
-        (static_cast<std::uint64_t>(unbiased_exponent + 1023) << 52U) | fraction);
+    return std::bit_cast<double>((static_cast<std::uint64_t>(unbiased_exponent + 1023) << 52U) |
+                                 fraction);
   }
   return std::bit_cast<double>(((exponent + 1008U) << 52U) | (mantissa << 46U));
 }
@@ -236,8 +231,7 @@ void store_compact_word(std::uint8_t *const bytes, const std::uint32_t word) noe
     return 0U;
   }
   if (value < std::ldexp(1.0, -14)) {
-    return static_cast<std::uint16_t>(
-        std::clamp(std::nearbyint(std::ldexp(value, 20)), 0.0, 63.0));
+    return static_cast<std::uint16_t>(std::clamp(std::nearbyint(std::ldexp(value, 20)), 0.0, 63.0));
   }
   const auto bits = std::bit_cast<std::uint64_t>(value);
   auto encoded_exponent = static_cast<int>((bits >> 52U) & 0x7ffU) - 1008;
@@ -275,7 +269,6 @@ void store_compact_word(std::uint8_t *const bytes, const std::uint32_t word) noe
   std::memcpy(&packed, bytes, sizeof(packed));
   return std::bit_cast<float>((packed & 0x00ffffffU) << 7U);
 }
-
 
 [[nodiscard]] std::uint32_t encode_float24_bits(const double value) noexcept {
   std::uint32_t bits = std::bit_cast<std::uint32_t>(static_cast<float>(value));
@@ -480,8 +473,8 @@ double ActionBuffers::regret_at(const std::size_t index) const {
                : static_cast<double>(scaled_regret[index]);
   }
   if (compact_state != nullptr) {
-    return decode_regret13(static_cast<std::uint16_t>(
-        compact_word(compact_state + index * 3U) & 0x1fffU));
+    return decode_regret13(
+        static_cast<std::uint16_t>(compact_word(compact_state + index * 3U) & 0x1fffU));
   }
   if (paged != nullptr) {
     return paged->get(index);
@@ -497,8 +490,8 @@ double ActionBuffers::strategy_at(const std::size_t index) const {
     return static_cast<double>(scaled_strategy[index]);
   }
   if (compact_state != nullptr) {
-    return decode_strategy11(static_cast<std::uint16_t>(
-        compact_word(compact_state + index * 3U) >> 13U));
+    return decode_strategy11(
+        static_cast<std::uint16_t>(compact_word(compact_state + index * 3U) >> 13U));
   }
   if (paged != nullptr) {
     return paged->get(count + index);
@@ -513,12 +506,12 @@ double ActionBuffers::strategy_at(const std::size_t index) const {
 void ActionBuffers::set_regret(const std::size_t index, const double value) const {
   if (scaled_regret != nullptr) {
     if (signed_scaled_regret) {
-      const auto encoded = static_cast<std::int16_t>(std::clamp(
-          std::nearbyint(value), -32767.0, 32767.0));
+      const auto encoded =
+          static_cast<std::int16_t>(std::clamp(std::nearbyint(value), -32767.0, 32767.0));
       scaled_regret[index] = static_cast<std::uint16_t>(encoded);
     } else {
-      scaled_regret[index] = static_cast<std::uint16_t>(
-          std::clamp(std::nearbyint(value), 0.0, 65535.0));
+      scaled_regret[index] =
+          static_cast<std::uint16_t>(std::clamp(std::nearbyint(value), 0.0, 65535.0));
     }
     return;
   }
@@ -565,8 +558,8 @@ void ActionBuffers::add_strategy(const std::size_t index, const double value) co
 void ActionBuffers::scale_strategy(const double factor) const {
   if (scaled_strategy != nullptr) {
     for (std::size_t node = 0; node < decision_node_count; ++node) {
-      strategy_node_scale[node] = static_cast<float>(
-          static_cast<double>(strategy_node_scale[node]) * factor);
+      strategy_node_scale[node] =
+          static_cast<float>(static_cast<double>(strategy_node_scale[node]) * factor);
     }
     return;
   }
@@ -629,8 +622,7 @@ public:
     } else if (values.size() == 1U) {
       storage_.template emplace<CanonicalPublicOutcome>(std::move(values.front()));
     } else {
-      storage_.template emplace<std::vector<CanonicalPublicOutcome>>(
-          std::move(values));
+      storage_.template emplace<std::vector<CanonicalPublicOutcome>>(std::move(values));
     }
     return *this;
   }
@@ -640,18 +632,15 @@ public:
       storage_.template emplace<CanonicalPublicOutcome>(std::move(value));
       return;
     }
-    if (auto *const inline_value =
-            std::get_if<CanonicalPublicOutcome>(&storage_)) {
+    if (auto *const inline_value = std::get_if<CanonicalPublicOutcome>(&storage_)) {
       std::vector<CanonicalPublicOutcome> values;
       values.reserve(2U);
       values.push_back(std::move(*inline_value));
       values.push_back(std::move(value));
-      storage_.template emplace<std::vector<CanonicalPublicOutcome>>(
-          std::move(values));
+      storage_.template emplace<std::vector<CanonicalPublicOutcome>>(std::move(values));
       return;
     }
-    std::get<std::vector<CanonicalPublicOutcome>>(storage_)
-        .push_back(std::move(value));
+    std::get<std::vector<CanonicalPublicOutcome>>(storage_).push_back(std::move(value));
   }
 
   [[nodiscard]] bool empty() const noexcept { return size() == 0U; }
@@ -667,17 +656,13 @@ public:
   }
 
   [[nodiscard]] CanonicalPublicOutcome &front() noexcept { return *data(); }
-  [[nodiscard]] const CanonicalPublicOutcome &front() const noexcept {
-    return *data();
-  }
+  [[nodiscard]] const CanonicalPublicOutcome &front() const noexcept { return *data(); }
   [[nodiscard]] CanonicalPublicOutcome *begin() noexcept { return data(); }
   [[nodiscard]] CanonicalPublicOutcome *end() noexcept {
     auto *const first = data();
     return first == nullptr ? nullptr : first + size();
   }
-  [[nodiscard]] const CanonicalPublicOutcome *begin() const noexcept {
-    return data();
-  }
+  [[nodiscard]] const CanonicalPublicOutcome *begin() const noexcept { return data(); }
   [[nodiscard]] const CanonicalPublicOutcome *end() const noexcept {
     const auto *const first = data();
     return first == nullptr ? nullptr : first + size();
@@ -685,31 +670,27 @@ public:
 
 private:
   [[nodiscard]] CanonicalPublicOutcome *data() noexcept {
-    if (auto *const inline_value =
-            std::get_if<CanonicalPublicOutcome>(&storage_)) {
+    if (auto *const inline_value = std::get_if<CanonicalPublicOutcome>(&storage_)) {
       return inline_value;
     }
-    if (auto *const values =
-            std::get_if<std::vector<CanonicalPublicOutcome>>(&storage_)) {
+    if (auto *const values = std::get_if<std::vector<CanonicalPublicOutcome>>(&storage_)) {
       return values->data();
     }
     return nullptr;
   }
 
   [[nodiscard]] const CanonicalPublicOutcome *data() const noexcept {
-    if (const auto *const inline_value =
-            std::get_if<CanonicalPublicOutcome>(&storage_)) {
+    if (const auto *const inline_value = std::get_if<CanonicalPublicOutcome>(&storage_)) {
       return inline_value;
     }
-    if (const auto *const values =
-            std::get_if<std::vector<CanonicalPublicOutcome>>(&storage_)) {
+    if (const auto *const values = std::get_if<std::vector<CanonicalPublicOutcome>>(&storage_)) {
       return values->data();
     }
     return nullptr;
   }
 
-  std::variant<std::monostate, CanonicalPublicOutcome,
-               std::vector<CanonicalPublicOutcome>> storage_{};
+  std::variant<std::monostate, CanonicalPublicOutcome, std::vector<CanonicalPublicOutcome>>
+      storage_{};
 };
 
 struct CanonicalPublicEdge {
@@ -793,7 +774,6 @@ struct TerminalComboData {
   }
 
   [[nodiscard]] std::size_t size() const noexcept { return own_slot.size(); }
-
 };
 
 struct BoardData {
@@ -810,8 +790,7 @@ struct BoardData {
   // value/reach streams without repeating combo-id hash/table lookups.
   std::array<std::vector<std::uint16_t>, 2> player_active_slots;
   std::array<std::vector<std::uint16_t>, 2> player_flop_slots;
-  std::array<std::array<std::vector<std::uint16_t>, 36U>, 2>
-      chance_compatible_flop_slots;
+  std::array<std::array<std::vector<std::uint16_t>, 36U>, 2> chance_compatible_flop_slots;
   std::array<std::vector<std::uint16_t>, 2> player_opponent_flop_slots;
   std::array<std::array<std::int16_t, combo_count>, 2> player_local{};
   std::array<std::int16_t, combo_count> rank_index{};
@@ -1202,8 +1181,7 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
                                                            std::uint32_t)>
       build;
   build = [&](const NodeId physical_id, const Stabilizer &stabilizer,
-              const std::uint32_t path_multiplicity)
-      -> Result<std::uint32_t, PostflopSolverError> {
+              const std::uint32_t path_multiplicity) -> Result<std::uint32_t, PostflopSolverError> {
     if (physical_id >= tree.nodes.size() || stabilizer.empty()) {
       return Result<std::uint32_t, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
@@ -1267,8 +1245,8 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
         }
         Stabilizer child_stabilizer;
         for (const auto automorphism : stabilizer) {
-          const auto transformed = transform_card(representative_edge->chance_card,
-                                                  automorphisms[automorphism].suits);
+          const auto transformed =
+              transform_card(representative_edge->chance_card, automorphisms[automorphism].suits);
           if (transformed && transformed.value() == representative_edge->chance_card) {
             child_stabilizer.push_back(automorphism);
           }
@@ -1294,22 +1272,21 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
           }
           consumed[edge.chance_card.value()] = true;
           orbit_multiplicity += edge.physical_outcome_count;
-          outcomes.push_back({0U, edge.chance_card, edge.physical_outcome_count,
-                              maps_to_representative});
+          outcomes.push_back(
+              {0U, edge.chance_card, edge.physical_outcome_count, maps_to_representative});
         }
         if (outcomes.empty() || orbit_multiplicity == 0U ||
-            path_multiplicity > std::numeric_limits<std::uint32_t>::max() /
-                                    orbit_multiplicity) {
+            path_multiplicity > std::numeric_limits<std::uint32_t>::max() / orbit_multiplicity) {
           return Result<std::uint32_t, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
         }
         std::ranges::sort(outcomes, [&](const auto &left, const auto &right) {
-          const auto left_key = std::pair{
-              left.chance_card == representative_edge->chance_card ? 0U : 1U,
-              static_cast<unsigned>(left.chance_card.value())};
-          const auto right_key = std::pair{
-              right.chance_card == representative_edge->chance_card ? 0U : 1U,
-              static_cast<unsigned>(right.chance_card.value())};
+          const auto left_key =
+              std::pair{left.chance_card == representative_edge->chance_card ? 0U : 1U,
+                        static_cast<unsigned>(left.chance_card.value())};
+          const auto right_key =
+              std::pair{right.chance_card == representative_edge->chance_card ? 0U : 1U,
+                        static_cast<unsigned>(right.chance_card.value())};
           return left_key < right_key;
         });
         auto child = build(representative_edge->child, child_stabilizer,
@@ -1344,8 +1321,7 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
     std::uint8_t selected = static_cast<std::uint8_t>(identity);
     bool initialized = false;
     for (std::size_t index = 0; index < automorphisms.size(); ++index) {
-      const auto board = transform_card_mask(physical.state.board_mask,
-                                             automorphisms[index].suits);
+      const auto board = transform_card_mask(physical.state.board_mask, automorphisms[index].suits);
       if (!board) {
         continue;
       }
@@ -1354,8 +1330,7 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
           transformed_ordered_chance_cards(histories[static_cast<std::size_t>(physical.id)],
                                            automorphisms[index].suits)};
       if (!initialized ||
-          std::tie(candidate.public_history, candidate.board_mask,
-                   candidate.ordered_chance_cards) <
+          std::tie(candidate.public_history, candidate.board_mask, candidate.ordered_chance_cards) <
               std::tie(canonical.public_history, canonical.board_mask,
                        canonical.ordered_chance_cards)) {
         canonical = candidate;
@@ -1384,8 +1359,8 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
       return Result<CanonicalPublicGraph, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
-    graph.physical_assignments[static_cast<std::size_t>(physical.id)] = {
-        found->second, automorphism};
+    graph.physical_assignments[static_cast<std::size_t>(physical.id)] = {found->second,
+                                                                         automorphism};
   }
   return Result<CanonicalPublicGraph, PostflopSolverError>::success(std::move(graph));
 }
@@ -1477,14 +1452,13 @@ std::uint64_t canonical_action_base(const CanonicalPublicNode &canonical,
          static_cast<std::uint64_t>(local_combo) * canonical.decision.action_count;
 }
 
-[[nodiscard]] std::size_t canonical_action_major_index(
-    const CanonicalPublicNode &canonical, const std::size_t local_combo,
-    const std::size_t action) noexcept {
+[[nodiscard]] std::size_t canonical_action_major_index(const CanonicalPublicNode &canonical,
+                                                       const std::size_t local_combo,
+                                                       const std::size_t action) noexcept {
   const auto action_count = static_cast<std::size_t>(canonical.decision.action_count);
-  const auto local_count =
-      static_cast<std::size_t>(canonical.local_action_count) / action_count;
-  return static_cast<std::size_t>(canonical.decision.action_base) +
-         action * local_count + local_combo;
+  const auto local_count = static_cast<std::size_t>(canonical.local_action_count) / action_count;
+  return static_cast<std::size_t>(canonical.decision.action_base) + action * local_count +
+         local_combo;
 }
 
 std::vector<CardId> cards_from_mask(const std::uint64_t mask) {
@@ -1520,8 +1494,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       return Result<DenseLayout, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
-    auto exact_automorphisms =
-        range_automorphisms(source_combos, ranges, initial_mask.value());
+    auto exact_automorphisms = range_automorphisms(source_combos, ranges, initial_mask.value());
     if (!exact_automorphisms) {
       return Result<DenseLayout, PostflopSolverError>::failure(exact_automorphisms.error());
     }
@@ -1551,8 +1524,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     for (const auto &automorphism : direct_automorphisms) {
       std::array<std::uint8_t, 4> permutation{};
       for (std::size_t suit = 0U; suit < permutation.size(); ++suit) {
-        permutation[suit] =
-            static_cast<std::uint8_t>(automorphism.suits.forward[suit]);
+        permutation[suit] = static_cast<std::uint8_t>(automorphism.suits.forward[suit]);
       }
       options.canonical_chance_permutations.push_back(permutation);
     }
@@ -1564,12 +1536,10 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
 
   DenseLayout layout;
   layout.tree = std::move(tree.value());
-  const auto &root_state =
-      layout.tree.nodes[static_cast<std::size_t>(layout.tree.root)].state;
+  const auto &root_state = layout.tree.nodes[static_cast<std::size_t>(layout.tree.root)].state;
   for (std::uint8_t player = 0U; player < 2U; ++player) {
     layout.initial_pot_contribution_antes[player] =
-        static_cast<double>(root_state.initial_pot_contributions[player].units()) /
-        units_per_ante;
+        static_cast<double>(root_state.initial_pot_contributions[player].units()) / units_per_ante;
   }
   constexpr auto invalid_terminal_payoff = std::numeric_limits<std::uint32_t>::max();
   layout.node_terminal_payoff.assign(layout.tree.nodes.size(), invalid_terminal_payoff);
@@ -1608,7 +1578,8 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
           static_cast<double>(settlement.value().payoff_units[1]) / units_per_ante;
     }
   }
-  layout.active_combo_index.fill(-1);  layout.combos = source_combos;
+  layout.active_combo_index.fill(-1);
+  layout.combos = source_combos;
   for (std::size_t combo = 0; combo < combo_count; ++combo) {
     layout.combo_masks[combo] =
         layout.combos[combo].first.mask() | layout.combos[combo].second.mask();
@@ -1656,8 +1627,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
   std::vector<RangeAutomorphism> automorphisms = direct_automorphisms;
   std::unordered_map<CanonicalInfosetKey, CanonicalInfosetEntry, CanonicalInfosetKeyHash>
       canonical_infosets;
-  if (!direct_canonical_tree &&
-      (layout.uses_isomorphic_infosets || enable_canonical_public_dag)) {
+  if (!direct_canonical_tree && (layout.uses_isomorphic_infosets || enable_canonical_public_dag)) {
     // Automorphisms first: the per-player direct-action-bases path (identity
     // automorphism group only) never uses the canonical infoset map or the
     // canonical arrays (decision_action_base computes the offset directly from
@@ -1726,8 +1696,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
           child_kind == PublicNodeKind::TerminalShowdown) {
         decision.terminal_child_mask |= static_cast<std::uint8_t>(1U << action);
       }
-      if (child_kind == PublicNodeKind::TerminalFold &&
-          first_fold == maximum_action_count) {
+      if (child_kind == PublicNodeKind::TerminalFold && first_fold == maximum_action_count) {
         first_fold = static_cast<std::uint8_t>(action);
       } else if (child_kind == PublicNodeKind::TerminalShowdown &&
                  first_showdown == maximum_action_count) {
@@ -1836,8 +1805,9 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
             representative.edges.front().total_legal_outcome_count;
       }
       if (canonical_node.kind == PublicNodeKind::TerminalFold) {
-        const auto payoff_index = layout.node_terminal_payoff[
-            static_cast<std::size_t>(canonical_node.representative_node)];
+        const auto payoff_index =
+            layout
+                .node_terminal_payoff[static_cast<std::size_t>(canonical_node.representative_node)];
         if (payoff_index >= layout.terminal_payoffs.size()) {
           return Result<DenseLayout, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
@@ -1847,14 +1817,14 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
               layout.terminal_payoffs[payoff_index].value_antes[player][0];
         }
       } else if (canonical_node.kind == PublicNodeKind::TerminalShowdown) {
-        const auto payoff_index = layout.node_terminal_payoff[
-            static_cast<std::size_t>(canonical_node.representative_node)];
+        const auto payoff_index =
+            layout
+                .node_terminal_payoff[static_cast<std::size_t>(canonical_node.representative_node)];
         if (payoff_index >= layout.terminal_payoffs.size()) {
           return Result<DenseLayout, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
         }
-        canonical_node.showdown_payoff_antes =
-            layout.terminal_payoffs[payoff_index].value_antes;
+        canonical_node.showdown_payoff_antes = layout.terminal_payoffs[payoff_index].value_antes;
       }
       if (canonical_node.kind != PublicNodeKind::Decision) {
         continue;
@@ -1865,8 +1835,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       const auto &board = layout.boards[decision.board_index];
       const auto legal_count = board.player_combos[decision.player].size();
       if (legal_count >
-          (std::numeric_limits<std::uint64_t>::max() - layout.actions) /
-              decision.action_count) {
+          (std::numeric_limits<std::uint64_t>::max() - layout.actions) / decision.action_count) {
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
@@ -1874,8 +1843,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       canonical_node.decision.action_base = node_action_begin;
       canonical_node.local_action_count =
           static_cast<std::uint32_t>(legal_count * decision.action_count);
-      if (layout.canonical_decision_nodes >
-          std::numeric_limits<std::uint32_t>::max()) {
+      if (layout.canonical_decision_nodes > std::numeric_limits<std::uint32_t>::max()) {
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
@@ -1893,22 +1861,19 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       std::uint8_t descendant_mask = 0U;
       for (const auto &edge : node.edges) {
         for (const auto &outcome : edge.outcomes) {
-          if (outcome.child <= index ||
-              outcome.child >= canonical_graph.value().nodes.size()) {
+          if (outcome.child <= index || outcome.child >= canonical_graph.value().nodes.size()) {
             return Result<DenseLayout, PostflopSolverError>::failure(
                 PostflopSolverError::InvalidConfiguration);
           }
           descendant_mask |= static_cast<std::uint8_t>(
-              canonical_graph.value().nodes[outcome.child]
-                  .decision.subtree_player_mask);
+              canonical_graph.value().nodes[outcome.child].decision.subtree_player_mask);
         }
       }
       node.decision.descendant_player_mask = descendant_mask;
       node.decision.subtree_player_mask = static_cast<std::uint8_t>(
-          descendant_mask |
-          (node.kind == PublicNodeKind::Decision
-               ? static_cast<std::uint8_t>(1U << node.decision.player)
-               : 0U));
+          descendant_mask | (node.kind == PublicNodeKind::Decision
+                                 ? static_cast<std::uint8_t>(1U << node.decision.player)
+                                 : 0U));
     }
     layout.physical_infoset_ids.clear();
     layout.canonical_action_bases.clear();
@@ -1950,12 +1915,10 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
             PostflopSolverError::InvalidConfiguration);
       }
       slots.push_back(static_cast<std::uint16_t>(mapped));
-      is_identity = is_identity &&
-                    static_cast<std::size_t>(mapped) + 1U == slots.size();
+      is_identity = is_identity && static_cast<std::size_t>(mapped) + 1U == slots.size();
     }
     layout.active_automorphism_slots.push_back(std::move(slots));
-    layout.active_automorphism_is_identity.push_back(
-        static_cast<std::uint8_t>(is_identity));
+    layout.active_automorphism_is_identity.push_back(static_cast<std::uint8_t>(is_identity));
   }
   for (auto &board : layout.boards) {
     for (std::uint8_t player = 0U; player < 2U; ++player) {
@@ -2013,16 +1976,14 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
         }
         slots.push_back(static_cast<std::uint16_t>(slot));
         const auto opponent_slot = layout.player_flop_slot[1U - player][combo];
-        opponent_slots.push_back(
-            opponent_slot < 0 ? TerminalComboData::invalid_slot
-                : static_cast<std::uint16_t>(opponent_slot));
+        opponent_slots.push_back(opponent_slot < 0 ? TerminalComboData::invalid_slot
+                                                   : static_cast<std::uint16_t>(opponent_slot));
       }
       for (std::size_t card = 0U; card < 36U; ++card) {
         auto &compatible = board.chance_compatible_flop_slots[player][card];
         compatible.reserve(board.player_combos[player].size());
         const auto card_mask = std::uint64_t{1} << card;
-        for (std::size_t local = 0U;
-             local < board.player_combos[player].size(); ++local) {
+        for (std::size_t local = 0U; local < board.player_combos[player].size(); ++local) {
           const auto combo = board.player_combos[player][local];
           if ((layout.combo_masks[combo] & card_mask) == 0U) {
             compatible.push_back(board.player_flop_slots[player][local]);
@@ -2044,14 +2005,11 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     // storage representations of the same game. Their checkpoint identity
     // must therefore be based on the game/ranges and canonical layout version,
     // never on the representation-specific betting-tree hash.
-    std::string canonical_fingerprint_source =
-        "node-owned-chance-tree-v3|" + serialized_config;
+    std::string canonical_fingerprint_source = "node-owned-chance-tree-v3|" + serialized_config;
     if (!uniform_full_ranges(ranges)) {
-      canonical_fingerprint_source +=
-          "|ranges-v1|" + serialize_range_fingerprint(ranges);
+      canonical_fingerprint_source += "|ranges-v1|" + serialize_range_fingerprint(ranges);
     }
-    canonical_fingerprint_source +=
-        enable_lossless_isomorphism ? "|iso-on" : "|iso-off";
+    canonical_fingerprint_source += enable_lossless_isomorphism ? "|iso-on" : "|iso-off";
     layout.fingerprint = fingerprint_text(canonical_fingerprint_source);
   }
   if (direct_canonical_tree) {
@@ -2110,8 +2068,7 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
   for (std::uint8_t player = 0U; player < 2U; ++player) {
     for (const ComboId combo_id : board.player_combos[player]) {
       const auto global_rank = board.rank_index[combo_id];
-      if (global_rank < 0 ||
-          static_cast<std::size_t>(global_rank) >= rank_count) {
+      if (global_rank < 0 || static_cast<std::size_t>(global_rank) >= rank_count) {
         return Result<bool, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
@@ -2125,8 +2082,7 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
     }
   }
   board.player_rank_count = static_cast<std::uint16_t>(next_player_rank);
-  const auto player_rank_count =
-      static_cast<std::size_t>(board.player_rank_count);
+  const auto player_rank_count = static_cast<std::size_t>(board.player_rank_count);
   for (std::uint8_t player = 0; player < 2U; ++player) {
     auto &metadata = board.terminal_combos[player];
     metadata.clear();
@@ -2137,37 +2093,30 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
         return Result<bool, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      const auto combo_rank =
-          static_cast<std::size_t>(player_rank_map[global_rank]);
+      const auto combo_rank = static_cast<std::size_t>(player_rank_map[global_rank]);
       const auto first = static_cast<std::size_t>(layout.combos[combo_id].first.value());
       const auto second = static_cast<std::size_t>(layout.combos[combo_id].second.value());
       const auto own_slot = layout.player_flop_slot[player][combo_id];
       const auto opponent_slot = layout.player_flop_slot[1U - player][combo_id];
       if (own_slot < 0 || combo_rank >= player_rank_count ||
-          combo_rank * 36U + first >
-              std::numeric_limits<std::uint16_t>::max() ||
-          combo_rank * 36U + second >
-              std::numeric_limits<std::uint16_t>::max()) {
+          combo_rank * 36U + first > std::numeric_limits<std::uint16_t>::max() ||
+          combo_rank * 36U + second > std::numeric_limits<std::uint16_t>::max()) {
         return Result<bool, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
       metadata.own_slot.push_back(static_cast<std::uint16_t>(own_slot));
-      metadata.opponent_slot.push_back(
-          opponent_slot < 0 ? TerminalComboData::invalid_slot
-                            : static_cast<std::uint16_t>(opponent_slot));
+      metadata.opponent_slot.push_back(opponent_slot < 0
+                                           ? TerminalComboData::invalid_slot
+                                           : static_cast<std::uint16_t>(opponent_slot));
       const auto opponent_local = board.player_local[1U - player][combo_id];
-      metadata.opponent_local.push_back(
-          opponent_local < 0 ? TerminalComboData::invalid_slot
-                             : static_cast<std::uint16_t>(opponent_local));
+      metadata.opponent_local.push_back(opponent_local < 0
+                                            ? TerminalComboData::invalid_slot
+                                            : static_cast<std::uint16_t>(opponent_local));
       metadata.rank.push_back(static_cast<std::uint16_t>(combo_rank));
-      metadata.first_by_rank.push_back(
-          static_cast<std::uint16_t>(combo_rank * 36U + first));
-      metadata.second_by_rank.push_back(
-          static_cast<std::uint16_t>(combo_rank * 36U + second));
-      metadata.first_all.push_back(
-          static_cast<std::uint16_t>(rank_count * 36U + first));
-      metadata.second_all.push_back(
-          static_cast<std::uint16_t>(rank_count * 36U + second));
+      metadata.first_by_rank.push_back(static_cast<std::uint16_t>(combo_rank * 36U + first));
+      metadata.second_by_rank.push_back(static_cast<std::uint16_t>(combo_rank * 36U + second));
+      metadata.first_all.push_back(static_cast<std::uint16_t>(rank_count * 36U + first));
+      metadata.second_all.push_back(static_cast<std::uint16_t>(rank_count * 36U + second));
       metadata.first_card.push_back(static_cast<std::uint8_t>(first));
       metadata.second_card.push_back(static_cast<std::uint8_t>(second));
     }
@@ -2178,8 +2127,8 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
         touched_ranks[metadata.rank[local]] = 1U;
         ++metadata.touched_rank_count;
       }
-      const std::array<std::uint16_t, 2> cells{
-          metadata.first_by_rank[local], metadata.second_by_rank[local]};
+      const std::array<std::uint16_t, 2> cells{metadata.first_by_rank[local],
+                                               metadata.second_by_rank[local]};
       for (const auto cell : cells) {
         if (touched[cell] == 0U) {
           touched[cell] = 1U;
@@ -2198,24 +2147,17 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
     const auto second = static_cast<std::size_t>(layout.combos[combo_id].second.value());
     const auto active_slot = layout.active_combo_index[combo_id];
     if (active_slot < 0 || combo_rank >= rank_count ||
-        first * (rank_count + 1U) + rank_count >
-            std::numeric_limits<std::uint16_t>::max() ||
-        second * (rank_count + 1U) + rank_count >
-            std::numeric_limits<std::uint16_t>::max()) {
-      return Result<bool, PostflopSolverError>::failure(
-          PostflopSolverError::InvalidConfiguration);
+        first * (rank_count + 1U) + rank_count > std::numeric_limits<std::uint16_t>::max() ||
+        second * (rank_count + 1U) + rank_count > std::numeric_limits<std::uint16_t>::max()) {
+      return Result<bool, PostflopSolverError>::failure(PostflopSolverError::InvalidConfiguration);
     }
     active_metadata.own_slot.push_back(static_cast<std::uint16_t>(active_slot));
     active_metadata.opponent_slot.push_back(static_cast<std::uint16_t>(active_slot));
     active_metadata.rank.push_back(static_cast<std::uint16_t>(combo_rank));
-    active_metadata.first_by_rank.push_back(
-        static_cast<std::uint16_t>(combo_rank * 36U + first));
-    active_metadata.second_by_rank.push_back(
-        static_cast<std::uint16_t>(combo_rank * 36U + second));
-    active_metadata.first_all.push_back(
-        static_cast<std::uint16_t>(rank_count * 36U + first));
-    active_metadata.second_all.push_back(
-        static_cast<std::uint16_t>(rank_count * 36U + second));
+    active_metadata.first_by_rank.push_back(static_cast<std::uint16_t>(combo_rank * 36U + first));
+    active_metadata.second_by_rank.push_back(static_cast<std::uint16_t>(combo_rank * 36U + second));
+    active_metadata.first_all.push_back(static_cast<std::uint16_t>(rank_count * 36U + first));
+    active_metadata.second_all.push_back(static_cast<std::uint16_t>(rank_count * 36U + second));
     active_metadata.first_card.push_back(static_cast<std::uint8_t>(first));
     active_metadata.second_card.push_back(static_cast<std::uint8_t>(second));
   }
@@ -2227,9 +2169,8 @@ Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
         touched_ranks[active_metadata.rank[local]] = 1U;
         ++active_metadata.touched_rank_count;
       }
-      const std::array<std::uint16_t, 2> cells{
-          active_metadata.first_by_rank[local],
-          active_metadata.second_by_rank[local]};
+      const std::array<std::uint16_t, 2> cells{active_metadata.first_by_rank[local],
+                                               active_metadata.second_by_rank[local]};
       for (const auto cell : cells) {
         if (touched[cell] == 0U) {
           touched[cell] = 1U;
@@ -2288,8 +2229,7 @@ prepare_root_lock(const DiagnosticRootLock &lock, const DenseLayout &layout) {
   std::uint8_t root_player = 0;
   bool root_is_decision = false;
   if (layout.uses_canonical_public_dag) {
-    const auto &root_node =
-        layout.canonical_public_graph.nodes[layout.canonical_public_graph.root];
+    const auto &root_node = layout.canonical_public_graph.nodes[layout.canonical_public_graph.root];
     root_is_decision = root_node.kind == PublicNodeKind::Decision;
     root_player = static_cast<std::uint8_t>(root_node.decision.player);
     root_board_index = root_node.board_index;
@@ -2476,10 +2416,8 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(river_frontier_full_batches);
     GTOSD_ADD_PROFILE_FIELD(river_frontier_tail_lanes);
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
-    for (std::size_t bucket = 0U;
-         bucket < showdown_reuse_distance_buckets.size(); ++bucket) {
-      showdown_reuse_distance_buckets[bucket] +=
-          other.showdown_reuse_distance_buckets[bucket];
+    for (std::size_t bucket = 0U; bucket < showdown_reuse_distance_buckets.size(); ++bucket) {
+      showdown_reuse_distance_buckets[bucket] += other.showdown_reuse_distance_buckets[bucket];
     }
     GTOSD_ADD_PROFILE_FIELD(river_topology_sites);
     GTOSD_ADD_PROFILE_FIELD(river_topology_roots);
@@ -2527,8 +2465,7 @@ class DenseTraversal {
     }
   }
 
-  static void store_four_from_double(Scalar *const destination,
-                                     const __m256d values) noexcept {
+  static void store_four_from_double(Scalar *const destination, const __m256d values) noexcept {
     if constexpr (std::is_same_v<Scalar, float>) {
       _mm_storeu_ps(destination, _mm256_cvtpd_ps(values));
     } else {
@@ -2536,8 +2473,7 @@ class DenseTraversal {
     }
   }
 
-  static __m256d gather_four_as_double(const Scalar *const source,
-                                       const __m128i indices) noexcept {
+  static __m256d gather_four_as_double(const Scalar *const source, const __m128i indices) noexcept {
     if constexpr (std::is_same_v<Scalar, float>) {
       return _mm256_cvtps_pd(_mm_i32gather_ps(source, indices, 4));
     } else {
@@ -2567,9 +2503,8 @@ class DenseTraversal {
   void run_worker_loop() {
 #ifdef _WIN32
     if (pin_worker_threads_ && worker_logical_processor_ < 64U) {
-      SetThreadAffinityMask(
-          GetCurrentThread(),
-          static_cast<DWORD_PTR>(1ULL << worker_logical_processor_));
+      SetThreadAffinityMask(GetCurrentThread(),
+                            static_cast<DWORD_PTR>(1ULL << worker_logical_processor_));
     }
 #endif
     ParallelTaskQueue *const queue = parallel_shared_.get();
@@ -2585,8 +2520,8 @@ class DenseTraversal {
         queue->tasks.pop_front();
       }
       const bool profile = hotpath_profiling_enabled();
-      const auto task_started = profile ? std::chrono::steady_clock::now()
-                                        : std::chrono::steady_clock::time_point{};
+      const auto task_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       queue->active_tasks.fetch_add(1U, std::memory_order_acq_rel);
       (*task)(*this);
       queue->active_tasks.fetch_sub(1U, std::memory_order_acq_rel);
@@ -2600,8 +2535,7 @@ class DenseTraversal {
       if (profile) {
         ++prof_tasks_;
         prof_task_wall_seconds_ +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - task_started)
-                .count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - task_started).count();
       }
     }
   }
@@ -2610,8 +2544,7 @@ public:
   DenseTraversal(DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta = nullptr,
                  const std::uint8_t parallel_action_depth = 0U,
-                 const PreparedRootLock *root_lock = nullptr,
-                 const bool pin_worker_threads = false)
+                 const PreparedRootLock *root_lock = nullptr, const bool pin_worker_threads = false)
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
         root_lock_(root_lock), pin_worker_threads_(pin_worker_threads) {
     if (deferred_regret_delta_ != nullptr) {
@@ -2638,10 +2571,9 @@ public:
         }
         parallel_regret_delta_.resize(deferred_regret_delta_->size(), 0.0);
         parallel_shared_ = std::make_shared<ParallelTaskQueue>();
-        parallel_worker_ =
-            std::make_unique<DenseTraversal>(layout_, buffers_, &parallel_regret_delta_,
-                                             static_cast<std::uint8_t>(parallel_action_depth - 1U),
-                                             root_lock_, pin_worker_threads_);
+        parallel_worker_ = std::make_unique<DenseTraversal>(
+            layout_, buffers_, &parallel_regret_delta_,
+            static_cast<std::uint8_t>(parallel_action_depth - 1U), root_lock_, pin_worker_threads_);
         parallel_thread_ = std::jthread([this] { run_worker_loop(); });
       } else {
         // Physical tree: a pool of independent workers, each with its own
@@ -2662,9 +2594,8 @@ public:
         for (std::size_t index = 0; index < worker_count; ++index) {
           parallel_workers_.push_back(std::make_unique<DenseTraversal>(
               LeafWorkerTag{}, layout_, buffers_,
-              has_deltas ? &parallel_worker_deltas_[index] : nullptr, root_lock_,
-              parallel_shared_, static_cast<std::uint8_t>(index + 1U),
-              pin_worker_threads_));
+              has_deltas ? &parallel_worker_deltas_[index] : nullptr, root_lock_, parallel_shared_,
+              static_cast<std::uint8_t>(index + 1U), pin_worker_threads_));
         }
       }
     }
@@ -2675,8 +2606,7 @@ public:
   DenseTraversal(LeafWorkerTag, DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta, const PreparedRootLock *root_lock,
                  std::shared_ptr<ParallelTaskQueue> shared_queue,
-                 const std::uint8_t worker_logical_processor,
-                 const bool pin_worker_threads)
+                 const std::uint8_t worker_logical_processor, const bool pin_worker_threads)
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
         root_lock_(root_lock), parallel_shared_(std::move(shared_queue)),
         worker_logical_processor_(worker_logical_processor),
@@ -2728,10 +2658,8 @@ public:
   mutable double prof_scaled_encode_seconds_ = 0.0;
   mutable std::uint64_t prof_scaled_update_calls_ = 0U;
   mutable std::uint64_t prof_scaled_update_entries_ = 0U;
-  mutable std::array<std::uint64_t, maximum_action_count + 1U>
-      prof_scaled_calls_by_action_{};
-  mutable std::array<std::uint64_t, maximum_action_count + 1U>
-      prof_scaled_entries_by_action_{};
+  mutable std::array<std::uint64_t, maximum_action_count + 1U> prof_scaled_calls_by_action_{};
+  mutable std::array<std::uint64_t, maximum_action_count + 1U> prof_scaled_entries_by_action_{};
   mutable double prof_average_update_seconds_ = 0.0;
   mutable double prof_average_only_seconds_ = 0.0;
   mutable double prof_terminal_seconds_ = 0.0;
@@ -2749,13 +2677,11 @@ public:
   mutable HotpathTelemetry prof_telemetry_{};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
   mutable std::unordered_set<std::uint64_t> prof_showdown_reach_hashes_{};
-  mutable std::unordered_map<std::uint64_t, std::uint64_t>
-      prof_showdown_reach_last_sequence_{};
+  mutable std::unordered_map<std::uint64_t, std::uint64_t> prof_showdown_reach_last_sequence_{};
   mutable std::uint64_t prof_showdown_reach_sequence_ = 0U;
   mutable std::vector<std::uint32_t> prof_river_topology_class_cache_{};
   mutable std::vector<std::uint64_t> prof_river_topology_work_cache_{};
-  mutable std::map<std::vector<std::uint64_t>, std::uint32_t>
-      prof_river_topology_classes_{};
+  mutable std::map<std::vector<std::uint64_t>, std::uint32_t> prof_river_topology_classes_{};
 #endif
 
   // Per-pass profile (GTOSD_PROFILE_HOTPATH=1): sums this traversal's and its
@@ -2768,7 +2694,7 @@ public:
 #else
       constexpr bool
 #endif
-  hotpath_profiling_enabled() noexcept {
+      hotpath_profiling_enabled() noexcept {
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
     static const bool enabled = [] {
 #pragma warning(push)
@@ -2783,8 +2709,7 @@ public:
   }
 
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
-  [[nodiscard]] std::uint32_t
-  profile_river_topology_class(const std::uint32_t node_id) const {
+  [[nodiscard]] std::uint32_t profile_river_topology_class(const std::uint32_t node_id) const {
     constexpr auto invalid = std::numeric_limits<std::uint32_t>::max();
     constexpr auto building = invalid - 1U;
     const auto node_count = layout_.canonical_public_graph.nodes.size();
@@ -2808,8 +2733,7 @@ public:
     std::vector<std::uint64_t> descriptor;
     descriptor.reserve(16U + node.edges.size() * 8U);
     descriptor.push_back(static_cast<std::uint8_t>(node.kind));
-    descriptor.push_back(root_lock_ != nullptr &&
-                         node_id == layout_.canonical_public_graph.root);
+    descriptor.push_back(root_lock_ != nullptr && node_id == layout_.canonical_public_graph.root);
     descriptor.push_back(node.edges.size());
     if (node.kind == PublicNodeKind::Decision) {
       descriptor.push_back(node.decision.player);
@@ -2837,19 +2761,17 @@ public:
       cached = found->second;
       return cached;
     }
-    const auto next_class = static_cast<std::uint32_t>(
-        prof_river_topology_classes_.size() + 1U);
+    const auto next_class = static_cast<std::uint32_t>(prof_river_topology_classes_.size() + 1U);
     prof_river_topology_classes_.emplace(std::move(descriptor), next_class);
     cached = next_class;
     return cached;
   }
 
-  [[nodiscard]] std::uint64_t
-  profile_river_topology_work(const std::uint32_t node_id) const {
+  [[nodiscard]] std::uint64_t profile_river_topology_work(const std::uint32_t node_id) const {
     const auto node_count = layout_.canonical_public_graph.nodes.size();
     if (prof_river_topology_work_cache_.size() != node_count) {
-      prof_river_topology_class_cache_.assign(
-          node_count, std::numeric_limits<std::uint32_t>::max());
+      prof_river_topology_class_cache_.assign(node_count,
+                                              std::numeric_limits<std::uint32_t>::max());
       prof_river_topology_work_cache_.assign(node_count, 0U);
       prof_river_topology_classes_.clear();
     }
@@ -2864,15 +2786,12 @@ public:
     const auto &board = layout_.boards[node.board_index];
     std::uint64_t work = 1U;
     if (node.kind == PublicNodeKind::TerminalFold) {
-      work += board.player_combos[0].size() +
-              board.player_combos[1].size();
+      work += board.player_combos[0].size() + board.player_combos[1].size();
     } else if (node.kind == PublicNodeKind::TerminalShowdown) {
-      work += board.player_combos[0].size() +
-              board.player_combos[1].size() +
+      work += board.player_combos[0].size() + board.player_combos[1].size() +
               static_cast<std::uint64_t>(board.player_rank_count) * 37U;
     } else if (node.kind == PublicNodeKind::Decision) {
-      work += static_cast<std::uint64_t>(
-                  board.player_combos[node.decision.player].size()) *
+      work += static_cast<std::uint64_t>(board.player_combos[node.decision.player].size()) *
               node.decision.action_count;
     }
     for (const auto &edge : node.edges) {
@@ -2884,9 +2803,8 @@ public:
     return cached;
   }
 
-  void profile_river_topology_compatibility(
-      const CanonicalPublicNode &turn_chance,
-      const std::uint8_t updating_player) const {
+  void profile_river_topology_compatibility(const CanonicalPublicNode &turn_chance,
+                                            const std::uint8_t updating_player) const {
     struct Group {
       std::uint64_t count{0U};
       std::uint64_t unit_work{0U};
@@ -2911,12 +2829,13 @@ public:
         continue;
       }
       const auto work = profile_river_topology_work(child_id);
-      std::vector<std::uint64_t> key{
-          profile_river_topology_class(child_id), updating_player,
-          std::is_same_v<Scalar, float> ? 1U : 0U,
-          PlayerIndexed ? 1U : 0U,
-          river_board.rank_count, river_board.player_rank_count,
-          work};
+      std::vector<std::uint64_t> key{profile_river_topology_class(child_id),
+                                     updating_player,
+                                     std::is_same_v<Scalar, float> ? 1U : 0U,
+                                     PlayerIndexed ? 1U : 0U,
+                                     river_board.rank_count,
+                                     river_board.player_rank_count,
+                                     work};
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         const auto &terminal = river_board.terminal_combos[player];
         key.push_back(river_board.player_combos[player].size());
@@ -2947,8 +2866,7 @@ public:
       prof_telemetry_.river_topology_full_pairs += full_pairs;
       prof_telemetry_.river_topology_pair_batchable_roots += full_pairs * 2U;
       prof_telemetry_.river_topology_pair_padded_slots += pair_padded;
-      prof_telemetry_.river_topology_pair_batchable_work +=
-          full_pairs * 2U * group.unit_work;
+      prof_telemetry_.river_topology_pair_batchable_work += full_pairs * 2U * group.unit_work;
       prof_telemetry_.river_topology_work += group.count * group.unit_work;
       prof_telemetry_.river_topology_padded_work += padded * group.unit_work;
     }
@@ -2958,24 +2876,21 @@ public:
   [[nodiscard]] static bool diagnostic_certify_current_strategy() noexcept {
 #pragma warning(push)
 #pragma warning(disable : 4996)
-    static const bool enabled =
-        std::getenv("GTOSD_DIAGNOSTIC_CERTIFY_CURRENT") != nullptr;
+    static const bool enabled = std::getenv("GTOSD_DIAGNOSTIC_CERTIFY_CURRENT") != nullptr;
 #pragma warning(pop)
     return enabled;
   }
 
-  [[nodiscard]] static bool
-  diagnostic_flat_certification_worklist_only() noexcept {
+  [[nodiscard]] static bool diagnostic_flat_certification_worklist_only() noexcept {
 #pragma warning(push)
 #pragma warning(disable : 4996)
-    static const bool enabled =
-        std::getenv("GTOSD_DIAGNOSTIC_FLAT_CERT_WORKLIST_ONLY") != nullptr;
+    static const bool enabled = std::getenv("GTOSD_DIAGNOSTIC_FLAT_CERT_WORKLIST_ONLY") != nullptr;
 #pragma warning(pop)
     return enabled;
   }
 
-  void profile_scale_transition(const float old_scale, const float new_scale,
-                                const double maximum, const double capacity,
+  void profile_scale_transition(const float old_scale, const float new_scale, const double maximum,
+                                const double capacity,
                                 const std::uint64_t entry_count) const noexcept {
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
     if (!hotpath_profiling_enabled()) {
@@ -2983,8 +2898,7 @@ public:
     }
     ++prof_telemetry_.scale_checks;
     prof_telemetry_.entries_reencoded += entry_count;
-    if (std::bit_cast<std::uint32_t>(old_scale) ==
-        std::bit_cast<std::uint32_t>(new_scale)) {
+    if (std::bit_cast<std::uint32_t>(old_scale) == std::bit_cast<std::uint32_t>(new_scale)) {
       ++prof_telemetry_.scale_unchanged;
       ++prof_telemetry_.scale_relative_delta_buckets[0];
     } else {
@@ -2994,10 +2908,11 @@ public:
         relative_delta = std::abs(static_cast<double>(new_scale) - old_scale) /
                          std::abs(static_cast<double>(old_scale));
       }
-      const std::size_t bucket = relative_delta <= 1.0e-6 ? 1U
-          : relative_delta <= 1.0e-4 ? 2U
-          : relative_delta <= 1.0e-2 ? 3U
-          : relative_delta <= 1.0e-1 ? 4U : 5U;
+      const std::size_t bucket = relative_delta <= 1.0e-6   ? 1U
+                                 : relative_delta <= 1.0e-4 ? 2U
+                                 : relative_delta <= 1.0e-2 ? 3U
+                                 : relative_delta <= 1.0e-1 ? 4U
+                                                            : 5U;
       ++prof_telemetry_.scale_relative_delta_buckets[bucket];
     }
     const bool overflow = old_scale > 0.0F && maximum > old_scale * capacity;
@@ -3018,9 +2933,9 @@ public:
 #endif
   }
 
-  void profile_strategy_density(
-      const std::array<ComboVector, maximum_action_count> &strategies,
-      const std::size_t action_count, const std::size_t hand_count) const noexcept {
+  void profile_strategy_density(const std::array<ComboVector, maximum_action_count> &strategies,
+                                const std::size_t action_count,
+                                const std::size_t hand_count) const noexcept {
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
     if (!hotpath_profiling_enabled()) {
       return;
@@ -3122,10 +3037,8 @@ public:
       scaled_update_calls += worker->prof_scaled_update_calls_;
       scaled_update_entries += worker->prof_scaled_update_entries_;
       for (std::size_t action = 0U; action <= maximum_action_count; ++action) {
-        scaled_calls_by_action[action] +=
-            worker->prof_scaled_calls_by_action_[action];
-        scaled_entries_by_action[action] +=
-            worker->prof_scaled_entries_by_action_[action];
+        scaled_calls_by_action[action] += worker->prof_scaled_calls_by_action_[action];
+        scaled_entries_by_action[action] += worker->prof_scaled_entries_by_action_[action];
       }
       average_update += worker->prof_average_update_seconds_;
       average_only += worker->prof_average_only_seconds_;
@@ -3165,8 +3078,7 @@ public:
       scaled_update_calls += parallel_worker_->prof_scaled_update_calls_;
       scaled_update_entries += parallel_worker_->prof_scaled_update_entries_;
       for (std::size_t action = 0U; action <= maximum_action_count; ++action) {
-        scaled_calls_by_action[action] +=
-            parallel_worker_->prof_scaled_calls_by_action_[action];
+        scaled_calls_by_action[action] += parallel_worker_->prof_scaled_calls_by_action_[action];
         scaled_entries_by_action[action] +=
             parallel_worker_->prof_scaled_entries_by_action_[action];
       }
@@ -3191,77 +3103,76 @@ public:
       telemetry += parallel_worker_->prof_telemetry_;
     }
     const double accounted = strategy + copy + terminal + value_update + chance + sync;
-    std::fprintf(stderr,
-                 "ITER-PROF wall=%.1fms decisions=%llu actor_writes=%llu serial-equiv-parts=%.1fms\n"
-                 "  terminal showdown:        %8.1f ms\n"
-                 "    fold terminal:          %8.1f ms\n"
-                 "    showdown terminal:      %8.1f ms\n"
-                 "    rank/card accumulate:   %8.1f ms\n"
-                 "    prefix construction:    %8.1f ms\n"
-                 "    value production:       %8.1f ms\n"
-                 "  reach propagation:        %8.1f ms\n"
-                 "  value + update:           %8.1f ms\n"
-                 "    value accumulation:    %8.1f ms\n"
-                 "    regret update:         %8.1f ms\n"
-                 "    average update:        %8.1f ms\n"
-                 "    average-only traversal:%8.1f ms (%llu calls, %llu nodes, %llu decisions, %llu entries)\n"
-                 "  board/card filtering:     %8.1f ms\n"
-                 "    chance preparation:    %8.1f ms\n"
-                 "    chance accumulation:   %8.1f ms (%llu calls, %llu outcomes)\n"
-                 "  synchronization:          %8.1f ms\n"
-                 "  regret matching:          %8.1f ms\n"
-                 "  strategy sparsity:        %llu/%llu zero entries, %llu whole-zero actions\n",
-                 wall_seconds * 1000.0, static_cast<unsigned long long>(decisions),
-                 static_cast<unsigned long long>(actor_writes), accounted * 1000.0,
-                 terminal * 1000.0, fold * 1000.0, showdown * 1000.0,
-                 showdown_accumulate * 1000.0,
-                 showdown_prefix * 1000.0, showdown_output * 1000.0,
-                 copy * 1000.0, value_update * 1000.0,
-                 value_accumulate * 1000.0, regret_update * 1000.0,
-                 average_update * 1000.0,
-                 average_only * 1000.0,
-                 static_cast<unsigned long long>(average_only_calls),
-                 static_cast<unsigned long long>(average_only_nodes),
-                 static_cast<unsigned long long>(average_only_decisions),
-                 static_cast<unsigned long long>(average_only_entries),
-                 chance * 1000.0, chance_prepare * 1000.0,
-                 chance_accumulate * 1000.0,
-                 static_cast<unsigned long long>(chance_calls),
-                 static_cast<unsigned long long>(chance_outcomes),
-                 sync * 1000.0, strategy * 1000.0,
-                 static_cast<unsigned long long>(zero_strategy_entries),
-                 static_cast<unsigned long long>(strategy_entries),
-                 static_cast<unsigned long long>(whole_zero_actions));
-    const auto scaled_state_bytes =
-        scaled_update_entries * 8U + scaled_update_calls * 16U;
-    const auto scaled_scratch_bytes = scaled_update_entries * 16U;
     std::fprintf(
         stderr,
-        "  signed state passes: calls=%llu entries=%llu calculate=%.1fms scale=%.1fms encode_writeback=%.1fms state_bytes=%llu scratch_bytes=%llu bytes_per_entry=%.3f passes_per_action_array=2\n",
-        static_cast<unsigned long long>(scaled_update_calls),
-        static_cast<unsigned long long>(scaled_update_entries),
-        scaled_calculate * 1000.0, scaled_scale * 1000.0,
-        scaled_encode * 1000.0,
-        static_cast<unsigned long long>(scaled_state_bytes),
-        static_cast<unsigned long long>(scaled_scratch_bytes),
-        scaled_update_entries == 0U
-            ? 0.0
-            : static_cast<double>(scaled_state_bytes + scaled_scratch_bytes) /
-                  static_cast<double>(scaled_update_entries));
+        "ITER-PROF wall=%.1fms decisions=%llu actor_writes=%llu serial-equiv-parts=%.1fms\n"
+        "  terminal showdown:        %8.1f ms\n"
+        "    fold terminal:          %8.1f ms\n"
+        "    showdown terminal:      %8.1f ms\n"
+        "    rank/card accumulate:   %8.1f ms\n"
+        "    prefix construction:    %8.1f ms\n"
+        "    value production:       %8.1f ms\n"
+        "  reach propagation:        %8.1f ms\n"
+        "  value + update:           %8.1f ms\n"
+        "    value accumulation:    %8.1f ms\n"
+        "    regret update:         %8.1f ms\n"
+        "    average update:        %8.1f ms\n"
+        "    average-only traversal:%8.1f ms (%llu calls, %llu nodes, %llu decisions, %llu "
+        "entries)\n"
+        "  board/card filtering:     %8.1f ms\n"
+        "    chance preparation:    %8.1f ms\n"
+        "    chance accumulation:   %8.1f ms (%llu calls, %llu outcomes)\n"
+        "  synchronization:          %8.1f ms\n"
+        "  regret matching:          %8.1f ms\n"
+        "  strategy sparsity:        %llu/%llu zero entries, %llu whole-zero actions\n",
+        wall_seconds * 1000.0, static_cast<unsigned long long>(decisions),
+        static_cast<unsigned long long>(actor_writes), accounted * 1000.0, terminal * 1000.0,
+        fold * 1000.0, showdown * 1000.0, showdown_accumulate * 1000.0, showdown_prefix * 1000.0,
+        showdown_output * 1000.0, copy * 1000.0, value_update * 1000.0, value_accumulate * 1000.0,
+        regret_update * 1000.0, average_update * 1000.0, average_only * 1000.0,
+        static_cast<unsigned long long>(average_only_calls),
+        static_cast<unsigned long long>(average_only_nodes),
+        static_cast<unsigned long long>(average_only_decisions),
+        static_cast<unsigned long long>(average_only_entries), chance * 1000.0,
+        chance_prepare * 1000.0, chance_accumulate * 1000.0,
+        static_cast<unsigned long long>(chance_calls),
+        static_cast<unsigned long long>(chance_outcomes), sync * 1000.0, strategy * 1000.0,
+        static_cast<unsigned long long>(zero_strategy_entries),
+        static_cast<unsigned long long>(strategy_entries),
+        static_cast<unsigned long long>(whole_zero_actions));
+    const auto scaled_state_bytes = scaled_update_entries * 8U + scaled_update_calls * 16U;
+    const auto scaled_scratch_bytes = scaled_update_entries * 16U;
+    std::fprintf(stderr,
+                 "  signed state passes: calls=%llu entries=%llu calculate=%.1fms scale=%.1fms "
+                 "encode_writeback=%.1fms state_bytes=%llu scratch_bytes=%llu bytes_per_entry=%.3f "
+                 "passes_per_action_array=2\n",
+                 static_cast<unsigned long long>(scaled_update_calls),
+                 static_cast<unsigned long long>(scaled_update_entries), scaled_calculate * 1000.0,
+                 scaled_scale * 1000.0, scaled_encode * 1000.0,
+                 static_cast<unsigned long long>(scaled_state_bytes),
+                 static_cast<unsigned long long>(scaled_scratch_bytes),
+                 scaled_update_entries == 0U
+                     ? 0.0
+                     : static_cast<double>(scaled_state_bytes + scaled_scratch_bytes) /
+                           static_cast<double>(scaled_update_entries));
     std::fprintf(stderr, "  signed state arity:");
     for (std::size_t action = 1U; action <= maximum_action_count; ++action) {
       std::fprintf(stderr, " a%zu_calls=%llu a%zu_entries=%llu", action,
-                   static_cast<unsigned long long>(scaled_calls_by_action[action]),
-                   action,
+                   static_cast<unsigned long long>(scaled_calls_by_action[action]), action,
                    static_cast<unsigned long long>(scaled_entries_by_action[action]));
     }
     std::fprintf(stderr, "\n");
     std::fprintf(
         stderr,
-        "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
-        "  strategy density: zero=%llu positive<1e-6=%llu positive<1e-4=%llu total=%llu whole-zero=%llu skipped_actions=%llu skipped_subtrees=%llu skipped_entries=%llu\n"
-        "  showdown workload: calls=%llu hero=%llu opponent=%llu rank_cells=%llu touched_ranks=%llu touched_card_ranks=%llu reach_hash_unique=%llu reach_hash_repeats=%llu\n"
-        "  river frontier upper bound: roots=%llu showdowns=%llu full_batches=%llu tail_lanes=%llu\n",
+        "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu "
+        "reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
+        "  strategy density: zero=%llu positive<1e-6=%llu positive<1e-4=%llu total=%llu "
+        "whole-zero=%llu skipped_actions=%llu skipped_subtrees=%llu skipped_entries=%llu\n"
+        "  showdown workload: calls=%llu hero=%llu opponent=%llu rank_cells=%llu "
+        "touched_ranks=%llu touched_card_ranks=%llu reach_hash_unique=%llu "
+        "reach_hash_repeats=%llu\n"
+        "  river frontier upper bound: roots=%llu showdowns=%llu full_batches=%llu "
+        "tail_lanes=%llu\n",
         static_cast<unsigned long long>(telemetry.scale_checks),
         static_cast<unsigned long long>(telemetry.scale_unchanged),
         static_cast<unsigned long long>(telemetry.scale_changed),
@@ -3296,75 +3207,62 @@ public:
         static_cast<unsigned long long>(telemetry.river_frontier_full_batches),
         static_cast<unsigned long long>(telemetry.river_frontier_tail_lanes));
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    std::fprintf(stderr,
+                 "  showdown reach reuse distance: d1=%llu d2-4=%llu d5-16=%llu d17-64=%llu "
+                 "d65-256=%llu d257+=%llu\n",
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[0]),
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[1]),
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[2]),
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[3]),
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[4]),
+                 static_cast<unsigned long long>(telemetry.showdown_reuse_distance_buckets[5]));
+    std::fprintf(stderr,
+                 "  river subtree compatibility: sites=%llu roots=%llu groups=%llu singleton=%llu "
+                 "full_batches=%llu tail_lanes=%llu batchable_roots=%llu padded_slots=%llu "
+                 "ineligible=%llu lane_occupancy=%.6f work_occupancy=%.6f pairs=%llu "
+                 "pair_batchable_roots=%llu pair_lane_occupancy=%.6f pair_work_coverage=%.6f\n",
+                 static_cast<unsigned long long>(telemetry.river_topology_sites),
+                 static_cast<unsigned long long>(telemetry.river_topology_roots),
+                 static_cast<unsigned long long>(telemetry.river_topology_groups),
+                 static_cast<unsigned long long>(telemetry.river_topology_singletons),
+                 static_cast<unsigned long long>(telemetry.river_topology_full_batches),
+                 static_cast<unsigned long long>(telemetry.river_topology_tail_lanes),
+                 static_cast<unsigned long long>(telemetry.river_topology_batchable_roots),
+                 static_cast<unsigned long long>(telemetry.river_topology_padded_slots),
+                 static_cast<unsigned long long>(telemetry.river_topology_ineligible_roots),
+                 telemetry.river_topology_padded_slots == 0U
+                     ? 0.0
+                     : static_cast<double>(telemetry.river_topology_roots -
+                                           telemetry.river_topology_ineligible_roots) /
+                           static_cast<double>(telemetry.river_topology_padded_slots),
+                 telemetry.river_topology_padded_work == 0U
+                     ? 0.0
+                     : static_cast<double>(telemetry.river_topology_work) /
+                           static_cast<double>(telemetry.river_topology_padded_work),
+                 static_cast<unsigned long long>(telemetry.river_topology_full_pairs),
+                 static_cast<unsigned long long>(telemetry.river_topology_pair_batchable_roots),
+                 telemetry.river_topology_pair_padded_slots == 0U
+                     ? 0.0
+                     : static_cast<double>(telemetry.river_topology_roots -
+                                           telemetry.river_topology_ineligible_roots) /
+                           static_cast<double>(telemetry.river_topology_pair_padded_slots),
+                 telemetry.river_topology_work == 0U
+                     ? 0.0
+                     : static_cast<double>(telemetry.river_topology_pair_batchable_work) /
+                           static_cast<double>(telemetry.river_topology_work));
     std::fprintf(
         stderr,
-        "  showdown reach reuse distance: d1=%llu d2-4=%llu d5-16=%llu d17-64=%llu d65-256=%llu d257+=%llu\n",
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[0]),
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[1]),
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[2]),
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[3]),
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[4]),
-        static_cast<unsigned long long>(
-            telemetry.showdown_reuse_distance_buckets[5]));
-    std::fprintf(
-        stderr,
-        "  river subtree compatibility: sites=%llu roots=%llu groups=%llu singleton=%llu full_batches=%llu tail_lanes=%llu batchable_roots=%llu padded_slots=%llu ineligible=%llu lane_occupancy=%.6f work_occupancy=%.6f pairs=%llu pair_batchable_roots=%llu pair_lane_occupancy=%.6f pair_work_coverage=%.6f\n",
-        static_cast<unsigned long long>(telemetry.river_topology_sites),
-        static_cast<unsigned long long>(telemetry.river_topology_roots),
-        static_cast<unsigned long long>(telemetry.river_topology_groups),
-        static_cast<unsigned long long>(telemetry.river_topology_singletons),
-        static_cast<unsigned long long>(telemetry.river_topology_full_batches),
-        static_cast<unsigned long long>(telemetry.river_topology_tail_lanes),
-        static_cast<unsigned long long>(telemetry.river_topology_batchable_roots),
-        static_cast<unsigned long long>(telemetry.river_topology_padded_slots),
-        static_cast<unsigned long long>(telemetry.river_topology_ineligible_roots),
-        telemetry.river_topology_padded_slots == 0U
-            ? 0.0
-            : static_cast<double>(telemetry.river_topology_roots -
-                                  telemetry.river_topology_ineligible_roots) /
-                  static_cast<double>(telemetry.river_topology_padded_slots),
-        telemetry.river_topology_padded_work == 0U
-            ? 0.0
-            : static_cast<double>(telemetry.river_topology_work) /
-                  static_cast<double>(telemetry.river_topology_padded_work),
-        static_cast<unsigned long long>(telemetry.river_topology_full_pairs),
-        static_cast<unsigned long long>(
-            telemetry.river_topology_pair_batchable_roots),
-        telemetry.river_topology_pair_padded_slots == 0U
-            ? 0.0
-            : static_cast<double>(telemetry.river_topology_roots -
-                                  telemetry.river_topology_ineligible_roots) /
-                  static_cast<double>(
-                      telemetry.river_topology_pair_padded_slots),
-        telemetry.river_topology_work == 0U
-            ? 0.0
-            : static_cast<double>(
-                  telemetry.river_topology_pair_batchable_work) /
-                  static_cast<double>(telemetry.river_topology_work));
-    std::fprintf(
-        stderr,
-        "  river terminal sink coverage: all_entries=%llu all_terminal=%llu signed_entries=%llu signed_all_terminal=%llu opponent_entries=%llu opponent_all_terminal=%llu\n",
-        static_cast<unsigned long long>(
-            telemetry.river_decision_value_entries),
-        static_cast<unsigned long long>(
-            telemetry.river_all_terminal_value_entries),
-        static_cast<unsigned long long>(
-            telemetry.river_signed_value_entries),
-        static_cast<unsigned long long>(
-            telemetry.river_all_terminal_signed_value_entries),
-        static_cast<unsigned long long>(
-            telemetry.river_opponent_value_entries),
-        static_cast<unsigned long long>(
-            telemetry.river_all_terminal_opponent_value_entries));
+        "  river terminal sink coverage: all_entries=%llu all_terminal=%llu signed_entries=%llu "
+        "signed_all_terminal=%llu opponent_entries=%llu opponent_all_terminal=%llu\n",
+        static_cast<unsigned long long>(telemetry.river_decision_value_entries),
+        static_cast<unsigned long long>(telemetry.river_all_terminal_value_entries),
+        static_cast<unsigned long long>(telemetry.river_signed_value_entries),
+        static_cast<unsigned long long>(telemetry.river_all_terminal_signed_value_entries),
+        static_cast<unsigned long long>(telemetry.river_opponent_value_entries),
+        static_cast<unsigned long long>(telemetry.river_all_terminal_opponent_value_entries));
 #endif
     std::fprintf(stderr, "  task distribution: main=%llu/%.1fms",
-                 static_cast<unsigned long long>(prof_tasks_),
-                 prof_task_wall_seconds_ * 1000.0);
+                 static_cast<unsigned long long>(prof_tasks_), prof_task_wall_seconds_ * 1000.0);
     for (std::size_t index = 0; index < parallel_workers_.size(); ++index) {
       std::fprintf(stderr, " w%zu=%llu/%.1fms", index,
                    static_cast<unsigned long long>(parallel_workers_[index]->prof_tasks_),
@@ -3517,13 +3415,10 @@ public:
     }
   }
 
-  Result<ComboVector, PostflopSolverError> cfr(const NodeId node_id,
-                                               const std::uint8_t updating_player,
-                                               const ReachRef &reach,
-                                               const double strategy_weight,
-                                               const double regret_update_weight,
-                                               const double positive_regret_discount,
-                                               const double negative_regret_discount) {
+  Result<ComboVector, PostflopSolverError>
+  cfr(const NodeId node_id, const std::uint8_t updating_player, const ReachRef &reach,
+      const double strategy_weight, const double regret_update_weight,
+      const double positive_regret_discount, const double negative_regret_discount) {
     regret_update_weight_ = regret_update_weight;
     strategy_weight_ = strategy_weight;
     positive_regret_discount_ = positive_regret_discount;
@@ -3557,10 +3452,11 @@ public:
     return Result<ComboVector, PostflopSolverError>::success(std::move(result));
   }
 
-  std::optional<PostflopSolverError> cfr_simultaneous(
-      const ReachRef &reach, const double strategy_weight,
-      const double regret_update_weight, const double positive_regret_discount,
-      const double negative_regret_discount) {
+  std::optional<PostflopSolverError> cfr_simultaneous(const ReachRef &reach,
+                                                      const double strategy_weight,
+                                                      const double regret_update_weight,
+                                                      const double positive_regret_discount,
+                                                      const double negative_regret_discount) {
     if (!layout_.uses_canonical_public_dag) {
       return PostflopSolverError::InvalidConfiguration;
     }
@@ -3575,14 +3471,13 @@ public:
       worker->negative_regret_discount_ = negative_regret_discount;
     }
     std::array<ComboVector, 2> values{};
-    return cfr_canonical_simultaneous_into(
-        layout_.canonical_public_graph.root, reach, strategy_weight, values);
+    return cfr_canonical_simultaneous_into(layout_.canonical_public_graph.root, reach,
+                                           strategy_weight, values);
   }
 
   Result<ComboVector, PostflopSolverError> policy(const NodeId node_id,
                                                   const std::uint8_t updating_player,
-                                                  const ReachRef &reach,
-                                                  const bool best_response) {
+                                                  const ReachRef &reach, const bool best_response) {
     if (layout_.uses_canonical_public_dag) {
       return policy_canonical(layout_.canonical_public_graph.root, updating_player, reach,
                               best_response);
@@ -3591,21 +3486,17 @@ public:
   }
 
   Result<std::array<ComboVector, 2>, PostflopSolverError>
-  policy_profile_br_pair(const std::uint8_t updating_player,
-                         const ReachRef &reach) {
+  policy_profile_br_pair(const std::uint8_t updating_player, const ReachRef &reach) {
     if (!layout_.uses_canonical_public_dag) {
       return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
     std::array<ComboVector, 2> values{};
     if (const auto error = policy_canonical_profile_br_pair_into(
-            layout_.canonical_public_graph.root, updating_player, reach,
-            values[0], values[1])) {
-      return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
-          *error);
+            layout_.canonical_public_graph.root, updating_player, reach, values[0], values[1])) {
+      return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(*error);
     }
-    return Result<std::array<ComboVector, 2>, PostflopSolverError>::success(
-        std::move(values));
+    return Result<std::array<ComboVector, 2>, PostflopSolverError>::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError>
@@ -3617,8 +3508,8 @@ public:
             PostflopSolverError::InvalidConfiguration);
       }
       const auto assignment = layout_.canonical_public_graph.physical_assignments[node_id];
-      auto canonical_reach = transform_reach(
-          {*reach[0], *reach[1]}, assignment.physical_to_canonical_automorphism);
+      auto canonical_reach =
+          transform_reach({*reach[0], *reach[1]}, assignment.physical_to_canonical_automorphism);
       auto values = policy_canonical(assignment.node, updating_player,
                                      {&canonical_reach[0], &canonical_reach[1]}, false);
       if (!values) {
@@ -3628,6 +3519,365 @@ public:
           values.value(), assignment.physical_to_canonical_automorphism, updating_player));
     }
     return policy_physical(node_id, updating_player, reach, false);
+  }
+
+  Result<PostflopArchitecturalShadowSample, PostflopSolverError>
+  architectural_shadow_group(const std::vector<PostflopRiverWorkUnit> &units,
+                             const std::uint8_t updating_player, const std::uint64_t repetitions,
+                             const std::uint64_t next_iteration,
+                             const double positive_regret_exponent, const double average_exponent,
+                             const std::array<ComboVector, 2> &initial) {
+    if (units.size() < 2U || repetitions == 0U || updating_player > 1U ||
+        buffers_.scaled_regret == nullptr || buffers_.scaled_strategy == nullptr ||
+        buffers_.regret_node_scale == nullptr || buffers_.strategy_node_scale == nullptr) {
+      return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+
+    using ReachPair = std::array<ComboVector, 2>;
+    std::unordered_map<std::uint32_t, std::size_t> selected;
+    selected.reserve(units.size());
+    for (std::size_t index = 0U; index < units.size(); ++index) {
+      if (units[index].update_player != updating_player ||
+          !selected.emplace(units[index].river_root_node, index).second) {
+        return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+    }
+    std::vector<std::optional<ReachPair>> captured(units.size());
+    std::size_t captured_count = 0U;
+    std::function<std::optional<PostflopSolverError>(std::uint32_t, const ReachPair &)> capture;
+    capture = [&](const std::uint32_t node_id,
+                  const ReachPair &reach) -> std::optional<PostflopSolverError> {
+      if (captured_count == units.size()) {
+        return std::nullopt;
+      }
+      if (node_id >= layout_.canonical_public_graph.nodes.size()) {
+        return PostflopSolverError::InvalidConfiguration;
+      }
+      const auto &node = layout_.canonical_public_graph.nodes[node_id];
+      const auto found = selected.find(node_id);
+      if (found != selected.end() && !captured[found->second]) {
+        captured[found->second] = reach;
+        ++captured_count;
+        return std::nullopt;
+      }
+      const auto &board = layout_.boards[node.board_index];
+      if (std::popcount(board.mask) == 5 || node.kind == PublicNodeKind::TerminalFold ||
+          node.kind == PublicNodeKind::TerminalShowdown) {
+        return std::nullopt;
+      }
+      if (node.kind == PublicNodeKind::Chance) {
+        for (const auto &edge : node.edges) {
+          if (edge.outcomes.empty()) {
+            return PostflopSolverError::InvalidConfiguration;
+          }
+          const auto &outcome = edge.outcomes.front();
+          auto transformed = transform_reach(reach, outcome.physical_to_child_automorphism);
+          if (const auto error = capture(outcome.child, transformed)) {
+            return error;
+          }
+        }
+        return std::nullopt;
+      }
+      if (node.kind != PublicNodeKind::Decision ||
+          node.edges.size() != node.decision.action_count) {
+        return PostflopSolverError::InvalidConfiguration;
+      }
+      DecisionScratchLease scratch_lease(*this);
+      auto &strategies = scratch_lease.get().strategies;
+      load_canonical_current_strategies(node, board, node.decision.player, strategies, true);
+      for (std::size_t action = 0U; action < node.edges.size(); ++action) {
+        if (node.edges[action].outcomes.empty()) {
+          return PostflopSolverError::InvalidConfiguration;
+        }
+        ReachPair child = reach;
+        const auto player = static_cast<std::uint8_t>(node.decision.player);
+        const auto &slots = board.player_flop_slots[player];
+        for (std::size_t local = 0U; local < slots.size(); ++local) {
+          child[player][slots[local]] =
+              static_cast<Scalar>(child[player][slots[local]] * strategies[action][local]);
+        }
+        const auto &outcome = node.edges[action].outcomes.front();
+        child = transform_reach(child, outcome.physical_to_child_automorphism);
+        if (const auto error = capture(outcome.child, child)) {
+          return error;
+        }
+      }
+      return std::nullopt;
+    };
+    if (const auto error = capture(layout_.canonical_public_graph.root, initial)) {
+      return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(*error);
+    }
+    if (captured_count != units.size()) {
+      return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+
+    struct StateSlice {
+      std::uint64_t begin{0U};
+      std::vector<std::uint16_t> regret;
+      std::vector<std::uint16_t> strategy;
+    };
+    std::vector<StateSlice> slices;
+    slices.reserve(units.size());
+    std::uint64_t copied_state_bytes = 0U;
+    for (const auto &unit : units) {
+      if (!unit.state_interval_present || unit.state_end <= unit.state_begin ||
+          unit.state_end > buffers_.count) {
+        return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto count = static_cast<std::size_t>(unit.state_end - unit.state_begin);
+      StateSlice slice;
+      slice.begin = unit.state_begin;
+      slice.regret.assign(buffers_.scaled_regret + unit.state_begin,
+                          buffers_.scaled_regret + unit.state_end);
+      slice.strategy.assign(buffers_.scaled_strategy + unit.state_begin,
+                            buffers_.scaled_strategy + unit.state_end);
+      copied_state_bytes += count * sizeof(std::uint16_t) * 2U;
+      slices.push_back(std::move(slice));
+    }
+
+    std::vector<std::uint32_t> scale_indices;
+    std::vector<std::uint8_t> scale_seen(buffers_.decision_node_count, 0U);
+    std::function<bool(std::uint32_t)> collect_scales;
+    collect_scales = [&](const std::uint32_t node_id) {
+      if (node_id >= layout_.canonical_public_graph.nodes.size()) {
+        return false;
+      }
+      const auto &node = layout_.canonical_public_graph.nodes[node_id];
+      if (node.kind == PublicNodeKind::Decision) {
+        if (node.state_scale_index >= buffers_.decision_node_count) {
+          return false;
+        }
+        if (scale_seen[node.state_scale_index] == 0U) {
+          scale_seen[node.state_scale_index] = 1U;
+          scale_indices.push_back(node.state_scale_index);
+        }
+      }
+      for (const auto &edge : node.edges) {
+        if (edge.outcomes.empty() || !collect_scales(edge.outcomes.front().child)) {
+          return false;
+        }
+      }
+      return true;
+    };
+    for (const auto &unit : units) {
+      if (!collect_scales(unit.river_root_node)) {
+        return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+    }
+    std::vector<float> regret_scales(scale_indices.size());
+    std::vector<float> strategy_scales(scale_indices.size());
+    for (std::size_t index = 0U; index < scale_indices.size(); ++index) {
+      regret_scales[index] = buffers_.regret_node_scale[scale_indices[index]];
+      strategy_scales[index] = buffers_.strategy_node_scale[scale_indices[index]];
+    }
+    const auto restore = [&] {
+      for (const auto &slice : slices) {
+        std::memcpy(buffers_.scaled_regret + slice.begin, slice.regret.data(),
+                    slice.regret.size() * sizeof(std::uint16_t));
+        std::memcpy(buffers_.scaled_strategy + slice.begin, slice.strategy.data(),
+                    slice.strategy.size() * sizeof(std::uint16_t));
+      }
+      for (std::size_t index = 0U; index < scale_indices.size(); ++index) {
+        buffers_.regret_node_scale[scale_indices[index]] = regret_scales[index];
+        buffers_.strategy_node_scale[scale_indices[index]] = strategy_scales[index];
+      }
+    };
+    struct Outcome {
+      std::vector<ComboVector> values;
+      std::vector<std::uint16_t> regrets;
+      std::vector<std::uint16_t> strategies;
+      std::vector<float> regret_scale;
+      std::vector<float> strategy_scale;
+    };
+    const auto snapshot_outcome = [&](std::vector<ComboVector> values) {
+      Outcome outcome;
+      outcome.values = std::move(values);
+      for (const auto &slice : slices) {
+        const auto count = slice.regret.size();
+        outcome.regrets.insert(outcome.regrets.end(), buffers_.scaled_regret + slice.begin,
+                               buffers_.scaled_regret + slice.begin + count);
+        outcome.strategies.insert(outcome.strategies.end(), buffers_.scaled_strategy + slice.begin,
+                                  buffers_.scaled_strategy + slice.begin + count);
+      }
+      for (const auto scale : scale_indices) {
+        outcome.regret_scale.push_back(buffers_.regret_node_scale[scale]);
+        outcome.strategy_scale.push_back(buffers_.strategy_node_scale[scale]);
+      }
+      return outcome;
+    };
+
+    const double effective_iteration = static_cast<double>(next_iteration);
+    const double powered = std::pow(effective_iteration - 1.0, positive_regret_exponent);
+    const double positive_discount = powered / (powered + 1.0);
+    constexpr double negative_discount = 0.5;
+    constexpr double regret_weight = 1.0;
+    const double strategy_weight = std::pow(effective_iteration, average_exponent);
+    const auto configure = [&](DenseTraversal &self) {
+      self.regret_update_weight_ = regret_weight;
+      self.strategy_weight_ = strategy_weight;
+      self.positive_regret_discount_ = positive_discount;
+      self.negative_regret_discount_ = negative_discount;
+    };
+    const auto evaluate_one = [&](DenseTraversal &self, const std::size_t index,
+                                  ComboVector &result) {
+      configure(self);
+      const auto &reach = *captured[index];
+      return self.cfr_canonical_chance_child_into(units[index].river_root_node, updating_player,
+                                                  {&reach[0], &reach[1]}, strategy_weight, result);
+    };
+    const auto run_local = [&]() -> Result<std::vector<ComboVector>, PostflopSolverError> {
+      std::vector<ComboVector> values(units.size());
+      for (std::size_t index = 0U; index < units.size(); ++index) {
+        if (const auto error = evaluate_one(*this, index, values[index])) {
+          return Result<std::vector<ComboVector>, PostflopSolverError>::failure(*error);
+        }
+      }
+      return Result<std::vector<ComboVector>, PostflopSolverError>::success(std::move(values));
+    };
+    const auto run_global = [&]() -> Result<std::vector<ComboVector>, PostflopSolverError> {
+      std::vector<ComboVector> values(units.size());
+      const auto task_count = std::min(units.size(), parallel_workers_.size() + 1U);
+      std::atomic<std::size_t> next{1U};
+      std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
+      std::vector<std::future<TraversalResult>> futures;
+      tasks.reserve(task_count - 1U);
+      futures.reserve(task_count - 1U);
+      for (std::size_t task_index = 1U; task_index < task_count; ++task_index) {
+        std::packaged_task<TraversalResult(DenseTraversal &)> task(
+            [&, updating_player](DenseTraversal &self) {
+              static_cast<void>(updating_player);
+              while (true) {
+                const auto index = next.fetch_add(1U, std::memory_order_relaxed);
+                if (index >= units.size()) {
+                  break;
+                }
+                if (const auto error = evaluate_one(self, index, values[index])) {
+                  return Result<ComboVector, PostflopSolverError>::failure(*error);
+                }
+              }
+              return Result<ComboVector, PostflopSolverError>::success(ComboVector{});
+            });
+        futures.push_back(task.get_future());
+        tasks.push_back(std::move(task));
+      }
+      dispatch_parallel_tasks(tasks);
+      std::optional<PostflopSolverError> main_error;
+      main_error = evaluate_one(*this, 0U, values[0]);
+      while (!main_error) {
+        const auto index = next.fetch_add(1U, std::memory_order_relaxed);
+        if (index >= units.size()) {
+          break;
+        }
+        main_error = evaluate_one(*this, index, values[index]);
+      }
+      std::optional<PostflopSolverError> worker_error;
+      for (auto &future : futures) {
+        wait_for_parallel_future(future);
+        auto result = future.get();
+        if (!result && !worker_error) {
+          worker_error = result.error();
+        }
+      }
+      if (main_error || worker_error) {
+        return Result<std::vector<ComboVector>, PostflopSolverError>::failure(
+            main_error ? *main_error : *worker_error);
+      }
+      return Result<std::vector<ComboVector>, PostflopSolverError>::success(std::move(values));
+    };
+
+    restore();
+    auto baseline = run_local();
+    if (!baseline) {
+      restore();
+      return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+          baseline.error());
+    }
+    auto baseline_outcome = snapshot_outcome(std::move(baseline.value()));
+    restore();
+    auto candidate = run_global();
+    if (!candidate) {
+      restore();
+      return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+          candidate.error());
+    }
+    auto candidate_outcome = snapshot_outcome(std::move(candidate.value()));
+    restore();
+
+    const auto same_values = [&] {
+      if (baseline_outcome.values.size() != candidate_outcome.values.size()) {
+        return false;
+      }
+      for (std::size_t index = 0U; index < baseline_outcome.values.size(); ++index) {
+        if (std::memcmp(baseline_outcome.values[index].data(),
+                        candidate_outcome.values[index].data(), sizeof(ComboVector)) != 0) {
+          return false;
+        }
+      }
+      return true;
+    }();
+
+    std::vector<double> local_timings;
+    std::vector<double> global_timings;
+    local_timings.reserve(repetitions);
+    global_timings.reserve(repetitions);
+    for (std::uint64_t repetition = 0U; repetition < repetitions; ++repetition) {
+      restore();
+      auto started = std::chrono::steady_clock::now();
+      auto local = run_local();
+      local_timings.push_back(
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
+      if (!local) {
+        restore();
+        return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+            local.error());
+      }
+      restore();
+      started = std::chrono::steady_clock::now();
+      auto global = run_global();
+      global_timings.push_back(
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count());
+      if (!global) {
+        restore();
+        return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::failure(
+            global.error());
+      }
+    }
+    restore();
+    std::ranges::sort(local_timings);
+    std::ranges::sort(global_timings);
+    const auto local_seconds = local_timings[local_timings.size() / 2U];
+    const auto global_seconds = global_timings[global_timings.size() / 2U];
+
+    PostflopArchitecturalShadowSample sample;
+    sample.update_player = updating_player;
+    sample.batch_width = static_cast<std::uint8_t>(units.size());
+    sample.structural_signature = units.front().structural_signature;
+    sample.copied_state_bytes = copied_state_bytes;
+    sample.copied_scale_bytes = scale_indices.size() * sizeof(float) * 2U;
+    sample.descriptor_bytes = units.size() * (sizeof(std::uint32_t) * 2U + sizeof(ReachPair));
+    for (const auto &unit : units) {
+      sample.modeled_bytes +=
+          unit.terminal_bytes + unit.value_bytes + unit.state_bytes + unit.reach_bytes;
+      sample.river_root_nodes.push_back(unit.river_root_node);
+      sample.source_chance_nodes.push_back(unit.source_chance_node);
+    }
+    sample.local_schedule_seconds = local_seconds;
+    sample.global_frontier_seconds = global_seconds;
+    sample.speedup = global_seconds > 0.0 ? local_seconds / global_seconds : 0.0;
+    sample.parent_values_bit_equal = same_values;
+    sample.regret_codes_bit_equal = baseline_outcome.regrets == candidate_outcome.regrets;
+    sample.strategy_codes_bit_equal = baseline_outcome.strategies == candidate_outcome.strategies;
+    sample.regret_scales_bit_equal =
+        baseline_outcome.regret_scale == candidate_outcome.regret_scale;
+    sample.strategy_scales_bit_equal =
+        baseline_outcome.strategy_scale == candidate_outcome.strategy_scale;
+    return Result<PostflopArchitecturalShadowSample, PostflopSolverError>::success(
+        std::move(sample));
   }
 
 private:
@@ -3706,8 +3956,7 @@ private:
     return value_slot(board.player_combos[player][local], player);
   }
 
-  [[nodiscard]] std::size_t board_reach_slot(const BoardData &board,
-                                             const std::uint8_t player,
+  [[nodiscard]] std::size_t board_reach_slot(const BoardData &board, const std::uint8_t player,
                                              const std::size_t local) const noexcept {
     if constexpr (PlayerIndexed) {
       return static_cast<std::size_t>(board.player_flop_slots[player][local]);
@@ -3717,8 +3966,7 @@ private:
 
   [[nodiscard]] bool scaled_action_major_state() const noexcept {
     return buffers_.scaled_regret != nullptr && buffers_.scaled_strategy != nullptr &&
-           buffers_.regret_node_scale != nullptr &&
-           buffers_.strategy_node_scale != nullptr;
+           buffers_.regret_node_scale != nullptr && buffers_.strategy_node_scale != nullptr;
   }
 
   [[nodiscard]] bool action_major_compact_state() const noexcept {
@@ -3726,16 +3974,13 @@ private:
   }
 
   [[nodiscard]] bool aligned_compact_state() const noexcept {
-    return buffers_.compact_regret16 != nullptr &&
-           buffers_.compact_strategy16 != nullptr;
+    return buffers_.compact_regret16 != nullptr && buffers_.compact_strategy16 != nullptr;
   }
 
   void update_action_major_compact_average(
-      const CanonicalPublicNode &canonical, const BoardData &board,
-      const std::uint8_t player, const ReachRef &reach,
-      const double strategy_weight,
-      const std::array<ComboVector, maximum_action_count> &strategies,
-      const bool local_indexed) {
+      const CanonicalPublicNode &canonical, const BoardData &board, const std::uint8_t player,
+      const ReachRef &reach, const double strategy_weight,
+      const std::array<ComboVector, maximum_action_count> &strategies, const bool local_indexed) {
     if (strategy_weight == 0.0) {
       return;
     }
@@ -3745,61 +3990,57 @@ private:
       for (std::size_t local = 0; local < combos.size(); ++local) {
         const auto slot = value_slot(combos[local], player);
         const auto strategy_slot = local_indexed ? local : slot;
-        auto *const bytes = buffers_.compact_state +
-            canonical_action_major_index(canonical, local, action) * 3U;
+        auto *const bytes =
+            buffers_.compact_state + canonical_action_major_index(canonical, local, action) * 3U;
         const auto word = compact_word(bytes);
-        const double updated =
-            decode_strategy11(static_cast<std::uint16_t>(word >> 13U)) +
-            strategy_weight * static_cast<double>((*reach[player])[slot]) *
-                static_cast<double>(strategies[action][strategy_slot]);
-        store_compact_word(
-            bytes, (word & 0x1fffU) |
-                       (static_cast<std::uint32_t>(encode_strategy11(updated)) << 13U));
+        const double updated = decode_strategy11(static_cast<std::uint16_t>(word >> 13U)) +
+                               strategy_weight * static_cast<double>((*reach[player])[slot]) *
+                                   static_cast<double>(strategies[action][strategy_slot]);
+        store_compact_word(bytes,
+                           (word & 0x1fffU) |
+                               (static_cast<std::uint32_t>(encode_strategy11(updated)) << 13U));
       }
     }
   }
 
-  void update_scaled_average(
-      const CanonicalPublicNode &canonical, const BoardData &board,
-      const std::uint8_t player, const ReachRef &reach,
-      const double strategy_weight,
-      std::array<ComboVector, maximum_action_count> &strategies,
-      const bool local_indexed) {
+  void update_scaled_average(const CanonicalPublicNode &canonical, const BoardData &board,
+                             const std::uint8_t player, const ReachRef &reach,
+                             const double strategy_weight,
+                             std::array<ComboVector, maximum_action_count> &strategies,
+                             const bool local_indexed) {
     if (strategy_weight == 0.0) {
       return;
     }
     const auto scale_index = static_cast<std::size_t>(canonical.state_scale_index);
     const auto action_count = static_cast<std::size_t>(canonical.decision.action_count);
     const auto &combos = board.player_combos[player];
-    const double old_scale =
-        static_cast<double>(buffers_.strategy_node_scale[scale_index]);
+    const double old_scale = static_cast<double>(buffers_.strategy_node_scale[scale_index]);
     double maximum = 0.0;
     if constexpr (std::is_same_v<Scalar, float>) {
-      const auto &slots = PlayerIndexed ? board.player_flop_slots[player]
-                                        : board.player_active_slots[player];
+      const auto &slots =
+          PlayerIndexed ? board.player_flop_slots[player] : board.player_active_slots[player];
       const __m256 old_scale_vector = _mm256_set1_ps(static_cast<float>(old_scale));
       const __m256 weight_vector = _mm256_set1_ps(static_cast<float>(strategy_weight));
       __m256 maximum_vector = _mm256_setzero_ps();
       for (std::size_t action = 0; action < action_count; ++action) {
-        const auto *const source = buffers_.scaled_strategy +
-                                   canonical_action_major_index(canonical, 0U, action);
+        const auto *const source =
+            buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
         float *const destination = strategies[action].data();
         std::size_t local = 0U;
         for (; local + 8U <= combos.size(); local += 8U) {
-          const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-              reinterpret_cast<const __m128i *>(slots.data() + local)));
-          const __m256 old_values = _mm256_mul_ps(
-              _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
-                  reinterpret_cast<const __m128i *>(source + local)))),
-              old_scale_vector);
+          const __m256i indices = _mm256_cvtepu16_epi32(
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
+          const __m256 old_values =
+              _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                reinterpret_cast<const __m128i *>(source + local)))),
+                            old_scale_vector);
           const __m256 current_strategy = local_indexed
-              ? _mm256_loadu_ps(destination + local)
-              : _mm256_i32gather_ps(destination, indices, 4);
-          const __m256 addition = _mm256_mul_ps(
-              _mm256_mul_ps(
-                  weight_vector,
-                  _mm256_i32gather_ps((*reach[player]).data(), indices, 4)),
-              current_strategy);
+                                              ? _mm256_loadu_ps(destination + local)
+                                              : _mm256_i32gather_ps(destination, indices, 4);
+          const __m256 addition =
+              _mm256_mul_ps(_mm256_mul_ps(weight_vector,
+                                          _mm256_i32gather_ps((*reach[player]).data(), indices, 4)),
+                            current_strategy);
           const __m256 updated = _mm256_add_ps(old_values, addition);
           _mm256_storeu_ps(destination + local, updated);
           maximum_vector = _mm256_max_ps(maximum_vector, updated);
@@ -3808,7 +4049,8 @@ private:
           const auto slot = static_cast<std::size_t>(slots[local]);
           const auto strategy_slot = local_indexed ? local : slot;
           const double current = static_cast<double>(destination[strategy_slot]);
-          const double updated = static_cast<double>(source[local]) * old_scale +
+          const double updated =
+              static_cast<double>(source[local]) * old_scale +
               strategy_weight * static_cast<double>((*reach[player])[slot]) * current;
           destination[local] = static_cast<float>(updated);
           maximum = std::max(maximum, updated);
@@ -3823,8 +4065,7 @@ private:
       for (std::size_t local = 0; local < combos.size(); ++local) {
         const auto slot = value_slot(combos[local], player);
         const auto strategy_slot = local_indexed ? local : slot;
-        const double reach_weight =
-            strategy_weight * static_cast<double>((*reach[player])[slot]);
+        const double reach_weight = strategy_weight * static_cast<double>((*reach[player])[slot]);
         for (std::size_t action = 0; action < action_count; ++action) {
           const auto index = canonical_action_major_index(canonical, local, action);
           const double updated =
@@ -3835,14 +4076,12 @@ private:
         }
       }
     }
-    const float encoded_scale =
-        maximum > 0.0 ? static_cast<float>(maximum / 65535.0) : 0.0F;
+    const float encoded_scale = maximum > 0.0 ? static_cast<float>(maximum / 65535.0) : 0.0F;
     buffers_.strategy_node_scale[scale_index] = encoded_scale;
     if (!(encoded_scale > 0.0F)) {
       for (std::size_t action = 0; action < action_count; ++action) {
         auto *const destination =
-            buffers_.scaled_strategy +
-            canonical_action_major_index(canonical, 0U, action);
+            buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
         std::fill_n(destination, combos.size(), std::uint16_t{0});
       }
       return;
@@ -3850,8 +4089,7 @@ private:
     const double inverse = 1.0 / static_cast<double>(encoded_scale);
     for (std::size_t action = 0; action < action_count; ++action) {
       auto *const destination =
-          buffers_.scaled_strategy +
-          canonical_action_major_index(canonical, 0U, action);
+          buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
       std::size_t local = 0U;
       if constexpr (std::is_same_v<Scalar, float>) {
         const __m256 inverse_vector = _mm256_set1_ps(static_cast<float>(inverse));
@@ -3859,58 +4097,53 @@ private:
           const __m256 scaled = _mm256_min_ps(
               _mm256_set1_ps(65535.0F),
               _mm256_max_ps(_mm256_setzero_ps(),
-                            _mm256_mul_ps(_mm256_loadu_ps(
-                                strategies[action].data() + local), inverse_vector)));
+                            _mm256_mul_ps(_mm256_loadu_ps(strategies[action].data() + local),
+                                          inverse_vector)));
           const __m256i encoded = _mm256_cvtps_epi32(scaled);
-          const __m128i packed = _mm_packus_epi32(
-              _mm256_castsi256_si128(encoded), _mm256_extracti128_si256(encoded, 1));
+          const __m128i packed = _mm_packus_epi32(_mm256_castsi256_si128(encoded),
+                                                  _mm256_extracti128_si256(encoded, 1));
           _mm_storeu_si128(reinterpret_cast<__m128i *>(destination + local), packed);
         }
       }
       for (; local < combos.size(); ++local) {
-        destination[local] = static_cast<std::uint16_t>(std::clamp(
-            std::nearbyint(static_cast<double>(strategies[action][local]) * inverse),
-            0.0, 65535.0));
+        destination[local] = static_cast<std::uint16_t>(
+            std::clamp(std::nearbyint(static_cast<double>(strategies[action][local]) * inverse),
+                       0.0, 65535.0));
       }
     }
   }
 
   template <bool BoardLocal = false, std::size_t FixedActionCount = 0U>
   void update_scaled_regrets(
-      const CanonicalPublicNode &canonical, const BoardData &board,
-      const std::uint8_t player, ComboVector &values,
-      std::array<ComboVector, maximum_action_count> &action_values,
+      const CanonicalPublicNode &canonical, const BoardData &board, const std::uint8_t player,
+      ComboVector &values, std::array<ComboVector, maximum_action_count> &action_values,
       std::array<ComboVector, maximum_action_count> &scratch,
       std::array<ComboVector, maximum_action_count> *const average_scratch = nullptr,
-      const ReachRef *const average_reach = nullptr,
-      const bool compute_values = false,
+      const ReachRef *const average_reach = nullptr, const bool compute_values = false,
       const bool decode_current_strategy = false) {
     const auto scale_index = static_cast<std::size_t>(canonical.state_scale_index);
     const std::size_t action_count =
-        FixedActionCount != 0U
-            ? FixedActionCount
-            : static_cast<std::size_t>(canonical.decision.action_count);
+        FixedActionCount != 0U ? FixedActionCount
+                               : static_cast<std::size_t>(canonical.decision.action_count);
     const auto &combos = board.player_combos[player];
-    const double old_scale =
-        static_cast<double>(buffers_.regret_node_scale[scale_index]);
+    const double old_scale = static_cast<double>(buffers_.regret_node_scale[scale_index]);
     if (buffers_.signed_scaled_regret) {
       if (average_scratch == nullptr || average_reach == nullptr) {
         return;
       }
       const bool profile_scaled = hotpath_profiling_enabled();
-      const auto scaled_calculate_started =
-          profile_scaled ? std::chrono::steady_clock::now()
-                         : std::chrono::steady_clock::time_point{};
-      const auto scaled_entries = static_cast<std::uint64_t>(
-          action_count * combos.size());
+      const auto scaled_calculate_started = profile_scaled
+                                                ? std::chrono::steady_clock::now()
+                                                : std::chrono::steady_clock::time_point{};
+      const auto scaled_entries = static_cast<std::uint64_t>(action_count * combos.size());
       auto &average_values = *average_scratch;
       double maximum_magnitude = 0.0;
       double maximum_average = 0.0;
       const double old_average_scale =
           static_cast<double>(buffers_.strategy_node_scale[scale_index]);
       if constexpr (std::is_same_v<Scalar, float>) {
-        const auto &slots = PlayerIndexed ? board.player_flop_slots[player]
-                                          : board.player_active_slots[player];
+        const auto &slots =
+            PlayerIndexed ? board.player_flop_slots[player] : board.player_active_slots[player];
         const auto slot_at = [&slots](const std::size_t local) {
           if constexpr (BoardLocal) {
             return local;
@@ -3918,8 +4151,7 @@ private:
             return static_cast<std::size_t>(slots[local]);
           }
         };
-        const auto load_action = [](const float *const source,
-                                    const __m256i indices,
+        const auto load_action = [](const float *const source, const __m256i indices,
                                     const std::size_t local) {
           (void)indices;
           (void)local;
@@ -3929,8 +4161,7 @@ private:
             return _mm256_i32gather_ps(source, indices, 4);
           }
         };
-        const auto load_reach = [](const float *const source,
-                                   const __m256i indices,
+        const auto load_reach = [](const float *const source, const __m256i indices,
                                    const std::size_t local) {
           (void)indices;
           (void)local;
@@ -3940,8 +4171,7 @@ private:
             return _mm256_i32gather_ps(source, indices, 4);
           }
         };
-        const auto store_values = [&slots](float *const destination,
-                                           const __m256 value,
+        const auto store_values = [&slots](float *const destination, const __m256 value,
                                            const std::size_t local) {
           if constexpr (BoardLocal) {
             _mm256_storeu_ps(destination + local, value);
@@ -3956,10 +4186,8 @@ private:
         const __m256 old_scale_vector = _mm256_set1_ps(static_cast<float>(old_scale));
         const __m256 old_average_scale_vector =
             _mm256_set1_ps(static_cast<float>(old_average_scale));
-        const __m256 average_weight_vector =
-            _mm256_set1_ps(static_cast<float>(strategy_weight_));
-        const __m256 regret_weight =
-            _mm256_set1_ps(static_cast<float>(regret_update_weight_));
+        const __m256 average_weight_vector = _mm256_set1_ps(static_cast<float>(strategy_weight_));
+        const __m256 regret_weight = _mm256_set1_ps(static_cast<float>(regret_update_weight_));
         const __m256 positive_discount =
             _mm256_set1_ps(static_cast<float>(positive_regret_discount_));
         const __m256 negative_discount =
@@ -3969,98 +4197,76 @@ private:
         __m256 maximum_vector = zero;
         __m256 maximum_average_vector = zero;
         if (compute_values && action_count == 2U) {
-          const auto *const regret_source_0 = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, 0U);
-          const auto *const regret_source_1 = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, 1U);
-          const auto *const average_source_0 = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, 0U);
-          const auto *const average_source_1 = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, 1U);
+          const auto *const regret_source_0 =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, 0U);
+          const auto *const regret_source_1 =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, 1U);
+          const auto *const average_source_0 =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, 0U);
+          const auto *const average_source_1 =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, 1U);
           std::size_t local = 0U;
           for (; local + 8U <= combos.size(); local += 8U) {
-            const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(slots.data() + local)));
-            const __m256 action_0 =
-                load_action(action_values[0].data(), indices, local);
-            const __m256 action_1 =
-                load_action(action_values[1].data(), indices, local);
+            const __m256i indices = _mm256_cvtepu16_epi32(
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
+            const __m256 action_0 = load_action(action_values[0].data(), indices, local);
+            const __m256 action_1 = load_action(action_values[1].data(), indices, local);
             __m256 strategy_0;
             __m256 strategy_1;
             if (decode_current_strategy) {
-              const __m256i positive_0 = _mm256_max_epi32(
-                  _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(regret_source_0 + local))),
-                  _mm256_setzero_si256());
-              const __m256i positive_1 = _mm256_max_epi32(
-                  _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(regret_source_1 + local))),
-                  _mm256_setzero_si256());
-              const __m256 sum = _mm256_cvtepi32_ps(
-                  _mm256_add_epi32(positive_0, positive_1));
-              const __m256 no_positive =
-                  _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
-              const __m256 safe_sum = _mm256_blendv_ps(
-                  sum, _mm256_set1_ps(1.0F), no_positive);
+              const __m256i positive_0 =
+                  _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                       reinterpret_cast<const __m128i *>(regret_source_0 + local))),
+                                   _mm256_setzero_si256());
+              const __m256i positive_1 =
+                  _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                       reinterpret_cast<const __m128i *>(regret_source_1 + local))),
+                                   _mm256_setzero_si256());
+              const __m256 sum = _mm256_cvtepi32_ps(_mm256_add_epi32(positive_0, positive_1));
+              const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
+              const __m256 safe_sum = _mm256_blendv_ps(sum, _mm256_set1_ps(1.0F), no_positive);
               const __m256 estimate = _mm256_rcp_ps(safe_sum);
               const __m256 inverse = _mm256_mul_ps(
-                  estimate,
-                  _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                                _mm256_mul_ps(safe_sum, estimate)));
-              strategy_0 = _mm256_blendv_ps(
-                  _mm256_mul_ps(_mm256_cvtepi32_ps(positive_0), inverse),
-                  _mm256_set1_ps(0.5F), no_positive);
-              strategy_1 = _mm256_blendv_ps(
-                  _mm256_mul_ps(_mm256_cvtepi32_ps(positive_1), inverse),
-                  _mm256_set1_ps(0.5F), no_positive);
+                  estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
+              strategy_0 = _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(positive_0), inverse),
+                                            _mm256_set1_ps(0.5F), no_positive);
+              strategy_1 = _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(positive_1), inverse),
+                                            _mm256_set1_ps(0.5F), no_positive);
             } else {
               strategy_0 = _mm256_loadu_ps(scratch[0].data() + local);
               strategy_1 = _mm256_loadu_ps(scratch[1].data() + local);
             }
-            __m256 current = _mm256_add_ps(
-                zero, _mm256_mul_ps(strategy_0, action_0));
-            current = _mm256_add_ps(
-                current, _mm256_mul_ps(strategy_1, action_1));
+            __m256 current = _mm256_add_ps(zero, _mm256_mul_ps(strategy_0, action_0));
+            current = _mm256_add_ps(current, _mm256_mul_ps(strategy_1, action_1));
             store_values(values.data(), current, local);
-            const __m256 reach_vector = load_reach(
-                (*average_reach)[player]->data(), indices, local);
+            const __m256 reach_vector =
+                load_reach((*average_reach)[player]->data(), indices, local);
             const auto update_action = [&](const std::size_t action,
                                            const std::uint16_t *const regret_source,
                                            const std::uint16_t *const average_source,
-                                           const __m256 action_vector,
-                                           const __m256 strategy) {
+                                           const __m256 action_vector, const __m256 strategy) {
               const __m256i signed_codes = _mm256_cvtepi16_epi32(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                      regret_source + local)));
-              const __m256 old_values = _mm256_mul_ps(
-                  _mm256_cvtepi32_ps(signed_codes), old_scale_vector);
-              const __m256 discounts = _mm256_blendv_ps(
-                  negative_discount, positive_discount,
-                  _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(regret_source + local)));
+              const __m256 old_values =
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(signed_codes), old_scale_vector);
+              const __m256 discounts =
+                  _mm256_blendv_ps(negative_discount, positive_discount,
+                                   _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
               const __m256 updated = _mm256_add_ps(
                   _mm256_mul_ps(old_values, discounts),
-                  _mm256_mul_ps(regret_weight,
-                                _mm256_sub_ps(action_vector, current)));
+                  _mm256_mul_ps(regret_weight, _mm256_sub_ps(action_vector, current)));
               const __m256 updated_average = _mm256_add_ps(
-                  _mm256_mul_ps(
-                      _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(
-                          _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                              average_source + local)))),
-                      old_average_scale_vector),
-                  _mm256_mul_ps(average_weight_vector,
-                                _mm256_mul_ps(reach_vector, strategy)));
-              _mm256_storeu_ps(
-                  average_values[action].data() + local, updated_average);
-              maximum_average_vector = _mm256_max_ps(
-                  maximum_average_vector, updated_average);
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                    reinterpret_cast<const __m128i *>(average_source + local)))),
+                                old_average_scale_vector),
+                  _mm256_mul_ps(average_weight_vector, _mm256_mul_ps(reach_vector, strategy)));
+              _mm256_storeu_ps(average_values[action].data() + local, updated_average);
+              maximum_average_vector = _mm256_max_ps(maximum_average_vector, updated_average);
               _mm256_storeu_ps(scratch[action].data() + local, updated);
-              maximum_vector = _mm256_max_ps(
-                  maximum_vector, _mm256_and_ps(updated, sign_mask));
+              maximum_vector = _mm256_max_ps(maximum_vector, _mm256_and_ps(updated, sign_mask));
             };
-            update_action(0U, regret_source_0, average_source_0,
-                          action_0, strategy_0);
-            update_action(1U, regret_source_1, average_source_1,
-                          action_1, strategy_1);
+            update_action(0U, regret_source_0, average_source_0, action_0, strategy_0);
+            update_action(1U, regret_source_1, average_source_1, action_1, strategy_1);
           }
           for (; local < combos.size(); ++local) {
             const auto slot = slot_at(local);
@@ -4069,48 +4275,41 @@ private:
             const auto positive_0 = std::max<std::int32_t>(0, raw_0);
             const auto positive_1 = std::max<std::int32_t>(0, raw_1);
             const auto positive_sum = positive_0 + positive_1;
-            const Scalar strategy_0 = decode_current_strategy
-                ? (positive_sum == 0
-                       ? Scalar{0.5F}
-                       : static_cast<Scalar>(positive_0) *
-                             static_cast<Scalar>(1.0 / static_cast<double>(positive_sum)))
-                : scratch[0][local];
-            const Scalar strategy_1 = decode_current_strategy
-                ? (positive_sum == 0
-                       ? Scalar{0.5F}
-                       : static_cast<Scalar>(positive_1) *
-                             static_cast<Scalar>(1.0 / static_cast<double>(positive_sum)))
-                : scratch[1][local];
+            const Scalar strategy_0 =
+                decode_current_strategy
+                    ? (positive_sum == 0
+                           ? Scalar{0.5F}
+                           : static_cast<Scalar>(positive_0) *
+                                 static_cast<Scalar>(1.0 / static_cast<double>(positive_sum)))
+                    : scratch[0][local];
+            const Scalar strategy_1 =
+                decode_current_strategy
+                    ? (positive_sum == 0
+                           ? Scalar{0.5F}
+                           : static_cast<Scalar>(positive_1) *
+                                 static_cast<Scalar>(1.0 / static_cast<double>(positive_sum)))
+                    : scratch[1][local];
             Scalar current = Scalar{0};
-            current = static_cast<Scalar>(
-                current + strategy_0 * action_values[0][slot]);
-            current = static_cast<Scalar>(
-                current + strategy_1 * action_values[1][slot]);
+            current = static_cast<Scalar>(current + strategy_0 * action_values[0][slot]);
+            current = static_cast<Scalar>(current + strategy_1 * action_values[1][slot]);
             values[slot] = current;
             const auto update_action = [&](const std::size_t action,
                                            const std::uint16_t *const regret_source,
                                            const std::uint16_t *const average_source) {
-              const double old = static_cast<double>(
-                                     static_cast<std::int16_t>(regret_source[local])) *
-                                 old_scale;
+              const double old =
+                  static_cast<double>(static_cast<std::int16_t>(regret_source[local])) * old_scale;
               const double updated =
-                  old * (old > 0.0 ? positive_regret_discount_
-                                   : negative_regret_discount_) +
-                  regret_update_weight_ *
-                      (static_cast<double>(action_values[action][slot]) -
-                       static_cast<double>(current));
+                  old * (old > 0.0 ? positive_regret_discount_ : negative_regret_discount_) +
+                  regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                           static_cast<double>(current));
               const double updated_average =
                   static_cast<double>(average_source[local]) * old_average_scale +
-                  strategy_weight_ *
-                      static_cast<double>((*(*average_reach)[player])[slot]) *
+                  strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
                       static_cast<double>(scratch[action][local]);
-              average_values[action][local] =
-                  static_cast<Scalar>(updated_average);
-              maximum_average =
-                  std::max(maximum_average, updated_average);
+              average_values[action][local] = static_cast<Scalar>(updated_average);
+              maximum_average = std::max(maximum_average, updated_average);
               scratch[action][local] = static_cast<Scalar>(updated);
-              maximum_magnitude =
-                  std::max(maximum_magnitude, std::abs(updated));
+              maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
             };
             if (decode_current_strategy) {
               scratch[0][local] = strategy_0;
@@ -4120,179 +4319,134 @@ private:
             update_action(1U, regret_source_1, average_source_1);
           }
         } else if (compute_values && action_count == 3U) {
-          const auto *const regret_source_0 = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, 0U);
-          const auto *const regret_source_1 = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, 1U);
-          const auto *const regret_source_2 = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, 2U);
-          const auto *const average_source_0 = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, 0U);
-          const auto *const average_source_1 = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, 1U);
-          const auto *const average_source_2 = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, 2U);
+          const auto *const regret_source_0 =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, 0U);
+          const auto *const regret_source_1 =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, 1U);
+          const auto *const regret_source_2 =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, 2U);
+          const auto *const average_source_0 =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, 0U);
+          const auto *const average_source_1 =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, 1U);
+          const auto *const average_source_2 =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, 2U);
           std::size_t local = 0U;
           for (; local + 8U <= combos.size(); local += 8U) {
-            const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(slots.data() + local)));
-            const __m256 action_0 =
-                load_action(action_values[0].data(), indices, local);
-            const __m256 action_1 =
-                load_action(action_values[1].data(), indices, local);
-            const __m256 action_2 =
-                load_action(action_values[2].data(), indices, local);
+            const __m256i indices = _mm256_cvtepu16_epi32(
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
+            const __m256 action_0 = load_action(action_values[0].data(), indices, local);
+            const __m256 action_1 = load_action(action_values[1].data(), indices, local);
+            const __m256 action_2 = load_action(action_values[2].data(), indices, local);
             __m256 strategy_0;
             __m256 strategy_1;
             __m256 strategy_2;
             if (decode_current_strategy) {
-              const __m256i positive_0 = _mm256_max_epi32(
-                  _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(regret_source_0 + local))),
-                  _mm256_setzero_si256());
-              const __m256i positive_1 = _mm256_max_epi32(
-                  _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(regret_source_1 + local))),
-                  _mm256_setzero_si256());
-              const __m256i positive_2 = _mm256_max_epi32(
-                  _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(regret_source_2 + local))),
-                  _mm256_setzero_si256());
-              const __m256 sum = _mm256_cvtepi32_ps(_mm256_add_epi32(
-                  _mm256_add_epi32(positive_0, positive_1), positive_2));
-              const __m256 no_positive =
-                  _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
-              const __m256 safe_sum = _mm256_blendv_ps(
-                  sum, _mm256_set1_ps(1.0F), no_positive);
+              const __m256i positive_0 =
+                  _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                       reinterpret_cast<const __m128i *>(regret_source_0 + local))),
+                                   _mm256_setzero_si256());
+              const __m256i positive_1 =
+                  _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                       reinterpret_cast<const __m128i *>(regret_source_1 + local))),
+                                   _mm256_setzero_si256());
+              const __m256i positive_2 =
+                  _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                       reinterpret_cast<const __m128i *>(regret_source_2 + local))),
+                                   _mm256_setzero_si256());
+              const __m256 sum = _mm256_cvtepi32_ps(
+                  _mm256_add_epi32(_mm256_add_epi32(positive_0, positive_1), positive_2));
+              const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
+              const __m256 safe_sum = _mm256_blendv_ps(sum, _mm256_set1_ps(1.0F), no_positive);
               const __m256 estimate = _mm256_rcp_ps(safe_sum);
               const __m256 inverse = _mm256_mul_ps(
-                  estimate,
-                  _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                                _mm256_mul_ps(safe_sum, estimate)));
+                  estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
               const __m256 uniform = _mm256_set1_ps(1.0F / 3.0F);
-              strategy_0 = _mm256_blendv_ps(
-                  _mm256_mul_ps(_mm256_cvtepi32_ps(positive_0), inverse),
-                  uniform, no_positive);
-              strategy_1 = _mm256_blendv_ps(
-                  _mm256_mul_ps(_mm256_cvtepi32_ps(positive_1), inverse),
-                  uniform, no_positive);
-              strategy_2 = _mm256_blendv_ps(
-                  _mm256_mul_ps(_mm256_cvtepi32_ps(positive_2), inverse),
-                  uniform, no_positive);
+              strategy_0 = _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(positive_0), inverse),
+                                            uniform, no_positive);
+              strategy_1 = _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(positive_1), inverse),
+                                            uniform, no_positive);
+              strategy_2 = _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(positive_2), inverse),
+                                            uniform, no_positive);
             } else {
               strategy_0 = _mm256_loadu_ps(scratch[0].data() + local);
               strategy_1 = _mm256_loadu_ps(scratch[1].data() + local);
               strategy_2 = _mm256_loadu_ps(scratch[2].data() + local);
             }
-            __m256 current = _mm256_add_ps(
-                zero, _mm256_mul_ps(strategy_0, action_0));
-            current = _mm256_add_ps(
-                current, _mm256_mul_ps(strategy_1, action_1));
-            current = _mm256_add_ps(
-                current, _mm256_mul_ps(strategy_2, action_2));
+            __m256 current = _mm256_add_ps(zero, _mm256_mul_ps(strategy_0, action_0));
+            current = _mm256_add_ps(current, _mm256_mul_ps(strategy_1, action_1));
+            current = _mm256_add_ps(current, _mm256_mul_ps(strategy_2, action_2));
             store_values(values.data(), current, local);
-            const __m256 reach_vector = load_reach(
-                (*average_reach)[player]->data(), indices, local);
+            const __m256 reach_vector =
+                load_reach((*average_reach)[player]->data(), indices, local);
             const auto update_action = [&](const std::size_t action,
                                            const std::uint16_t *const regret_source,
                                            const std::uint16_t *const average_source,
-                                           const __m256 action_vector,
-                                           const __m256 strategy) {
+                                           const __m256 action_vector, const __m256 strategy) {
               const __m256i signed_codes = _mm256_cvtepi16_epi32(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                      regret_source + local)));
-              const __m256 old_values = _mm256_mul_ps(
-                  _mm256_cvtepi32_ps(signed_codes), old_scale_vector);
-              const __m256 discounts = _mm256_blendv_ps(
-                  negative_discount, positive_discount,
-                  _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(regret_source + local)));
+              const __m256 old_values =
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(signed_codes), old_scale_vector);
+              const __m256 discounts =
+                  _mm256_blendv_ps(negative_discount, positive_discount,
+                                   _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
               const __m256 updated = _mm256_add_ps(
                   _mm256_mul_ps(old_values, discounts),
-                  _mm256_mul_ps(regret_weight,
-                                _mm256_sub_ps(action_vector, current)));
+                  _mm256_mul_ps(regret_weight, _mm256_sub_ps(action_vector, current)));
               const __m256 updated_average = _mm256_add_ps(
-                  _mm256_mul_ps(
-                      _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(
-                          _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                              average_source + local)))),
-                      old_average_scale_vector),
-                  _mm256_mul_ps(average_weight_vector,
-                                _mm256_mul_ps(reach_vector, strategy)));
-              _mm256_storeu_ps(
-                  average_values[action].data() + local, updated_average);
-              maximum_average_vector = _mm256_max_ps(
-                  maximum_average_vector, updated_average);
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                    reinterpret_cast<const __m128i *>(average_source + local)))),
+                                old_average_scale_vector),
+                  _mm256_mul_ps(average_weight_vector, _mm256_mul_ps(reach_vector, strategy)));
+              _mm256_storeu_ps(average_values[action].data() + local, updated_average);
+              maximum_average_vector = _mm256_max_ps(maximum_average_vector, updated_average);
               _mm256_storeu_ps(scratch[action].data() + local, updated);
-              maximum_vector = _mm256_max_ps(
-                  maximum_vector, _mm256_and_ps(updated, sign_mask));
+              maximum_vector = _mm256_max_ps(maximum_vector, _mm256_and_ps(updated, sign_mask));
             };
-            update_action(0U, regret_source_0, average_source_0,
-                          action_0, strategy_0);
-            update_action(1U, regret_source_1, average_source_1,
-                          action_1, strategy_1);
-            update_action(2U, regret_source_2, average_source_2,
-                          action_2, strategy_2);
+            update_action(0U, regret_source_0, average_source_0, action_0, strategy_0);
+            update_action(1U, regret_source_1, average_source_1, action_1, strategy_1);
+            update_action(2U, regret_source_2, average_source_2, action_2, strategy_2);
           }
           for (; local < combos.size(); ++local) {
             const auto slot = slot_at(local);
             const std::array<std::int32_t, 3> positive{
-                std::max<std::int32_t>(
-                    0, static_cast<std::int16_t>(regret_source_0[local])),
-                std::max<std::int32_t>(
-                    0, static_cast<std::int16_t>(regret_source_1[local])),
-                std::max<std::int32_t>(
-                    0, static_cast<std::int16_t>(regret_source_2[local]))};
+                std::max<std::int32_t>(0, static_cast<std::int16_t>(regret_source_0[local])),
+                std::max<std::int32_t>(0, static_cast<std::int16_t>(regret_source_1[local])),
+                std::max<std::int32_t>(0, static_cast<std::int16_t>(regret_source_2[local]))};
             const auto positive_sum = positive[0] + positive[1] + positive[2];
             const Scalar uniform = static_cast<Scalar>(1.0F / 3.0F);
-            const Scalar inverse = positive_sum == 0
-                                       ? Scalar{0}
-                                       : static_cast<Scalar>(
-                                             1.0 / static_cast<double>(positive_sum));
+            const Scalar inverse =
+                positive_sum == 0 ? Scalar{0}
+                                  : static_cast<Scalar>(1.0 / static_cast<double>(positive_sum));
             const std::array<Scalar, 3> decoded{
-                positive_sum == 0 ? uniform
-                                  : static_cast<Scalar>(positive[0]) * inverse,
-                positive_sum == 0 ? uniform
-                                  : static_cast<Scalar>(positive[1]) * inverse,
-                positive_sum == 0 ? uniform
-                                  : static_cast<Scalar>(positive[2]) * inverse};
-            const Scalar strategy_0 =
-                decode_current_strategy ? decoded[0] : scratch[0][local];
-            const Scalar strategy_1 =
-                decode_current_strategy ? decoded[1] : scratch[1][local];
-            const Scalar strategy_2 =
-                decode_current_strategy ? decoded[2] : scratch[2][local];
+                positive_sum == 0 ? uniform : static_cast<Scalar>(positive[0]) * inverse,
+                positive_sum == 0 ? uniform : static_cast<Scalar>(positive[1]) * inverse,
+                positive_sum == 0 ? uniform : static_cast<Scalar>(positive[2]) * inverse};
+            const Scalar strategy_0 = decode_current_strategy ? decoded[0] : scratch[0][local];
+            const Scalar strategy_1 = decode_current_strategy ? decoded[1] : scratch[1][local];
+            const Scalar strategy_2 = decode_current_strategy ? decoded[2] : scratch[2][local];
             Scalar current = Scalar{0};
-            current = static_cast<Scalar>(
-                current + strategy_0 * action_values[0][slot]);
-            current = static_cast<Scalar>(
-                current + strategy_1 * action_values[1][slot]);
-            current = static_cast<Scalar>(
-                current + strategy_2 * action_values[2][slot]);
+            current = static_cast<Scalar>(current + strategy_0 * action_values[0][slot]);
+            current = static_cast<Scalar>(current + strategy_1 * action_values[1][slot]);
+            current = static_cast<Scalar>(current + strategy_2 * action_values[2][slot]);
             values[slot] = current;
             const auto update_action = [&](const std::size_t action,
                                            const std::uint16_t *const regret_source,
                                            const std::uint16_t *const average_source) {
-              const double old = static_cast<double>(
-                                     static_cast<std::int16_t>(regret_source[local])) *
-                                 old_scale;
+              const double old =
+                  static_cast<double>(static_cast<std::int16_t>(regret_source[local])) * old_scale;
               const double updated =
-                  old * (old > 0.0 ? positive_regret_discount_
-                                   : negative_regret_discount_) +
-                  regret_update_weight_ *
-                      (static_cast<double>(action_values[action][slot]) -
-                       static_cast<double>(current));
+                  old * (old > 0.0 ? positive_regret_discount_ : negative_regret_discount_) +
+                  regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                           static_cast<double>(current));
               const double updated_average =
                   static_cast<double>(average_source[local]) * old_average_scale +
-                  strategy_weight_ *
-                      static_cast<double>((*(*average_reach)[player])[slot]) *
+                  strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
                       static_cast<double>(scratch[action][local]);
-              average_values[action][local] =
-                  static_cast<Scalar>(updated_average);
-              maximum_average =
-                  std::max(maximum_average, updated_average);
+              average_values[action][local] = static_cast<Scalar>(updated_average);
+              maximum_average = std::max(maximum_average, updated_average);
               scratch[action][local] = static_cast<Scalar>(updated);
-              maximum_magnitude =
-                  std::max(maximum_magnitude, std::abs(updated));
+              maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
             };
             if (decode_current_strategy) {
               scratch[0][local] = strategy_0;
@@ -4306,92 +4460,75 @@ private:
         } else if (compute_values) {
           std::size_t local = 0U;
           for (; local + 8U <= combos.size(); local += 8U) {
-            const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(slots.data() + local)));
+            const __m256i indices = _mm256_cvtepu16_epi32(
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
             std::array<__m256, maximum_action_count> action_vectors{};
             std::array<__m256, maximum_action_count> current_strategies{};
             if (decode_current_strategy) {
               std::array<__m256i, maximum_action_count> positive_codes{};
               __m256i integer_sum = _mm256_setzero_si256();
               for (std::size_t action = 0U; action < action_count; ++action) {
-                const auto *const source = buffers_.scaled_regret +
-                    canonical_action_major_index(canonical, 0U, action);
-                positive_codes[action] = _mm256_max_epi32(
-                    _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                        reinterpret_cast<const __m128i *>(source + local))),
-                    _mm256_setzero_si256());
-                integer_sum = _mm256_add_epi32(integer_sum,
-                                               positive_codes[action]);
+                const auto *const source =
+                    buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+                positive_codes[action] =
+                    _mm256_max_epi32(_mm256_cvtepi16_epi32(_mm_loadu_si128(
+                                         reinterpret_cast<const __m128i *>(source + local))),
+                                     _mm256_setzero_si256());
+                integer_sum = _mm256_add_epi32(integer_sum, positive_codes[action]);
               }
               const __m256 sum = _mm256_cvtepi32_ps(integer_sum);
-              const __m256 no_positive =
-                  _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
-              const __m256 safe_sum = _mm256_blendv_ps(
-                  sum, _mm256_set1_ps(1.0F), no_positive);
+              const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
+              const __m256 safe_sum = _mm256_blendv_ps(sum, _mm256_set1_ps(1.0F), no_positive);
               const __m256 estimate = _mm256_rcp_ps(safe_sum);
               const __m256 inverse = _mm256_mul_ps(
-                  estimate,
-                  _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                                _mm256_mul_ps(safe_sum, estimate)));
-              const __m256 uniform = _mm256_set1_ps(
-                  1.0F / static_cast<float>(action_count));
+                  estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
+              const __m256 uniform = _mm256_set1_ps(1.0F / static_cast<float>(action_count));
               for (std::size_t action = 0U; action < action_count; ++action) {
                 current_strategies[action] = _mm256_blendv_ps(
-                    _mm256_mul_ps(_mm256_cvtepi32_ps(positive_codes[action]),
-                                  inverse),
-                    uniform, no_positive);
+                    _mm256_mul_ps(_mm256_cvtepi32_ps(positive_codes[action]), inverse), uniform,
+                    no_positive);
               }
             } else {
               for (std::size_t action = 0U; action < action_count; ++action) {
-                current_strategies[action] = _mm256_loadu_ps(
-                    scratch[action].data() + local);
+                current_strategies[action] = _mm256_loadu_ps(scratch[action].data() + local);
               }
             }
             __m256 current = zero;
             for (std::size_t action = 0U; action < action_count; ++action) {
-              action_vectors[action] =
-                  load_action(action_values[action].data(), indices, local);
+              action_vectors[action] = load_action(action_values[action].data(), indices, local);
               current = _mm256_add_ps(
-                  current,
-                  _mm256_mul_ps(current_strategies[action],
-                                action_vectors[action]));
+                  current, _mm256_mul_ps(current_strategies[action], action_vectors[action]));
             }
             store_values(values.data(), current, local);
-            const __m256 reach_vector = load_reach(
-                (*average_reach)[player]->data(), indices, local);
+            const __m256 reach_vector =
+                load_reach((*average_reach)[player]->data(), indices, local);
             for (std::size_t action = 0U; action < action_count; ++action) {
-              const auto *const source = buffers_.scaled_regret +
-                  canonical_action_major_index(canonical, 0U, action);
-              const auto *const average_source = buffers_.scaled_strategy +
-                  canonical_action_major_index(canonical, 0U, action);
+              const auto *const source =
+                  buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+              const auto *const average_source =
+                  buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
               float *const destination = scratch[action].data();
               float *const average_destination = average_values[action].data();
               const __m256 strategy = current_strategies[action];
               const __m256i signed_codes = _mm256_cvtepi16_epi32(
                   _mm_loadu_si128(reinterpret_cast<const __m128i *>(source + local)));
-              const __m256 old_values = _mm256_mul_ps(
-                  _mm256_cvtepi32_ps(signed_codes), old_scale_vector);
-              const __m256 discounts = _mm256_blendv_ps(
-                  negative_discount, positive_discount,
-                  _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
+              const __m256 old_values =
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(signed_codes), old_scale_vector);
+              const __m256 discounts =
+                  _mm256_blendv_ps(negative_discount, positive_discount,
+                                   _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
               const __m256 updated = _mm256_add_ps(
                   _mm256_mul_ps(old_values, discounts),
-                  _mm256_mul_ps(regret_weight,
-                                _mm256_sub_ps(action_vectors[action], current)));
+                  _mm256_mul_ps(regret_weight, _mm256_sub_ps(action_vectors[action], current)));
               const __m256 updated_average = _mm256_add_ps(
-                  _mm256_mul_ps(
-                      _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(
-                          _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                              average_source + local)))),
-                      old_average_scale_vector),
-                  _mm256_mul_ps(average_weight_vector,
-                                _mm256_mul_ps(reach_vector, strategy)));
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                    reinterpret_cast<const __m128i *>(average_source + local)))),
+                                old_average_scale_vector),
+                  _mm256_mul_ps(average_weight_vector, _mm256_mul_ps(reach_vector, strategy)));
               _mm256_storeu_ps(average_destination + local, updated_average);
-              maximum_average_vector = _mm256_max_ps(
-                  maximum_average_vector, updated_average);
+              maximum_average_vector = _mm256_max_ps(maximum_average_vector, updated_average);
               _mm256_storeu_ps(destination + local, updated);
-              maximum_vector = _mm256_max_ps(
-                  maximum_vector, _mm256_and_ps(updated, sign_mask));
+              maximum_vector = _mm256_max_ps(maximum_vector, _mm256_and_ps(updated, sign_mask));
             }
           }
           for (; local < combos.size(); ++local) {
@@ -4401,22 +4538,18 @@ private:
               std::array<std::int32_t, maximum_action_count> positive{};
               std::int32_t sum = 0;
               for (std::size_t action = 0U; action < action_count; ++action) {
-                const auto *const source = buffers_.scaled_regret +
-                    canonical_action_major_index(canonical, 0U, action);
-                positive[action] = std::max<std::int32_t>(
-                    0, static_cast<std::int16_t>(source[local]));
+                const auto *const source =
+                    buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+                positive[action] =
+                    std::max<std::int32_t>(0, static_cast<std::int16_t>(source[local]));
                 sum += positive[action];
               }
               const Scalar inverse =
-                  sum == 0
-                      ? Scalar{0}
-                      : static_cast<Scalar>(1.0 / static_cast<double>(sum));
-              const Scalar uniform = static_cast<Scalar>(
-                  1.0 / static_cast<double>(action_count));
+                  sum == 0 ? Scalar{0} : static_cast<Scalar>(1.0 / static_cast<double>(sum));
+              const Scalar uniform = static_cast<Scalar>(1.0 / static_cast<double>(action_count));
               for (std::size_t action = 0U; action < action_count; ++action) {
                 current_strategies[action] =
-                    sum == 0 ? uniform
-                             : static_cast<Scalar>(positive[action]) * inverse;
+                    sum == 0 ? uniform : static_cast<Scalar>(positive[action]) * inverse;
               }
             } else {
               for (std::size_t action = 0U; action < action_count; ++action) {
@@ -4425,200 +4558,167 @@ private:
             }
             Scalar current = Scalar{0};
             for (std::size_t action = 0U; action < action_count; ++action) {
-              current = static_cast<Scalar>(
-                  current + current_strategies[action] *
-                                action_values[action][slot]);
+              current = static_cast<Scalar>(current + current_strategies[action] *
+                                                          action_values[action][slot]);
             }
             values[slot] = current;
             for (std::size_t action = 0U; action < action_count; ++action) {
-              const auto *const source = buffers_.scaled_regret +
-                  canonical_action_major_index(canonical, 0U, action);
-              const auto *const average_source = buffers_.scaled_strategy +
-                  canonical_action_major_index(canonical, 0U, action);
-              const double old = static_cast<double>(
-                                     static_cast<std::int16_t>(source[local])) *
-                                 old_scale;
+              const auto *const source =
+                  buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+              const auto *const average_source =
+                  buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+              const double old =
+                  static_cast<double>(static_cast<std::int16_t>(source[local])) * old_scale;
               const double updated =
-                  old * (old > 0.0 ? positive_regret_discount_
-                                   : negative_regret_discount_) +
-                  regret_update_weight_ *
-                      (static_cast<double>(action_values[action][slot]) -
-                       static_cast<double>(current));
+                  old * (old > 0.0 ? positive_regret_discount_ : negative_regret_discount_) +
+                  regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                           static_cast<double>(current));
               const double updated_average =
                   static_cast<double>(average_source[local]) * old_average_scale +
-                  strategy_weight_ *
-                      static_cast<double>((*(*average_reach)[player])[slot]) *
+                  strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
                       static_cast<double>(current_strategies[action]);
-              average_values[action][local] =
-                  static_cast<Scalar>(updated_average);
-              maximum_average =
-                  std::max(maximum_average, updated_average);
+              average_values[action][local] = static_cast<Scalar>(updated_average);
+              maximum_average = std::max(maximum_average, updated_average);
               scratch[action][local] = static_cast<Scalar>(updated);
               maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
             }
           }
-        } else for (std::size_t action = 0; action < action_count; ++action) {
-          const auto *const source = buffers_.scaled_regret +
-                                     canonical_action_major_index(canonical, 0U, action);
-          const auto *const average_source = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, action);
-          float *const destination = scratch[action].data();
-          float *const average_destination = average_values[action].data();
-          std::size_t local = 0U;
-          for (; local + 8U <= combos.size(); local += 8U) {
-            const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(slots.data() + local)));
-            const __m256i signed_codes = _mm256_cvtepi16_epi32(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(source + local)));
-            const __m256 old_values = _mm256_mul_ps(
-                _mm256_cvtepi32_ps(signed_codes), old_scale_vector);
-            const __m256 discounts = _mm256_blendv_ps(
-                negative_discount, positive_discount,
-                _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
-            const __m256 updated = _mm256_add_ps(
-                _mm256_mul_ps(old_values, discounts),
-                _mm256_mul_ps(
-                    regret_weight,
-                    _mm256_sub_ps(
-                        _mm256_i32gather_ps(action_values[action].data(), indices, 4),
-                        _mm256_i32gather_ps(values.data(), indices, 4))));
-            const __m256 updated_average = _mm256_add_ps(
-                _mm256_mul_ps(
-                    _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                            average_source + local)))),
-                    old_average_scale_vector),
-                _mm256_mul_ps(
-                    average_weight_vector,
-                    _mm256_mul_ps(
-                        _mm256_i32gather_ps(
-                            (*average_reach)[player]->data(), indices, 4),
-                        _mm256_loadu_ps(destination + local))));
-            _mm256_storeu_ps(average_destination + local, updated_average);
-            maximum_average_vector = _mm256_max_ps(
-                maximum_average_vector, updated_average);
-            _mm256_storeu_ps(destination + local, updated);
-            maximum_vector = _mm256_max_ps(
-                maximum_vector, _mm256_and_ps(updated, sign_mask));
+        } else
+          for (std::size_t action = 0; action < action_count; ++action) {
+            const auto *const source =
+                buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+            const auto *const average_source =
+                buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+            float *const destination = scratch[action].data();
+            float *const average_destination = average_values[action].data();
+            std::size_t local = 0U;
+            for (; local + 8U <= combos.size(); local += 8U) {
+              const __m256i indices = _mm256_cvtepu16_epi32(
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
+              const __m256i signed_codes = _mm256_cvtepi16_epi32(
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(source + local)));
+              const __m256 old_values =
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(signed_codes), old_scale_vector);
+              const __m256 discounts =
+                  _mm256_blendv_ps(negative_discount, positive_discount,
+                                   _mm256_cmp_ps(old_values, zero, _CMP_GT_OQ));
+              const __m256 updated = _mm256_add_ps(
+                  _mm256_mul_ps(old_values, discounts),
+                  _mm256_mul_ps(
+                      regret_weight,
+                      _mm256_sub_ps(_mm256_i32gather_ps(action_values[action].data(), indices, 4),
+                                    _mm256_i32gather_ps(values.data(), indices, 4))));
+              const __m256 updated_average = _mm256_add_ps(
+                  _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                    reinterpret_cast<const __m128i *>(average_source + local)))),
+                                old_average_scale_vector),
+                  _mm256_mul_ps(average_weight_vector,
+                                _mm256_mul_ps(_mm256_i32gather_ps((*average_reach)[player]->data(),
+                                                                  indices, 4),
+                                              _mm256_loadu_ps(destination + local))));
+              _mm256_storeu_ps(average_destination + local, updated_average);
+              maximum_average_vector = _mm256_max_ps(maximum_average_vector, updated_average);
+              _mm256_storeu_ps(destination + local, updated);
+              maximum_vector = _mm256_max_ps(maximum_vector, _mm256_and_ps(updated, sign_mask));
+            }
+            for (; local < combos.size(); ++local) {
+              const auto slot = static_cast<std::size_t>(slots[local]);
+              const double old =
+                  static_cast<double>(static_cast<std::int16_t>(source[local])) * old_scale;
+              const double updated =
+                  old * (old > 0.0 ? positive_regret_discount_ : negative_regret_discount_) +
+                  regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                           static_cast<double>(values[slot]));
+              const double updated_average =
+                  static_cast<double>(average_source[local]) * old_average_scale +
+                  strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
+                      static_cast<double>(destination[local]);
+              average_destination[local] = static_cast<float>(updated_average);
+              maximum_average = std::max(maximum_average, updated_average);
+              destination[local] = static_cast<float>(updated);
+              maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
+            }
           }
-          for (; local < combos.size(); ++local) {
-            const auto slot = static_cast<std::size_t>(slots[local]);
-            const double old = static_cast<double>(
-                                   static_cast<std::int16_t>(source[local])) *
-                               old_scale;
-            const double updated =
-                old * (old > 0.0 ? positive_regret_discount_
-                                 : negative_regret_discount_) +
-                regret_update_weight_ *
-                    (static_cast<double>(action_values[action][slot]) -
-                     static_cast<double>(values[slot]));
-            const double updated_average =
-                static_cast<double>(average_source[local]) *
-                    old_average_scale +
-                strategy_weight_ *
-                    static_cast<double>((*(*average_reach)[player])[slot]) *
-                    static_cast<double>(destination[local]);
-            average_destination[local] = static_cast<float>(updated_average);
-            maximum_average = std::max(maximum_average, updated_average);
-            destination[local] = static_cast<float>(updated);
-            maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
-          }
-        }
         alignas(32) float maxima[8];
         _mm256_store_ps(maxima, maximum_vector);
         for (const float value : maxima) {
-          maximum_magnitude = std::max(maximum_magnitude,
-                                       static_cast<double>(value));
+          maximum_magnitude = std::max(maximum_magnitude, static_cast<double>(value));
         }
         _mm256_store_ps(maxima, maximum_average_vector);
         for (const float value : maxima) {
-          maximum_average = std::max(maximum_average,
-                                     static_cast<double>(value));
+          maximum_average = std::max(maximum_average, static_cast<double>(value));
         }
       } else {
         for (std::size_t action = 0; action < action_count; ++action) {
-          const auto *const source = buffers_.scaled_regret +
-                                     canonical_action_major_index(canonical, 0U, action);
-          const auto *const average_source = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, action);
+          const auto *const source =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+          const auto *const average_source =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
           for (std::size_t local = 0; local < combos.size(); ++local) {
             const auto slot = value_slot(combos[local], player);
-            const double old = static_cast<double>(
-                                   static_cast<std::int16_t>(source[local])) *
-                               old_scale;
+            const double old =
+                static_cast<double>(static_cast<std::int16_t>(source[local])) * old_scale;
             const double updated =
-                old * (old > 0.0 ? positive_regret_discount_
-                                 : negative_regret_discount_) +
-                regret_update_weight_ *
-                    (static_cast<double>(action_values[action][slot]) -
-                     static_cast<double>(values[slot]));
+                old * (old > 0.0 ? positive_regret_discount_ : negative_regret_discount_) +
+                regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                         static_cast<double>(values[slot]));
             const double updated_average =
-                static_cast<double>(average_source[local]) *
-                    old_average_scale +
-                strategy_weight_ *
-                    static_cast<double>((*(*average_reach)[player])[slot]) *
+                static_cast<double>(average_source[local]) * old_average_scale +
+                strategy_weight_ * static_cast<double>((*(*average_reach)[player])[slot]) *
                     static_cast<double>(scratch[action][local]);
-            average_values[action][local] =
-                static_cast<Scalar>(updated_average);
+            average_values[action][local] = static_cast<Scalar>(updated_average);
             maximum_average = std::max(maximum_average, updated_average);
             scratch[action][local] = static_cast<Scalar>(updated);
             maximum_magnitude = std::max(maximum_magnitude, std::abs(updated));
           }
         }
       }
-      const auto scaled_scale_started =
-          profile_scaled ? std::chrono::steady_clock::now()
-                         : std::chrono::steady_clock::time_point{};
+      const auto scaled_scale_started = profile_scaled ? std::chrono::steady_clock::now()
+                                                       : std::chrono::steady_clock::time_point{};
       if (profile_scaled) {
-        prof_scaled_calculate_seconds_ += std::chrono::duration<double>(
-            scaled_scale_started - scaled_calculate_started).count();
+        prof_scaled_calculate_seconds_ +=
+            std::chrono::duration<double>(scaled_scale_started - scaled_calculate_started).count();
       }
-      const float encoded_scale = maximum_magnitude > 0.0
-                                      ? static_cast<float>(maximum_magnitude / 32767.0)
-                                      : 0.0F;
-      const float average_scale = maximum_average > 0.0
-                                      ? static_cast<float>(maximum_average / 65535.0)
-                                      : 0.0F;
-      const auto encoded_entries = static_cast<std::uint64_t>(
-          action_count * combos.size());
-      profile_scale_transition(static_cast<float>(old_scale), encoded_scale,
-                               maximum_magnitude, 32767.0, encoded_entries);
+      const float encoded_scale =
+          maximum_magnitude > 0.0 ? static_cast<float>(maximum_magnitude / 32767.0) : 0.0F;
+      const float average_scale =
+          maximum_average > 0.0 ? static_cast<float>(maximum_average / 65535.0) : 0.0F;
+      const auto encoded_entries = static_cast<std::uint64_t>(action_count * combos.size());
+      profile_scale_transition(static_cast<float>(old_scale), encoded_scale, maximum_magnitude,
+                               32767.0, encoded_entries);
       profile_scale_transition(static_cast<float>(old_average_scale), average_scale,
                                maximum_average, 65535.0, encoded_entries);
       buffers_.regret_node_scale[scale_index] = encoded_scale;
       buffers_.strategy_node_scale[scale_index] = average_scale;
-      const auto scaled_encode_started =
-          profile_scaled ? std::chrono::steady_clock::now()
-                         : std::chrono::steady_clock::time_point{};
+      const auto scaled_encode_started = profile_scaled ? std::chrono::steady_clock::now()
+                                                        : std::chrono::steady_clock::time_point{};
       if (profile_scaled) {
-        prof_scaled_scale_seconds_ += std::chrono::duration<double>(
-            scaled_encode_started - scaled_scale_started).count();
+        prof_scaled_scale_seconds_ +=
+            std::chrono::duration<double>(scaled_encode_started - scaled_scale_started).count();
       }
       const auto finish_scaled_profile = [&] {
         if (!profile_scaled) {
           return;
         }
-        prof_scaled_encode_seconds_ += std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - scaled_encode_started).count();
+        prof_scaled_encode_seconds_ +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - scaled_encode_started)
+                .count();
         ++prof_scaled_update_calls_;
         prof_scaled_update_entries_ += scaled_entries;
         ++prof_scaled_calls_by_action_[action_count];
         prof_scaled_entries_by_action_[action_count] += scaled_entries;
       };
       if (encoded_scale > 0.0F && average_scale > 0.0F) {
-        const double regret_inverse =
-            1.0 / static_cast<double>(encoded_scale);
-        const double average_inverse =
-            1.0 / static_cast<double>(average_scale);
+        const double regret_inverse = 1.0 / static_cast<double>(encoded_scale);
+        const double average_inverse = 1.0 / static_cast<double>(average_scale);
         for (std::size_t action = 0U; action < action_count; ++action) {
-          auto *const regret_destination = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, action);
-          auto *const average_destination = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, action);
+          auto *const regret_destination =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+          auto *const average_destination =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
           std::size_t local = 0U;
           if constexpr (std::is_same_v<Scalar, float>) {
-            const __m256 regret_inverse_vector =
-                _mm256_set1_ps(static_cast<float>(regret_inverse));
+            const __m256 regret_inverse_vector = _mm256_set1_ps(static_cast<float>(regret_inverse));
             const __m256 average_inverse_vector =
                 _mm256_set1_ps(static_cast<float>(average_inverse));
             const __m256 regret_low = _mm256_set1_ps(-32767.0F);
@@ -4628,46 +4728,33 @@ private:
             for (; local + 8U <= combos.size(); local += 8U) {
               const __m256 regret_scaled = _mm256_min_ps(
                   regret_high,
-                  _mm256_max_ps(
-                      regret_low,
-                      _mm256_mul_ps(
-                          _mm256_loadu_ps(scratch[action].data() + local),
-                          regret_inverse_vector)));
+                  _mm256_max_ps(regret_low,
+                                _mm256_mul_ps(_mm256_loadu_ps(scratch[action].data() + local),
+                                              regret_inverse_vector)));
               const __m256 average_scaled = _mm256_min_ps(
                   average_high,
                   _mm256_max_ps(
-                      zero,
-                      _mm256_mul_ps(
-                          _mm256_loadu_ps(average_values[action].data() + local),
-                          average_inverse_vector)));
-              const __m256i regret_encoded =
-                  _mm256_cvtps_epi32(regret_scaled);
-              const __m256i average_encoded =
-                  _mm256_cvtps_epi32(average_scaled);
-              _mm_storeu_si128(
-                  reinterpret_cast<__m128i *>(regret_destination + local),
-                  _mm_packs_epi32(
-                      _mm256_castsi256_si128(regret_encoded),
-                      _mm256_extracti128_si256(regret_encoded, 1)));
-              _mm_storeu_si128(
-                  reinterpret_cast<__m128i *>(average_destination + local),
-                  _mm_packus_epi32(
-                      _mm256_castsi256_si128(average_encoded),
-                      _mm256_extracti128_si256(average_encoded, 1)));
+                      zero, _mm256_mul_ps(_mm256_loadu_ps(average_values[action].data() + local),
+                                          average_inverse_vector)));
+              const __m256i regret_encoded = _mm256_cvtps_epi32(regret_scaled);
+              const __m256i average_encoded = _mm256_cvtps_epi32(average_scaled);
+              _mm_storeu_si128(reinterpret_cast<__m128i *>(regret_destination + local),
+                               _mm_packs_epi32(_mm256_castsi256_si128(regret_encoded),
+                                               _mm256_extracti128_si256(regret_encoded, 1)));
+              _mm_storeu_si128(reinterpret_cast<__m128i *>(average_destination + local),
+                               _mm_packus_epi32(_mm256_castsi256_si128(average_encoded),
+                                                _mm256_extracti128_si256(average_encoded, 1)));
             }
           }
           for (; local < combos.size(); ++local) {
             const auto regret_encoded = static_cast<std::int16_t>(std::clamp(
-                std::nearbyint(static_cast<double>(scratch[action][local]) *
-                               regret_inverse),
+                std::nearbyint(static_cast<double>(scratch[action][local]) * regret_inverse),
                 -32767.0, 32767.0));
-            regret_destination[local] =
-                static_cast<std::uint16_t>(regret_encoded);
-            average_destination[local] = static_cast<std::uint16_t>(std::clamp(
-                std::nearbyint(
-                    static_cast<double>(average_values[action][local]) *
-                    average_inverse),
-                0.0, 65535.0));
+            regret_destination[local] = static_cast<std::uint16_t>(regret_encoded);
+            average_destination[local] = static_cast<std::uint16_t>(
+                std::clamp(std::nearbyint(static_cast<double>(average_values[action][local]) *
+                                          average_inverse),
+                           0.0, 65535.0));
           }
         }
         finish_scaled_profile();
@@ -4675,15 +4762,15 @@ private:
       }
       if (!(encoded_scale > 0.0F)) {
         for (std::size_t action = 0; action < action_count; ++action) {
-          auto *const destination = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, action);
+          auto *const destination =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
           std::fill_n(destination, combos.size(), std::uint16_t{0});
         }
       } else {
         const double inverse = 1.0 / static_cast<double>(encoded_scale);
         for (std::size_t action = 0; action < action_count; ++action) {
-          auto *const destination = buffers_.scaled_regret +
-              canonical_action_major_index(canonical, 0U, action);
+          auto *const destination =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
           std::size_t local = 0U;
           if constexpr (std::is_same_v<Scalar, float>) {
             const __m256 inverse_vector = _mm256_set1_ps(static_cast<float>(inverse));
@@ -4691,36 +4778,34 @@ private:
             const __m256 high = _mm256_set1_ps(32767.0F);
             for (; local + 8U <= combos.size(); local += 8U) {
               const __m256 scaled = _mm256_min_ps(
-                  high, _mm256_max_ps(
-                            low, _mm256_mul_ps(
-                                     _mm256_loadu_ps(scratch[action].data() + local),
-                                     inverse_vector)));
+                  high,
+                  _mm256_max_ps(low, _mm256_mul_ps(_mm256_loadu_ps(scratch[action].data() + local),
+                                                   inverse_vector)));
               const __m256i encoded = _mm256_cvtps_epi32(scaled);
-              const __m128i packed = _mm_packs_epi32(
-                  _mm256_castsi256_si128(encoded),
-                  _mm256_extracti128_si256(encoded, 1));
+              const __m128i packed = _mm_packs_epi32(_mm256_castsi256_si128(encoded),
+                                                     _mm256_extracti128_si256(encoded, 1));
               _mm_storeu_si128(reinterpret_cast<__m128i *>(destination + local), packed);
             }
           }
           for (; local < combos.size(); ++local) {
-            const auto encoded = static_cast<std::int16_t>(std::clamp(
-                std::nearbyint(static_cast<double>(scratch[action][local]) * inverse),
-                -32767.0, 32767.0));
+            const auto encoded = static_cast<std::int16_t>(
+                std::clamp(std::nearbyint(static_cast<double>(scratch[action][local]) * inverse),
+                           -32767.0, 32767.0));
             destination[local] = static_cast<std::uint16_t>(encoded);
           }
         }
       }
       if (!(average_scale > 0.0F)) {
         for (std::size_t action = 0; action < action_count; ++action) {
-          auto *const destination = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, action);
+          auto *const destination =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
           std::fill_n(destination, combos.size(), std::uint16_t{0});
         }
       } else {
         const double inverse = 1.0 / static_cast<double>(average_scale);
         for (std::size_t action = 0; action < action_count; ++action) {
-          auto *const destination = buffers_.scaled_strategy +
-              canonical_action_major_index(canonical, 0U, action);
+          auto *const destination =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
           std::size_t local = 0U;
           if constexpr (std::is_same_v<Scalar, float>) {
             const __m256 inverse_vector = _mm256_set1_ps(static_cast<float>(inverse));
@@ -4729,20 +4814,18 @@ private:
                   _mm256_set1_ps(65535.0F),
                   _mm256_max_ps(
                       _mm256_setzero_ps(),
-                      _mm256_mul_ps(
-                          _mm256_loadu_ps(average_values[action].data() + local),
-                          inverse_vector)));
+                      _mm256_mul_ps(_mm256_loadu_ps(average_values[action].data() + local),
+                                    inverse_vector)));
               const __m256i encoded = _mm256_cvtps_epi32(scaled);
-              const __m128i packed = _mm_packus_epi32(
-                  _mm256_castsi256_si128(encoded),
-                  _mm256_extracti128_si256(encoded, 1));
+              const __m128i packed = _mm_packus_epi32(_mm256_castsi256_si128(encoded),
+                                                      _mm256_extracti128_si256(encoded, 1));
               _mm_storeu_si128(reinterpret_cast<__m128i *>(destination + local), packed);
             }
           }
           for (; local < combos.size(); ++local) {
             destination[local] = static_cast<std::uint16_t>(std::clamp(
-                std::nearbyint(static_cast<double>(average_values[action][local]) * inverse),
-                0.0, 65535.0));
+                std::nearbyint(static_cast<double>(average_values[action][local]) * inverse), 0.0,
+                65535.0));
           }
         }
       }
@@ -4751,33 +4834,31 @@ private:
     }
     double maximum = 0.0;
     if constexpr (std::is_same_v<Scalar, float>) {
-      const auto &slots = PlayerIndexed ? board.player_flop_slots[player]
-                                        : board.player_active_slots[player];
+      const auto &slots =
+          PlayerIndexed ? board.player_flop_slots[player] : board.player_active_slots[player];
       const __m256 old_scale_vector = _mm256_set1_ps(static_cast<float>(old_scale));
-      const __m256 regret_weight =
-          _mm256_set1_ps(static_cast<float>(regret_update_weight_));
+      const __m256 regret_weight = _mm256_set1_ps(static_cast<float>(regret_update_weight_));
       __m256 maximum_vector = _mm256_setzero_ps();
       for (std::size_t action = 0; action < action_count; ++action) {
-        const auto *const source = buffers_.scaled_regret +
-                                   canonical_action_major_index(canonical, 0U, action);
+        const auto *const source =
+            buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
         float *const destination = scratch[action].data();
         std::size_t local = 0U;
         for (; local + 8U <= combos.size(); local += 8U) {
-          const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-              reinterpret_cast<const __m128i *>(slots.data() + local)));
-          const __m256 old_values = _mm256_mul_ps(
-              _mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
-                  reinterpret_cast<const __m128i *>(source + local)))),
-              old_scale_vector);
+          const __m256i indices = _mm256_cvtepu16_epi32(
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + local)));
+          const __m256 old_values =
+              _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu16_epi32(_mm_loadu_si128(
+                                reinterpret_cast<const __m128i *>(source + local)))),
+                            old_scale_vector);
           const __m256 updated = _mm256_max_ps(
               _mm256_setzero_ps(),
               _mm256_add_ps(
                   old_values,
                   _mm256_mul_ps(
                       regret_weight,
-                      _mm256_sub_ps(
-                          _mm256_i32gather_ps(action_values[action].data(), indices, 4),
-                          _mm256_i32gather_ps(values.data(), indices, 4)))));
+                      _mm256_sub_ps(_mm256_i32gather_ps(action_values[action].data(), indices, 4),
+                                    _mm256_i32gather_ps(values.data(), indices, 4)))));
           _mm256_storeu_ps(destination + local, updated);
           maximum_vector = _mm256_max_ps(maximum_vector, updated);
         }
@@ -4785,9 +4866,8 @@ private:
           const auto slot = static_cast<std::size_t>(slots[local]);
           const double updated = std::max(
               0.0, static_cast<double>(source[local]) * old_scale +
-                       regret_update_weight_ *
-                           (static_cast<double>(action_values[action][slot]) -
-                            static_cast<double>(values[slot])));
+                       regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                                static_cast<double>(values[slot])));
           destination[local] = static_cast<float>(updated);
           maximum = std::max(maximum, updated);
         }
@@ -4804,22 +4884,19 @@ private:
           const auto index = canonical_action_major_index(canonical, local, action);
           const double updated = std::max(
               0.0, static_cast<double>(buffers_.scaled_regret[index]) * old_scale +
-                       regret_update_weight_ *
-                           (static_cast<double>(action_values[action][slot]) -
-                            static_cast<double>(values[slot])));
+                       regret_update_weight_ * (static_cast<double>(action_values[action][slot]) -
+                                                static_cast<double>(values[slot])));
           scratch[action][local] = static_cast<Scalar>(updated);
           maximum = std::max(maximum, updated);
         }
       }
     }
-    const float encoded_scale =
-        maximum > 0.0 ? static_cast<float>(maximum / 65535.0) : 0.0F;
+    const float encoded_scale = maximum > 0.0 ? static_cast<float>(maximum / 65535.0) : 0.0F;
     buffers_.regret_node_scale[scale_index] = encoded_scale;
     if (!(encoded_scale > 0.0F)) {
       for (std::size_t action = 0; action < action_count; ++action) {
         auto *const destination =
-            buffers_.scaled_regret +
-            canonical_action_major_index(canonical, 0U, action);
+            buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
         std::fill_n(destination, combos.size(), std::uint16_t{0});
       }
       return;
@@ -4827,37 +4904,33 @@ private:
     const double inverse = 1.0 / static_cast<double>(encoded_scale);
     for (std::size_t action = 0; action < action_count; ++action) {
       auto *const destination =
-          buffers_.scaled_regret +
-          canonical_action_major_index(canonical, 0U, action);
+          buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
       std::size_t local = 0U;
       if constexpr (std::is_same_v<Scalar, float>) {
         const __m256 inverse_vector = _mm256_set1_ps(static_cast<float>(inverse));
         for (; local + 8U <= combos.size(); local += 8U) {
           const __m256 scaled = _mm256_min_ps(
               _mm256_set1_ps(65535.0F),
-              _mm256_max_ps(_mm256_setzero_ps(),
-                            _mm256_mul_ps(_mm256_loadu_ps(
-                                scratch[action].data() + local), inverse_vector)));
+              _mm256_max_ps(
+                  _mm256_setzero_ps(),
+                  _mm256_mul_ps(_mm256_loadu_ps(scratch[action].data() + local), inverse_vector)));
           const __m256i encoded = _mm256_cvtps_epi32(scaled);
-          const __m128i packed = _mm_packus_epi32(
-              _mm256_castsi256_si128(encoded), _mm256_extracti128_si256(encoded, 1));
+          const __m128i packed = _mm_packus_epi32(_mm256_castsi256_si128(encoded),
+                                                  _mm256_extracti128_si256(encoded, 1));
           _mm_storeu_si128(reinterpret_cast<__m128i *>(destination + local), packed);
         }
       }
       for (; local < combos.size(); ++local) {
         destination[local] = static_cast<std::uint16_t>(std::clamp(
-            std::nearbyint(static_cast<double>(scratch[action][local]) * inverse),
-            0.0, 65535.0));
+            std::nearbyint(static_cast<double>(scratch[action][local]) * inverse), 0.0, 65535.0));
       }
     }
   }
 
   [[nodiscard]] bool materialize_actor_reach(
-      const BoardData &board, const std::uint8_t player,
-      const ComboVector &parent_reach, const ComboVector &strategy,
-      ComboVector &actor_reach, const std::size_t count,
-      const bool profile_writes,
-      const ComboVector *const board_local_parent = nullptr) {
+      const BoardData &board, const std::uint8_t player, const ComboVector &parent_reach,
+      const ComboVector &strategy, ComboVector &actor_reach, const std::size_t count,
+      const bool profile_writes, const ComboVector *const board_local_parent = nullptr) {
     bool any_nonzero = false;
     std::size_t local = 0U;
     if constexpr (PlayerIndexed) {
@@ -4867,10 +4940,9 @@ private:
         const __m128i packed_slots =
             _mm_loadl_epi64(reinterpret_cast<const __m128i *>(slots + local));
         const __m128i indices = _mm_cvtepu16_epi32(packed_slots);
-        const __m256d parents =
-            board_local_parent != nullptr
-                ? load_four_as_double(board_local_parent->data() + local)
-                : gather_four_as_double(parent_reach.data(), indices);
+        const __m256d parents = board_local_parent != nullptr
+                                    ? load_four_as_double(board_local_parent->data() + local)
+                                    : gather_four_as_double(parent_reach.data(), indices);
         const __m256d children =
             _mm256_mul_pd(parents, load_four_as_double(strategy.data() + local));
         _mm256_store_pd(child_values, children);
@@ -4884,9 +4956,8 @@ private:
     for (; local < count; ++local) {
       const auto strategy_slot = board_player_slot(board, player, local);
       const auto reach_slot = board_reach_slot(board, player, local);
-      const double parent = board_local_parent != nullptr
-                                ? (*board_local_parent)[local]
-                                : parent_reach[reach_slot];
+      const double parent =
+          board_local_parent != nullptr ? (*board_local_parent)[local] : parent_reach[reach_slot];
       const double child = parent * strategy[strategy_slot];
       actor_reach[reach_slot] = static_cast<Scalar>(child);
       any_nonzero = any_nonzero || child != 0.0;
@@ -4898,12 +4969,10 @@ private:
   }
 
   [[nodiscard]] std::array<bool, 2> materialize_actor_reach_pair(
-      const BoardData &board, const std::uint8_t player,
-      const ComboVector &parent_reach, const ComboVector &first_strategy,
-      const ComboVector &second_strategy, ComboVector &first_reach,
-      ComboVector &second_reach, const std::size_t count,
-      const bool profile_writes,
-      const ComboVector *const board_local_parent = nullptr) {
+      const BoardData &board, const std::uint8_t player, const ComboVector &parent_reach,
+      const ComboVector &first_strategy, const ComboVector &second_strategy,
+      ComboVector &first_reach, ComboVector &second_reach, const std::size_t count,
+      const bool profile_writes, const ComboVector *const board_local_parent = nullptr) {
     std::array<bool, 2> any_nonzero{false, false};
     std::size_t local = 0U;
     if constexpr (PlayerIndexed) {
@@ -4914,14 +4983,13 @@ private:
         const __m128i packed_slots =
             _mm_loadl_epi64(reinterpret_cast<const __m128i *>(slots + local));
         const __m128i indices = _mm_cvtepu16_epi32(packed_slots);
-        const __m256d parents =
-            board_local_parent != nullptr
-                ? load_four_as_double(board_local_parent->data() + local)
-                : gather_four_as_double(parent_reach.data(), indices);
-        const __m256d first_children = _mm256_mul_pd(
-            parents, load_four_as_double(first_strategy.data() + local));
-        const __m256d second_children = _mm256_mul_pd(
-            parents, load_four_as_double(second_strategy.data() + local));
+        const __m256d parents = board_local_parent != nullptr
+                                    ? load_four_as_double(board_local_parent->data() + local)
+                                    : gather_four_as_double(parent_reach.data(), indices);
+        const __m256d first_children =
+            _mm256_mul_pd(parents, load_four_as_double(first_strategy.data() + local));
+        const __m256d second_children =
+            _mm256_mul_pd(parents, load_four_as_double(second_strategy.data() + local));
         _mm256_store_pd(first_values, first_children);
         _mm256_store_pd(second_values, second_children);
         for (std::size_t lane = 0U; lane < 4U; ++lane) {
@@ -4936,9 +5004,8 @@ private:
     for (; local < count; ++local) {
       const auto strategy_slot = board_player_slot(board, player, local);
       const auto reach_slot = board_reach_slot(board, player, local);
-      const double parent = board_local_parent != nullptr
-                                ? (*board_local_parent)[local]
-                                : parent_reach[reach_slot];
+      const double parent =
+          board_local_parent != nullptr ? (*board_local_parent)[local] : parent_reach[reach_slot];
       const double first = parent * first_strategy[strategy_slot];
       const double second = parent * second_strategy[strategy_slot];
       first_reach[reach_slot] = static_cast<Scalar>(first);
@@ -4973,16 +5040,15 @@ private:
     buffers_.add_strategy(index, value);
   }
 
-  void add_strategy_pair(const std::size_t index, const double first,
-                         const double second) const {
+  void add_strategy_pair(const std::size_t index, const double first, const double second) const {
     if (first == 0.0 && second == 0.0) {
       return;
     }
     if (buffers_.strategy_float32 != nullptr) {
-      buffers_.strategy_float32[index] = static_cast<float>(
-          static_cast<double>(buffers_.strategy_float32[index]) + first);
-      buffers_.strategy_float32[index + 1U] = static_cast<float>(
-          static_cast<double>(buffers_.strategy_float32[index + 1U]) + second);
+      buffers_.strategy_float32[index] =
+          static_cast<float>(static_cast<double>(buffers_.strategy_float32[index]) + first);
+      buffers_.strategy_float32[index + 1U] =
+          static_cast<float>(static_cast<double>(buffers_.strategy_float32[index + 1U]) + second);
       return;
     }
     if (buffers_.compact_state != nullptr) {
@@ -5002,10 +5068,8 @@ private:
     }
     if (buffers_.strategy_float16 != nullptr) {
       auto *const packed = buffers_.strategy_float16 + index;
-      const auto updated_first =
-          static_cast<double>(decode_float16(packed[0])) + first;
-      const auto updated_second =
-          static_cast<double>(decode_float16(packed[1])) + second;
+      const auto updated_first = static_cast<double>(decode_float16(packed[0])) + first;
+      const auto updated_second = static_cast<double>(decode_float16(packed[1])) + second;
       const std::uint32_t encoded =
           static_cast<std::uint32_t>(encode_float16(updated_first)) |
           (static_cast<std::uint32_t>(encode_float16(updated_second)) << 16U);
@@ -5057,13 +5121,11 @@ private:
     return *decision_scratch_[decision_scratch_depth_++];
   }
 
-
-  void load_canonical_current_strategies(
-      const CanonicalPublicNode &canonical, const BoardData &board,
-      const std::uint8_t value_player,
-      std::array<ComboVector, maximum_action_count> &strategies,
-      const bool local_indexed = false,
-      const bool average_strategy = false) {
+  void load_canonical_current_strategies(const CanonicalPublicNode &canonical,
+                                         const BoardData &board, const std::uint8_t value_player,
+                                         std::array<ComboVector, maximum_action_count> &strategies,
+                                         const bool local_indexed = false,
+                                         const bool average_strategy = false) {
     const auto &decision = canonical.decision;
     const auto action_count = static_cast<std::size_t>(decision.action_count);
     const bool locked_root = is_locked_root(canonical);
@@ -5073,16 +5135,15 @@ private:
         const auto slot = local_indexed ? local : value_slot(combos[local], value_player);
         double sum = 0.0;
         for (std::size_t action = 0; action < action_count; ++action) {
-          const auto *const bytes = buffers_.compact_state +
-              canonical_action_major_index(canonical, local, action) * 3U;
-          const double regret = decode_regret13(static_cast<std::uint16_t>(
-              compact_word(bytes) & 0x1fffU));
+          const auto *const bytes =
+              buffers_.compact_state + canonical_action_major_index(canonical, local, action) * 3U;
+          const double regret =
+              decode_regret13(static_cast<std::uint16_t>(compact_word(bytes) & 0x1fffU));
           strategies[action][slot] = static_cast<Scalar>(regret);
           sum += regret;
         }
         if (sum <= 0.0) {
-          const auto uniform = static_cast<Scalar>(
-              1.0 / static_cast<double>(action_count));
+          const auto uniform = static_cast<Scalar>(1.0 / static_cast<double>(action_count));
           for (std::size_t action = 0; action < action_count; ++action) {
             strategies[action][slot] = uniform;
           }
@@ -5097,16 +5158,14 @@ private:
     }
     if (!locked_root && scaled_action_major_state()) {
       const auto &combos = board.player_combos[decision.player];
-      const auto *const state_source = average_strategy
-                                           ? buffers_.scaled_strategy
-                                           : buffers_.scaled_regret;
+      const auto *const state_source =
+          average_strategy ? buffers_.scaled_strategy : buffers_.scaled_regret;
       if constexpr (std::is_same_v<Scalar, float>) {
         if (local_indexed && buffers_.signed_scaled_regret && !average_strategy) {
           std::array<const std::uint16_t *, maximum_action_count> sources{};
           std::array<float *, maximum_action_count> destinations{};
           for (std::size_t action = 0U; action < action_count; ++action) {
-            sources[action] = state_source +
-                canonical_action_major_index(canonical, 0U, action);
+            sources[action] = state_source + canonical_action_major_index(canonical, 0U, action);
             destinations[action] = strategies[action].data();
           }
           if (detail::regret_match_signed_action_major(
@@ -5120,46 +5179,41 @@ private:
       if constexpr (std::is_same_v<Scalar, float>) {
         const __m256 zero = _mm256_setzero_ps();
         const __m256 one = _mm256_set1_ps(1.0F);
-        const __m256 uniform =
-            _mm256_set1_ps(1.0F / static_cast<float>(action_count));
+        const __m256 uniform = _mm256_set1_ps(1.0F / static_cast<float>(action_count));
         if (local_indexed && action_count == 2U) {
           const __m256 half = _mm256_set1_ps(0.5F);
           for (; local + 8U <= combos.size(); local += 8U) {
-            const auto *const first_source = state_source +
-                canonical_action_major_index(canonical, local, 0U);
-            const auto *const second_source = state_source +
-                canonical_action_major_index(canonical, local, 1U);
+            const auto *const first_source =
+                state_source + canonical_action_major_index(canonical, local, 0U);
+            const auto *const second_source =
+                state_source + canonical_action_major_index(canonical, local, 1U);
             const auto decode_positive = [&](const std::uint16_t *const source) {
-              const __m256i raw = buffers_.signed_scaled_regret && !average_strategy
-                  ? _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                        reinterpret_cast<const __m128i *>(source)))
-                  : _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                        reinterpret_cast<const __m128i *>(source)));
+              const __m256i raw =
+                  buffers_.signed_scaled_regret && !average_strategy
+                      ? _mm256_cvtepi16_epi32(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)))
+                      : _mm256_cvtepu16_epi32(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)));
               return buffers_.signed_scaled_regret && !average_strategy
                          ? _mm256_max_epi32(raw, _mm256_setzero_si256())
                          : raw;
             };
             const __m256i first_codes = decode_positive(first_source);
             const __m256i second_codes = decode_positive(second_source);
-            const __m256 sum = _mm256_cvtepi32_ps(
-                _mm256_add_epi32(first_codes, second_codes));
+            const __m256 sum = _mm256_cvtepi32_ps(_mm256_add_epi32(first_codes, second_codes));
             const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
             const __m256 safe_sum = _mm256_blendv_ps(sum, one, no_positive);
             const __m256 estimate = _mm256_rcp_ps(safe_sum);
             const __m256 inverse = _mm256_mul_ps(
-                estimate,
-                _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                              _mm256_mul_ps(safe_sum, estimate)));
+                estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
             _mm256_storeu_ps(
                 strategies[0].data() + local,
-                _mm256_blendv_ps(
-                    _mm256_mul_ps(_mm256_cvtepi32_ps(first_codes), inverse),
-                    half, no_positive));
+                _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(first_codes), inverse), half,
+                                 no_positive));
             _mm256_storeu_ps(
                 strategies[1].data() + local,
-                _mm256_blendv_ps(
-                    _mm256_mul_ps(_mm256_cvtepi32_ps(second_codes), inverse),
-                    half, no_positive));
+                _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(second_codes), inverse), half,
+                                 no_positive));
           }
         } else if (local_indexed && action_count == 3U) {
           const __m256 third = _mm256_set1_ps(1.0F / 3.0F);
@@ -5167,13 +5221,14 @@ private:
             std::array<__m256i, 3> codes{};
             __m256i integer_sum = _mm256_setzero_si256();
             for (std::size_t action = 0U; action < 3U; ++action) {
-              const auto *const source = state_source +
-                  canonical_action_major_index(canonical, local, action);
-              const __m256i raw = buffers_.signed_scaled_regret && !average_strategy
-                  ? _mm256_cvtepi16_epi32(_mm_loadu_si128(
-                        reinterpret_cast<const __m128i *>(source)))
-                  : _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                        reinterpret_cast<const __m128i *>(source)));
+              const auto *const source =
+                  state_source + canonical_action_major_index(canonical, local, action);
+              const __m256i raw =
+                  buffers_.signed_scaled_regret && !average_strategy
+                      ? _mm256_cvtepi16_epi32(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)))
+                      : _mm256_cvtepu16_epi32(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)));
               codes[action] = buffers_.signed_scaled_regret && !average_strategy
                                   ? _mm256_max_epi32(raw, _mm256_setzero_si256())
                                   : raw;
@@ -5184,15 +5239,12 @@ private:
             const __m256 safe_sum = _mm256_blendv_ps(sum, one, no_positive);
             const __m256 estimate = _mm256_rcp_ps(safe_sum);
             const __m256 inverse = _mm256_mul_ps(
-                estimate,
-                _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                              _mm256_mul_ps(safe_sum, estimate)));
+                estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
             for (std::size_t action = 0U; action < 3U; ++action) {
               _mm256_storeu_ps(
                   strategies[action].data() + local,
-                  _mm256_blendv_ps(
-                      _mm256_mul_ps(_mm256_cvtepi32_ps(codes[action]), inverse),
-                      third, no_positive));
+                  _mm256_blendv_ps(_mm256_mul_ps(_mm256_cvtepi32_ps(codes[action]), inverse), third,
+                                   no_positive));
             }
           }
         }
@@ -5201,16 +5253,15 @@ private:
           __m256i integer_sum = _mm256_setzero_si256();
           for (std::size_t action = 0U; action < action_count; ++action) {
             const auto *const source =
-                state_source +
-                canonical_action_major_index(canonical, local, action);
-            const __m256i raw_codes = buffers_.signed_scaled_regret && !average_strategy
-                ? _mm256_cvtepi16_epi32(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)))
-                : _mm256_cvtepu16_epi32(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)));
+                state_source + canonical_action_major_index(canonical, local, action);
+            const __m256i raw_codes =
+                buffers_.signed_scaled_regret && !average_strategy
+                    ? _mm256_cvtepi16_epi32(
+                          _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)))
+                    : _mm256_cvtepu16_epi32(
+                          _mm_loadu_si128(reinterpret_cast<const __m128i *>(source)));
             const __m256i codes = buffers_.signed_scaled_regret && !average_strategy
-                                      ? _mm256_max_epi32(raw_codes,
-                                                        _mm256_setzero_si256())
+                                      ? _mm256_max_epi32(raw_codes, _mm256_setzero_si256())
                                       : raw_codes;
             integer_sum = _mm256_add_epi32(integer_sum, codes);
             regrets[action] = _mm256_cvtepi32_ps(codes);
@@ -5225,14 +5276,11 @@ private:
           const __m256 safe_sum = _mm256_blendv_ps(sum, one, no_positive);
           const __m256 estimate = _mm256_rcp_ps(safe_sum);
           const __m256 inverse = _mm256_mul_ps(
-              estimate,
-              _mm256_sub_ps(_mm256_set1_ps(2.0F),
-                            _mm256_mul_ps(safe_sum, estimate)));
+              estimate, _mm256_sub_ps(_mm256_set1_ps(2.0F), _mm256_mul_ps(safe_sum, estimate)));
           for (std::size_t action = 0U; action < action_count; ++action) {
             _mm256_storeu_ps(
                 strategies[action].data() + local,
-                _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse),
-                                 uniform, no_positive));
+                _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse), uniform, no_positive));
           }
         }
       }
@@ -5240,8 +5288,8 @@ private:
         const auto slot = local_indexed ? local : value_slot(combos[local], value_player);
         std::uint32_t sum = 0U;
         for (std::size_t action = 0; action < action_count; ++action) {
-          const auto raw_code = state_source[
-              canonical_action_major_index(canonical, local, action)];
+          const auto raw_code =
+              state_source[canonical_action_major_index(canonical, local, action)];
           const auto code = buffers_.signed_scaled_regret && !average_strategy
                                 ? static_cast<std::uint16_t>(std::max<std::int32_t>(
                                       0, static_cast<std::int16_t>(raw_code)))
@@ -5250,8 +5298,7 @@ private:
           sum += static_cast<std::uint32_t>(code);
         }
         if (sum == 0U) {
-          const auto uniform = static_cast<Scalar>(
-              1.0 / static_cast<double>(action_count));
+          const auto uniform = static_cast<Scalar>(1.0 / static_cast<double>(action_count));
           for (std::size_t action = 0; action < action_count; ++action) {
             strategies[action][slot] = uniform;
           }
@@ -5266,51 +5313,44 @@ private:
     }
     if (!locked_root && aligned_compact_state()) {
       const auto &combos = board.player_combos[decision.player];
-      const auto &slots = PlayerIndexed
-                              ? board.player_flop_slots[decision.player]
-                              : board.player_active_slots[decision.player];
+      const auto &slots = PlayerIndexed ? board.player_flop_slots[decision.player]
+                                        : board.player_active_slots[decision.player];
       std::size_t local = 0U;
       if constexpr (std::is_same_v<Scalar, float>) {
         const __m256 zero = _mm256_setzero_ps();
         const __m256 one = _mm256_set1_ps(1.0F);
-        const __m256 uniform =
-            _mm256_set1_ps(1.0F / static_cast<float>(action_count));
-        const auto *const state = buffers_.compact_regret16 +
-                                  static_cast<std::size_t>(decision.action_base);
+        const __m256 uniform = _mm256_set1_ps(1.0F / static_cast<float>(action_count));
+        const auto *const state =
+            buffers_.compact_regret16 + static_cast<std::size_t>(decision.action_base);
         // i32gather reads four bytes per lane although each code is uint16.
         // Keep one following code available; the final decision falls back to
         // the scalar tail instead of reading past the state allocation.
-        for (; local + 8U <= combos.size() &&
-               static_cast<std::size_t>(decision.action_base) +
-                       (local + 7U) * action_count + action_count <
-                   buffers_.count;
+        for (; local + 8U <= combos.size() && static_cast<std::size_t>(decision.action_base) +
+                                                      (local + 7U) * action_count + action_count <
+                                                  buffers_.count;
              local += 8U) {
-          const __m256i offsets = _mm256_setr_epi32(
-              static_cast<int>((local + 0U) * action_count),
-              static_cast<int>((local + 1U) * action_count),
-              static_cast<int>((local + 2U) * action_count),
-              static_cast<int>((local + 3U) * action_count),
-              static_cast<int>((local + 4U) * action_count),
-              static_cast<int>((local + 5U) * action_count),
-              static_cast<int>((local + 6U) * action_count),
-              static_cast<int>((local + 7U) * action_count));
+          const __m256i offsets = _mm256_setr_epi32(static_cast<int>((local + 0U) * action_count),
+                                                    static_cast<int>((local + 1U) * action_count),
+                                                    static_cast<int>((local + 2U) * action_count),
+                                                    static_cast<int>((local + 3U) * action_count),
+                                                    static_cast<int>((local + 4U) * action_count),
+                                                    static_cast<int>((local + 5U) * action_count),
+                                                    static_cast<int>((local + 6U) * action_count),
+                                                    static_cast<int>((local + 7U) * action_count));
           std::array<__m256, maximum_action_count> regrets{};
           __m256 sum = zero;
           for (std::size_t action = 0U; action < action_count; ++action) {
             const __m256i codes = _mm256_and_si256(
-                _mm256_i32gather_epi32(
-                    reinterpret_cast<const int *>(state + action), offsets, 2),
+                _mm256_i32gather_epi32(reinterpret_cast<const int *>(state + action), offsets, 2),
                 _mm256_set1_epi32(0x1fff));
-            regrets[action] =
-                _mm256_castsi256_ps(_mm256_slli_epi32(codes, 18));
+            regrets[action] = _mm256_castsi256_ps(_mm256_slli_epi32(codes, 18));
             sum = _mm256_add_ps(sum, regrets[action]);
           }
-          const __m256 no_positive =
-              _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
+          const __m256 no_positive = _mm256_cmp_ps(sum, zero, _CMP_LE_OQ);
           const __m256 inverse = _mm256_div_ps(one, sum);
           for (std::size_t action = 0U; action < action_count; ++action) {
-            const __m256 strategy = _mm256_blendv_ps(
-                _mm256_mul_ps(regrets[action], inverse), uniform, no_positive);
+            const __m256 strategy =
+                _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse), uniform, no_positive);
             if (local_indexed) {
               _mm256_storeu_ps(strategies[action].data() + local, strategy);
             } else {
@@ -5324,20 +5364,16 @@ private:
         }
       }
       for (; local < combos.size(); ++local) {
-        const auto output_slot =
-            local_indexed ? local : static_cast<std::size_t>(slots[local]);
-        const auto base = static_cast<std::size_t>(decision.action_base) +
-                          local * action_count;
+        const auto output_slot = local_indexed ? local : static_cast<std::size_t>(slots[local]);
+        const auto base = static_cast<std::size_t>(decision.action_base) + local * action_count;
         double sum = 0.0;
         for (std::size_t action = 0U; action < action_count; ++action) {
-          const double regret = decode_regret13(
-              buffers_.compact_regret16[base + action]);
+          const double regret = decode_regret13(buffers_.compact_regret16[base + action]);
           strategies[action][output_slot] = static_cast<Scalar>(regret);
           sum += regret;
         }
         if (sum <= 0.0) {
-          const auto uniform_value = static_cast<Scalar>(
-              1.0 / static_cast<double>(action_count));
+          const auto uniform_value = static_cast<Scalar>(1.0 / static_cast<double>(action_count));
           for (std::size_t action = 0U; action < action_count; ++action) {
             strategies[action][output_slot] = uniform_value;
           }
@@ -5354,12 +5390,10 @@ private:
       std::size_t local_index = 0U;
       {
         if (action_count == 2U) {
-          const auto &slots = PlayerIndexed
-                                  ? board.player_flop_slots[decision.player]
-                                  : board.player_active_slots[decision.player];
+          const auto &slots = PlayerIndexed ? board.player_flop_slots[decision.player]
+                                            : board.player_active_slots[decision.player];
           const __m128i expand_words =
-              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                            6, 7, 8, -1, 9, 10, 11, -1);
+              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
           const __m128i regret_mask = _mm_set1_epi32(0x1fff);
           const __m256d half = _mm256_set1_pd(0.5);
           const __m256d zero = _mm256_setzero_pd();
@@ -5372,75 +5406,64 @@ private:
             for (; local_index + 8U <= slots.size(); local_index += 8U) {
               const auto *const packed =
                   buffers_.compact_state +
-                  (static_cast<std::size_t>(decision.action_base) +
-                   local_index * 2U) *
-                      3U;
+                  (static_cast<std::size_t>(decision.action_base) + local_index * 2U) * 3U;
               const std::array<__m128, 4> groups{
                   _mm_castsi128_ps(_mm_slli_epi32(
+                      _mm_and_si128(_mm_shuffle_epi8(
+                                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                                        expand_words),
+                                    regret_mask),
+                      18)),
+                  _mm_castsi128_ps(_mm_slli_epi32(
                       _mm_and_si128(
                           _mm_shuffle_epi8(
-                              _mm_loadu_si128(
-                                  reinterpret_cast<const __m128i *>(packed)),
+                              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
                               expand_words),
                           regret_mask),
                       18)),
                   _mm_castsi128_ps(_mm_slli_epi32(
                       _mm_and_si128(
                           _mm_shuffle_epi8(
-                              _mm_loadu_si128(
-                                  reinterpret_cast<const __m128i *>(packed + 12U)),
+                              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 24U)),
                               expand_words),
                           regret_mask),
                       18)),
                   _mm_castsi128_ps(_mm_slli_epi32(
                       _mm_and_si128(
                           _mm_shuffle_epi8(
-                              _mm_loadu_si128(
-                                  reinterpret_cast<const __m128i *>(packed + 24U)),
-                              expand_words),
-                          regret_mask),
-                      18)),
-                  _mm_castsi128_ps(_mm_slli_epi32(
-                      _mm_and_si128(
-                          _mm_shuffle_epi8(
-                              _mm_loadu_si128(
-                                  reinterpret_cast<const __m128i *>(packed + 36U)),
+                              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 36U)),
                               expand_words),
                           regret_mask),
                       18))};
-              const __m128 first_low = _mm_shuffle_ps(
-                  groups[0], groups[1], _MM_SHUFFLE(2, 0, 2, 0));
-              const __m128 first_high = _mm_shuffle_ps(
-                  groups[2], groups[3], _MM_SHUFFLE(2, 0, 2, 0));
-              const __m128 second_low = _mm_shuffle_ps(
-                  groups[0], groups[1], _MM_SHUFFLE(3, 1, 3, 1));
-              const __m128 second_high = _mm_shuffle_ps(
-                  groups[2], groups[3], _MM_SHUFFLE(3, 1, 3, 1));
-              const __m256 first = _mm256_insertf128_ps(
-                  _mm256_castps128_ps256(first_low), first_high, 1);
-              const __m256 second = _mm256_insertf128_ps(
-                  _mm256_castps128_ps256(second_low), second_high, 1);
+              const __m128 first_low =
+                  _mm_shuffle_ps(groups[0], groups[1], _MM_SHUFFLE(2, 0, 2, 0));
+              const __m128 first_high =
+                  _mm_shuffle_ps(groups[2], groups[3], _MM_SHUFFLE(2, 0, 2, 0));
+              const __m128 second_low =
+                  _mm_shuffle_ps(groups[0], groups[1], _MM_SHUFFLE(3, 1, 3, 1));
+              const __m128 second_high =
+                  _mm_shuffle_ps(groups[2], groups[3], _MM_SHUFFLE(3, 1, 3, 1));
+              const __m256 first =
+                  _mm256_insertf128_ps(_mm256_castps128_ps256(first_low), first_high, 1);
+              const __m256 second =
+                  _mm256_insertf128_ps(_mm256_castps128_ps256(second_low), second_high, 1);
               const __m256 sum = _mm256_add_ps(first, second);
-              const __m256 use_uniform =
-                  _mm256_cmp_ps(sum, float_zero, _CMP_LE_OQ);
+              const __m256 use_uniform = _mm256_cmp_ps(sum, float_zero, _CMP_LE_OQ);
               const __m256 inverse = _mm256_div_ps(float_one, sum);
-              const __m256 normalized_first = _mm256_blendv_ps(
-                  _mm256_mul_ps(first, inverse), float_half, use_uniform);
-              const __m256 normalized_second = _mm256_blendv_ps(
-                  _mm256_mul_ps(second, inverse), float_half, use_uniform);
+              const __m256 normalized_first =
+                  _mm256_blendv_ps(_mm256_mul_ps(first, inverse), float_half, use_uniform);
+              const __m256 normalized_second =
+                  _mm256_blendv_ps(_mm256_mul_ps(second, inverse), float_half, use_uniform);
               if (local_indexed) {
-                _mm256_storeu_ps(strategies[0].data() + local_index,
-                                 normalized_first);
-                _mm256_storeu_ps(strategies[1].data() + local_index,
-                                 normalized_second);
+                _mm256_storeu_ps(strategies[0].data() + local_index, normalized_first);
+                _mm256_storeu_ps(strategies[1].data() + local_index, normalized_second);
               } else {
                 alignas(32) float first_lanes[8];
                 alignas(32) float second_lanes[8];
                 _mm256_store_ps(first_lanes, normalized_first);
                 _mm256_store_ps(second_lanes, normalized_second);
                 for (std::size_t lane = 0U; lane < 8U; ++lane) {
-                  const auto slot =
-                      static_cast<std::size_t>(slots[local_index + lane]);
+                  const auto slot = static_cast<std::size_t>(slots[local_index + lane]);
                   strategies[0][slot] = first_lanes[lane];
                   strategies[1][slot] = second_lanes[lane];
                 }
@@ -5450,41 +5473,31 @@ private:
           for (; local_index + 4U < slots.size(); local_index += 4U) {
             const auto *const packed =
                 buffers_.compact_state +
-                (static_cast<std::size_t>(decision.action_base) +
-                 local_index * 2U) *
-                    3U;
+                (static_cast<std::size_t>(decision.action_base) + local_index * 2U) * 3U;
             const __m128i low_words = _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                expand_words);
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)), expand_words);
             const __m128i high_words = _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                expand_words);
-            const __m128 low_regrets = _mm_castsi128_ps(
-                _mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
-            const __m128 high_regrets = _mm_castsi128_ps(
-                _mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
-            const __m256d first = _mm256_cvtps_pd(
-                _mm_shuffle_ps(low_regrets, high_regrets,
-                               _MM_SHUFFLE(2, 0, 2, 0)));
-            const __m256d second = _mm256_cvtps_pd(
-                _mm_shuffle_ps(low_regrets, high_regrets,
-                               _MM_SHUFFLE(3, 1, 3, 1)));
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)), expand_words);
+            const __m128 low_regrets =
+                _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
+            const __m128 high_regrets =
+                _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
+            const __m256d first =
+                _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0)));
+            const __m256d second =
+                _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1)));
             const __m256d sum = _mm256_add_pd(first, second);
-            const __m256d use_uniform =
-                _mm256_cmp_pd(sum, zero, _CMP_LE_OQ);
-            const __m256d inverse =
-                _mm256_div_pd(_mm256_set1_pd(1.0), sum);
+            const __m256d use_uniform = _mm256_cmp_pd(sum, zero, _CMP_LE_OQ);
+            const __m256d inverse = _mm256_div_pd(_mm256_set1_pd(1.0), sum);
             _mm256_store_pd(first_values,
-                            _mm256_blendv_pd(_mm256_mul_pd(first, inverse),
-                                             half, use_uniform));
+                            _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, use_uniform));
             _mm256_store_pd(second_values,
-                            _mm256_blendv_pd(_mm256_mul_pd(second, inverse),
-                                             half, use_uniform));
+                            _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, use_uniform));
             if (local_indexed) {
               store_four_from_double(strategies[0].data() + local_index,
-                               _mm256_load_pd(first_values));
+                                     _mm256_load_pd(first_values));
               store_four_from_double(strategies[1].data() + local_index,
-                               _mm256_load_pd(second_values));
+                                     _mm256_load_pd(second_values));
             } else {
               for (std::size_t lane = 0U; lane < 4U; ++lane) {
                 const auto slot = static_cast<std::size_t>(slots[local_index + lane]);
@@ -5494,12 +5507,10 @@ private:
             }
           }
         } else if (action_count == 3U) {
-          const auto &slots = PlayerIndexed
-                                  ? board.player_flop_slots[decision.player]
-                                  : board.player_active_slots[decision.player];
+          const auto &slots = PlayerIndexed ? board.player_flop_slots[decision.player]
+                                            : board.player_active_slots[decision.player];
           const __m128i expand_words =
-              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                            6, 7, 8, -1, -1, -1, -1, -1);
+              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, -1, -1, -1, -1);
           const __m128i regret_mask = _mm_set1_epi32(0x1fff);
           const __m256d third = _mm256_set1_pd(1.0 / 3.0);
           const __m256d zero = _mm256_setzero_pd();
@@ -5511,16 +5522,13 @@ private:
             for (; local_index + 8U <= slots.size(); local_index += 8U) {
               const auto *const packed =
                   buffers_.compact_state +
-                  (static_cast<std::size_t>(decision.action_base) +
-                   local_index * 3U) *
-                      3U;
+                  (static_cast<std::size_t>(decision.action_base) + local_index * 3U) * 3U;
               std::array<__m128, 8> rows{};
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
                 rows[lane] = _mm_castsi128_ps(_mm_slli_epi32(
                     _mm_and_si128(
                         _mm_shuffle_epi8(
-                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                                packed + lane * 9U)),
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + lane * 9U)),
                             expand_words),
                         regret_mask),
                     18));
@@ -5529,21 +5537,17 @@ private:
               _MM_TRANSPOSE4_PS(rows[4], rows[5], rows[6], rows[7]);
               std::array<__m256, 3> regrets{};
               for (std::size_t action = 0U; action < 3U; ++action) {
-                regrets[action] = _mm256_insertf128_ps(
-                    _mm256_castps128_ps256(rows[action]), rows[action + 4U], 1);
+                regrets[action] = _mm256_insertf128_ps(_mm256_castps128_ps256(rows[action]),
+                                                       rows[action + 4U], 1);
               }
-              const __m256 sum = _mm256_add_ps(
-                  _mm256_add_ps(regrets[0], regrets[1]), regrets[2]);
-              const __m256 use_uniform =
-                  _mm256_cmp_ps(sum, zero_float, _CMP_LE_OQ);
+              const __m256 sum = _mm256_add_ps(_mm256_add_ps(regrets[0], regrets[1]), regrets[2]);
+              const __m256 use_uniform = _mm256_cmp_ps(sum, zero_float, _CMP_LE_OQ);
               const __m256 inverse = _mm256_div_ps(one_float, sum);
               for (std::size_t action = 0U; action < 3U; ++action) {
-                const __m256 strategy = _mm256_blendv_ps(
-                    _mm256_mul_ps(regrets[action], inverse), uniform_float,
-                    use_uniform);
+                const __m256 strategy = _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse),
+                                                         uniform_float, use_uniform);
                 if (local_indexed) {
-                  _mm256_storeu_ps(strategies[action].data() + local_index,
-                                   strategy);
+                  _mm256_storeu_ps(strategies[action].data() + local_index, strategy);
                 } else {
                   alignas(32) float lanes[8];
                   _mm256_store_ps(lanes, strategy);
@@ -5557,56 +5561,51 @@ private:
           for (; local_index + 4U < slots.size(); local_index += 4U) {
             const auto *const packed =
                 buffers_.compact_state +
-                (static_cast<std::size_t>(decision.action_base) +
-                 local_index * 3U) *
-                    3U;
+                (static_cast<std::size_t>(decision.action_base) + local_index * 3U) * 3U;
             std::array<__m128, 4> regret_rows{
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                                         expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 9U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 9U)),
+                            expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 18U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 18U)),
+                            expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 27U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 27U)),
+                            expand_words),
+                        regret_mask),
                     18))};
-            _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1],
-                              regret_rows[2], regret_rows[3]);
-            const std::array<__m256d, 3> regrets{
-                _mm256_cvtps_pd(regret_rows[0]),
-                _mm256_cvtps_pd(regret_rows[1]),
-                _mm256_cvtps_pd(regret_rows[2])};
-            const __m256d sum = _mm256_add_pd(
-                _mm256_add_pd(regrets[0], regrets[1]), regrets[2]);
-            const __m256d use_uniform =
-                _mm256_cmp_pd(sum, zero, _CMP_LE_OQ);
-            const __m256d inverse =
-                _mm256_div_pd(_mm256_set1_pd(1.0), sum);
+            _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1], regret_rows[2], regret_rows[3]);
+            const std::array<__m256d, 3> regrets{_mm256_cvtps_pd(regret_rows[0]),
+                                                 _mm256_cvtps_pd(regret_rows[1]),
+                                                 _mm256_cvtps_pd(regret_rows[2])};
+            const __m256d sum = _mm256_add_pd(_mm256_add_pd(regrets[0], regrets[1]), regrets[2]);
+            const __m256d use_uniform = _mm256_cmp_pd(sum, zero, _CMP_LE_OQ);
+            const __m256d inverse = _mm256_div_pd(_mm256_set1_pd(1.0), sum);
             for (std::size_t action = 0U; action < 3U; ++action) {
               _mm256_store_pd(
                   normalized[action],
-                  _mm256_blendv_pd(_mm256_mul_pd(regrets[action], inverse),
-                                   third, use_uniform));
+                  _mm256_blendv_pd(_mm256_mul_pd(regrets[action], inverse), third, use_uniform));
             }
             if (local_indexed) {
               for (std::size_t action = 0U; action < 3U; ++action) {
                 store_four_from_double(strategies[action].data() + local_index,
-                                 _mm256_load_pd(normalized[action]));
+                                       _mm256_load_pd(normalized[action]));
               }
             } else {
               for (std::size_t lane = 0U; lane < 4U; ++lane) {
@@ -5618,12 +5617,10 @@ private:
             }
           }
         } else if (action_count == 4U) {
-          const auto &slots = PlayerIndexed
-                                  ? board.player_flop_slots[decision.player]
-                                  : board.player_active_slots[decision.player];
+          const auto &slots = PlayerIndexed ? board.player_flop_slots[decision.player]
+                                            : board.player_active_slots[decision.player];
           const __m128i expand_words =
-              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                            6, 7, 8, -1, 9, 10, 11, -1);
+              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
           const __m128i regret_mask = _mm_set1_epi32(0x1fff);
           const __m256d uniform = _mm256_set1_pd(0.25);
           const __m256d zero = _mm256_setzero_pd();
@@ -5635,16 +5632,13 @@ private:
             for (; local_index + 8U <= slots.size(); local_index += 8U) {
               const auto *const packed =
                   buffers_.compact_state +
-                  (static_cast<std::size_t>(decision.action_base) +
-                   local_index * 4U) *
-                      3U;
+                  (static_cast<std::size_t>(decision.action_base) + local_index * 4U) * 3U;
               std::array<__m128, 8> rows{};
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
                 rows[lane] = _mm_castsi128_ps(_mm_slli_epi32(
                     _mm_and_si128(
                         _mm_shuffle_epi8(
-                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                                packed + lane * 12U)),
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + lane * 12U)),
                             expand_words),
                         regret_mask),
                     18));
@@ -5653,22 +5647,18 @@ private:
               _MM_TRANSPOSE4_PS(rows[4], rows[5], rows[6], rows[7]);
               std::array<__m256, 4> regrets{};
               for (std::size_t action = 0U; action < 4U; ++action) {
-                regrets[action] = _mm256_insertf128_ps(
-                    _mm256_castps128_ps256(rows[action]), rows[action + 4U], 1);
+                regrets[action] = _mm256_insertf128_ps(_mm256_castps128_ps256(rows[action]),
+                                                       rows[action + 4U], 1);
               }
-              const __m256 sum = _mm256_add_ps(
-                  _mm256_add_ps(regrets[0], regrets[1]),
-                  _mm256_add_ps(regrets[2], regrets[3]));
-              const __m256 use_uniform =
-                  _mm256_cmp_ps(sum, zero_float, _CMP_LE_OQ);
+              const __m256 sum = _mm256_add_ps(_mm256_add_ps(regrets[0], regrets[1]),
+                                               _mm256_add_ps(regrets[2], regrets[3]));
+              const __m256 use_uniform = _mm256_cmp_ps(sum, zero_float, _CMP_LE_OQ);
               const __m256 inverse = _mm256_div_ps(one_float, sum);
               for (std::size_t action = 0U; action < 4U; ++action) {
-                const __m256 strategy = _mm256_blendv_ps(
-                    _mm256_mul_ps(regrets[action], inverse), uniform_float,
-                    use_uniform);
+                const __m256 strategy = _mm256_blendv_ps(_mm256_mul_ps(regrets[action], inverse),
+                                                         uniform_float, use_uniform);
                 if (local_indexed) {
-                  _mm256_storeu_ps(strategies[action].data() + local_index,
-                                   strategy);
+                  _mm256_storeu_ps(strategies[action].data() + local_index, strategy);
                 } else {
                   alignas(32) float lanes[8];
                   _mm256_store_ps(lanes, strategy);
@@ -5682,60 +5672,58 @@ private:
           for (; local_index + 4U < slots.size(); local_index += 4U) {
             const auto *const block =
                 buffers_.compact_state +
-                (static_cast<std::size_t>(decision.action_base) +
-                 local_index * 4U) * 3U;
+                (static_cast<std::size_t>(decision.action_base) + local_index * 4U) * 3U;
             std::array<__m128, 4> regret_rows{
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
+                                         expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 12U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 12U)),
+                            expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 24U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 24U)),
+                            expand_words),
+                        regret_mask),
                     18)),
                 _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(_mm_shuffle_epi8(
-                                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 36U)),
-                                      expand_words),
-                                  regret_mask),
+                    _mm_and_si128(
+                        _mm_shuffle_epi8(
+                            _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 36U)),
+                            expand_words),
+                        regret_mask),
                     18))};
-            _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1],
-                              regret_rows[2], regret_rows[3]);
+            _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1], regret_rows[2], regret_rows[3]);
             const std::array<__m256d, 4> regrets{
                 _mm256_cvtps_pd(regret_rows[0]), _mm256_cvtps_pd(regret_rows[1]),
                 _mm256_cvtps_pd(regret_rows[2]), _mm256_cvtps_pd(regret_rows[3])};
-            const __m256d sum = _mm256_add_pd(
-                _mm256_add_pd(regrets[0], regrets[1]),
-                _mm256_add_pd(regrets[2], regrets[3]));
+            const __m256d sum = _mm256_add_pd(_mm256_add_pd(regrets[0], regrets[1]),
+                                              _mm256_add_pd(regrets[2], regrets[3]));
             const __m256d use_uniform = _mm256_cmp_pd(sum, zero, _CMP_LE_OQ);
             const __m256d inverse = _mm256_div_pd(_mm256_set1_pd(1.0), sum);
             for (std::size_t action = 0U; action < 4U; ++action) {
               _mm256_store_pd(
                   normalized[action],
-                  _mm256_blendv_pd(_mm256_mul_pd(regrets[action], inverse),
-                                   uniform, use_uniform));
+                  _mm256_blendv_pd(_mm256_mul_pd(regrets[action], inverse), uniform, use_uniform));
             }
             if (local_indexed) {
               for (std::size_t action = 0U; action < 4U; ++action) {
                 store_four_from_double(strategies[action].data() + local_index,
-                                 _mm256_load_pd(normalized[action]));
+                                       _mm256_load_pd(normalized[action]));
               }
             } else {
               for (std::size_t lane = 0U; lane < 4U; ++lane) {
                 const auto slot = static_cast<std::size_t>(slots[local_index + lane]);
                 for (std::size_t action = 0U; action < 4U; ++action) {
-                  strategies[action][slot] =
-                      static_cast<Scalar>(normalized[action][lane]);
+                  strategies[action][slot] = static_cast<Scalar>(normalized[action][lane]);
                 }
               }
             }
@@ -5746,13 +5734,12 @@ private:
         const auto combo = board.player_combos[decision.player][local_index];
         const auto local = board.player_local[decision.player][combo];
         const auto offset = canonical_action_base(canonical, local);
-        const auto *const block =
-            buffers_.compact_state + static_cast<std::size_t>(offset) * 3U;
+        const auto *const block = buffers_.compact_state + static_cast<std::size_t>(offset) * 3U;
         const auto slot = local_indexed ? local_index : value_slot(combo, value_player);
         double sum = 0.0;
         for (std::size_t action = 0U; action < action_count; ++action) {
-          const double regret = decode_regret13(static_cast<std::uint16_t>(
-              compact_word(block + action * 3U) & 0x1fffU));
+          const double regret = decode_regret13(
+              static_cast<std::uint16_t>(compact_word(block + action * 3U) & 0x1fffU));
           strategies[action][slot] = static_cast<Scalar>(regret);
           sum += regret;
         }
@@ -5768,8 +5755,7 @@ private:
             strategies[1][slot] = static_cast<Scalar>(strategies[1][slot] * inverse);
           } else {
             for (std::size_t action = 0U; action < action_count; ++action) {
-              strategies[action][slot] =
-                  static_cast<Scalar>(strategies[action][slot] / sum);
+              strategies[action][slot] = static_cast<Scalar>(strategies[action][slot] / sum);
             }
           }
         }
@@ -5780,8 +5766,7 @@ private:
       for (const ComboId combo : board.player_combos[decision.player]) {
         const auto local = board.player_local[decision.player][combo];
         const auto offset = canonical_action_base(canonical, local);
-        const auto *const packed =
-            buffers_.regret_float24 + static_cast<std::size_t>(offset) * 3U;
+        const auto *const packed = buffers_.regret_float24 + static_cast<std::size_t>(offset) * 3U;
         const double first = static_cast<double>(decode_float24(packed));
         const double second = static_cast<double>(decode_float24(packed + 3U));
         const double sum = first + second;
@@ -5884,8 +5869,8 @@ private:
       return false;
     }
     const bool profile = hotpath_profiling_enabled();
-    const auto task_started = profile ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
+    const auto task_started =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     queue->active_tasks.fetch_add(1U, std::memory_order_acq_rel);
     (*task)(*this);
     queue->active_tasks.fetch_sub(1U, std::memory_order_acq_rel);
@@ -5900,15 +5885,13 @@ private:
   }
 
   void wait_for_parallel_future(std::future<TraversalResult> &future) {
-    while (future.wait_for(std::chrono::seconds(0)) !=
-           std::future_status::ready) {
+    while (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
       if (try_pull_and_run()) {
         continue;
       }
       ParallelTaskQueue *const queue = parallel_shared_.get();
       const auto epoch = queue->completion_epoch.load(std::memory_order_acquire);
-      if (future.wait_for(std::chrono::seconds(0)) !=
-          std::future_status::ready) {
+      if (future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         queue->completion_epoch.wait(epoch, std::memory_order_acquire);
       }
     }
@@ -5924,16 +5907,13 @@ private:
       return 0U;
     }
     const auto active = queue->active_tasks.load(std::memory_order_acquire);
-    const auto workers = parallel_workers_.empty()
-                             ? parallel_pool_size_
-                             : parallel_workers_.size();
+    const auto workers = parallel_workers_.empty() ? parallel_pool_size_ : parallel_workers_.size();
     return active < workers ? workers - active : 0U;
   }
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_parallel_entry(const std::uint32_t node_id, const std::uint8_t updating_player,
-                               const ReachRef &reach,
-                               const double strategy_weight) {
+                               const ReachRef &reach, const double strategy_weight) {
     if (parallel_worker_ != nullptr &&
         layout_.canonical_public_graph.nodes[node_id].kind == PublicNodeKind::Decision) {
       return cfr_canonical_parallel_decision(node_id, updating_player, reach, strategy_weight);
@@ -5943,8 +5923,7 @@ private:
 
   Result<ComboVector, PostflopSolverError>
   cfr_canonical_parallel_decision(const std::uint32_t node_id, const std::uint8_t updating_player,
-                                  const ReachRef &reach,
-                                  const double strategy_weight) {
+                                  const ReachRef &reach, const double strategy_weight) {
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     const auto action_count = canonical.edges.size();
     if (canonical.kind != PublicNodeKind::Decision || action_count < 2U ||
@@ -5962,8 +5941,8 @@ private:
           PostflopSolverError::InvalidConfiguration);
     }
     if (decision.player == updating_player) {
-      const auto entries = static_cast<std::uint64_t>(
-          board.player_combos[updating_player].size() * action_count);
+      const auto entries =
+          static_cast<std::uint64_t>(board.player_combos[updating_player].size() * action_count);
       if (!is_locked_root(canonical)) {
         work_counters_.regret_update_entries += entries;
       }
@@ -5985,8 +5964,7 @@ private:
         const auto slot = value_slot(combo, decision.player);
         child_reaches[action][decision.player][slot] *= strategies[action][slot];
         actor_reach_nonzero[action] =
-            actor_reach_nonzero[action] ||
-            child_reaches[action][decision.player][slot] != 0.0;
+            actor_reach_nonzero[action] || child_reaches[action][decision.player][slot] != 0.0;
       }
       child_reaches[action] =
           transform_reach(child_reaches[action],
@@ -5996,8 +5974,8 @@ private:
     std::packaged_task<TraversalResult(DenseTraversal &)> first_task(
         [worker = parallel_worker_.get(), child = parallel_outcome.child, updating_player,
          child_reach = child_reaches[0], strategy_weight,
-         skip_zero = decision.player != updating_player && !actor_reach_nonzero[0]](
-            DenseTraversal &) {
+         skip_zero =
+             decision.player != updating_player && !actor_reach_nonzero[0]](DenseTraversal &) {
           if (skip_zero) {
             return Result<ComboVector, PostflopSolverError>::success(ComboVector{});
           }
@@ -6013,16 +5991,15 @@ private:
         action_values[action] = zeroed_values(updating_player);
         continue;
       }
-      auto child = cfr_canonical(outcome.child, updating_player,
-                                 {&child_reaches[action][0], &child_reaches[action][1]},
-                                 strategy_weight);
+      auto child =
+          cfr_canonical(outcome.child, updating_player,
+                        {&child_reaches[action][0], &child_reaches[action][1]}, strategy_weight);
       if (!child) {
         serial_error = child.error();
         break;
       }
-      action_values[action] =
-        transform_values_to_parent(child.value(), outcome.physical_to_child_automorphism,
-                                   updating_player);
+      action_values[action] = transform_values_to_parent(
+          child.value(), outcome.physical_to_child_automorphism, updating_player);
     }
     auto first_values = first.get();
     if (!first_values || serial_error) {
@@ -6087,8 +6064,7 @@ private:
               }
             }
             const double weight = strategy_weight * (*reach[updating_player])[slot];
-            add_strategy_pair(index, weight * strategies[0][slot],
-                              weight * strategies[1][slot]);
+            add_strategy_pair(index, weight * strategies[0][slot], weight * strategies[1][slot]);
             continue;
           }
           for (std::size_t action = 0; action < action_count; ++action) {
@@ -6127,8 +6103,7 @@ private:
               }
             }
             const double weight = strategy_weight * (*reach[updating_player])[slot];
-            add_strategy_pair(index, weight * strategies[0][slot],
-                              weight * strategies[1][slot]);
+            add_strategy_pair(index, weight * strategies[0][slot], weight * strategies[1][slot]);
             continue;
           }
           for (std::size_t action = 0; action < action_count; ++action) {
@@ -6149,9 +6124,10 @@ private:
   // Physical-tree CFR traversal writing directly into `values_out` (no
   // per-node Result<ComboVector> return: the value vector is materialized in
   // the caller's buffer, eliminating the 5 KB move up the recursion).
-  std::optional<PostflopSolverError>
-  accumulate_average_only(const NodeId node_id, const std::uint8_t updating_player,
-                          const ReachRef &reach, const double strategy_weight) {
+  std::optional<PostflopSolverError> accumulate_average_only(const NodeId node_id,
+                                                             const std::uint8_t updating_player,
+                                                             const ReachRef &reach,
+                                                             const double strategy_weight) {
     if (hotpath_profiling_enabled()) {
       ++prof_average_only_nodes_;
     }
@@ -6161,18 +6137,15 @@ private:
       return std::nullopt;
     }
     if (node.kind == PublicNodeKind::Chance) {
-      const auto &board =
-          layout_.boards[layout_.node_board[static_cast<std::size_t>(node.id)]];
+      const auto &board = layout_.boards[layout_.node_board[static_cast<std::size_t>(node.id)]];
       const std::size_t worker_count =
           parallel_workers_.empty() ? parallel_pool_size_ : parallel_workers_.size();
       // An average-only river subtree writes strategy sums owned exclusively
       // by that river card. Fan those disjoint regions across the existing
       // traversal pool; the parent reach is read-only and remains alive until
       // every future is joined.
-      if (std::popcount(board.mask) == 4U && worker_count > 0U &&
-          node.edges.size() > 1U) {
-        const std::size_t chunk_count =
-            std::min(node.edges.size(), worker_count + 1U);
+      if (std::popcount(board.mask) == 4U && worker_count > 0U && node.edges.size() > 1U) {
+        const std::size_t chunk_count = std::min(node.edges.size(), worker_count + 1U);
         std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
         std::vector<std::future<TraversalResult>> futures;
         tasks.reserve(chunk_count - 1U);
@@ -6181,12 +6154,12 @@ private:
           const std::size_t begin = chunk * node.edges.size() / chunk_count;
           const std::size_t end = (chunk + 1U) * node.edges.size() / chunk_count;
           std::packaged_task<TraversalResult(DenseTraversal &)> task(
-              [edges = &node.edges, begin, end, updating_player,
-               reach_0 = reach[0], reach_1 = reach[1], strategy_weight](DenseTraversal &self) {
+              [edges = &node.edges, begin, end, updating_player, reach_0 = reach[0],
+               reach_1 = reach[1], strategy_weight](DenseTraversal &self) {
                 for (std::size_t index = begin; index < end; ++index) {
-                  if (const auto error = self.accumulate_average_only(
-                          (*edges)[index].child, updating_player, {reach_0, reach_1},
-                          strategy_weight)) {
+                  if (const auto error =
+                          self.accumulate_average_only((*edges)[index].child, updating_player,
+                                                       {reach_0, reach_1}, strategy_weight)) {
                     return Result<ComboVector, PostflopSolverError>::failure(*error);
                   }
                 }
@@ -6199,8 +6172,8 @@ private:
         std::optional<PostflopSolverError> main_error;
         const std::size_t main_end = node.edges.size() / chunk_count;
         for (std::size_t index = 0U; index < main_end && !main_error; ++index) {
-          main_error = accumulate_average_only(
-              node.edges[index].child, updating_player, reach, strategy_weight);
+          main_error = accumulate_average_only(node.edges[index].child, updating_player, reach,
+                                               strategy_weight);
         }
         std::optional<PostflopSolverError> worker_error;
         for (auto &future : futures) {
@@ -6216,8 +6189,8 @@ private:
         return worker_error;
       }
       for (const auto &edge : node.edges) {
-        if (const auto error = accumulate_average_only(edge.child, updating_player, reach,
-                                                       strategy_weight)) {
+        if (const auto error =
+                accumulate_average_only(edge.child, updating_player, reach, strategy_weight)) {
           return error;
         }
       }
@@ -6235,9 +6208,8 @@ private:
         if ((decision.terminal_child_mask & static_cast<std::uint8_t>(1U << action)) != 0U) {
           continue;
         }
-        if (const auto error =
-                accumulate_average_only(node.edges[action].child, updating_player, reach,
-                                        strategy_weight)) {
+        if (const auto error = accumulate_average_only(node.edges[action].child, updating_player,
+                                                       reach, strategy_weight)) {
           return error;
         }
       }
@@ -6253,11 +6225,9 @@ private:
       prof_average_only_entries_ += actor_combos.size() * action_count;
     }
     const bool locked_node = is_locked_root(node);
-    if (!locked_node && layout_.uses_direct_action_bases &&
-        buffers_.compact_state != nullptr) {
+    if (!locked_node && layout_.uses_direct_action_bases && buffers_.compact_state != nullptr) {
       const auto *const state =
-          buffers_.compact_state +
-          static_cast<std::size_t>(decision.action_base) * 3U;
+          buffers_.compact_state + static_cast<std::size_t>(decision.action_base) * 3U;
       std::size_t local = 0U;
 #if 0
       if constexpr (PlayerIndexed && std::is_same_v<Accumulator, float>) {
@@ -6397,47 +6367,37 @@ private:
 #endif
         if (action_count == 2U) {
           const __m128i expand_words =
-              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                            6, 7, 8, -1, 9, 10, 11, -1);
+              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
           const __m128i regret_mask = _mm_set1_epi32(0x1fff);
           const __m256d zero = _mm256_setzero_pd();
           const __m256d half = _mm256_set1_pd(0.5);
           const __m256d one = _mm256_set1_pd(1.0);
           for (; local + 4U < actor_combos.size(); local += 4U) {
             const auto *const packed = state + local * 6U;
-            const __m128i low_bytes = _mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(packed));
-            const __m128i high_bytes = _mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(packed + 12U));
+            const __m128i low_bytes = _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed));
+            const __m128i high_bytes =
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U));
             const __m128 low_regrets = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(_mm_shuffle_epi8(low_bytes, expand_words),
-                              regret_mask),
-                18));
+                _mm_and_si128(_mm_shuffle_epi8(low_bytes, expand_words), regret_mask), 18));
             const __m128 high_regrets = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(_mm_shuffle_epi8(high_bytes, expand_words),
-                              regret_mask),
-                18));
-            const __m256d first = _mm256_cvtps_pd(_mm_shuffle_ps(
-                low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0)));
-            const __m256d second = _mm256_cvtps_pd(_mm_shuffle_ps(
-                low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1)));
+                _mm_and_si128(_mm_shuffle_epi8(high_bytes, expand_words), regret_mask), 18));
+            const __m256d first =
+                _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0)));
+            const __m256d second =
+                _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1)));
             const __m256d sums = _mm256_add_pd(first, second);
-            const __m256d no_positive =
-                _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+            const __m256d no_positive = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
             const __m256d inverse = _mm256_div_pd(one, sums);
             store_four_from_double(
                 strategies[0].data() + local,
-                _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half,
-                                 no_positive));
+                _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, no_positive));
             store_four_from_double(
                 strategies[1].data() + local,
-                _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half,
-                                 no_positive));
+                _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, no_positive));
           }
         } else if (action_count == 3U) {
           const __m128i expand_three_words =
-              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                            6, 7, 8, -1, -1, -1, -1, -1);
+              _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, -1, -1, -1, -1);
           const __m128i regret_mask = _mm_set1_epi32(0x1fff);
           const __m256d zero = _mm256_setzero_pd();
           const __m256d uniform = _mm256_set1_pd(1.0 / 3.0);
@@ -6445,56 +6405,43 @@ private:
             const auto *const block = state + local * 9U;
             __m128 row0 = _mm_castsi128_ps(_mm_slli_epi32(
                 _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(
-                            reinterpret_cast<const __m128i *>(block)),
-                        expand_three_words),
+                    _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
+                                     expand_three_words),
                     regret_mask),
                 18));
             __m128 row1 = _mm_castsi128_ps(_mm_slli_epi32(
                 _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(
-                            reinterpret_cast<const __m128i *>(block + 9U)),
-                        expand_three_words),
+                    _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
+                                     expand_three_words),
                     regret_mask),
                 18));
             __m128 row2 = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(
-                            reinterpret_cast<const __m128i *>(block + 18U)),
-                        expand_three_words),
-                    regret_mask),
+                _mm_and_si128(_mm_shuffle_epi8(
+                                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
+                                  expand_three_words),
+                              regret_mask),
                 18));
             __m128 row3 = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(
-                            reinterpret_cast<const __m128i *>(block + 27U)),
-                        expand_three_words),
-                    regret_mask),
+                _mm_and_si128(_mm_shuffle_epi8(
+                                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
+                                  expand_three_words),
+                              regret_mask),
                 18));
             _MM_TRANSPOSE4_PS(row0, row1, row2, row3);
             const __m256d first = _mm256_cvtps_pd(row0);
             const __m256d second = _mm256_cvtps_pd(row1);
             const __m256d third = _mm256_cvtps_pd(row2);
-            const __m256d sums =
-                _mm256_add_pd(_mm256_add_pd(first, second), third);
-            const __m256d no_positive =
-                _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+            const __m256d sums = _mm256_add_pd(_mm256_add_pd(first, second), third);
+            const __m256d no_positive = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
             store_four_from_double(
                 strategies[0].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(first, sums), uniform,
-                                 no_positive));
+                _mm256_blendv_pd(_mm256_div_pd(first, sums), uniform, no_positive));
             store_four_from_double(
                 strategies[1].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(second, sums), uniform,
-                                 no_positive));
+                _mm256_blendv_pd(_mm256_div_pd(second, sums), uniform, no_positive));
             store_four_from_double(
                 strategies[2].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(third, sums), uniform,
-                                 no_positive));
+                _mm256_blendv_pd(_mm256_div_pd(third, sums), uniform, no_positive));
           }
         }
       }
@@ -6503,8 +6450,7 @@ private:
         double sum = 0.0;
         for (std::size_t action = 0U; action < action_count; ++action) {
           const double regret = decode_regret13(
-              static_cast<std::uint16_t>(
-                  compact_word(block + action * 3U) & 0x1fffU));
+              static_cast<std::uint16_t>(compact_word(block + action * 3U) & 0x1fffU));
           strategies[action][local] = static_cast<Scalar>(regret);
           sum += regret;
         }
@@ -6519,13 +6465,12 @@ private:
           strategies[1][local] = static_cast<Scalar>(strategies[1][local] * inverse);
         } else {
           for (std::size_t action = 0U; action < action_count; ++action) {
-            strategies[action][local] =
-                static_cast<Scalar>(strategies[action][local] / sum);
+            strategies[action][local] = static_cast<Scalar>(strategies[action][local] / sum);
           }
         }
       }
     } else if (!locked_node && action_count == 2U && layout_.uses_direct_action_bases &&
-        buffers_.regret_float24 != nullptr) {
+               buffers_.regret_float24 != nullptr) {
       // This traversal visits exactly the branches whose opponent reach is
       // zero. They still contribute to the updating player's average
       // strategy, so retain exact regret matching but decode four contiguous
@@ -6541,13 +6486,12 @@ private:
       for (; local + 4U < actor_combos.size(); local += 4U) {
         const auto *const packed = regrets + local * 6U;
         const __m128 first_four = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)), expand_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                             expand_float24),
             7));
         const __m128 second_four = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                expand_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
+                             expand_float24),
             7));
         const __m256d first =
             _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
@@ -6557,11 +6501,9 @@ private:
         const __m256d no_positive = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
         const __m256d inverse = _mm256_div_pd(one, sums);
         store_four_from_double(strategies[0].data() + local,
-                         _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half,
-                                          no_positive));
+                               _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, no_positive));
         store_four_from_double(strategies[1].data() + local,
-                         _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half,
-                                          no_positive));
+                               _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, no_positive));
       }
       for (; local < actor_combos.size(); ++local) {
         const auto *const block = regrets + local * 6U;
@@ -6579,11 +6521,10 @@ private:
     } else {
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
-        const auto locked = locked_node ? locked_root_strategy(board.local_index[combo_id])
-                                        : std::nullopt;
+        const auto locked =
+            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
         const auto strategy =
-            locked ? *locked
-                   : current_strategy(decision, static_cast<std::int16_t>(local), false);
+            locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), false);
         for (std::size_t action = 0; action < action_count; ++action) {
           strategies[action][local] = static_cast<Scalar>(strategy[action]);
         }
@@ -6594,12 +6535,11 @@ private:
       if ((decision.terminal_child_mask & static_cast<std::uint8_t>(1U << action)) != 0U) {
         continue;
       }
-      static_cast<void>(materialize_actor_reach(
-          board, updating_player, *reach[updating_player], strategies[action],
-          actor_reach, actor_combos.size(), false));
-      const ReachRef child_reach =
-          updating_player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                : ReachRef{reach[0], &actor_reach};
+      static_cast<void>(materialize_actor_reach(board, updating_player, *reach[updating_player],
+                                                strategies[action], actor_reach,
+                                                actor_combos.size(), false));
+      const ReachRef child_reach = updating_player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                         : ReachRef{reach[0], &actor_reach};
       if (const auto error =
               accumulate_average_only(child, updating_player, child_reach, strategy_weight)) {
         return error;
@@ -6620,19 +6560,17 @@ private:
         for (std::size_t lane = 0; lane < 4U; ++lane) {
           const auto reach_slot = board_reach_slot(board, updating_player, local + lane);
           const double weight = strategy_weight * (*reach[updating_player])[reach_slot];
-          updated[lane * 2U] = static_cast<double>(current_values[lane * 2U]) +
-                               weight * strategies[0][local + lane];
-          updated[lane * 2U + 1U] =
-              static_cast<double>(current_values[lane * 2U + 1U]) +
-              weight * strategies[1][local + lane];
+          updated[lane * 2U] =
+              static_cast<double>(current_values[lane * 2U]) + weight * strategies[0][local + lane];
+          updated[lane * 2U + 1U] = static_cast<double>(current_values[lane * 2U + 1U]) +
+                                    weight * strategies[1][local + lane];
         }
         const __m128 low = _mm256_cvtpd_ps(_mm256_load_pd(updated));
         const __m128 high = _mm256_cvtpd_ps(_mm256_load_pd(updated + 4U));
         __m256 as_float = _mm256_castps128_ps256(low);
         as_float = _mm256_insertf128_ps(as_float, high, 1);
-        _mm_storeu_si128(
-            reinterpret_cast<__m128i *>(averages + local * 2U),
-            _mm256_cvtps_ph(as_float, _MM_FROUND_TO_NEAREST_INT));
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(averages + local * 2U),
+                         _mm256_cvtps_ph(as_float, _MM_FROUND_TO_NEAREST_INT));
       }
       for (; local < actor_combos.size(); ++local) {
         const auto reach_slot = board_reach_slot(board, updating_player, local);
@@ -6648,15 +6586,13 @@ private:
         const auto reach_slot = board_reach_slot(board, updating_player, local);
         const double weight = strategy_weight * (*reach[updating_player])[reach_slot];
         const auto offset = static_cast<std::size_t>(decision.action_base) + local * 2U;
-        add_strategy_pair(offset, weight * strategies[0][local],
-                          weight * strategies[1][local]);
+        add_strategy_pair(offset, weight * strategies[0][local], weight * strategies[1][local]);
       }
     } else {
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto reach_slot = board_reach_slot(board, updating_player, local);
         const double weight = strategy_weight * (*reach[updating_player])[reach_slot];
-        const auto offset = static_cast<std::size_t>(decision.action_base) +
-                            local * action_count;
+        const auto offset = static_cast<std::size_t>(decision.action_base) + local * action_count;
         for (std::size_t action = 0; action < action_count; ++action) {
           add_strategy(offset + action, weight * strategies[action][local]);
         }
@@ -6665,15 +6601,11 @@ private:
     return std::nullopt;
   }
 
-  std::optional<PostflopSolverError> cfr_physical(const NodeId node_id,
-                                                  const std::uint8_t updating_player,
-                                                  const ReachRef &reach,
-                                                  const double strategy_weight,
-                                                  const bool updating_reach_nonzero,
-                                                  const double public_update_multiplicity,
-                                                  ComboVector &values_out,
-                                                  const PhysicalOrbitContext *orbit_context =
-                                                      nullptr) {
+  std::optional<PostflopSolverError>
+  cfr_physical(const NodeId node_id, const std::uint8_t updating_player, const ReachRef &reach,
+               const double strategy_weight, const bool updating_reach_nonzero,
+               const double public_update_multiplicity, ComboVector &values_out,
+               const PhysicalOrbitContext *orbit_context = nullptr) {
     const bool profile = hotpath_profiling_enabled();
     struct WallGuard {
       DenseTraversal *owner;
@@ -6692,13 +6624,13 @@ private:
     switch (node.kind) {
     case PublicNodeKind::TerminalFold:
     case PublicNodeKind::TerminalShowdown: {
-      const auto t_terminal = profile ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
-      const auto error = node.kind == PublicNodeKind::TerminalFold
-                             ? fold_values_into(node, updating_player,
-                                                *reach[1U - updating_player], values_out)
-                             : showdown_values_into(node, updating_player,
-                                                    *reach[1U - updating_player], values_out);
+      const auto t_terminal =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      const auto error =
+          node.kind == PublicNodeKind::TerminalFold
+              ? fold_values_into(node, updating_player, *reach[1U - updating_player], values_out)
+              : showdown_values_into(node, updating_player, *reach[1U - updating_player],
+                                     values_out);
       if (profile) {
         const double elapsed =
             std::chrono::duration<double>(std::chrono::steady_clock::now() - t_terminal).count();
@@ -6712,13 +6644,11 @@ private:
       return error;
     }
     case PublicNodeKind::Chance:
-      return cfr_chance(node, updating_player, reach, strategy_weight,
-                        updating_reach_nonzero, public_update_multiplicity, values_out,
-                        orbit_context);
+      return cfr_chance(node, updating_player, reach, strategy_weight, updating_reach_nonzero,
+                        public_update_multiplicity, values_out, orbit_context);
     case PublicNodeKind::Decision:
-      return cfr_decision(node, updating_player, reach, strategy_weight,
-                          updating_reach_nonzero, public_update_multiplicity, values_out,
-                          orbit_context);
+      return cfr_decision(node, updating_player, reach, strategy_weight, updating_reach_nonzero,
+                          public_update_multiplicity, values_out, orbit_context);
     }
     return PostflopSolverError::InvalidConfiguration;
   }
@@ -6811,20 +6741,17 @@ public:
         auto *const second_bytes = first_bytes + 3U;
         const auto first_word = compact_word(first_bytes);
         const auto second_word = compact_word(second_bytes);
-        const double first =
-            decode_regret13(static_cast<std::uint16_t>(first_word & 0x1fffU)) +
-            (*deferred_regret_delta_)[first_index];
-        const double second =
-            decode_regret13(static_cast<std::uint16_t>(second_word & 0x1fffU)) +
-            (*deferred_regret_delta_)[second_index];
+        const double first = decode_regret13(static_cast<std::uint16_t>(first_word & 0x1fffU)) +
+                             (*deferred_regret_delta_)[first_index];
+        const double second = decode_regret13(static_cast<std::uint16_t>(second_word & 0x1fffU)) +
+                              (*deferred_regret_delta_)[second_index];
         if (!std::isfinite(first) || !std::isfinite(second)) {
-          return Result<bool, PostflopSolverError>::failure(
-              PostflopSolverError::NumericalFailure);
+          return Result<bool, PostflopSolverError>::failure(PostflopSolverError::NumericalFailure);
         }
-        store_compact_word(first_bytes, (first_word & 0xffe000U) |
-                                           encode_regret13(std::max(0.0, first)));
-        store_compact_word(second_bytes, (second_word & 0xffe000U) |
-                                            encode_regret13(std::max(0.0, second)));
+        store_compact_word(first_bytes,
+                           (first_word & 0xffe000U) | encode_regret13(std::max(0.0, first)));
+        store_compact_word(second_bytes,
+                           (second_word & 0xffe000U) | encode_regret13(std::max(0.0, second)));
         (*deferred_regret_delta_)[first_index] = 0.0;
         (*deferred_regret_delta_)[second_index] = 0.0;
         clear_deferred_regret_touched(first_index);
@@ -6845,15 +6772,13 @@ public:
         std::uint64_t pair = 0U;
         std::memcpy(&pair, packed, 6U);
         const auto first_bits = static_cast<std::uint32_t>(pair & 0x00ffffffULL) << 7U;
-        const auto second_bits =
-            static_cast<std::uint32_t>((pair >> 24U) & 0x00ffffffULL) << 7U;
+        const auto second_bits = static_cast<std::uint32_t>((pair >> 24U) & 0x00ffffffULL) << 7U;
         const double first = static_cast<double>(std::bit_cast<float>(first_bits)) +
                              (*deferred_regret_delta_)[first_index];
         const double second = static_cast<double>(std::bit_cast<float>(second_bits)) +
                               (*deferred_regret_delta_)[second_index];
         if (!std::isfinite(first) || !std::isfinite(second)) {
-          return Result<bool, PostflopSolverError>::failure(
-              PostflopSolverError::NumericalFailure);
+          return Result<bool, PostflopSolverError>::failure(PostflopSolverError::NumericalFailure);
         }
         const std::uint64_t encoded =
             static_cast<std::uint64_t>(encode_float24_bits(std::max(0.0, first))) |
@@ -6907,8 +6832,7 @@ public:
   }
 
 private:
-  [[nodiscard]] bool
-  identity_automorphism(const std::uint8_t automorphism_index) const noexcept {
+  [[nodiscard]] bool identity_automorphism(const std::uint8_t automorphism_index) const noexcept {
     return layout_.automorphisms.size() == 1U ||
            (automorphism_index < layout_.active_automorphism_is_identity.size() &&
             layout_.active_automorphism_is_identity[automorphism_index] != 0U);
@@ -6925,13 +6849,12 @@ private:
     if constexpr (PlayerIndexed) {
       const auto &mapping = layout_.automorphisms[automorphism_index].combos;
       for (std::uint8_t player = 0U; player < 2U; ++player) {
-        for (std::size_t source_slot = 0U;
-             source_slot < layout_.player_flop_combos[player].size(); ++source_slot) {
+        for (std::size_t source_slot = 0U; source_slot < layout_.player_flop_combos[player].size();
+             ++source_slot) {
           const auto source_combo = layout_.player_flop_combos[player][source_slot];
           const auto target_slot = layout_.player_flop_slot[player][mapping[source_combo]];
           if (target_slot >= 0) {
-            transformed[player][static_cast<std::size_t>(target_slot)] =
-                reach[player][source_slot];
+            transformed[player][static_cast<std::size_t>(target_slot)] = reach[player][source_slot];
           }
         }
       }
@@ -6984,32 +6907,27 @@ private:
 
   void accumulate_transformed_values_to_parent(
       ComboVector &parent_values, const ComboVector &child_values,
-      const std::uint8_t automorphism_index,
-      const std::uint8_t updating_player, const BoardData &parent_board,
-      const CardId chance_card, const double probability) const {
+      const std::uint8_t automorphism_index, const std::uint8_t updating_player,
+      const BoardData &parent_board, const CardId chance_card, const double probability) const {
     const bool identity = identity_automorphism(automorphism_index);
-    const auto *const mapping = identity
-                                    ? nullptr
-                                    : &layout_.automorphisms[automorphism_index].combos;
+    const auto *const mapping =
+        identity ? nullptr : &layout_.automorphisms[automorphism_index].combos;
     if constexpr (PlayerIndexed) {
       const auto &compatible_slots =
-          parent_board.chance_compatible_flop_slots[updating_player]
-                                                    [chance_card.value()];
+          parent_board.chance_compatible_flop_slots[updating_player][chance_card.value()];
       for (const auto parent_slot_word : compatible_slots) {
         const auto parent_slot = static_cast<std::size_t>(parent_slot_word);
         std::size_t child_slot = parent_slot;
         if (!identity) {
-          const auto combo =
-              layout_.player_flop_combos[updating_player][parent_slot];
-          const auto mapped_slot =
-              layout_.player_flop_slot[updating_player][(*mapping)[combo]];
+          const auto combo = layout_.player_flop_combos[updating_player][parent_slot];
+          const auto mapped_slot = layout_.player_flop_slot[updating_player][(*mapping)[combo]];
           if (mapped_slot < 0) {
             continue;
           }
           child_slot = static_cast<std::size_t>(mapped_slot);
         }
-        parent_values[parent_slot] = static_cast<Scalar>(
-            parent_values[parent_slot] + probability * child_values[child_slot]);
+        parent_values[parent_slot] = static_cast<Scalar>(parent_values[parent_slot] +
+                                                         probability * child_values[child_slot]);
       }
     } else {
       for (const ComboId combo : parent_board.player_combos[updating_player]) {
@@ -7017,22 +6935,17 @@ private:
           continue;
         }
         const auto parent_slot = value_slot(combo, updating_player);
-        const auto child_slot = identity
-                                    ? parent_slot
-                                    : value_slot((*mapping)[combo],
-                                                 updating_player);
-        parent_values[parent_slot] = static_cast<Scalar>(
-            parent_values[parent_slot] +
-            probability * child_values[child_slot]);
+        const auto child_slot =
+            identity ? parent_slot : value_slot((*mapping)[combo], updating_player);
+        parent_values[parent_slot] = static_cast<Scalar>(parent_values[parent_slot] +
+                                                         probability * child_values[child_slot]);
       }
     }
   }
 
   std::optional<PostflopSolverError>
-  accumulate_canonical_average_only(const std::uint32_t node_id,
-                                    const std::uint8_t updating_player,
-                                    const ReachRef &reach,
-                                    const double strategy_weight) {
+  accumulate_canonical_average_only(const std::uint32_t node_id, const std::uint8_t updating_player,
+                                    const ReachRef &reach, const double strategy_weight) {
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
     if (canonical.kind == PublicNodeKind::Chance) {
@@ -7054,8 +6967,8 @@ private:
           return PostflopSolverError::InvalidConfiguration;
         }
         const auto &representative = edge.outcomes.front();
-        auto child_reach = transform_reach({*reach[0], *reach[1]},
-                                           representative.physical_to_child_automorphism);
+        auto child_reach =
+            transform_reach({*reach[0], *reach[1]}, representative.physical_to_child_automorphism);
         if (const auto error = accumulate_canonical_average_only(
                 representative.child, updating_player, {&child_reach[0], &child_reach[1]},
                 strategy_weight)) {
@@ -7074,8 +6987,8 @@ private:
       return PostflopSolverError::InvalidConfiguration;
     }
     if (decision.player == updating_player && strategy_weight != 0.0) {
-      work_counters_.strategy_update_entries += static_cast<std::uint64_t>(
-          board.player_combos[updating_player].size() * action_count);
+      work_counters_.strategy_update_entries +=
+          static_cast<std::uint64_t>(board.player_combos[updating_player].size() * action_count);
     }
     DecisionScratchLease scratch_lease(*this);
     auto &scratch = scratch_lease.get();
@@ -7100,34 +7013,30 @@ private:
         actor_reach[slot] *= strategies[action][actor_local++];
       }
       const auto &outcome = canonical.edges[action].outcomes.front();
-      const ReachRef direct_child_reach =
-          decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                : ReachRef{reach[0], &actor_reach};
+      const ReachRef direct_child_reach = decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                                : ReachRef{reach[0], &actor_reach};
       if (identity_automorphism(outcome.physical_to_child_automorphism)) {
         if (const auto error = accumulate_canonical_average_only(
-                outcome.child, updating_player, direct_child_reach,
-                strategy_weight)) {
+                outcome.child, updating_player, direct_child_reach, strategy_weight)) {
           return error;
         }
       } else {
-        auto transformed = transform_reach(
-            {*direct_child_reach[0], *direct_child_reach[1]},
-            outcome.physical_to_child_automorphism);
-        if (const auto error = accumulate_canonical_average_only(
-                outcome.child, updating_player,
-                {&transformed[0], &transformed[1]}, strategy_weight)) {
+        auto transformed = transform_reach({*direct_child_reach[0], *direct_child_reach[1]},
+                                           outcome.physical_to_child_automorphism);
+        if (const auto error = accumulate_canonical_average_only(outcome.child, updating_player,
+                                                                 {&transformed[0], &transformed[1]},
+                                                                 strategy_weight)) {
           return error;
         }
       }
     }
     if (decision.player == updating_player) {
       if (action_major_compact_state()) {
-        update_action_major_compact_average(
-            canonical, board, updating_player, reach, strategy_weight,
-            strategies, true);
+        update_action_major_compact_average(canonical, board, updating_player, reach,
+                                            strategy_weight, strategies, true);
       } else if (scaled_action_major_state()) {
-        update_scaled_average(canonical, board, updating_player, reach,
-                              strategy_weight, strategies, true);
+        update_scaled_average(canonical, board, updating_player, reach, strategy_weight, strategies,
+                              true);
       } else {
         for (const ComboId combo : board.player_combos[updating_player]) {
           const auto slot = value_slot(combo, updating_player);
@@ -7306,10 +7215,10 @@ private:
 
 #endif
 
-  std::optional<PostflopSolverError> cfr_canonical_simultaneous_into(
-      const std::uint32_t node_id, const ReachRef &reach,
-      const double strategy_weight,
-      std::array<ComboVector, 2> &values_out) {
+  std::optional<PostflopSolverError>
+  cfr_canonical_simultaneous_into(const std::uint32_t node_id, const ReachRef &reach,
+                                  const double strategy_weight,
+                                  std::array<ComboVector, 2> &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
@@ -7333,16 +7242,14 @@ private:
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         const auto error =
             canonical.kind == PublicNodeKind::TerminalFold
-                ? fold_values_with_payoff_into(
-                      canonical.board_index,
-                      canonical.fold_payoff_antes[player], player,
-                      *reach[1U - player], values_out[player])
+                ? fold_values_with_payoff_into(canonical.board_index,
+                                               canonical.fold_payoff_antes[player], player,
+                                               *reach[1U - player], values_out[player])
                 : showdown_values_with_payoffs_into(
-                      canonical.board_index,
-                      canonical.showdown_payoff_antes[player][0],
+                      canonical.board_index, canonical.showdown_payoff_antes[player][0],
                       canonical.showdown_payoff_antes[player][1],
-                      canonical.showdown_payoff_antes[player][2], player,
-                      *reach[1U - player], values_out[player], 0.0, nullptr);
+                      canonical.showdown_payoff_antes[player][2], player, *reach[1U - player],
+                      values_out[player], 0.0, nullptr);
         if (error) {
           return error;
         }
@@ -7354,29 +7261,24 @@ private:
         return PostflopSolverError::InvalidConfiguration;
       }
       const auto &board = layout_.boards[canonical.board_index];
-      const double denominator =
-          static_cast<double>(canonical.total_legal_outcome_count - 4U);
+      const double denominator = static_cast<double>(canonical.total_legal_outcome_count - 4U);
       zero_values_into(0U, values_out[0]);
       zero_values_into(1U, values_out[1]);
       const auto edge_count = canonical.edges.size();
       auto representative_reaches =
           std::make_unique_for_overwrite<std::array<ComboVector, 2>[]>(edge_count);
-      auto child_values =
-          std::make_unique<std::array<ComboVector, 2>[]>(edge_count);
+      auto child_values = std::make_unique<std::array<ComboVector, 2>[]>(edge_count);
       for (std::size_t index = 0U; index < edge_count; ++index) {
         const auto &edge = canonical.edges[index];
         if (edge.outcomes.empty()) {
           return PostflopSolverError::InvalidConfiguration;
         }
         representative_reaches[index] = transform_reach(
-            {*reach[0], *reach[1]},
-            edge.outcomes.front().physical_to_child_automorphism);
+            {*reach[0], *reach[1]}, edge.outcomes.front().physical_to_child_automorphism);
       }
       const auto worker_count = parallel_workers_.size();
-      if (std::popcount(board.mask) == 3U && worker_count > 0U &&
-          edge_count > 1U) {
-        const std::size_t chunk_count =
-            std::min(edge_count, worker_count + 1U);
+      if (std::popcount(board.mask) == 3U && worker_count > 0U && edge_count > 1U) {
+        const std::size_t chunk_count = std::min(edge_count, worker_count + 1U);
         std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
         std::vector<std::future<TraversalResult>> futures;
         tasks.reserve(chunk_count - 1U);
@@ -7386,13 +7288,12 @@ private:
           const std::size_t end = (chunk + 1U) * edge_count / chunk_count;
           std::packaged_task<TraversalResult(DenseTraversal &)> task(
               [edges = &canonical.edges, reaches = representative_reaches.get(),
-               results = child_values.get(), begin, end,
-               strategy_weight](DenseTraversal &self) {
+               results = child_values.get(), begin, end, strategy_weight](DenseTraversal &self) {
                 for (std::size_t index = begin; index < end; ++index) {
                   if (const auto error = self.cfr_canonical_simultaneous_into(
                           (*edges)[index].outcomes.front().child,
-                          {&reaches[index][0], &reaches[index][1]},
-                          strategy_weight, results[index])) {
+                          {&reaches[index][0], &reaches[index][1]}, strategy_weight,
+                          results[index])) {
                     return Result<ComboVector, PostflopSolverError>::failure(*error);
                   }
                 }
@@ -7407,8 +7308,7 @@ private:
         for (std::size_t index = 0U; index < main_end && !main_error; ++index) {
           main_error = cfr_canonical_simultaneous_into(
               canonical.edges[index].outcomes.front().child,
-              {&representative_reaches[index][0],
-               &representative_reaches[index][1]},
+              {&representative_reaches[index][0], &representative_reaches[index][1]},
               strategy_weight, child_values[index]);
         }
         std::optional<PostflopSolverError> worker_error;
@@ -7426,8 +7326,7 @@ private:
         for (std::size_t index = 0U; index < edge_count; ++index) {
           if (const auto error = cfr_canonical_simultaneous_into(
                   canonical.edges[index].outcomes.front().child,
-                  {&representative_reaches[index][0],
-                   &representative_reaches[index][1]},
+                  {&representative_reaches[index][0], &representative_reaches[index][1]},
                   strategy_weight, child_values[index])) {
             return error;
           }
@@ -7439,10 +7338,9 @@ private:
           const double probability =
               static_cast<double>(outcome.physical_outcome_count) / denominator;
           for (std::uint8_t player = 0U; player < 2U; ++player) {
-            accumulate_transformed_values_to_parent(
-                values_out[player], child_values[index][player],
-                outcome.physical_to_child_automorphism, player, board,
-                outcome.chance_card, probability);
+            accumulate_transformed_values_to_parent(values_out[player], child_values[index][player],
+                                                    outcome.physical_to_child_automorphism, player,
+                                                    board, outcome.chance_card, probability);
           }
         }
       }
@@ -7460,8 +7358,8 @@ private:
       return PostflopSolverError::InvalidConfiguration;
     }
     const bool locked_root = is_locked_root(canonical);
-    const auto update_entries = static_cast<std::uint64_t>(
-        board.player_combos[actor].size() * action_count);
+    const auto update_entries =
+        static_cast<std::uint64_t>(board.player_combos[actor].size() * action_count);
     if (!locked_root) {
       work_counters_.regret_update_entries += update_entries;
     }
@@ -7480,54 +7378,47 @@ private:
       }
       auto &actor_reach = scratch.reach_actor[0];
       actor_reach = *reach[actor];
-      for (std::size_t local = 0U;
-           local < board.player_combos[actor].size(); ++local) {
-        const auto slot = static_cast<std::size_t>(
-            board.player_flop_slots[actor][local]);
+      for (std::size_t local = 0U; local < board.player_combos[actor].size(); ++local) {
+        const auto slot = static_cast<std::size_t>(board.player_flop_slots[actor][local]);
         actor_reach[slot] *= strategies[action][local];
       }
       const ReachRef direct_child_reach =
-          actor == 0U ? ReachRef{&actor_reach, reach[1]}
-                      : ReachRef{reach[0], &actor_reach};
+          actor == 0U ? ReachRef{&actor_reach, reach[1]} : ReachRef{reach[0], &actor_reach};
       const auto &outcome = canonical.edges[action].outcomes.front();
       std::array<ComboVector, 2> child;
       if (identity_automorphism(outcome.physical_to_child_automorphism)) {
-        if (const auto error = cfr_canonical_simultaneous_into(
-                outcome.child, direct_child_reach, strategy_weight, child)) {
+        if (const auto error = cfr_canonical_simultaneous_into(outcome.child, direct_child_reach,
+                                                               strategy_weight, child)) {
           return error;
         }
       } else {
-        auto transformed = transform_reach(
-            {*direct_child_reach[0], *direct_child_reach[1]},
-            outcome.physical_to_child_automorphism);
+        auto transformed = transform_reach({*direct_child_reach[0], *direct_child_reach[1]},
+                                           outcome.physical_to_child_automorphism);
         if (const auto error = cfr_canonical_simultaneous_into(
-                outcome.child, {&transformed[0], &transformed[1]},
-                strategy_weight, child)) {
+                outcome.child, {&transformed[0], &transformed[1]}, strategy_weight, child)) {
           return error;
         }
       }
-      actor_action_values[action] = transform_values_to_parent(
-          child[actor], outcome.physical_to_child_automorphism, actor);
+      actor_action_values[action] =
+          transform_values_to_parent(child[actor], outcome.physical_to_child_automorphism, actor);
       opponent_action_values[action] = transform_values_to_parent(
           child[opponent], outcome.physical_to_child_automorphism, opponent);
     }
     zero_values_into(actor, values_out[actor]);
     zero_values_into(opponent, values_out[opponent]);
-    for (std::size_t local = 0U;
-         local < board.player_combos[actor].size(); ++local) {
-      const auto slot = static_cast<std::size_t>(
-          board.player_flop_slots[actor][local]);
+    for (std::size_t local = 0U; local < board.player_combos[actor].size(); ++local) {
+      const auto slot = static_cast<std::size_t>(board.player_flop_slots[actor][local]);
       for (std::size_t action = 0U; action < action_count; ++action) {
-        values_out[actor][slot] = static_cast<Scalar>(
-            values_out[actor][slot] +
-            strategies[action][local] * actor_action_values[action][slot]);
+        values_out[actor][slot] =
+            static_cast<Scalar>(values_out[actor][slot] +
+                                strategies[action][local] * actor_action_values[action][slot]);
       }
     }
     for (const ComboId combo : board.player_combos[opponent]) {
       const auto slot = value_slot(combo, opponent);
       for (std::size_t action = 0U; action < action_count; ++action) {
-        values_out[opponent][slot] = static_cast<Scalar>(
-            values_out[opponent][slot] + opponent_action_values[action][slot]);
+        values_out[opponent][slot] =
+            static_cast<Scalar>(values_out[opponent][slot] + opponent_action_values[action][slot]);
       }
     }
     if (buffers_.signed_scaled_regret) {
@@ -7538,34 +7429,25 @@ private:
       // scaled codes as raw values. DCFR needs the production signed updater,
       // which applies both discounts, the regret weight and the reach-weighted
       // average exactly once for this actor and iteration.
-      update_scaled_regrets(canonical, board, actor, values_out[actor],
-                            actor_action_values, strategies,
-                            &opponent_action_values, &reach, false);
+      update_scaled_regrets(canonical, board, actor, values_out[actor], actor_action_values,
+                            strategies, &opponent_action_values, &reach, false);
       return std::nullopt;
     }
-    for (std::size_t local = 0U;
-         local < board.player_combos[actor].size(); ++local) {
-      const auto slot = static_cast<std::size_t>(
-          board.player_flop_slots[actor][local]);
-      const auto offset = static_cast<std::size_t>(decision.action_base) +
-                          local * action_count;
-      const double reach_weight =
-          strategy_weight * static_cast<double>((*reach[actor])[slot]);
+    for (std::size_t local = 0U; local < board.player_combos[actor].size(); ++local) {
+      const auto slot = static_cast<std::size_t>(board.player_flop_slots[actor][local]);
+      const auto offset = static_cast<std::size_t>(decision.action_base) + local * action_count;
+      const double reach_weight = strategy_weight * static_cast<double>((*reach[actor])[slot]);
       for (std::size_t action = 0U; action < action_count; ++action) {
         const auto index = offset + action;
         if (!locked_root) {
           buffers_.set_regret(
-              index,
-              std::max(0.0, buffers_.regret_at(index) +
-                                regret_update_weight_ *
-                                    (static_cast<double>(
-                                         actor_action_values[action][slot]) -
-                                     static_cast<double>(values_out[actor][slot]))));
+              index, std::max(0.0, buffers_.regret_at(index) +
+                                       regret_update_weight_ *
+                                           (static_cast<double>(actor_action_values[action][slot]) -
+                                            static_cast<double>(values_out[actor][slot]))));
         }
         if (reach_weight != 0.0) {
-          add_strategy(index,
-                       reach_weight *
-                           static_cast<double>(strategies[action][local]));
+          add_strategy(index, reach_weight * static_cast<double>(strategies[action][local]));
         }
       }
     }
@@ -7574,13 +7456,12 @@ private:
 
   template <std::size_t ActionCount>
   std::optional<PostflopSolverError>
-  cfr_canonical_river_decision_fixed_into(
-      const CanonicalPublicNode &canonical,
-      const std::uint8_t updating_player, const ReachRef &reach,
-      const double strategy_weight, ComboVector &values) {
+  cfr_canonical_river_decision_fixed_into(const CanonicalPublicNode &canonical,
+                                          const std::uint8_t updating_player, const ReachRef &reach,
+                                          const double strategy_weight, ComboVector &values) {
     const bool profile = hotpath_profiling_enabled();
-    const auto strategy_started = profile ? std::chrono::steady_clock::now()
-                                          : std::chrono::steady_clock::time_point{};
+    const auto strategy_started =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (profile) {
       ++prof_decisions_;
     }
@@ -7588,8 +7469,8 @@ private:
     const auto &board = layout_.boards[decision.board_index];
     constexpr std::size_t action_count = ActionCount;
     if (decision.player == updating_player) {
-      const auto entries = static_cast<std::uint64_t>(
-          board.player_combos[updating_player].size() * action_count);
+      const auto entries =
+          static_cast<std::uint64_t>(board.player_combos[updating_player].size() * action_count);
       if (!is_locked_root(canonical)) {
         work_counters_.regret_update_entries += entries;
       }
@@ -7609,90 +7490,80 @@ private:
     // kernel instead of materializing and rereading strategy scratch.
     const bool decode_strategy_at_update =
         decision.player == updating_player && !locked_root &&
-        (decision.descendant_player_mask &
-         static_cast<std::uint8_t>(1U << updating_player)) == 0U;
+        (decision.descendant_player_mask & static_cast<std::uint8_t>(1U << updating_player)) == 0U;
     if (!decode_strategy_at_update) {
-      load_canonical_current_strategies(canonical, board, updating_player,
-                                        strategies, true);
+      load_canonical_current_strategies(canonical, board, updating_player, strategies, true);
     }
     if (profile) {
-      prof_strategy_seconds_ += std::chrono::duration<double>(
-          std::chrono::steady_clock::now() - strategy_started).count();
+      prof_strategy_seconds_ +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - strategy_started)
+              .count();
       if (!decode_strategy_at_update) {
-        prof_strategy_entries_ +=
-            board.player_combos[decision.player].size() * action_count;
+        prof_strategy_entries_ += board.player_combos[decision.player].size() * action_count;
       }
       if (decode_strategy_at_update) {
         // Instrumented builds materialize a diagnostic copy after the timed
         // fused decode. It is read-only telemetry and is compiled out of the
         // Release timing binary.
-        load_canonical_current_strategies(canonical, board, updating_player,
-                                          strategies, true);
+        load_canonical_current_strategies(canonical, board, updating_player, strategies, true);
       }
       profile_strategy_density(strategies, action_count,
                                board.player_combos[decision.player].size());
     }
-    const auto paired_fold_action =
-        static_cast<std::size_t>(decision.paired_fold_action);
-    const auto paired_showdown_action =
-        static_cast<std::size_t>(decision.paired_showdown_action);
+    const auto paired_fold_action = static_cast<std::size_t>(decision.paired_fold_action);
+    const auto paired_showdown_action = static_cast<std::size_t>(decision.paired_showdown_action);
     const auto actor_count = board.player_combos[decision.player].size();
-    const auto materialize_actor_reach =
-        [&](const std::size_t action, ComboVector &destination) {
-          bool any_nonzero = false;
-          std::size_t local = 0U;
-          if constexpr (std::is_same_v<Scalar, float>) {
-            const __m256 zero = _mm256_setzero_ps();
-            __m256 nonzero = zero;
-            for (; local + 8U <= actor_count; local += 8U) {
-              const __m256 child = _mm256_mul_ps(
-                  _mm256_loadu_ps(reach[decision.player]->data() + local),
-                  _mm256_loadu_ps(strategies[action].data() + local));
-              _mm256_storeu_ps(destination.data() + local, child);
-              nonzero = _mm256_or_ps(
-                  nonzero, _mm256_cmp_ps(child, zero, _CMP_NEQ_OQ));
-            }
-            any_nonzero = _mm256_movemask_ps(nonzero) != 0;
-          }
-          for (; local < actor_count; ++local) {
-            destination[local] = static_cast<Scalar>(
-                (*reach[decision.player])[local] * strategies[action][local]);
-            any_nonzero = any_nonzero || destination[local] != Scalar{0};
-          }
-          if (profile) {
-            prof_actor_writes_ += actor_count;
-          }
-          return any_nonzero;
-        };
+    const auto materialize_actor_reach = [&](const std::size_t action, ComboVector &destination) {
+      bool any_nonzero = false;
+      std::size_t local = 0U;
+      if constexpr (std::is_same_v<Scalar, float>) {
+        const __m256 zero = _mm256_setzero_ps();
+        __m256 nonzero = zero;
+        for (; local + 8U <= actor_count; local += 8U) {
+          const __m256 child =
+              _mm256_mul_ps(_mm256_loadu_ps(reach[decision.player]->data() + local),
+                            _mm256_loadu_ps(strategies[action].data() + local));
+          _mm256_storeu_ps(destination.data() + local, child);
+          nonzero = _mm256_or_ps(nonzero, _mm256_cmp_ps(child, zero, _CMP_NEQ_OQ));
+        }
+        any_nonzero = _mm256_movemask_ps(nonzero) != 0;
+      }
+      for (; local < actor_count; ++local) {
+        destination[local] =
+            static_cast<Scalar>((*reach[decision.player])[local] * strategies[action][local]);
+        any_nonzero = any_nonzero || destination[local] != Scalar{0};
+      }
+      if (profile) {
+        prof_actor_writes_ += actor_count;
+      }
+      return any_nonzero;
+    };
     const auto evaluate_direct_child =
         [&](const CanonicalPublicNode &child, const ReachRef &child_reach,
             ComboVector &child_values) -> std::optional<PostflopSolverError> {
-          if (child.kind == PublicNodeKind::TerminalFold) {
-            ++traversed_nodes_;
-            count_work_node(PublicNodeKind::TerminalFold, 0U);
-            return fold_values_with_payoff_into<true>(
-                child.board_index, child.fold_payoff_antes[updating_player],
-                updating_player, *child_reach[1U - updating_player],
-                child_values);
-          }
-          if (child.kind == PublicNodeKind::TerminalShowdown) {
-            ++traversed_nodes_;
-            count_work_node(PublicNodeKind::TerminalShowdown, 0U);
-            const auto &payoff = child.showdown_payoff_antes[updating_player];
-            return showdown_values_with_payoffs_into<true>(
-                child.board_index, payoff[0], payoff[1], payoff[2],
-                updating_player, *child_reach[1U - updating_player],
-                child_values, 0.0, nullptr);
-          }
-          if (child.kind == PublicNodeKind::Decision) {
-            ++traversed_nodes_;
-            count_work_node(PublicNodeKind::Decision, 0U);
-            return cfr_canonical_river_decision_into(
-                child, updating_player, child_reach, strategy_weight,
-                child_values);
-          }
-          return PostflopSolverError::InvalidConfiguration;
-        };
+      if (child.kind == PublicNodeKind::TerminalFold) {
+        ++traversed_nodes_;
+        count_work_node(PublicNodeKind::TerminalFold, 0U);
+        return fold_values_with_payoff_into<true>(
+            child.board_index, child.fold_payoff_antes[updating_player], updating_player,
+            *child_reach[1U - updating_player], child_values);
+      }
+      if (child.kind == PublicNodeKind::TerminalShowdown) {
+        ++traversed_nodes_;
+        count_work_node(PublicNodeKind::TerminalShowdown, 0U);
+        const auto &payoff = child.showdown_payoff_antes[updating_player];
+        return showdown_values_with_payoffs_into<true>(
+            child.board_index, payoff[0], payoff[1], payoff[2], updating_player,
+            *child_reach[1U - updating_player], child_values, 0.0, nullptr);
+      }
+      if (child.kind == PublicNodeKind::Decision) {
+        ++traversed_nodes_;
+        count_work_node(PublicNodeKind::Decision, 0U);
+        return cfr_canonical_river_decision_into(child, updating_player, child_reach,
+                                                 strategy_weight, child_values);
+      }
+      return PostflopSolverError::InvalidConfiguration;
+    };
     for (std::size_t action = 0U; action < action_count; ++action) {
       if (action == paired_fold_action) {
         continue;
@@ -7701,39 +7572,31 @@ private:
       const auto &child = layout_.canonical_public_graph.nodes[outcome.child];
       const bool terminal = child.kind == PublicNodeKind::TerminalFold ||
                             child.kind == PublicNodeKind::TerminalShowdown;
-      const bool actor_needed =
-          decision.player != updating_player ||
-          (!decode_strategy_at_update && !terminal && strategy_weight != 0.0);
-      const bool actor_nonzero =
-          actor_needed ? materialize_actor_reach(action, actor_reach) : true;
-      const ReachRef child_reach =
-          actor_needed
-              ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                       : ReachRef{reach[0], &actor_reach})
-              : reach;
-      if (action == paired_showdown_action &&
-          paired_fold_action < action_count) {
-        const auto &fold_outcome =
-            canonical.edges[paired_fold_action].outcomes.front();
-        const auto &fold =
-            layout_.canonical_public_graph.nodes[fold_outcome.child];
+      const bool actor_needed = decision.player != updating_player ||
+                                (!decode_strategy_at_update && !terminal && strategy_weight != 0.0);
+      const bool actor_nonzero = actor_needed ? materialize_actor_reach(action, actor_reach) : true;
+      const ReachRef child_reach = actor_needed
+                                       ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                                : ReachRef{reach[0], &actor_reach})
+                                       : reach;
+      if (action == paired_showdown_action && paired_fold_action < action_count) {
+        const auto &fold_outcome = canonical.edges[paired_fold_action].outcomes.front();
+        const auto &fold = layout_.canonical_public_graph.nodes[fold_outcome.child];
         if (child.kind != PublicNodeKind::TerminalShowdown ||
-            fold.kind != PublicNodeKind::TerminalFold ||
-            child.board_index != fold.board_index) {
+            fold.kind != PublicNodeKind::TerminalFold || child.board_index != fold.board_index) {
           return PostflopSolverError::InvalidConfiguration;
         }
         auto &fold_actor_reach = scratch_lease.get().reach_actor[1];
         const ComboVector *fold_opponent_reach = reach[1U - updating_player];
         bool fold_nonzero = true;
         if (decision.player != updating_player) {
-          fold_nonzero =
-              materialize_actor_reach(paired_fold_action, fold_actor_reach);
+          fold_nonzero = materialize_actor_reach(paired_fold_action, fold_actor_reach);
           fold_opponent_reach = &fold_actor_reach;
         }
         if (!actor_nonzero) {
           profile_skipped_action(board.player_combos[updating_player].size());
-          std::fill_n(action_values[action].begin(),
-                      board.player_combos[updating_player].size(), Scalar{0});
+          std::fill_n(action_values[action].begin(), board.player_combos[updating_player].size(),
+                      Scalar{0});
         }
         if (!fold_nonzero) {
           profile_skipped_action(board.player_combos[updating_player].size());
@@ -7743,22 +7606,20 @@ private:
         if (actor_nonzero && fold_nonzero) {
           const auto &payoff = child.showdown_payoff_antes[updating_player];
           if (const auto error = showdown_values_with_payoffs_into<true, true>(
-                  child.board_index, payoff[0], payoff[1], payoff[2],
-                  updating_player, *child_reach[1U - updating_player],
-                  action_values[action], fold.fold_payoff_antes[updating_player],
-                  &action_values[paired_fold_action], fold_opponent_reach)) {
+                  child.board_index, payoff[0], payoff[1], payoff[2], updating_player,
+                  *child_reach[1U - updating_player], action_values[action],
+                  fold.fold_payoff_antes[updating_player], &action_values[paired_fold_action],
+                  fold_opponent_reach)) {
             return error;
           }
         } else if (actor_nonzero) {
-          if (const auto error = evaluate_direct_child(
-                  child, child_reach, action_values[action])) {
+          if (const auto error = evaluate_direct_child(child, child_reach, action_values[action])) {
             return error;
           }
         } else if (fold_nonzero) {
           if (const auto error = fold_values_with_payoff_into<true>(
-                  fold.board_index, fold.fold_payoff_antes[updating_player],
-                  updating_player, *fold_opponent_reach,
-                  action_values[paired_fold_action])) {
+                  fold.board_index, fold.fold_payoff_antes[updating_player], updating_player,
+                  *fold_opponent_reach, action_values[paired_fold_action])) {
             return error;
           }
         }
@@ -7767,12 +7628,11 @@ private:
       }
       if (decision.player != updating_player && !actor_nonzero) {
         profile_skipped_action(board.player_combos[updating_player].size());
-        std::fill_n(action_values[action].begin(),
-                    board.player_combos[updating_player].size(), Scalar{0});
+        std::fill_n(action_values[action].begin(), board.player_combos[updating_player].size(),
+                    Scalar{0});
         continue;
       }
-      if (const auto error = evaluate_direct_child(
-              child, child_reach, action_values[action])) {
+      if (const auto error = evaluate_direct_child(child, child_reach, action_values[action])) {
         return error;
       }
     }
@@ -7782,15 +7642,12 @@ private:
       bool all_children_terminal = true;
       for (std::size_t action = 0U; action < action_count; ++action) {
         const auto &outcome = canonical.edges[action].outcomes.front();
-        const auto kind =
-            layout_.canonical_public_graph.nodes[outcome.child].kind;
-        all_children_terminal =
-            all_children_terminal &&
-            (kind == PublicNodeKind::TerminalFold ||
-             kind == PublicNodeKind::TerminalShowdown);
+        const auto kind = layout_.canonical_public_graph.nodes[outcome.child].kind;
+        all_children_terminal = all_children_terminal && (kind == PublicNodeKind::TerminalFold ||
+                                                          kind == PublicNodeKind::TerminalShowdown);
       }
-      const auto value_entries = static_cast<std::uint64_t>(
-          action_count * board.player_combos[updating_player].size());
+      const auto value_entries =
+          static_cast<std::uint64_t>(action_count * board.player_combos[updating_player].size());
       prof_telemetry_.river_decision_value_entries += value_entries;
       if (all_children_terminal) {
         prof_telemetry_.river_all_terminal_value_entries += value_entries;
@@ -7798,21 +7655,19 @@ private:
       if (decision.player == updating_player) {
         prof_telemetry_.river_signed_value_entries += value_entries;
         if (all_children_terminal) {
-          prof_telemetry_.river_all_terminal_signed_value_entries +=
-              value_entries;
+          prof_telemetry_.river_all_terminal_signed_value_entries += value_entries;
         }
       } else {
         prof_telemetry_.river_opponent_value_entries += value_entries;
         if (all_children_terminal) {
-          prof_telemetry_.river_all_terminal_opponent_value_entries +=
-              value_entries;
+          prof_telemetry_.river_all_terminal_opponent_value_entries += value_entries;
         }
       }
     }
 #endif
 
-    const auto value_started = profile ? std::chrono::steady_clock::now()
-                                       : std::chrono::steady_clock::time_point{};
+    const auto value_started =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const auto updating_count = board.player_combos[updating_player].size();
     std::fill_n(values.begin(), updating_count, Scalar{0});
     if (decision.player != updating_player) {
@@ -7820,22 +7675,20 @@ private:
         std::size_t local = 0U;
         if constexpr (std::is_same_v<Scalar, float>) {
           for (; local + 8U <= updating_count; local += 8U) {
-            _mm256_storeu_ps(
-                values.data() + local,
-                _mm256_add_ps(_mm256_loadu_ps(values.data() + local),
-                              _mm256_loadu_ps(action_values[action].data() + local)));
+            _mm256_storeu_ps(values.data() + local,
+                             _mm256_add_ps(_mm256_loadu_ps(values.data() + local),
+                                           _mm256_loadu_ps(action_values[action].data() + local)));
           }
         }
         for (; local < updating_count; ++local) {
-          values[local] = static_cast<Scalar>(
-              values[local] + action_values[action][local]);
+          values[local] = static_cast<Scalar>(values[local] + action_values[action][local]);
         }
       }
     } else if (buffers_.signed_scaled_regret && !locked_root) {
       auto &average_scratch = scratch_lease.get().opponent_action_values;
-      update_scaled_regrets<true, ActionCount>(
-          canonical, board, updating_player, values, action_values, strategies,
-          &average_scratch, &reach, true, decode_strategy_at_update);
+      update_scaled_regrets<true, ActionCount>(canonical, board, updating_player, values,
+                                               action_values, strategies, &average_scratch, &reach,
+                                               true, decode_strategy_at_update);
     } else {
       return PostflopSolverError::InvalidConfiguration;
     }
@@ -7848,56 +7701,52 @@ private:
   }
 
   std::optional<PostflopSolverError>
-  cfr_canonical_river_decision_into(
-      const CanonicalPublicNode &canonical,
-      const std::uint8_t updating_player, const ReachRef &reach,
-      const double strategy_weight, ComboVector &values) {
+  cfr_canonical_river_decision_into(const CanonicalPublicNode &canonical,
+                                    const std::uint8_t updating_player, const ReachRef &reach,
+                                    const double strategy_weight, ComboVector &values) {
     switch (canonical.decision.action_count) {
     case 1U:
-      return cfr_canonical_river_decision_fixed_into<1U>(
-          canonical, updating_player, reach, strategy_weight, values);
+      return cfr_canonical_river_decision_fixed_into<1U>(canonical, updating_player, reach,
+                                                         strategy_weight, values);
     case 2U:
-      return cfr_canonical_river_decision_fixed_into<2U>(
-          canonical, updating_player, reach, strategy_weight, values);
+      return cfr_canonical_river_decision_fixed_into<2U>(canonical, updating_player, reach,
+                                                         strategy_weight, values);
     case 3U:
-      return cfr_canonical_river_decision_fixed_into<3U>(
-          canonical, updating_player, reach, strategy_weight, values);
+      return cfr_canonical_river_decision_fixed_into<3U>(canonical, updating_player, reach,
+                                                         strategy_weight, values);
     case 4U:
-      return cfr_canonical_river_decision_fixed_into<4U>(
-          canonical, updating_player, reach, strategy_weight, values);
+      return cfr_canonical_river_decision_fixed_into<4U>(canonical, updating_player, reach,
+                                                         strategy_weight, values);
     case 5U:
-      return cfr_canonical_river_decision_fixed_into<5U>(
-          canonical, updating_player, reach, strategy_weight, values);
+      return cfr_canonical_river_decision_fixed_into<5U>(canonical, updating_player, reach,
+                                                         strategy_weight, values);
     default:
       return PostflopSolverError::InvalidConfiguration;
     }
   }
 
-  std::optional<PostflopSolverError>
-  cfr_canonical_river_into(const std::uint32_t node_id,
-                           const std::uint8_t updating_player,
-                           const ReachRef &reach,
-                           const double strategy_weight,
-                           ComboVector &values_out) {
+  std::optional<PostflopSolverError> cfr_canonical_river_into(const std::uint32_t node_id,
+                                                              const std::uint8_t updating_player,
+                                                              const ReachRef &reach,
+                                                              const double strategy_weight,
+                                                              ComboVector &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     count_work_node(canonical.kind, 0U);
     switch (canonical.kind) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff_into<true>(
-          canonical.board_index, canonical.fold_payoff_antes[updating_player],
-          updating_player, *reach[1U - updating_player], values_out);
+          canonical.board_index, canonical.fold_payoff_antes[updating_player], updating_player,
+          *reach[1U - updating_player], values_out);
     case PublicNodeKind::TerminalShowdown:
       return showdown_values_with_payoffs_into<true>(
-          canonical.board_index,
-          canonical.showdown_payoff_antes[updating_player][0],
+          canonical.board_index, canonical.showdown_payoff_antes[updating_player][0],
           canonical.showdown_payoff_antes[updating_player][1],
-          canonical.showdown_payoff_antes[updating_player][2],
-          updating_player, *reach[1U - updating_player], values_out, 0.0,
-          nullptr);
+          canonical.showdown_payoff_antes[updating_player][2], updating_player,
+          *reach[1U - updating_player], values_out, 0.0, nullptr);
     case PublicNodeKind::Decision:
-      return cfr_canonical_river_decision_into(
-          canonical, updating_player, reach, strategy_weight, values_out);
+      return cfr_canonical_river_decision_into(canonical, updating_player, reach, strategy_weight,
+                                               values_out);
     case PublicNodeKind::Chance:
       return PostflopSolverError::InvalidConfiguration;
     }
@@ -7905,15 +7754,13 @@ private:
   }
 
   std::optional<PostflopSolverError>
-  cfr_canonical_chance_child_into(
-      const std::uint32_t node_id, const std::uint8_t updating_player,
-      const ReachRef &flop_reach, const double strategy_weight,
-      ComboVector &flop_values) {
+  cfr_canonical_chance_child_into(const std::uint32_t node_id, const std::uint8_t updating_player,
+                                  const ReachRef &flop_reach, const double strategy_weight,
+                                  ComboVector &flop_values) {
     const auto &node = layout_.canonical_public_graph.nodes[node_id];
     const auto &board = layout_.boards[node.board_index];
     if (!buffers_.signed_scaled_regret || std::popcount(board.mask) != 5) {
-      return cfr_canonical_into(node_id, updating_player, flop_reach,
-                                strategy_weight, flop_values);
+      return cfr_canonical_into(node_id, updating_player, flop_reach, strategy_weight, flop_values);
     }
     std::array<ComboVector, 2> local_reach{};
     for (std::uint8_t player = 0U; player < 2U; ++player) {
@@ -7924,16 +7771,14 @@ private:
     }
     ComboVector local_values{};
     const bool profile_frontier = hotpath_profiling_enabled();
-    const std::uint64_t showdowns_before =
-        profile_frontier ? prof_telemetry_.showdown_calls : 0U;
-    if (const auto error = cfr_canonical_river_into(
-            node_id, updating_player, {&local_reach[0], &local_reach[1]},
-            strategy_weight, local_values)) {
+    const std::uint64_t showdowns_before = profile_frontier ? prof_telemetry_.showdown_calls : 0U;
+    if (const auto error =
+            cfr_canonical_river_into(node_id, updating_player, {&local_reach[0], &local_reach[1]},
+                                     strategy_weight, local_values)) {
       return error;
     }
     if (profile_frontier) {
-      const std::uint64_t showdown_count =
-          prof_telemetry_.showdown_calls - showdowns_before;
+      const std::uint64_t showdown_count = prof_telemetry_.showdown_calls - showdowns_before;
       ++prof_telemetry_.river_frontier_roots;
       prof_telemetry_.river_frontier_showdowns += showdown_count;
       prof_telemetry_.river_frontier_full_batches += showdown_count / 4U;
@@ -7948,9 +7793,8 @@ private:
   }
 
   std::optional<PostflopSolverError>
-  cfr_canonical_into(const std::uint32_t node_id,
-                     const std::uint8_t updating_player, const ReachRef &reach,
-                     const double strategy_weight, ComboVector &values_out) {
+  cfr_canonical_into(const std::uint32_t node_id, const std::uint8_t updating_player,
+                     const ReachRef &reach, const double strategy_weight, ComboVector &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
@@ -7963,8 +7807,8 @@ private:
     switch (canonical.kind) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff_into(
-          canonical.board_index, canonical.fold_payoff_antes[updating_player],
-          updating_player, *reach[1U - updating_player], values_out);
+          canonical.board_index, canonical.fold_payoff_antes[updating_player], updating_player,
+          *reach[1U - updating_player], values_out);
     case PublicNodeKind::TerminalShowdown:
       return showdown_values_with_payoffs_into(
           canonical.board_index, canonical.showdown_payoff_antes[updating_player][0],
@@ -7972,21 +7816,22 @@ private:
           canonical.showdown_payoff_antes[updating_player][2], updating_player,
           *reach[1U - updating_player], values_out, 0.0, nullptr);
     case PublicNodeKind::Chance:
-      return cfr_canonical_chance_into(canonical, updating_player, reach,
-                                       strategy_weight, values_out);
+      return cfr_canonical_chance_into(canonical, updating_player, reach, strategy_weight,
+                                       values_out);
     case PublicNodeKind::Decision:
-      return cfr_canonical_decision_into(canonical, updating_player, reach,
-                                         strategy_weight, values_out);
+      return cfr_canonical_decision_into(canonical, updating_player, reach, strategy_weight,
+                                         values_out);
     }
     return PostflopSolverError::InvalidConfiguration;
   }
 
-  Result<ComboVector, PostflopSolverError> cfr_canonical(
-      const std::uint32_t node_id, const std::uint8_t updating_player,
-      const ReachRef &reach, const double strategy_weight) {
+  Result<ComboVector, PostflopSolverError> cfr_canonical(const std::uint32_t node_id,
+                                                         const std::uint8_t updating_player,
+                                                         const ReachRef &reach,
+                                                         const double strategy_weight) {
     ComboVector values{};
-    if (const auto error = cfr_canonical_into(
-            node_id, updating_player, reach, strategy_weight, values)) {
+    if (const auto error =
+            cfr_canonical_into(node_id, updating_player, reach, strategy_weight, values)) {
       return Result<ComboVector, PostflopSolverError>::failure(*error);
     }
     return Result<ComboVector, PostflopSolverError>::success(std::move(values));
@@ -7994,18 +7839,15 @@ private:
 
   std::optional<PostflopSolverError>
   policy_canonical_profile_br_pair_into(const std::uint32_t node_id,
-                                        const std::uint8_t updating_player,
-                                        const ReachRef &reach,
-                                        ComboVector &profile_out,
-                                        ComboVector &response_out) {
+                                        const std::uint8_t updating_player, const ReachRef &reach,
+                                        ComboVector &profile_out, ComboVector &response_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     switch (canonical.kind) {
     case PublicNodeKind::TerminalFold: {
       zero_values_into(updating_player, profile_out);
       if (const auto error = fold_values_with_payoff_into(
-              canonical.board_index,
-              canonical.fold_payoff_antes[updating_player], updating_player,
+              canonical.board_index, canonical.fold_payoff_antes[updating_player], updating_player,
               *reach[1U - updating_player], profile_out)) {
         return error;
       }
@@ -8015,8 +7857,7 @@ private:
     case PublicNodeKind::TerminalShowdown: {
       zero_values_into(updating_player, profile_out);
       if (const auto error = showdown_values_with_payoffs_into(
-              canonical.board_index,
-              canonical.showdown_payoff_antes[updating_player][0],
+              canonical.board_index, canonical.showdown_payoff_antes[updating_player][0],
               canonical.showdown_payoff_antes[updating_player][1],
               canonical.showdown_payoff_antes[updating_player][2], updating_player,
               *reach[1U - updating_player], profile_out, 0.0, nullptr)) {
@@ -8026,11 +7867,11 @@ private:
       return std::nullopt;
     }
     case PublicNodeKind::Chance:
-      return policy_canonical_profile_br_chance_into(
-          canonical, updating_player, reach, profile_out, response_out);
+      return policy_canonical_profile_br_chance_into(canonical, updating_player, reach, profile_out,
+                                                     response_out);
     case PublicNodeKind::Decision:
-      return policy_canonical_profile_br_decision_into(
-          canonical, updating_player, reach, profile_out, response_out);
+      return policy_canonical_profile_br_decision_into(canonical, updating_player, reach,
+                                                       profile_out, response_out);
     }
     return PostflopSolverError::InvalidConfiguration;
   }
@@ -8044,14 +7885,14 @@ private:
     switch (canonical.kind) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff(canonical.board_index,
-                                     canonical.fold_payoff_antes[updating_player],
-                                     updating_player, *reach[1U - updating_player]);
+                                     canonical.fold_payoff_antes[updating_player], updating_player,
+                                     *reach[1U - updating_player]);
     case PublicNodeKind::TerminalShowdown:
-      return showdown_values_with_payoffs(
-          canonical.board_index, canonical.showdown_payoff_antes[updating_player][0],
-          canonical.showdown_payoff_antes[updating_player][1],
-          canonical.showdown_payoff_antes[updating_player][2], updating_player,
-          *reach[1U - updating_player]);
+      return showdown_values_with_payoffs(canonical.board_index,
+                                          canonical.showdown_payoff_antes[updating_player][0],
+                                          canonical.showdown_payoff_antes[updating_player][1],
+                                          canonical.showdown_payoff_antes[updating_player][2],
+                                          updating_player, *reach[1U - updating_player]);
     case PublicNodeKind::Chance:
       return policy_canonical_chance(canonical, updating_player, reach, best_response);
     case PublicNodeKind::Decision:
@@ -8061,10 +7902,11 @@ private:
         PostflopSolverError::InvalidConfiguration);
   }
 
-  std::optional<PostflopSolverError> cfr_canonical_chance_into(
-      const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
-      const ReachRef &reach, const double strategy_weight,
-      ComboVector &values) {
+  std::optional<PostflopSolverError> cfr_canonical_chance_into(const CanonicalPublicNode &canonical,
+                                                               const std::uint8_t updating_player,
+                                                               const ReachRef &reach,
+                                                               const double strategy_weight,
+                                                               ComboVector &values) {
     const bool profile = hotpath_profiling_enabled();
     if (profile) {
       ++prof_chance_calls_;
@@ -8098,11 +7940,10 @@ private:
     // value-initialized above: PlayerIndexed terminal kernels intentionally
     // write only live combo slots, and workers must not expose stale blocked
     // slots when their results are transformed back to the parent.
-    if ((board_card_count == 3U ||
-         (board_card_count == 4U && idle_river_workers > 0U)) &&
+    if ((board_card_count == 3U || (board_card_count == 4U && idle_river_workers > 0U)) &&
         parallel_worker_budget > 0U && canonical.edges.size() > 1U) {
-      const auto prepare_started = profile ? std::chrono::steady_clock::now()
-                                           : std::chrono::steady_clock::time_point{};
+      const auto prepare_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       const auto edge_count = canonical.edges.size();
       auto representative_reaches =
           std::make_unique_for_overwrite<std::array<ComboVector, 2>[]>(edge_count);
@@ -8113,18 +7954,16 @@ private:
           return PostflopSolverError::InvalidConfiguration;
         }
         representative_reaches[index] = transform_reach(
-            {*reach[0], *reach[1]},
-            edge.outcomes.front().physical_to_child_automorphism);
+            {*reach[0], *reach[1]}, edge.outcomes.front().physical_to_child_automorphism);
       }
       if (profile) {
-        const auto elapsed = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now() - prepare_started)
-                                 .count();
+        const auto elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - prepare_started)
+                .count();
         prof_chance_prepare_seconds_ += elapsed;
         prof_chance_seconds_ += elapsed;
       }
-      const std::size_t chunk_count =
-          std::min(edge_count, parallel_worker_budget + 1U);
+      const std::size_t chunk_count = std::min(edge_count, parallel_worker_budget + 1U);
       // Reserve one representative for the caller before waking the pool.
       // Without this reservation the seven persistent workers can claim the
       // whole dynamic queue while the caller is still dispatching tasks,
@@ -8137,20 +7976,17 @@ private:
       for (std::size_t chunk = 1U; chunk < chunk_count; ++chunk) {
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
             [edges = &canonical.edges, reaches = representative_reaches.get(),
-             results = chance_results.get(), next = &next_edge, edge_count,
-             updating_player,
+             results = chance_results.get(), next = &next_edge, edge_count, updating_player,
              strategy_weight](DenseTraversal &self) {
               while (true) {
-                const std::size_t index =
-                    next->fetch_add(1U, std::memory_order_relaxed);
+                const std::size_t index = next->fetch_add(1U, std::memory_order_relaxed);
                 if (index >= edge_count) {
                   break;
                 }
                 if (const auto error = self.cfr_canonical_chance_child_into(
-                        (*edges)[index].outcomes.front().child,
-                        updating_player,
-                        {&reaches[index][0], &reaches[index][1]},
-                        strategy_weight, results[index])) {
+                        (*edges)[index].outcomes.front().child, updating_player,
+                        {&reaches[index][0], &reaches[index][1]}, strategy_weight,
+                        results[index])) {
                   return Result<ComboVector, PostflopSolverError>::failure(*error);
                 }
               }
@@ -8163,18 +7999,17 @@ private:
       std::optional<PostflopSolverError> main_error;
       main_error = cfr_canonical_chance_child_into(
           canonical.edges[0U].outcomes.front().child, updating_player,
-          {&representative_reaches[0U][0], &representative_reaches[0U][1]},
-          strategy_weight, chance_results[0U]);
+          {&representative_reaches[0U][0], &representative_reaches[0U][1]}, strategy_weight,
+          chance_results[0U]);
       while (!main_error) {
-        const std::size_t index =
-            next_edge.fetch_add(1U, std::memory_order_relaxed);
+        const std::size_t index = next_edge.fetch_add(1U, std::memory_order_relaxed);
         if (index >= edge_count) {
           break;
         }
         main_error = cfr_canonical_chance_child_into(
             canonical.edges[index].outcomes.front().child, updating_player,
-            {&representative_reaches[index][0], &representative_reaches[index][1]},
-            strategy_weight, chance_results[index]);
+            {&representative_reaches[index][0], &representative_reaches[index][1]}, strategy_weight,
+            chance_results[index]);
       }
       std::optional<PostflopSolverError> worker_error;
       for (auto &future : futures) {
@@ -8187,8 +8022,8 @@ private:
       if (main_error || worker_error) {
         return main_error ? *main_error : *worker_error;
       }
-      const auto accumulate_started = profile ? std::chrono::steady_clock::now()
-                                              : std::chrono::steady_clock::time_point{};
+      const auto accumulate_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (board_card_count == 4U) {
         // Preserve the original turn-to-river accumulation order exactly.
         // Only independent child traversals are parallelized; their values are
@@ -8196,19 +8031,16 @@ private:
         for (std::size_t index = 0U; index < edge_count; ++index) {
           for (const auto &outcome : canonical.edges[index].outcomes) {
             const double probability =
-                static_cast<double>(outcome.physical_outcome_count) /
-                denominator;
+                static_cast<double>(outcome.physical_outcome_count) / denominator;
             accumulate_transformed_values_to_parent(
-                values, chance_results[index],
-                outcome.physical_to_child_automorphism, updating_player, board,
-                outcome.chance_card, probability);
+                values, chance_results[index], outcome.physical_to_child_automorphism,
+                updating_player, board, outcome.chance_card, probability);
           }
         }
         if (profile) {
-          const auto elapsed = std::chrono::duration<double>(
-                                   std::chrono::steady_clock::now() -
-                                   accumulate_started)
-                                   .count();
+          const auto elapsed =
+              std::chrono::duration<double>(std::chrono::steady_clock::now() - accumulate_started)
+                  .count();
           prof_chance_accumulate_seconds_ += elapsed;
           prof_chance_seconds_ += elapsed;
         }
@@ -8222,24 +8054,19 @@ private:
         const std::size_t begin = chunk * edge_count / chunk_count;
         const std::size_t end = (chunk + 1U) * edge_count / chunk_count;
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
-            [edges = &canonical.edges, results = chance_results.get(),
-             board_ptr = &board, begin, end, updating_player,
-             denominator](DenseTraversal &self) {
+            [edges = &canonical.edges, results = chance_results.get(), board_ptr = &board, begin,
+             end, updating_player, denominator](DenseTraversal &self) {
               ComboVector partial{};
               for (std::size_t index = begin; index < end; ++index) {
                 for (const auto &outcome : (*edges)[index].outcomes) {
                   const double probability =
-                      static_cast<double>(outcome.physical_outcome_count) /
-                      denominator;
+                      static_cast<double>(outcome.physical_outcome_count) / denominator;
                   self.accumulate_transformed_values_to_parent(
-                      partial, results[index],
-                      outcome.physical_to_child_automorphism,
-                      updating_player, *board_ptr, outcome.chance_card,
-                      probability);
+                      partial, results[index], outcome.physical_to_child_automorphism,
+                      updating_player, *board_ptr, outcome.chance_card, probability);
                 }
               }
-              return Result<ComboVector, PostflopSolverError>::success(
-                  std::move(partial));
+              return Result<ComboVector, PostflopSolverError>::success(std::move(partial));
             });
         accumulation_futures.push_back(task.get_future());
         accumulation_tasks.push_back(std::move(task));
@@ -8252,9 +8079,8 @@ private:
           const double probability =
               static_cast<double>(outcome.physical_outcome_count) / denominator;
           accumulate_transformed_values_to_parent(
-              values, chance_results[index],
-              outcome.physical_to_child_automorphism, updating_player, board,
-              outcome.chance_card, probability);
+              values, chance_results[index], outcome.physical_to_child_automorphism,
+              updating_player, board, outcome.chance_card, probability);
         }
       }
       for (auto &future : accumulation_futures) {
@@ -8263,15 +8089,13 @@ private:
         if (!partial) {
           return partial.error();
         }
-        const std::size_t slot_count =
-            layout_.player_flop_count[updating_player];
+        const std::size_t slot_count = layout_.player_flop_count[updating_player];
         std::size_t slot = 0U;
         if constexpr (std::is_same_v<Scalar, float>) {
           for (; slot + 8U <= slot_count; slot += 8U) {
-            _mm256_storeu_ps(
-                values.data() + slot,
-                _mm256_add_ps(_mm256_loadu_ps(values.data() + slot),
-                              _mm256_loadu_ps(partial.value().data() + slot)));
+            _mm256_storeu_ps(values.data() + slot,
+                             _mm256_add_ps(_mm256_loadu_ps(values.data() + slot),
+                                           _mm256_loadu_ps(partial.value().data() + slot)));
           }
         }
         for (; slot < slot_count; ++slot) {
@@ -8279,9 +8103,9 @@ private:
         }
       }
       if (profile) {
-        const auto elapsed = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now() - accumulate_started)
-                                 .count();
+        const auto elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - accumulate_started)
+                .count();
         prof_chance_accumulate_seconds_ += elapsed;
         prof_chance_seconds_ += elapsed;
       }
@@ -8292,37 +8116,36 @@ private:
         return PostflopSolverError::InvalidConfiguration;
       }
       const auto &representative = edge.outcomes.front();
-      const auto prepare_started = profile ? std::chrono::steady_clock::now()
-                                           : std::chrono::steady_clock::time_point{};
-      auto representative_reach = transform_reach(
-          {*reach[0], *reach[1]}, representative.physical_to_child_automorphism);
+      const auto prepare_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+      auto representative_reach =
+          transform_reach({*reach[0], *reach[1]}, representative.physical_to_child_automorphism);
       if (profile) {
-        const auto elapsed = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now() - prepare_started)
-                                 .count();
+        const auto elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - prepare_started)
+                .count();
         prof_chance_prepare_seconds_ += elapsed;
         prof_chance_seconds_ += elapsed;
       }
       ComboVector child{};
       if (const auto error = cfr_canonical_chance_child_into(
               representative.child, updating_player,
-              {&representative_reach[0], &representative_reach[1]},
-              strategy_weight, child)) {
+              {&representative_reach[0], &representative_reach[1]}, strategy_weight, child)) {
         return error;
       }
-      const auto accumulate_started = profile ? std::chrono::steady_clock::now()
-                                              : std::chrono::steady_clock::time_point{};
+      const auto accumulate_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       for (const auto &outcome : edge.outcomes) {
         const double probability =
             static_cast<double>(outcome.physical_outcome_count) / denominator;
         accumulate_transformed_values_to_parent(
-            values, child, outcome.physical_to_child_automorphism,
-            updating_player, board, outcome.chance_card, probability);
+            values, child, outcome.physical_to_child_automorphism, updating_player, board,
+            outcome.chance_card, probability);
       }
       if (profile) {
-        const auto elapsed = std::chrono::duration<double>(
-                                 std::chrono::steady_clock::now() - accumulate_started)
-                                 .count();
+        const auto elapsed =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - accumulate_started)
+                .count();
         prof_chance_accumulate_seconds_ += elapsed;
         prof_chance_seconds_ += elapsed;
       }
@@ -8330,13 +8153,13 @@ private:
     return std::nullopt;
   }
 
-  std::optional<PostflopSolverError> cfr_canonical_decision_into(
-      const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
-      const ReachRef &reach, const double strategy_weight,
-      ComboVector &values) {
+  std::optional<PostflopSolverError>
+  cfr_canonical_decision_into(const CanonicalPublicNode &canonical,
+                              const std::uint8_t updating_player, const ReachRef &reach,
+                              const double strategy_weight, ComboVector &values) {
     const bool profile = hotpath_profiling_enabled();
-    const auto strategy_started = profile ? std::chrono::steady_clock::now()
-                                          : std::chrono::steady_clock::time_point{};
+    const auto strategy_started =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (profile) {
       ++prof_decisions_;
     }
@@ -8347,8 +8170,8 @@ private:
       return PostflopSolverError::InvalidConfiguration;
     }
     if (decision.player == updating_player) {
-      const auto entries = static_cast<std::uint64_t>(
-          board.player_combos[updating_player].size() * action_count);
+      const auto entries =
+          static_cast<std::uint64_t>(board.player_combos[updating_player].size() * action_count);
       if (!is_locked_root(canonical)) {
         work_counters_.regret_update_entries += entries;
       }
@@ -8361,72 +8184,64 @@ private:
     auto &strategies = scratch_lease.get().strategies;
     auto &actor_reach = scratch_lease.get().reach_actor[0];
     const bool locked_root = is_locked_root(canonical);
-    load_canonical_current_strategies(canonical, board, updating_player, strategies,
-                                      true);
+    load_canonical_current_strategies(canonical, board, updating_player, strategies, true);
     if (profile) {
       prof_strategy_seconds_ +=
-          std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                        strategy_started)
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - strategy_started)
               .count();
-      prof_strategy_entries_ += board.player_combos[decision.player].size() *
-                                action_count;
+      prof_strategy_entries_ += board.player_combos[decision.player].size() * action_count;
       profile_strategy_density(strategies, action_count,
                                board.player_combos[decision.player].size());
     }
-    const auto paired_fold_action =
-        static_cast<std::size_t>(decision.paired_fold_action);
-    const auto paired_showdown_action =
-        static_cast<std::size_t>(decision.paired_showdown_action);
+    const auto paired_fold_action = static_cast<std::size_t>(decision.paired_fold_action);
+    const auto paired_showdown_action = static_cast<std::size_t>(decision.paired_showdown_action);
     const auto &actor_combos = board.player_combos[decision.player];
-    const auto &actor_slots =
-        PlayerIndexed ? board.player_flop_slots[decision.player]
-                      : board.player_active_slots[decision.player];
-    const auto materialize_local_actor_reach =
-        [&](const std::size_t action, ComboVector &destination) {
-          const auto &parent_reach = *reach[decision.player];
-          bool any_nonzero = false;
-          std::size_t actor_local = 0U;
-          if constexpr (std::is_same_v<Scalar, float>) {
-            alignas(32) float child_lanes_float[8];
-            for (; actor_local + 8U <= actor_slots.size(); actor_local += 8U) {
-              const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                  reinterpret_cast<const __m128i *>(actor_slots.data() + actor_local)));
-              const __m256 children = _mm256_mul_ps(
-                  _mm256_i32gather_ps(parent_reach.data(), indices, 4),
-                  _mm256_loadu_ps(strategies[action].data() + actor_local));
-              _mm256_store_ps(child_lanes_float, children);
-              for (std::size_t lane = 0U; lane < 8U; ++lane) {
-                destination[actor_slots[actor_local + lane]] =
-                    child_lanes_float[lane];
-                any_nonzero = any_nonzero || child_lanes_float[lane] != 0.0F;
-              }
-            }
+    const auto &actor_slots = PlayerIndexed ? board.player_flop_slots[decision.player]
+                                            : board.player_active_slots[decision.player];
+    const auto materialize_local_actor_reach = [&](const std::size_t action,
+                                                   ComboVector &destination) {
+      const auto &parent_reach = *reach[decision.player];
+      bool any_nonzero = false;
+      std::size_t actor_local = 0U;
+      if constexpr (std::is_same_v<Scalar, float>) {
+        alignas(32) float child_lanes_float[8];
+        for (; actor_local + 8U <= actor_slots.size(); actor_local += 8U) {
+          const __m256i indices = _mm256_cvtepu16_epi32(
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(actor_slots.data() + actor_local)));
+          const __m256 children =
+              _mm256_mul_ps(_mm256_i32gather_ps(parent_reach.data(), indices, 4),
+                            _mm256_loadu_ps(strategies[action].data() + actor_local));
+          _mm256_store_ps(child_lanes_float, children);
+          for (std::size_t lane = 0U; lane < 8U; ++lane) {
+            destination[actor_slots[actor_local + lane]] = child_lanes_float[lane];
+            any_nonzero = any_nonzero || child_lanes_float[lane] != 0.0F;
           }
-          alignas(32) double child_lanes[4];
-          for (; actor_local + 4U <= actor_slots.size(); actor_local += 4U) {
-            const __m128i indices = _mm_cvtepu16_epi32(_mm_loadl_epi64(
-                reinterpret_cast<const __m128i *>(actor_slots.data() + actor_local)));
-            const __m256d children = _mm256_mul_pd(
-                gather_four_as_double(parent_reach.data(), indices),
-                load_four_as_double(strategies[action].data() + actor_local));
-            _mm256_store_pd(child_lanes, children);
-            for (std::size_t lane = 0U; lane < 4U; ++lane) {
-              destination[actor_slots[actor_local + lane]] =
-                  static_cast<Scalar>(child_lanes[lane]);
-              any_nonzero = any_nonzero || child_lanes[lane] != 0.0;
-            }
-          }
-          for (; actor_local < actor_combos.size(); ++actor_local) {
-            const auto slot = value_slot(actor_combos[actor_local], decision.player);
-            destination[slot] = static_cast<Scalar>(
-                parent_reach[slot] * strategies[action][actor_local]);
-            any_nonzero = any_nonzero || destination[slot] != 0.0;
-          }
-          if (profile) {
-            prof_actor_writes_ += actor_combos.size();
-          }
-          return any_nonzero;
-        };
+        }
+      }
+      alignas(32) double child_lanes[4];
+      for (; actor_local + 4U <= actor_slots.size(); actor_local += 4U) {
+        const __m128i indices = _mm_cvtepu16_epi32(
+            _mm_loadl_epi64(reinterpret_cast<const __m128i *>(actor_slots.data() + actor_local)));
+        const __m256d children =
+            _mm256_mul_pd(gather_four_as_double(parent_reach.data(), indices),
+                          load_four_as_double(strategies[action].data() + actor_local));
+        _mm256_store_pd(child_lanes, children);
+        for (std::size_t lane = 0U; lane < 4U; ++lane) {
+          destination[actor_slots[actor_local + lane]] = static_cast<Scalar>(child_lanes[lane]);
+          any_nonzero = any_nonzero || child_lanes[lane] != 0.0;
+        }
+      }
+      for (; actor_local < actor_combos.size(); ++actor_local) {
+        const auto slot = value_slot(actor_combos[actor_local], decision.player);
+        destination[slot] =
+            static_cast<Scalar>(parent_reach[slot] * strategies[action][actor_local]);
+        any_nonzero = any_nonzero || destination[slot] != 0.0;
+      }
+      if (profile) {
+        prof_actor_writes_ += actor_combos.size();
+      }
+      return any_nonzero;
+    };
     for (std::size_t action = 0; action < action_count; ++action) {
       if (action == paired_fold_action) {
         // The paired showdown branch below computes both terminal vectors in
@@ -8440,33 +8255,27 @@ private:
       if (!identity_automorphism(outcome.physical_to_child_automorphism)) {
         return PostflopSolverError::InvalidConfiguration;
       }
-      const auto copy_started = profile ? std::chrono::steady_clock::now()
-                                        : std::chrono::steady_clock::time_point{};
+      const auto copy_started =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       const auto child_node_id = outcome.child;
       const auto &child_node = layout_.canonical_public_graph.nodes[child_node_id];
       const bool terminal_child = child_node.kind == PublicNodeKind::TerminalFold ||
                                   child_node.kind == PublicNodeKind::TerminalShowdown;
       const bool actor_needed =
-          decision.player != updating_player ||
-          (!terminal_child && strategy_weight != 0.0);
+          decision.player != updating_player || (!terminal_child && strategy_weight != 0.0);
       const bool actor_reach_nonzero =
           actor_needed ? materialize_local_actor_reach(action, actor_reach) : true;
-      const ReachRef child_reach =
-          actor_needed
-              ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                       : ReachRef{reach[0], &actor_reach})
-              : reach;
+      const ReachRef child_reach = actor_needed
+                                       ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                                : ReachRef{reach[0], &actor_reach})
+                                       : reach;
       if (profile) {
         prof_copy_seconds_ +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                          copy_started)
-                .count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - copy_started).count();
       }
       if (action == paired_showdown_action && paired_fold_action < action_count) {
-        const auto &fold_outcome =
-            canonical.edges[paired_fold_action].outcomes.front();
-        const auto &fold_node =
-            layout_.canonical_public_graph.nodes[fold_outcome.child];
+        const auto &fold_outcome = canonical.edges[paired_fold_action].outcomes.front();
+        const auto &fold_node = layout_.canonical_public_graph.nodes[fold_outcome.child];
         if (child_node.kind != PublicNodeKind::TerminalShowdown ||
             fold_node.kind != PublicNodeKind::TerminalFold ||
             child_node.board_index != fold_node.board_index) {
@@ -8476,8 +8285,7 @@ private:
         const ComboVector *fold_opponent_reach = reach[1U - updating_player];
         bool fold_reach_nonzero = true;
         if (decision.player != updating_player) {
-          fold_reach_nonzero = materialize_local_actor_reach(
-              paired_fold_action, fold_actor_reach);
+          fold_reach_nonzero = materialize_local_actor_reach(paired_fold_action, fold_actor_reach);
           fold_opponent_reach = &fold_actor_reach;
         }
         if (!actor_reach_nonzero) {
@@ -8489,28 +8297,23 @@ private:
           zero_values_into(updating_player, action_values[paired_fold_action]);
         }
         if (actor_reach_nonzero && fold_reach_nonzero) {
-          const auto &showdown_payoff =
-              child_node.showdown_payoff_antes[updating_player];
+          const auto &showdown_payoff = child_node.showdown_payoff_antes[updating_player];
           if (const auto error = showdown_values_with_payoffs_into<false, true>(
                   child_node.board_index, showdown_payoff[0], showdown_payoff[1],
-                  showdown_payoff[2], updating_player,
-                  *child_reach[1U - updating_player], action_values[action],
-                  fold_node.fold_payoff_antes[updating_player],
+                  showdown_payoff[2], updating_player, *child_reach[1U - updating_player],
+                  action_values[action], fold_node.fold_payoff_antes[updating_player],
                   &action_values[paired_fold_action], fold_opponent_reach)) {
             return error;
           }
         } else if (actor_reach_nonzero) {
-          if (const auto error = cfr_canonical_into(
-                  child_node_id, updating_player, child_reach, strategy_weight,
-                  action_values[action])) {
+          if (const auto error = cfr_canonical_into(child_node_id, updating_player, child_reach,
+                                                    strategy_weight, action_values[action])) {
             return error;
           }
         } else if (fold_reach_nonzero) {
           if (const auto error = fold_values_with_payoff_into(
-                  fold_node.board_index,
-                  fold_node.fold_payoff_antes[updating_player],
-                  updating_player, *fold_opponent_reach,
-                  action_values[paired_fold_action])) {
+                  fold_node.board_index, fold_node.fold_payoff_antes[updating_player],
+                  updating_player, *fold_opponent_reach, action_values[paired_fold_action])) {
             return error;
           }
         }
@@ -8526,15 +8329,14 @@ private:
         zero_values_into(updating_player, action_values[action]);
         continue;
       }
-      if (const auto error = cfr_canonical_into(
-              outcome.child, updating_player, child_reach, strategy_weight,
-              action_values[action])) {
+      if (const auto error = cfr_canonical_into(outcome.child, updating_player, child_reach,
+                                                strategy_weight, action_values[action])) {
         return error;
       }
     }
 
-    const auto value_started = profile ? std::chrono::steady_clock::now()
-                                       : std::chrono::steady_clock::time_point{};
+    const auto value_started =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     zero_values_into(updating_player, values);
     const auto &updating_combos = board.player_combos[updating_player];
     std::size_t updating_local = 0U;
@@ -8549,8 +8351,7 @@ private:
         for (; slot + 8U <= slot_count; slot += 8U) {
           __m256 current = _mm256_setzero_ps();
           for (std::size_t action = 0U; action < action_count; ++action) {
-            current = _mm256_add_ps(
-                current, _mm256_loadu_ps(action_values[action].data() + slot));
+            current = _mm256_add_ps(current, _mm256_loadu_ps(action_values[action].data() + slot));
           }
           _mm256_storeu_ps(values.data() + slot, current);
         }
@@ -8565,27 +8366,24 @@ private:
       }
     }
     if (aligned_compact_state()) {
-      const auto &slots = PlayerIndexed
-                              ? board.player_flop_slots[updating_player]
-                              : board.player_active_slots[updating_player];
+      const auto &slots = PlayerIndexed ? board.player_flop_slots[updating_player]
+                                        : board.player_active_slots[updating_player];
       if constexpr (std::is_same_v<Scalar, float>) {
         alignas(32) float current_lanes[8];
         alignas(32) float action_lanes[maximum_action_count][8];
         for (; updating_local + 8U <= slots.size(); updating_local += 8U) {
-          const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-              reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
+          const __m256i indices = _mm256_cvtepu16_epi32(
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
           __m256 current = _mm256_setzero_ps();
           for (std::size_t action = 0U; action < action_count; ++action) {
             const __m256 action_vector =
                 _mm256_i32gather_ps(action_values[action].data(), indices, 4);
             _mm256_store_ps(action_lanes[action], action_vector);
             current = decision.player == updating_player
-                          ? _mm256_add_ps(
-                                current,
-                                _mm256_mul_ps(
-                                    _mm256_loadu_ps(strategies[action].data() +
-                                                    updating_local),
-                                    action_vector))
+                          ? _mm256_add_ps(current,
+                                          _mm256_mul_ps(_mm256_loadu_ps(strategies[action].data() +
+                                                                        updating_local),
+                                                        action_vector))
                           : _mm256_add_ps(current, action_vector);
           }
           _mm256_store_ps(current_lanes, current);
@@ -8594,28 +8392,25 @@ private:
           }
           if (decision.player == updating_player) {
             for (std::size_t lane = 0U; lane < 8U; ++lane) {
-              const auto state_base =
-                  static_cast<std::size_t>(decision.action_base) +
-                  (updating_local + lane) * action_count;
+              const auto state_base = static_cast<std::size_t>(decision.action_base) +
+                                      (updating_local + lane) * action_count;
               const double reach_weight =
-                  strategy_weight * static_cast<double>((*reach[updating_player])
-                      [slots[updating_local + lane]]);
+                  strategy_weight *
+                  static_cast<double>((*reach[updating_player])[slots[updating_local + lane]]);
               for (std::size_t action = 0U; action < action_count; ++action) {
                 const auto index = state_base + action;
                 if (!locked_root) {
-                  buffers_.compact_regret16[index] = encode_regret13(std::max(
-                      0.0,
-                      decode_regret13(buffers_.compact_regret16[index]) +
-                          regret_update_weight_ *
-                              static_cast<double>(action_lanes[action][lane] -
-                                                  current_lanes[lane])));
+                  buffers_.compact_regret16[index] = encode_regret13(
+                      std::max(0.0, decode_regret13(buffers_.compact_regret16[index]) +
+                                        regret_update_weight_ *
+                                            static_cast<double>(action_lanes[action][lane] -
+                                                                current_lanes[lane])));
                 }
                 if (reach_weight != 0.0) {
                   buffers_.compact_strategy16[index] = encode_strategy11(
                       decode_strategy11(buffers_.compact_strategy16[index]) +
-                      reach_weight * static_cast<double>(
-                                         strategies[action]
-                                                   [updating_local + lane]));
+                      reach_weight *
+                          static_cast<double>(strategies[action][updating_local + lane]));
                 }
               }
             }
@@ -8626,44 +8421,37 @@ private:
         const auto slot = static_cast<std::size_t>(slots[updating_local]);
         if (decision.player == updating_player) {
           for (std::size_t action = 0U; action < action_count; ++action) {
-            values[slot] = static_cast<Scalar>(
-                values[slot] +
-                strategies[action][updating_local] * action_values[action][slot]);
+            values[slot] = static_cast<Scalar>(values[slot] + strategies[action][updating_local] *
+                                                                  action_values[action][slot]);
           }
           const auto state_base =
-              static_cast<std::size_t>(decision.action_base) +
-              updating_local * action_count;
+              static_cast<std::size_t>(decision.action_base) + updating_local * action_count;
           const double reach_weight =
               strategy_weight * static_cast<double>((*reach[updating_player])[slot]);
           for (std::size_t action = 0U; action < action_count; ++action) {
             const auto index = state_base + action;
             if (!locked_root) {
-              buffers_.compact_regret16[index] = encode_regret13(std::max(
-                  0.0,
-                  decode_regret13(buffers_.compact_regret16[index]) +
-                      regret_update_weight_ *
-                          (static_cast<double>(action_values[action][slot]) -
-                           static_cast<double>(values[slot]))));
+              buffers_.compact_regret16[index] = encode_regret13(
+                  std::max(0.0, decode_regret13(buffers_.compact_regret16[index]) +
+                                    regret_update_weight_ *
+                                        (static_cast<double>(action_values[action][slot]) -
+                                         static_cast<double>(values[slot]))));
             }
             if (reach_weight != 0.0) {
               buffers_.compact_strategy16[index] = encode_strategy11(
                   decode_strategy11(buffers_.compact_strategy16[index]) +
-                  reach_weight * static_cast<double>(
-                                     strategies[action][updating_local]));
+                  reach_weight * static_cast<double>(strategies[action][updating_local]));
             }
           }
         } else {
           for (std::size_t action = 0U; action < action_count; ++action) {
-            values[slot] = static_cast<Scalar>(
-                values[slot] + action_values[action][slot]);
+            values[slot] = static_cast<Scalar>(values[slot] + action_values[action][slot]);
           }
         }
       }
       if (profile) {
         prof_value_update_seconds_ +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                          value_started)
-                .count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - value_started).count();
       }
       return std::nullopt;
     }
@@ -8673,29 +8461,26 @@ private:
           const auto slot = value_slot(updating_combos[local], updating_player);
           Scalar current = Scalar{0};
           for (std::size_t action = 0; action < action_count; ++action) {
-            current = static_cast<Scalar>(
-                current + strategies[action][local] * action_values[action][slot]);
+            current = static_cast<Scalar>(current +
+                                          strategies[action][local] * action_values[action][slot]);
           }
           values[slot] = current;
         }
-        update_action_major_compact_average(
-            canonical, board, updating_player, reach, strategy_weight,
-            strategies, true);
+        update_action_major_compact_average(canonical, board, updating_player, reach,
+                                            strategy_weight, strategies, true);
         if (!locked_root) {
           for (std::size_t action = 0; action < action_count; ++action) {
             for (std::size_t local = 0; local < updating_combos.size(); ++local) {
               const auto slot = value_slot(updating_combos[local], updating_player);
               auto *const bytes = buffers_.compact_state +
-                  canonical_action_major_index(canonical, local, action) * 3U;
+                                  canonical_action_major_index(canonical, local, action) * 3U;
               const auto word = compact_word(bytes);
-              const double updated = std::max(
-                  0.0,
-                  decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU)) +
-                      regret_update_weight_ *
-                          (static_cast<double>(action_values[action][slot]) -
-                           static_cast<double>(values[slot])));
-              store_compact_word(
-                  bytes, (word & 0x00ffe000U) | encode_regret13(updated));
+              const double updated =
+                  std::max(0.0, decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU)) +
+                                    regret_update_weight_ *
+                                        (static_cast<double>(action_values[action][slot]) -
+                                         static_cast<double>(values[slot])));
+              store_compact_word(bytes, (word & 0x00ffe000U) | encode_regret13(updated));
             }
           }
         }
@@ -8711,25 +8496,20 @@ private:
       }
       if (profile) {
         prof_value_update_seconds_ +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                          value_started)
-                .count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - value_started).count();
       }
       return std::nullopt;
     }
     if (scaled_action_major_state()) {
       if (decision.player == updating_player) {
         const auto scaled_value_started =
-            profile ? std::chrono::steady_clock::now()
-                    : std::chrono::steady_clock::time_point{};
+            profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         if (buffers_.signed_scaled_regret && !locked_root) {
           const auto scaled_regret_started =
-              profile ? std::chrono::steady_clock::now()
-                      : std::chrono::steady_clock::time_point{};
+              profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
           auto &average_scratch = scratch_lease.get().opponent_action_values;
-          update_scaled_regrets(canonical, board, updating_player, values,
-                                action_values, strategies, &average_scratch,
-                                &reach, true);
+          update_scaled_regrets(canonical, board, updating_player, values, action_values,
+                                strategies, &average_scratch, &reach, true);
           if (profile) {
             prof_regret_update_seconds_ +=
                 std::chrono::duration<double>(std::chrono::steady_clock::now() -
@@ -8741,25 +8521,22 @@ private:
             const auto slot = value_slot(updating_combos[local], updating_player);
             Scalar current = Scalar{0};
             for (std::size_t action = 0; action < action_count; ++action) {
-              current = static_cast<Scalar>(
-                  current + strategies[action][local] * action_values[action][slot]);
+              current = static_cast<Scalar>(current + strategies[action][local] *
+                                                          action_values[action][slot]);
             }
             values[slot] = current;
           }
           const auto scaled_regret_started =
-              profile ? std::chrono::steady_clock::now()
-                      : std::chrono::steady_clock::time_point{};
+              profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
           if (profile) {
             prof_value_accumulate_seconds_ +=
-                std::chrono::duration<double>(scaled_regret_started -
-                                              scaled_value_started)
-                    .count();
+                std::chrono::duration<double>(scaled_regret_started - scaled_value_started).count();
           }
-          update_scaled_average(canonical, board, updating_player, reach,
-                                strategy_weight, strategies, true);
+          update_scaled_average(canonical, board, updating_player, reach, strategy_weight,
+                                strategies, true);
           if (!locked_root) {
-            update_scaled_regrets(canonical, board, updating_player, values,
-                                  action_values, strategies);
+            update_scaled_regrets(canonical, board, updating_player, values, action_values,
+                                  strategies);
           }
           if (profile) {
             prof_regret_update_seconds_ +=
@@ -8780,23 +8557,20 @@ private:
       }
       if (profile) {
         prof_value_update_seconds_ +=
-            std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                          value_started)
-                .count();
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - value_started).count();
       }
       return std::nullopt;
     }
     {
       if constexpr (std::is_same_v<Scalar, float>) {
         if (action_count >= 4U && buffers_.compact_state != nullptr) {
-          const auto &slots = PlayerIndexed
-                                  ? board.player_flop_slots[updating_player]
-                                  : board.player_active_slots[updating_player];
+          const auto &slots = PlayerIndexed ? board.player_flop_slots[updating_player]
+                                            : board.player_active_slots[updating_player];
           alignas(32) float current_lanes[8];
           alignas(32) float action_lanes[maximum_action_count][8];
           for (; updating_local + 8U <= slots.size(); updating_local += 8U) {
-            const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
+            const __m256i indices = _mm256_cvtepu16_epi32(
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
             __m256 current = _mm256_setzero_ps();
             for (std::size_t action = 0U; action < action_count; ++action) {
               const __m256 action_vector =
@@ -8805,9 +8579,8 @@ private:
               if (decision.player == updating_player) {
                 current = _mm256_add_ps(
                     current,
-                    _mm256_mul_ps(
-                        _mm256_loadu_ps(strategies[action].data() + updating_local),
-                        action_vector));
+                    _mm256_mul_ps(_mm256_loadu_ps(strategies[action].data() + updating_local),
+                                  action_vector));
               } else {
                 current = _mm256_add_ps(current, action_vector);
               }
@@ -8819,45 +8592,37 @@ private:
             if (decision.player == updating_player && !locked_root) {
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
                 auto *const block =
-                    buffers_.compact_state +
-                    (static_cast<std::size_t>(decision.action_base) +
-                     (updating_local + lane) * action_count) *
-                        3U;
+                    buffers_.compact_state + (static_cast<std::size_t>(decision.action_base) +
+                                              (updating_local + lane) * action_count) *
+                                                 3U;
                 for (std::size_t action = 0U; action < action_count; ++action) {
                   auto *const bytes = block + action * 3U;
                   const auto word = compact_word(bytes);
-                  const double updated = std::max(
-                      0.0,
-                      decode_regret13(
-                          static_cast<std::uint16_t>(word & 0x1fffU)) +
-                          regret_update_weight_ *
-                              static_cast<double>(action_lanes[action][lane] -
-                                                  current_lanes[lane]));
+                  const double updated =
+                      std::max(0.0, decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU)) +
+                                        regret_update_weight_ *
+                                            static_cast<double>(action_lanes[action][lane] -
+                                                                current_lanes[lane]));
                   const double strategy_delta =
                       strategy_weight == 0.0
                           ? 0.0
                           : strategy_weight *
-                                static_cast<double>((*reach[updating_player])
-                                                        [slots[updating_local + lane]]) *
                                 static_cast<double>(
-                                    strategies[action][updating_local + lane]);
+                                    (*reach[updating_player])[slots[updating_local + lane]]) *
+                                static_cast<double>(strategies[action][updating_local + lane]);
                   const auto average =
                       strategy_delta == 0.0
                           ? static_cast<std::uint16_t>(word >> 13U)
                           : encode_strategy11(
-                                decode_strategy11(static_cast<std::uint16_t>(
-                                    word >> 13U)) +
+                                decode_strategy11(static_cast<std::uint16_t>(word >> 13U)) +
                                 strategy_delta);
-                  store_compact_word(
-                      bytes,
-                      static_cast<std::uint32_t>(encode_regret13(updated)) |
-                          (static_cast<std::uint32_t>(average) << 13U));
+                  store_compact_word(bytes, static_cast<std::uint32_t>(encode_regret13(updated)) |
+                                                (static_cast<std::uint32_t>(average) << 13U));
                 }
               }
             }
           }
-          if (decision.player == updating_player && !locked_root &&
-              strategy_weight != 0.0) {
+          if (decision.player == updating_player && !locked_root && strategy_weight != 0.0) {
             averaging_fused_until = updating_local;
           }
         }
@@ -9073,47 +8838,37 @@ private:
         }
       }
 #endif
-      if (action_count == 2U &&
-          buffers_.compact_state != nullptr) {
-        const auto &slots = PlayerIndexed
-                                ? board.player_flop_slots[updating_player]
-                                : board.player_active_slots[updating_player];
+      if (action_count == 2U && buffers_.compact_state != nullptr) {
+        const auto &slots = PlayerIndexed ? board.player_flop_slots[updating_player]
+                                          : board.player_active_slots[updating_player];
         const __m128i expand_words =
-            _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                          6, 7, 8, -1, 9, 10, 11, -1);
+            _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, 9, 10, 11, -1);
         const __m128i compact_words =
-            _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10,
-                          12, 13, 14, -1, -1, -1, -1);
+            _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
         const __m128i regret_mask = _mm_set1_epi32(0x1fff);
         const __m128i strategy_mask = _mm_set1_epi32(0x00ffe000);
         const __m256d zero = _mm256_setzero_pd();
         const __m256d regret_weight = _mm256_set1_pd(regret_update_weight_);
         const auto encode_four_regrets = [](const __m256d input) {
-          const __m128i bits = _mm_and_si128(
-              _mm_castps_si128(_mm256_cvtpd_ps(input)),
-              _mm_set1_epi32(0x7fffffff));
-          const __m128i discarded =
-              _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
+          const __m128i bits =
+              _mm_and_si128(_mm_castps_si128(_mm256_cvtpd_ps(input)), _mm_set1_epi32(0x7fffffff));
+          const __m128i discarded = _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
           __m128i packed = _mm_srli_epi32(bits, 18);
-          const __m128i greater =
-              _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
-          const __m128i equal =
-              _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
-          const __m128i odd = _mm_cmpeq_epi32(
-              _mm_and_si128(packed, _mm_set1_epi32(1)),
-              _mm_set1_epi32(1));
-          packed = _mm_add_epi32(
-              packed,
-              _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                            _mm_set1_epi32(1)));
+          const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
+          const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
+          const __m128i odd =
+              _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
+          packed =
+              _mm_add_epi32(packed, _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
+                                                  _mm_set1_epi32(1)));
           return _mm_min_epu32(packed, _mm_set1_epi32(0x1ffe));
         };
         const auto store_four_words = [compact_words](std::uint8_t *const destination,
-                                                       const __m128i words) {
+                                                      const __m128i words) {
           const __m128i compact = _mm_shuffle_epi8(words, compact_words);
           _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
-          const std::uint32_t tail = static_cast<std::uint32_t>(
-              _mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
+          const std::uint32_t tail =
+              static_cast<std::uint32_t>(_mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
           std::memcpy(destination + 8U, &tail, sizeof(tail));
         };
         alignas(32) double value_lanes[4];
@@ -9123,39 +8878,29 @@ private:
             const __m256 regret_weight_float =
                 _mm256_set1_ps(static_cast<float>(regret_update_weight_));
             const auto encode_eight_regrets = [](const __m256 input) {
-              const __m256i bits = _mm256_and_si256(
-                  _mm256_castps_si256(input), _mm256_set1_epi32(0x7fffffff));
-              const __m256i discarded =
-                  _mm256_and_si256(bits, _mm256_set1_epi32(0x3ffff));
+              const __m256i bits =
+                  _mm256_and_si256(_mm256_castps_si256(input), _mm256_set1_epi32(0x7fffffff));
+              const __m256i discarded = _mm256_and_si256(bits, _mm256_set1_epi32(0x3ffff));
               __m256i packed = _mm256_srli_epi32(bits, 18);
-              const __m256i greater =
-                  _mm256_cmpgt_epi32(discarded, _mm256_set1_epi32(0x20000));
-              const __m256i equal =
-                  _mm256_cmpeq_epi32(discarded, _mm256_set1_epi32(0x20000));
-              const __m256i odd = _mm256_cmpeq_epi32(
-                  _mm256_and_si256(packed, _mm256_set1_epi32(1)),
-                  _mm256_set1_epi32(1));
+              const __m256i greater = _mm256_cmpgt_epi32(discarded, _mm256_set1_epi32(0x20000));
+              const __m256i equal = _mm256_cmpeq_epi32(discarded, _mm256_set1_epi32(0x20000));
+              const __m256i odd = _mm256_cmpeq_epi32(_mm256_and_si256(packed, _mm256_set1_epi32(1)),
+                                                     _mm256_set1_epi32(1));
               packed = _mm256_add_epi32(
-                  packed,
-                  _mm256_and_si256(
-                      _mm256_or_si256(greater, _mm256_and_si256(equal, odd)),
-                      _mm256_set1_epi32(1)));
+                  packed, _mm256_and_si256(_mm256_or_si256(greater, _mm256_and_si256(equal, odd)),
+                                           _mm256_set1_epi32(1)));
               return _mm256_min_epu32(packed, _mm256_set1_epi32(0x1ffe));
             };
             for (; updating_local + 8U <= slots.size(); updating_local += 8U) {
               const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
                   reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
-              const __m256 first_action =
-                  _mm256_i32gather_ps(action_values[0].data(), indices, 4);
-              const __m256 second_action =
-                  _mm256_i32gather_ps(action_values[1].data(), indices, 4);
+              const __m256 first_action = _mm256_i32gather_ps(action_values[0].data(), indices, 4);
+              const __m256 second_action = _mm256_i32gather_ps(action_values[1].data(), indices, 4);
               const __m256 current = _mm256_add_ps(
-                  _mm256_mul_ps(
-                      _mm256_loadu_ps(strategies[0].data() + updating_local),
-                      first_action),
-                  _mm256_mul_ps(
-                      _mm256_loadu_ps(strategies[1].data() + updating_local),
-                      second_action));
+                  _mm256_mul_ps(_mm256_loadu_ps(strategies[0].data() + updating_local),
+                                first_action),
+                  _mm256_mul_ps(_mm256_loadu_ps(strategies[1].data() + updating_local),
+                                second_action));
               alignas(32) float current_lanes[8];
               _mm256_store_ps(current_lanes, current);
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
@@ -9164,64 +8909,44 @@ private:
 
               auto *const packed =
                   buffers_.compact_state +
-                  (static_cast<std::size_t>(decision.action_base) +
-                   updating_local * 2U) *
-                      3U;
+                  (static_cast<std::size_t>(decision.action_base) + updating_local * 2U) * 3U;
               const std::array<__m128i, 4> old_words{
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                      expand_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                      expand_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 24U)),
-                      expand_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 36U)),
-                      expand_words)};
-              const auto decoded_regrets = [regret_mask](const __m128i low,
-                                                          const __m128i high,
-                                                          const int first_lane) {
-                const __m128 low_regrets = _mm_castsi128_ps(
-                    _mm_slli_epi32(_mm_and_si128(low, regret_mask), 18));
-                const __m128 high_regrets = _mm_castsi128_ps(
-                    _mm_slli_epi32(_mm_and_si128(high, regret_mask), 18));
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                                   expand_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
+                                   expand_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 24U)),
+                                   expand_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 36U)),
+                                   expand_words)};
+              const auto decoded_regrets = [regret_mask](const __m128i low, const __m128i high,
+                                                         const int first_lane) {
+                const __m128 low_regrets =
+                    _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(low, regret_mask), 18));
+                const __m128 high_regrets =
+                    _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(high, regret_mask), 18));
                 return first_lane == 0
-                           ? _mm_shuffle_ps(low_regrets, high_regrets,
-                                            _MM_SHUFFLE(2, 0, 2, 0))
-                           : _mm_shuffle_ps(low_regrets, high_regrets,
-                                            _MM_SHUFFLE(3, 1, 3, 1));
+                           ? _mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0))
+                           : _mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1));
               };
-              const __m128 first_low =
-                  decoded_regrets(old_words[0], old_words[1], 0);
-              const __m128 first_high =
-                  decoded_regrets(old_words[2], old_words[3], 0);
-              const __m128 second_low =
-                  decoded_regrets(old_words[0], old_words[1], 1);
-              const __m128 second_high =
-                  decoded_regrets(old_words[2], old_words[3], 1);
-              const __m256 first_regrets = _mm256_insertf128_ps(
-                  _mm256_castps128_ps256(first_low), first_high, 1);
-              const __m256 second_regrets = _mm256_insertf128_ps(
-                  _mm256_castps128_ps256(second_low), second_high, 1);
-              const __m256i encoded_first = encode_eight_regrets(
-                  _mm256_max_ps(
-                      zero_float,
-                      _mm256_add_ps(
-                          first_regrets,
-                          _mm256_mul_ps(regret_weight_float,
-                                        _mm256_sub_ps(first_action, current)))));
-              const __m256i encoded_second = encode_eight_regrets(
-                  _mm256_max_ps(
-                      zero_float,
-                      _mm256_add_ps(
-                          second_regrets,
-                          _mm256_mul_ps(regret_weight_float,
-                                        _mm256_sub_ps(second_action, current)))));
-              const std::array<__m128i, 2> first_halves{
-                  _mm256_castsi256_si128(encoded_first),
-                  _mm256_extracti128_si256(encoded_first, 1)};
+              const __m128 first_low = decoded_regrets(old_words[0], old_words[1], 0);
+              const __m128 first_high = decoded_regrets(old_words[2], old_words[3], 0);
+              const __m128 second_low = decoded_regrets(old_words[0], old_words[1], 1);
+              const __m128 second_high = decoded_regrets(old_words[2], old_words[3], 1);
+              const __m256 first_regrets =
+                  _mm256_insertf128_ps(_mm256_castps128_ps256(first_low), first_high, 1);
+              const __m256 second_regrets =
+                  _mm256_insertf128_ps(_mm256_castps128_ps256(second_low), second_high, 1);
+              const __m256i encoded_first = encode_eight_regrets(_mm256_max_ps(
+                  zero_float, _mm256_add_ps(first_regrets,
+                                            _mm256_mul_ps(regret_weight_float,
+                                                          _mm256_sub_ps(first_action, current)))));
+              const __m256i encoded_second = encode_eight_regrets(_mm256_max_ps(
+                  zero_float, _mm256_add_ps(second_regrets,
+                                            _mm256_mul_ps(regret_weight_float,
+                                                          _mm256_sub_ps(second_action, current)))));
+              const std::array<__m128i, 2> first_halves{_mm256_castsi256_si128(encoded_first),
+                                                        _mm256_extracti128_si256(encoded_first, 1)};
               const std::array<__m128i, 2> second_halves{
                   _mm256_castsi256_si128(encoded_second),
                   _mm256_extracti128_si256(encoded_second, 1)};
@@ -9229,26 +8954,20 @@ private:
                 const auto old_index = half * 2U;
                 store_four_words(
                     packed + half * 24U,
-                    _mm_or_si128(
-                        _mm_and_si128(old_words[old_index], strategy_mask),
-                        _mm_unpacklo_epi32(first_halves[half],
-                                           second_halves[half])));
+                    _mm_or_si128(_mm_and_si128(old_words[old_index], strategy_mask),
+                                 _mm_unpacklo_epi32(first_halves[half], second_halves[half])));
                 store_four_words(
                     packed + half * 24U + 12U,
-                    _mm_or_si128(
-                        _mm_and_si128(old_words[old_index + 1U], strategy_mask),
-                        _mm_unpackhi_epi32(first_halves[half],
-                                           second_halves[half])));
+                    _mm_or_si128(_mm_and_si128(old_words[old_index + 1U], strategy_mask),
+                                 _mm_unpackhi_epi32(first_halves[half], second_halves[half])));
               }
             }
           } else if (decision.player != updating_player || locked_root) {
             for (; updating_local + 8U <= slots.size(); updating_local += 8U) {
               const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
                   reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
-              const __m256 first_action =
-                  _mm256_i32gather_ps(action_values[0].data(), indices, 4);
-              const __m256 second_action =
-                  _mm256_i32gather_ps(action_values[1].data(), indices, 4);
+              const __m256 first_action = _mm256_i32gather_ps(action_values[0].data(), indices, 4);
+              const __m256 second_action = _mm256_i32gather_ps(action_values[1].data(), indices, 4);
               const __m256 current = _mm256_add_ps(first_action, second_action);
               alignas(32) float current_lanes[8];
               _mm256_store_ps(current_lanes, current);
@@ -9259,113 +8978,86 @@ private:
           }
         }
         for (; updating_local + 4U < slots.size(); updating_local += 4U) {
-          const __m128i indices = _mm_cvtepu16_epi32(_mm_loadl_epi64(
-              reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
-          const __m256d first_action =
-              gather_four_as_double(action_values[0].data(), indices);
-          const __m256d second_action =
-              gather_four_as_double(action_values[1].data(), indices);
+          const __m128i indices = _mm_cvtepu16_epi32(
+              _mm_loadl_epi64(reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
+          const __m256d first_action = gather_four_as_double(action_values[0].data(), indices);
+          const __m256d second_action = gather_four_as_double(action_values[1].data(), indices);
           __m256d current;
           if (decision.player == updating_player) {
             current = _mm256_add_pd(
-                _mm256_mul_pd(
-                    load_four_as_double(strategies[0].data() + updating_local),
-                    first_action),
-                _mm256_mul_pd(
-                    load_four_as_double(strategies[1].data() + updating_local),
-                    second_action));
+                _mm256_mul_pd(load_four_as_double(strategies[0].data() + updating_local),
+                              first_action),
+                _mm256_mul_pd(load_four_as_double(strategies[1].data() + updating_local),
+                              second_action));
           } else {
             current = _mm256_add_pd(first_action, second_action);
           }
           _mm256_store_pd(value_lanes, current);
           for (std::size_t lane = 0U; lane < 4U; ++lane) {
-            values[slots[updating_local + lane]] =
-                static_cast<Scalar>(value_lanes[lane]);
+            values[slots[updating_local + lane]] = static_cast<Scalar>(value_lanes[lane]);
           }
           if (decision.player != updating_player || locked_root) {
             continue;
           }
           auto *const packed =
               buffers_.compact_state +
-              (static_cast<std::size_t>(decision.action_base) +
-               updating_local * 2U) *
-                  3U;
+              (static_cast<std::size_t>(decision.action_base) + updating_local * 2U) * 3U;
           const __m128i low_words = _mm_shuffle_epi8(
-              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-              expand_words);
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)), expand_words);
           const __m128i high_words = _mm_shuffle_epi8(
-              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-              expand_words);
-          const __m128 low_regrets = _mm_castsi128_ps(
-              _mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
-          const __m128 high_regrets = _mm_castsi128_ps(
-              _mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
-          const __m256d first_regrets = _mm256_cvtps_pd(
-              _mm_shuffle_ps(low_regrets, high_regrets,
-                             _MM_SHUFFLE(2, 0, 2, 0)));
-          const __m256d second_regrets = _mm256_cvtps_pd(
-              _mm_shuffle_ps(low_regrets, high_regrets,
-                             _MM_SHUFFLE(3, 1, 3, 1)));
+              _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)), expand_words);
+          const __m128 low_regrets =
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
+          const __m128 high_regrets =
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
+          const __m256d first_regrets =
+              _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0)));
+          const __m256d second_regrets =
+              _mm256_cvtps_pd(_mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1)));
           const __m128i encoded_first = encode_four_regrets(_mm256_max_pd(
-              zero, _mm256_add_pd(
-                        first_regrets,
-                        _mm256_mul_pd(regret_weight,
-                                      _mm256_sub_pd(first_action, current)))));
+              zero,
+              _mm256_add_pd(first_regrets,
+                            _mm256_mul_pd(regret_weight, _mm256_sub_pd(first_action, current)))));
           const __m128i encoded_second = encode_four_regrets(_mm256_max_pd(
-              zero, _mm256_add_pd(
-                        second_regrets,
-                        _mm256_mul_pd(regret_weight,
-                                      _mm256_sub_pd(second_action, current)))));
-          store_four_words(
-              packed,
-              _mm_or_si128(_mm_and_si128(low_words, strategy_mask),
-                           _mm_unpacklo_epi32(encoded_first, encoded_second)));
-          store_four_words(
-              packed + 12U,
-              _mm_or_si128(_mm_and_si128(high_words, strategy_mask),
-                           _mm_unpackhi_epi32(encoded_first, encoded_second)));
+              zero,
+              _mm256_add_pd(second_regrets,
+                            _mm256_mul_pd(regret_weight, _mm256_sub_pd(second_action, current)))));
+          store_four_words(packed, _mm_or_si128(_mm_and_si128(low_words, strategy_mask),
+                                                _mm_unpacklo_epi32(encoded_first, encoded_second)));
+          store_four_words(packed + 12U,
+                           _mm_or_si128(_mm_and_si128(high_words, strategy_mask),
+                                        _mm_unpackhi_epi32(encoded_first, encoded_second)));
         }
-      } else if (action_count == 3U &&
-                 buffers_.compact_state != nullptr) {
-        const auto &slots = PlayerIndexed
-                                ? board.player_flop_slots[updating_player]
-                                : board.player_active_slots[updating_player];
+      } else if (action_count == 3U && buffers_.compact_state != nullptr) {
+        const auto &slots = PlayerIndexed ? board.player_flop_slots[updating_player]
+                                          : board.player_active_slots[updating_player];
         const __m128i expand_words =
-            _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1,
-                          6, 7, 8, -1, -1, -1, -1, -1);
+            _mm_setr_epi8(0, 1, 2, -1, 3, 4, 5, -1, 6, 7, 8, -1, -1, -1, -1, -1);
         const __m128i compact_words =
-            _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10,
-                          -1, -1, -1, -1, -1, -1, -1);
+            _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, -1, -1, -1, -1, -1, -1, -1);
         const __m128i regret_mask = _mm_set1_epi32(0x1fff);
         const __m128i strategy_mask = _mm_set1_epi32(0x00ffe000);
         const __m256d zero = _mm256_setzero_pd();
         const __m256d regret_weight = _mm256_set1_pd(regret_update_weight_);
         const auto encode_four_regrets = [](const __m256d input) {
-          const __m128i bits = _mm_and_si128(
-              _mm_castps_si128(_mm256_cvtpd_ps(input)),
-              _mm_set1_epi32(0x7fffffff));
-          const __m128i discarded =
-              _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
+          const __m128i bits =
+              _mm_and_si128(_mm_castps_si128(_mm256_cvtpd_ps(input)), _mm_set1_epi32(0x7fffffff));
+          const __m128i discarded = _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
           __m128i packed = _mm_srli_epi32(bits, 18);
-          const __m128i greater =
-              _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
-          const __m128i equal =
-              _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
-          const __m128i odd = _mm_cmpeq_epi32(
-              _mm_and_si128(packed, _mm_set1_epi32(1)),
-              _mm_set1_epi32(1));
-          packed = _mm_add_epi32(
-              packed,
-              _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                            _mm_set1_epi32(1)));
+          const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
+          const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
+          const __m128i odd =
+              _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
+          packed =
+              _mm_add_epi32(packed, _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
+                                                  _mm_set1_epi32(1)));
           return _mm_min_epu32(packed, _mm_set1_epi32(0x1ffe));
         };
         const auto store_three_words = [compact_words](std::uint8_t *const destination,
-                                                        const __m128i words) {
+                                                       const __m128i words) {
           const __m128i compact = _mm_shuffle_epi8(words, compact_words);
           _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
-          destination[8] = static_cast<std::uint8_t>(
-              _mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
+          destination[8] = static_cast<std::uint8_t>(_mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
         };
         alignas(32) double value_lanes[4];
         if constexpr (std::is_same_v<Scalar, float>) {
@@ -9374,23 +9066,17 @@ private:
             const __m256 regret_weight_float =
                 _mm256_set1_ps(static_cast<float>(regret_update_weight_));
             const auto encode_eight_regrets = [](const __m256 input) {
-              const __m256i bits = _mm256_and_si256(
-                  _mm256_castps_si256(input), _mm256_set1_epi32(0x7fffffff));
-              const __m256i discarded =
-                  _mm256_and_si256(bits, _mm256_set1_epi32(0x3ffff));
+              const __m256i bits =
+                  _mm256_and_si256(_mm256_castps_si256(input), _mm256_set1_epi32(0x7fffffff));
+              const __m256i discarded = _mm256_and_si256(bits, _mm256_set1_epi32(0x3ffff));
               __m256i packed = _mm256_srli_epi32(bits, 18);
-              const __m256i greater =
-                  _mm256_cmpgt_epi32(discarded, _mm256_set1_epi32(0x20000));
-              const __m256i equal =
-                  _mm256_cmpeq_epi32(discarded, _mm256_set1_epi32(0x20000));
-              const __m256i odd = _mm256_cmpeq_epi32(
-                  _mm256_and_si256(packed, _mm256_set1_epi32(1)),
-                  _mm256_set1_epi32(1));
+              const __m256i greater = _mm256_cmpgt_epi32(discarded, _mm256_set1_epi32(0x20000));
+              const __m256i equal = _mm256_cmpeq_epi32(discarded, _mm256_set1_epi32(0x20000));
+              const __m256i odd = _mm256_cmpeq_epi32(_mm256_and_si256(packed, _mm256_set1_epi32(1)),
+                                                     _mm256_set1_epi32(1));
               packed = _mm256_add_epi32(
-                  packed,
-                  _mm256_and_si256(
-                      _mm256_or_si256(greater, _mm256_and_si256(equal, odd)),
-                      _mm256_set1_epi32(1)));
+                  packed, _mm256_and_si256(_mm256_or_si256(greater, _mm256_and_si256(equal, odd)),
+                                           _mm256_set1_epi32(1)));
               return _mm256_min_epu32(packed, _mm256_set1_epi32(0x1ffe));
             };
             for (; updating_local + 8U <= slots.size(); updating_local += 8U) {
@@ -9401,17 +9087,13 @@ private:
                   _mm256_i32gather_ps(action_values[1].data(), indices, 4),
                   _mm256_i32gather_ps(action_values[2].data(), indices, 4)};
               __m256 current = _mm256_add_ps(
-                  _mm256_mul_ps(
-                      _mm256_loadu_ps(strategies[0].data() + updating_local),
-                      action_vectors[0]),
-                  _mm256_mul_ps(
-                      _mm256_loadu_ps(strategies[1].data() + updating_local),
-                      action_vectors[1]));
+                  _mm256_mul_ps(_mm256_loadu_ps(strategies[0].data() + updating_local),
+                                action_vectors[0]),
+                  _mm256_mul_ps(_mm256_loadu_ps(strategies[1].data() + updating_local),
+                                action_vectors[1]));
               current = _mm256_add_ps(
-                  current,
-                  _mm256_mul_ps(
-                      _mm256_loadu_ps(strategies[2].data() + updating_local),
-                      action_vectors[2]));
+                  current, _mm256_mul_ps(_mm256_loadu_ps(strategies[2].data() + updating_local),
+                                         action_vectors[2]));
               alignas(32) float current_lanes[8];
               _mm256_store_ps(current_lanes, current);
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
@@ -9420,57 +9102,44 @@ private:
 
               auto *const packed =
                   buffers_.compact_state +
-                  (static_cast<std::size_t>(decision.action_base) +
-                   updating_local * 3U) *
-                      3U;
+                  (static_cast<std::size_t>(decision.action_base) + updating_local * 3U) * 3U;
               std::array<__m128i, 8> old_words{};
               std::array<__m128, 8> regret_rows{};
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
                 old_words[lane] = _mm_shuffle_epi8(
-                    _mm_loadu_si128(reinterpret_cast<const __m128i *>(
-                        packed + lane * 9U)),
+                    _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + lane * 9U)),
                     expand_words);
-                regret_rows[lane] = _mm_castsi128_ps(_mm_slli_epi32(
-                    _mm_and_si128(old_words[lane], regret_mask), 18));
+                regret_rows[lane] = _mm_castsi128_ps(
+                    _mm_slli_epi32(_mm_and_si128(old_words[lane], regret_mask), 18));
               }
-              _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1],
-                                regret_rows[2], regret_rows[3]);
-              _MM_TRANSPOSE4_PS(regret_rows[4], regret_rows[5],
-                                regret_rows[6], regret_rows[7]);
+              _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1], regret_rows[2], regret_rows[3]);
+              _MM_TRANSPOSE4_PS(regret_rows[4], regret_rows[5], regret_rows[6], regret_rows[7]);
               std::array<__m256i, 3> encoded{};
               for (std::size_t action = 0U; action < 3U; ++action) {
                 const __m256 regrets = _mm256_insertf128_ps(
-                    _mm256_castps128_ps256(regret_rows[action]),
-                    regret_rows[action + 4U], 1);
+                    _mm256_castps128_ps256(regret_rows[action]), regret_rows[action + 4U], 1);
                 encoded[action] = encode_eight_regrets(_mm256_max_ps(
                     zero_float,
-                    _mm256_add_ps(
-                        regrets,
-                        _mm256_mul_ps(
-                            regret_weight_float,
-                            _mm256_sub_ps(action_vectors[action], current)))));
+                    _mm256_add_ps(regrets,
+                                  _mm256_mul_ps(regret_weight_float,
+                                                _mm256_sub_ps(action_vectors[action], current)))));
               }
               for (std::size_t half = 0U; half < 2U; ++half) {
                 std::array<__m128, 4> encoded_rows{
-                    _mm_castsi128_ps(
-                        half == 0U ? _mm256_castsi256_si128(encoded[0])
-                                   : _mm256_extracti128_si256(encoded[0], 1)),
-                    _mm_castsi128_ps(
-                        half == 0U ? _mm256_castsi256_si128(encoded[1])
-                                   : _mm256_extracti128_si256(encoded[1], 1)),
-                    _mm_castsi128_ps(
-                        half == 0U ? _mm256_castsi256_si128(encoded[2])
-                                   : _mm256_extracti128_si256(encoded[2], 1)),
+                    _mm_castsi128_ps(half == 0U ? _mm256_castsi256_si128(encoded[0])
+                                                : _mm256_extracti128_si256(encoded[0], 1)),
+                    _mm_castsi128_ps(half == 0U ? _mm256_castsi256_si128(encoded[1])
+                                                : _mm256_extracti128_si256(encoded[1], 1)),
+                    _mm_castsi128_ps(half == 0U ? _mm256_castsi256_si128(encoded[2])
+                                                : _mm256_extracti128_si256(encoded[2], 1)),
                     _mm_setzero_ps()};
-                _MM_TRANSPOSE4_PS(encoded_rows[0], encoded_rows[1],
-                                  encoded_rows[2], encoded_rows[3]);
+                _MM_TRANSPOSE4_PS(encoded_rows[0], encoded_rows[1], encoded_rows[2],
+                                  encoded_rows[3]);
                 for (std::size_t lane = 0U; lane < 4U; ++lane) {
                   const auto row = half * 4U + lane;
-                  store_three_words(
-                      packed + row * 9U,
-                      _mm_or_si128(
-                          _mm_and_si128(old_words[row], strategy_mask),
-                          _mm_castps_si128(encoded_rows[lane])));
+                  store_three_words(packed + row * 9U,
+                                    _mm_or_si128(_mm_and_si128(old_words[row], strategy_mask),
+                                                 _mm_castps_si128(encoded_rows[lane])));
                 }
               }
             }
@@ -9479,9 +9148,8 @@ private:
               const __m256i indices = _mm256_cvtepu16_epi32(_mm_loadu_si128(
                   reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
               const __m256 current = _mm256_add_ps(
-                  _mm256_add_ps(
-                      _mm256_i32gather_ps(action_values[0].data(), indices, 4),
-                      _mm256_i32gather_ps(action_values[1].data(), indices, 4)),
+                  _mm256_add_ps(_mm256_i32gather_ps(action_values[0].data(), indices, 4),
+                                _mm256_i32gather_ps(action_values[1].data(), indices, 4)),
                   _mm256_i32gather_ps(action_values[2].data(), indices, 4));
               alignas(32) float current_lanes[8];
               _mm256_store_ps(current_lanes, current);
@@ -9492,8 +9160,8 @@ private:
           }
         }
         for (; updating_local + 4U < slots.size(); updating_local += 4U) {
-          const __m128i indices = _mm_cvtepu16_epi32(_mm_loadl_epi64(
-              reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
+          const __m128i indices = _mm_cvtepu16_epi32(
+              _mm_loadl_epi64(reinterpret_cast<const __m128i *>(slots.data() + updating_local)));
           const std::array<__m256d, 3> action_vectors{
               gather_four_as_double(action_values[0].data(), indices),
               gather_four_as_double(action_values[1].data(), indices),
@@ -9501,91 +9169,66 @@ private:
           __m256d current;
           if (decision.player == updating_player) {
             current = _mm256_add_pd(
-                _mm256_mul_pd(
-                    load_four_as_double(strategies[0].data() + updating_local),
-                    action_vectors[0]),
-                _mm256_mul_pd(
-                    load_four_as_double(strategies[1].data() + updating_local),
-                    action_vectors[1]));
+                _mm256_mul_pd(load_four_as_double(strategies[0].data() + updating_local),
+                              action_vectors[0]),
+                _mm256_mul_pd(load_four_as_double(strategies[1].data() + updating_local),
+                              action_vectors[1]));
             current = _mm256_add_pd(
-                current,
-                _mm256_mul_pd(
-                    load_four_as_double(strategies[2].data() + updating_local),
-                    action_vectors[2]));
+                current, _mm256_mul_pd(load_four_as_double(strategies[2].data() + updating_local),
+                                       action_vectors[2]));
           } else {
-            current = _mm256_add_pd(
-                _mm256_add_pd(action_vectors[0], action_vectors[1]),
-                action_vectors[2]);
+            current = _mm256_add_pd(_mm256_add_pd(action_vectors[0], action_vectors[1]),
+                                    action_vectors[2]);
           }
           _mm256_store_pd(value_lanes, current);
           for (std::size_t lane = 0U; lane < 4U; ++lane) {
-            values[slots[updating_local + lane]] =
-                static_cast<Scalar>(value_lanes[lane]);
+            values[slots[updating_local + lane]] = static_cast<Scalar>(value_lanes[lane]);
           }
           if (decision.player != updating_player || locked_root) {
             continue;
           }
           auto *const packed =
               buffers_.compact_state +
-              (static_cast<std::size_t>(decision.action_base) +
-               updating_local * 3U) *
-                  3U;
+              (static_cast<std::size_t>(decision.action_base) + updating_local * 3U) * 3U;
           std::array<__m128i, 4> word_rows{
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                  expand_words),
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 9U)),
-                  expand_words),
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 18U)),
-                  expand_words),
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 27U)),
-                  expand_words)};
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                               expand_words),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 9U)),
+                               expand_words),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 18U)),
+                               expand_words),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 27U)),
+                               expand_words)};
           std::array<__m128, 4> regret_rows{
-              _mm_castsi128_ps(_mm_slli_epi32(
-                  _mm_and_si128(word_rows[0], regret_mask), 18)),
-              _mm_castsi128_ps(_mm_slli_epi32(
-                  _mm_and_si128(word_rows[1], regret_mask), 18)),
-              _mm_castsi128_ps(_mm_slli_epi32(
-                  _mm_and_si128(word_rows[2], regret_mask), 18)),
-              _mm_castsi128_ps(_mm_slli_epi32(
-                  _mm_and_si128(word_rows[3], regret_mask), 18))};
-          _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1],
-                            regret_rows[2], regret_rows[3]);
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[0], regret_mask), 18)),
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[1], regret_mask), 18)),
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[2], regret_mask), 18)),
+              _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[3], regret_mask), 18))};
+          _MM_TRANSPOSE4_PS(regret_rows[0], regret_rows[1], regret_rows[2], regret_rows[3]);
           alignas(16) std::uint32_t encoded[3][4];
           for (std::size_t action = 0U; action < 3U; ++action) {
             const __m256d updated = _mm256_max_pd(
-                zero,
-                _mm256_add_pd(
-                    _mm256_cvtps_pd(regret_rows[action]),
-                    _mm256_mul_pd(
-                        regret_weight,
-                        _mm256_sub_pd(action_vectors[action], current))));
+                zero, _mm256_add_pd(_mm256_cvtps_pd(regret_rows[action]),
+                                    _mm256_mul_pd(regret_weight,
+                                                  _mm256_sub_pd(action_vectors[action], current))));
             _mm_store_si128(reinterpret_cast<__m128i *>(encoded[action]),
                             encode_four_regrets(updated));
           }
           alignas(16) std::uint32_t words[4][4];
           for (std::size_t lane = 0U; lane < 4U; ++lane) {
-            _mm_store_si128(reinterpret_cast<__m128i *>(words[lane]),
-                            word_rows[lane]);
+            _mm_store_si128(reinterpret_cast<__m128i *>(words[lane]), word_rows[lane]);
             for (std::size_t action = 0U; action < 3U; ++action) {
-              words[lane][action] =
-                  encoded[action][lane] |
-                  (words[lane][action] & 0x00ffe000U);
+              words[lane][action] = encoded[action][lane] | (words[lane][action] & 0x00ffe000U);
             }
-            store_three_words(
-                packed + lane * 9U,
-                _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
+            store_three_words(packed + lane * 9U,
+                              _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
           }
         }
       }
     }
     if (decision.player == updating_player && strategy_weight != 0.0 &&
         buffers_.compact_state != nullptr) {
-      for (std::size_t averaged_local = averaging_fused_until;
-           averaged_local < updating_local;
+      for (std::size_t averaged_local = averaging_fused_until; averaged_local < updating_local;
            ++averaged_local) {
         const ComboId combo = updating_combos[averaged_local];
         const auto slot = value_slot(combo, updating_player);
@@ -9594,12 +9237,9 @@ private:
         const double reach_weight =
             strategy_weight * static_cast<double>((*reach[updating_player])[slot]);
         if (action_count == 2U) {
-          add_strategy_pair(
-              static_cast<std::size_t>(offset),
-              reach_weight *
-                  static_cast<double>(strategies[0][averaged_local]),
-              reach_weight *
-                  static_cast<double>(strategies[1][averaged_local]));
+          add_strategy_pair(static_cast<std::size_t>(offset),
+                            reach_weight * static_cast<double>(strategies[0][averaged_local]),
+                            reach_weight * static_cast<double>(strategies[1][averaged_local]));
           continue;
         }
         for (std::size_t action = 0U; action < action_count; ++action) {
@@ -9609,15 +9249,12 @@ private:
             continue;
           }
           auto *const bytes =
-              buffers_.compact_state +
-              static_cast<std::size_t>(offset + action) * 3U;
+              buffers_.compact_state + static_cast<std::size_t>(offset + action) * 3U;
           const auto word = compact_word(bytes);
           const auto average = encode_strategy11(
-              decode_strategy11(static_cast<std::uint16_t>(word >> 13U)) +
-              strategy_delta);
-          store_compact_word(
-              bytes, (word & 0x1fffU) |
-                         (static_cast<std::uint32_t>(average) << 13U));
+              decode_strategy11(static_cast<std::uint16_t>(word >> 13U)) + strategy_delta);
+          store_compact_word(bytes,
+                             (word & 0x1fffU) | (static_cast<std::uint32_t>(average) << 13U));
         }
       }
     }
@@ -9626,8 +9263,7 @@ private:
       const auto slot = value_slot(combo, updating_player);
       if (decision.player == updating_player) {
         for (std::size_t action = 0U; action < action_count; ++action) {
-          values[slot] +=
-              strategies[action][updating_local] * action_values[action][slot];
+          values[slot] += strategies[action][updating_local] * action_values[action][slot];
         }
       } else {
         for (std::size_t action = 0U; action < action_count; ++action) {
@@ -9639,11 +9275,10 @@ private:
         const auto offset = canonical_action_base(canonical, local);
         for (std::size_t action = 0; action < action_count; ++action) {
           const auto index = static_cast<std::size_t>(offset + action);
-          const double strategy_delta =
-              strategy_weight == 0.0
-                  ? 0.0
-                  : strategy_weight * (*reach[updating_player])[slot] *
-                        strategies[action][updating_local];
+          const double strategy_delta = strategy_weight == 0.0
+                                            ? 0.0
+                                            : strategy_weight * (*reach[updating_player])[slot] *
+                                                  strategies[action][updating_local];
           if (buffers_.compact_state != nullptr) {
             auto *const bytes = buffers_.compact_state + index * 3U;
             const auto word = compact_word(bytes);
@@ -9652,8 +9287,7 @@ private:
             if (!locked_root) {
               regret = encode_regret13(std::max(
                   0.0, decode_regret13(regret) +
-                           regret_update_weight_ *
-                               (action_values[action][slot] - values[slot])));
+                           regret_update_weight_ * (action_values[action][slot] - values[slot])));
             }
             if (strategy_delta != 0.0) {
               average = encode_strategy11(decode_strategy11(average) + strategy_delta);
@@ -9664,8 +9298,7 @@ private:
             if (!locked_root) {
               const double updated = std::max(
                   0.0, buffers_.regret_at(index) +
-                           regret_update_weight_ *
-                               (action_values[action][slot] - values[slot]));
+                           regret_update_weight_ * (action_values[action][slot] - values[slot]));
               buffers_.set_regret(index, updated);
             }
             if (strategy_delta != 0.0) {
@@ -9677,25 +9310,21 @@ private:
     }
     if (profile) {
       prof_value_update_seconds_ +=
-          std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                        value_started)
-              .count();
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - value_started).count();
     }
     return std::nullopt;
   }
 
   std::optional<PostflopSolverError>
-  policy_canonical_profile_br_chance_into(
-      const CanonicalPublicNode &canonical,
-      const std::uint8_t updating_player, const ReachRef &reach,
-      ComboVector &profile_out, ComboVector &response_out) {
+  policy_canonical_profile_br_chance_into(const CanonicalPublicNode &canonical,
+                                          const std::uint8_t updating_player, const ReachRef &reach,
+                                          ComboVector &profile_out, ComboVector &response_out) {
     using PairValues = std::array<ComboVector, 2>;
     if (canonical.total_legal_outcome_count <= 4U) {
       return PostflopSolverError::InvalidConfiguration;
     }
     const auto &board = layout_.boards[canonical.board_index];
-    const double denominator =
-        static_cast<double>(canonical.total_legal_outcome_count - 4U);
+    const double denominator = static_cast<double>(canonical.total_legal_outcome_count - 4U);
     zero_values_into(updating_player, profile_out);
     zero_values_into(updating_player, response_out);
     const std::size_t edge_count = canonical.edges.size();
@@ -9725,20 +9354,17 @@ private:
       work_items.emplace_back();
       work_items.back().child = edge.outcomes.front().child;
       work_items.back().reach = transform_reach(
-          {*reach[0], *reach[1]},
-          edge.outcomes.front().physical_to_child_automorphism);
+          {*reach[0], *reach[1]}, edge.outcomes.front().physical_to_child_automorphism);
       outcome_work_items[index][0U] = representative_index;
       std::size_t outcome_index = 0U;
       for (const auto &outcome : edge.outcomes) {
         if (outcome_index++ == 0U) {
           continue;
         }
-        auto distinct_reach = transform_reach(
-            {*reach[0], *reach[1]},
-            outcome.physical_to_child_automorphism);
+        auto distinct_reach =
+            transform_reach({*reach[0], *reach[1]}, outcome.physical_to_child_automorphism);
         const bool same_opponent_reach = std::equal(
-            distinct_reach[opponent].begin(),
-            distinct_reach[opponent].begin() + opponent_slots,
+            distinct_reach[opponent].begin(), distinct_reach[opponent].begin() + opponent_slots,
             work_items[representative_index].reach[opponent].begin());
         if (same_opponent_reach) {
           outcome_work_items[index][outcome_index - 1U] = representative_index;
@@ -9751,39 +9377,33 @@ private:
       }
     }
     const std::size_t available_worker_count =
-        parallel_workers_.empty() ? parallel_pool_size_
-                                  : parallel_workers_.size();
+        parallel_workers_.empty() ? parallel_pool_size_ : parallel_workers_.size();
     const bool nested_worklist = std::popcount(board.mask) != 3U;
     const std::size_t worker_count =
-        diagnostic_flat_certification_worklist_only() && nested_worklist
-            ? 0U
-            : available_worker_count;
+        diagnostic_flat_certification_worklist_only() && nested_worklist ? 0U
+                                                                         : available_worker_count;
     if (worker_count > 0U && work_items.size() > 1U) {
-      const std::size_t task_count =
-          std::min(work_items.size(), worker_count + 1U);
+      const std::size_t task_count = std::min(work_items.size(), worker_count + 1U);
       std::atomic<std::size_t> next_item{1U};
       std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
       std::vector<std::future<TraversalResult>> futures;
       tasks.reserve(task_count - 1U);
       futures.reserve(task_count - 1U);
-      for (std::size_t task_index = 1U; task_index < task_count;
-           ++task_index) {
+      for (std::size_t task_index = 1U; task_index < task_count; ++task_index) {
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
-            [items = work_items.data(), next = &next_item,
-             item_count = work_items.size(), updating_player,
-             root_pool_size = worker_count](DenseTraversal &self) {
+            [items = work_items.data(), next = &next_item, item_count = work_items.size(),
+             updating_player, root_pool_size = worker_count](DenseTraversal &self) {
               const std::size_t previous_pool_size = self.parallel_pool_size_;
               self.parallel_pool_size_ = root_pool_size;
               while (true) {
-                const std::size_t index =
-                    next->fetch_add(1U, std::memory_order_relaxed);
+                const std::size_t index = next->fetch_add(1U, std::memory_order_relaxed);
                 if (index >= item_count) {
                   break;
                 }
                 if (const auto error = self.policy_canonical_profile_br_pair_into(
                         items[index].child, updating_player,
-                        {&items[index].reach[0], &items[index].reach[1]},
-                        items[index].values[0], items[index].values[1])) {
+                        {&items[index].reach[0], &items[index].reach[1]}, items[index].values[0],
+                        items[index].values[1])) {
                   self.parallel_pool_size_ = previous_pool_size;
                   return TraversalResult::failure(*error);
                 }
@@ -9798,18 +9418,17 @@ private:
       std::optional<PostflopSolverError> main_error;
       main_error = policy_canonical_profile_br_pair_into(
           work_items[0U].child, updating_player,
-          {&work_items[0U].reach[0], &work_items[0U].reach[1]},
-          work_items[0U].values[0], work_items[0U].values[1]);
+          {&work_items[0U].reach[0], &work_items[0U].reach[1]}, work_items[0U].values[0],
+          work_items[0U].values[1]);
       while (!main_error) {
-        const std::size_t index =
-            next_item.fetch_add(1U, std::memory_order_relaxed);
+        const std::size_t index = next_item.fetch_add(1U, std::memory_order_relaxed);
         if (index >= work_items.size()) {
           break;
         }
         main_error = policy_canonical_profile_br_pair_into(
             work_items[index].child, updating_player,
-            {&work_items[index].reach[0], &work_items[index].reach[1]},
-            work_items[index].values[0], work_items[index].values[1]);
+            {&work_items[index].reach[0], &work_items[index].reach[1]}, work_items[index].values[0],
+            work_items[index].values[1]);
       }
       std::optional<PostflopSolverError> worker_error;
       for (auto &future : futures) {
@@ -9838,26 +9457,21 @@ private:
       for (const auto &outcome : edge.outcomes) {
         const double probability =
             static_cast<double>(outcome.physical_outcome_count) / denominator;
-        const auto &outcome_values =
-            work_items[outcome_work_items[index][outcome_index++]].values;
+        const auto &outcome_values = work_items[outcome_work_items[index][outcome_index++]].values;
         accumulate_transformed_values_to_parent(
-            profile_out, outcome_values[0],
-            outcome.physical_to_child_automorphism, updating_player, board,
-            outcome.chance_card, probability);
+            profile_out, outcome_values[0], outcome.physical_to_child_automorphism, updating_player,
+            board, outcome.chance_card, probability);
         accumulate_transformed_values_to_parent(
-            response_out, outcome_values[1],
-            outcome.physical_to_child_automorphism, updating_player, board,
-            outcome.chance_card, probability);
+            response_out, outcome_values[1], outcome.physical_to_child_automorphism,
+            updating_player, board, outcome.chance_card, probability);
       }
     }
     return std::nullopt;
   }
 
-  std::optional<PostflopSolverError>
-  policy_canonical_profile_br_decision_into(
-      const CanonicalPublicNode &canonical,
-      const std::uint8_t updating_player, const ReachRef &reach,
-      ComboVector &profile_out, ComboVector &response_out) {
+  std::optional<PostflopSolverError> policy_canonical_profile_br_decision_into(
+      const CanonicalPublicNode &canonical, const std::uint8_t updating_player,
+      const ReachRef &reach, ComboVector &profile_out, ComboVector &response_out) {
     const auto &decision = canonical.decision;
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
@@ -9870,22 +9484,17 @@ private:
     auto &strategies = scratch_lease.get().strategies;
     auto &actor_reach = scratch_lease.get().reach_actor[0];
     const bool locked_root = is_locked_root(canonical);
-    const bool actor_best_response =
-        decision.player == updating_player && !locked_root;
+    const bool actor_best_response = decision.player == updating_player && !locked_root;
     const bool average_policy = !diagnostic_certify_current_strategy();
-    const bool local_scaled_average =
-        average_policy && !locked_root && scaled_action_major_state();
+    const bool local_scaled_average = average_policy && !locked_root && scaled_action_major_state();
     if (local_scaled_average) {
-      load_canonical_current_strategies(canonical, board, decision.player,
-                                        strategies, true, true);
+      load_canonical_current_strategies(canonical, board, decision.player, strategies, true, true);
     } else {
       for (const ComboId combo : board.player_combos[decision.player]) {
         const auto actor_local = board.player_local[decision.player][combo];
-        const auto locked = locked_root ? locked_root_strategy(actor_local)
-                                        : std::nullopt;
+        const auto locked = locked_root ? locked_root_strategy(actor_local) : std::nullopt;
         const auto strategy =
-            locked ? *locked
-                   : current_strategy(canonical, actor_local, average_policy);
+            locked ? *locked : current_strategy(canonical, actor_local, average_policy);
         const auto slot = value_slot(combo, decision.player);
         for (std::size_t action = 0U; action < action_count; ++action) {
           strategies[action][slot] = static_cast<Scalar>(strategy[action]);
@@ -9907,13 +9516,11 @@ private:
         const auto strategy_slot = local_scaled_average ? local : slot;
         actor_reach[slot] *= strategies[action][strategy_slot];
       }
-      const ReachRef child_reach =
-          decision.player == 0U
-              ? ReachRef{&actor_reach, reach[1]}
-              : ReachRef{reach[0], &actor_reach};
+      const ReachRef child_reach = decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                         : ReachRef{reach[0], &actor_reach};
       if (const auto error = policy_canonical_profile_br_pair_into(
-              outcome.child, updating_player, child_reach,
-              profile_actions[action], response_actions[action])) {
+              outcome.child, updating_player, child_reach, profile_actions[action],
+              response_actions[action])) {
         return error;
       }
     }
@@ -9932,12 +9539,10 @@ private:
         return std::nullopt;
       }
       if (actor_best_response) {
-        std::copy_n(response_actions[0].begin(), slot_count,
-                    response_out.begin());
+        std::copy_n(response_actions[0].begin(), slot_count, response_out.begin());
         for (std::size_t action = 1U; action < action_count; ++action) {
           for (std::size_t slot = 0U; slot < slot_count; ++slot) {
-            response_out[slot] =
-                std::max(response_out[slot], response_actions[action][slot]);
+            response_out[slot] = std::max(response_out[slot], response_actions[action][slot]);
           }
         }
       }
@@ -9947,18 +9552,16 @@ private:
       if (decision.player == updating_player) {
         const auto strategy_slot = local_scaled_average ? local : slot;
         for (std::size_t action = 0U; action < action_count; ++action) {
-          profile_out[slot] += strategies[action][strategy_slot] *
-                               profile_actions[action][slot];
+          profile_out[slot] += strategies[action][strategy_slot] * profile_actions[action][slot];
           if (!actor_best_response) {
-            response_out[slot] += strategies[action][strategy_slot] *
-                                  response_actions[action][slot];
+            response_out[slot] +=
+                strategies[action][strategy_slot] * response_actions[action][slot];
           }
         }
         if (actor_best_response && !PlayerIndexed) {
           response_out[slot] = response_actions[0][slot];
           for (std::size_t action = 1U; action < action_count; ++action) {
-            response_out[slot] =
-                std::max(response_out[slot], response_actions[action][slot]);
+            response_out[slot] = std::max(response_out[slot], response_actions[action][slot]);
           }
         }
       } else if constexpr (!PlayerIndexed) {
@@ -9989,11 +9592,11 @@ private:
       const auto &edge = canonical.edges[index];
       if (edge.outcomes.empty()) {
         return Result<ComboVector, PostflopSolverError>::failure(
-          PostflopSolverError::InvalidConfiguration);
+            PostflopSolverError::InvalidConfiguration);
       }
       const auto &representative = edge.outcomes.front();
-      representative_reaches[index] = transform_reach(
-          {*reach[0], *reach[1]}, representative.physical_to_child_automorphism);
+      representative_reaches[index] =
+          transform_reach({*reach[0], *reach[1]}, representative.physical_to_child_automorphism);
     }
     const std::size_t worker_count = parallel_workers_.size();
     if (std::popcount(board.mask) == 3U && worker_count > 0U && edge_count > 1U) {
@@ -10009,25 +9612,22 @@ private:
       for (std::size_t task_index = 1U; task_index < task_count; ++task_index) {
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
             [edges = &canonical.edges, reaches = representative_reaches.get(),
-             results = child_values.get(), next = &next_edge, edge_count,
-             updating_player, best_response](DenseTraversal &self) {
+             results = child_values.get(), next = &next_edge, edge_count, updating_player,
+             best_response](DenseTraversal &self) {
               while (true) {
-                const std::size_t index =
-                    next->fetch_add(1U, std::memory_order_relaxed);
+                const std::size_t index = next->fetch_add(1U, std::memory_order_relaxed);
                 if (index >= edge_count) {
                   break;
                 }
-                auto child = self.policy_canonical(
-                    (*edges)[index].outcomes.front().child, updating_player,
-                    {&reaches[index][0], &reaches[index][1]}, best_response);
+                auto child =
+                    self.policy_canonical((*edges)[index].outcomes.front().child, updating_player,
+                                          {&reaches[index][0], &reaches[index][1]}, best_response);
                 if (!child) {
-                  return Result<ComboVector, PostflopSolverError>::failure(
-                      child.error());
+                  return Result<ComboVector, PostflopSolverError>::failure(child.error());
                 }
                 results[index] = std::move(child.value());
               }
-              return Result<ComboVector, PostflopSolverError>::success(
-                  ComboVector{});
+              return Result<ComboVector, PostflopSolverError>::success(ComboVector{});
             });
         futures.push_back(task.get_future());
         tasks.push_back(std::move(task));
@@ -10036,24 +9636,20 @@ private:
       std::optional<PostflopSolverError> main_error;
       auto first_child = policy_canonical(
           canonical.edges[0U].outcomes.front().child, updating_player,
-          {&representative_reaches[0U][0], &representative_reaches[0U][1]},
-          best_response);
+          {&representative_reaches[0U][0], &representative_reaches[0U][1]}, best_response);
       if (!first_child) {
         main_error = first_child.error();
       } else {
         child_values[0U] = std::move(first_child.value());
       }
       while (!main_error) {
-        const std::size_t index =
-            next_edge.fetch_add(1U, std::memory_order_relaxed);
+        const std::size_t index = next_edge.fetch_add(1U, std::memory_order_relaxed);
         if (index >= edge_count) {
           break;
         }
         auto child = policy_canonical(
             canonical.edges[index].outcomes.front().child, updating_player,
-            {&representative_reaches[index][0],
-             &representative_reaches[index][1]},
-            best_response);
+            {&representative_reaches[index][0], &representative_reaches[index][1]}, best_response);
         if (!child) {
           main_error = child.error();
         } else {
@@ -10069,16 +9665,14 @@ private:
         }
       }
       if (main_error || worker_error) {
-        return Result<ComboVector, PostflopSolverError>::failure(
-            main_error ? *main_error : *worker_error);
+        return Result<ComboVector, PostflopSolverError>::failure(main_error ? *main_error
+                                                                            : *worker_error);
       }
     } else {
       for (std::size_t index = 0U; index < edge_count; ++index) {
         auto child = policy_canonical(
             canonical.edges[index].outcomes.front().child, updating_player,
-            {&representative_reaches[index][0],
-             &representative_reaches[index][1]},
-            best_response);
+            {&representative_reaches[index][0], &representative_reaches[index][1]}, best_response);
         if (!child) {
           return child;
         }
@@ -10100,22 +9694,19 @@ private:
         // the transformed outcome with its actual reach preserves the exact
         // profile/BR semantics without disabling canonical public storage.
         if (std::addressof(outcome) != std::addressof(edge.outcomes.front())) {
-          distinct_outcome_reach = transform_reach(
-              {*reach[0], *reach[1]},
-              outcome.physical_to_child_automorphism);
+          distinct_outcome_reach =
+              transform_reach({*reach[0], *reach[1]}, outcome.physical_to_child_automorphism);
           const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
           const std::size_t opponent_slots =
               PlayerIndexed ? layout_.player_flop_count[opponent] : Capacity;
-          const bool same_opponent_reach = std::equal(
-              distinct_outcome_reach->at(opponent).begin(),
-              distinct_outcome_reach->at(opponent).begin() + opponent_slots,
-              representative_reaches[index][opponent].begin());
+          const bool same_opponent_reach =
+              std::equal(distinct_outcome_reach->at(opponent).begin(),
+                         distinct_outcome_reach->at(opponent).begin() + opponent_slots,
+                         representative_reaches[index][opponent].begin());
           if (!same_opponent_reach) {
             auto evaluated_outcome = policy_canonical(
                 edge.outcomes.front().child, updating_player,
-                {&distinct_outcome_reach->at(0U),
-                 &distinct_outcome_reach->at(1U)},
-                best_response);
+                {&distinct_outcome_reach->at(0U), &distinct_outcome_reach->at(1U)}, best_response);
             if (!evaluated_outcome) {
               return evaluated_outcome;
             }
@@ -10124,8 +9715,7 @@ private:
           }
         }
         accumulate_transformed_values_to_parent(
-            values, *outcome_values,
-            outcome.physical_to_child_automorphism, updating_player, board,
+            values, *outcome_values, outcome.physical_to_child_automorphism, updating_player, board,
             outcome.chance_card, probability);
       }
     }
@@ -10134,8 +9724,8 @@ private:
 
   Result<ComboVector, PostflopSolverError>
   policy_canonical_decision(const CanonicalPublicNode &canonical,
-                            const std::uint8_t updating_player,
-                            const ReachRef &reach, const bool best_response) {
+                            const std::uint8_t updating_player, const ReachRef &reach,
+                            const bool best_response) {
     const auto &decision = canonical.decision;
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
@@ -10151,19 +9741,15 @@ private:
     const bool unlocked_actor_best_response =
         best_response && decision.player == updating_player && !locked_root;
     const bool average_policy = !diagnostic_certify_current_strategy();
-    const bool local_scaled_average =
-        average_policy && !locked_root && scaled_action_major_state();
+    const bool local_scaled_average = average_policy && !locked_root && scaled_action_major_state();
     if (!unlocked_actor_best_response && local_scaled_average) {
-      load_canonical_current_strategies(canonical, board, decision.player,
-                                        strategies, true, true);
+      load_canonical_current_strategies(canonical, board, decision.player, strategies, true, true);
     } else if (!unlocked_actor_best_response) {
       for (const ComboId combo : board.player_combos[decision.player]) {
         const auto actor_local = board.player_local[decision.player][combo];
-        const auto locked = locked_root ? locked_root_strategy(actor_local)
-                                        : std::nullopt;
+        const auto locked = locked_root ? locked_root_strategy(actor_local) : std::nullopt;
         const auto strategy =
-            locked ? *locked
-                   : current_strategy(canonical, actor_local, average_policy);
+            locked ? *locked : current_strategy(canonical, actor_local, average_policy);
         const auto slot = value_slot(combo, decision.player);
         for (std::size_t action = 0; action < action_count; ++action) {
           strategies[action][slot] = static_cast<Scalar>(strategy[action]);
@@ -10191,11 +9777,9 @@ private:
       }
       const ReachRef child_reach = unlocked_actor_best_response
                                        ? reach
-                                       : (decision.player == 0U
-                                              ? ReachRef{&actor_reach, reach[1]}
-                                              : ReachRef{reach[0], &actor_reach});
-      auto child = policy_canonical(outcome.child, updating_player, child_reach,
-                                    best_response);
+                                       : (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                                : ReachRef{reach[0], &actor_reach});
+      auto child = policy_canonical(outcome.child, updating_player, child_reach, best_response);
       if (!child) {
         return child;
       }
@@ -10234,8 +9818,7 @@ private:
         if (decision.player == updating_player) {
           const auto strategy_slot = local_scaled_average ? local : slot;
           for (std::size_t action = 0; action < action_count; ++action) {
-            values[slot] += strategies[action][strategy_slot] *
-                            action_values[action][slot];
+            values[slot] += strategies[action][strategy_slot] * action_values[action][slot];
           }
         } else {
           for (std::size_t action = 0; action < action_count; ++action) {
@@ -10301,21 +9884,20 @@ private:
                : current_strategy_for_state<false>(decision, local_combo, average);
   }
 
-  std::array<double, maximum_action_count>
-  current_strategy(const CanonicalPublicNode &canonical, const std::int16_t local_combo,
-                   const bool average) {
+  std::array<double, maximum_action_count> current_strategy(const CanonicalPublicNode &canonical,
+                                                            const std::int16_t local_combo,
+                                                            const bool average) {
     if (action_major_compact_state()) {
       const auto count = static_cast<std::size_t>(canonical.decision.action_count);
       const auto local = static_cast<std::size_t>(local_combo);
       std::array<double, maximum_action_count> strategy{};
       double sum = 0.0;
       for (std::size_t action = 0; action < count; ++action) {
-        const auto *const bytes = buffers_.compact_state +
-            canonical_action_major_index(canonical, local, action) * 3U;
+        const auto *const bytes =
+            buffers_.compact_state + canonical_action_major_index(canonical, local, action) * 3U;
         const auto word = compact_word(bytes);
-        const double value =
-            average ? decode_strategy11(static_cast<std::uint16_t>(word >> 13U))
-                    : decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU));
+        const double value = average ? decode_strategy11(static_cast<std::uint16_t>(word >> 13U))
+                                     : decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU));
         strategy[action] = value;
         sum += value;
       }
@@ -10332,14 +9914,12 @@ private:
     if (scaled_action_major_state()) {
       const auto count = static_cast<std::size_t>(canonical.decision.action_count);
       const auto local = static_cast<std::size_t>(local_combo);
-      const auto *const source =
-          average ? buffers_.scaled_strategy : buffers_.scaled_regret;
+      const auto *const source = average ? buffers_.scaled_strategy : buffers_.scaled_regret;
       std::array<double, maximum_action_count> strategy{};
       if (!average && buffers_.signed_scaled_regret) {
         std::array<std::uint16_t, maximum_action_count> raw_codes{};
         for (std::size_t action = 0; action < count; ++action) {
-          raw_codes[action] =
-              source[canonical_action_major_index(canonical, local, action)];
+          raw_codes[action] = source[canonical_action_major_index(canonical, local, action)];
         }
         static_cast<void>(detail::regret_match_signed_codes(
             std::span<const std::uint16_t>(raw_codes.data(), count),
@@ -10369,9 +9949,9 @@ private:
 
   [[nodiscard]] bool is_locked_root(const CanonicalPublicNode &canonical) const noexcept {
     return root_lock_ != nullptr &&
-           std::addressof(canonical) == std::addressof(layout_.canonical_public_graph
-                                                           .nodes[layout_.canonical_public_graph
-                                                                     .root]);
+           std::addressof(canonical) ==
+               std::addressof(
+                   layout_.canonical_public_graph.nodes[layout_.canonical_public_graph.root]);
   }
 
   [[nodiscard]] bool is_locked_root(const PublicTreeNode &node) const noexcept {
@@ -10404,17 +9984,18 @@ private:
         opponent_reach);
   }
 
-  std::optional<PostflopSolverError>
-  fold_values_into(const PublicTreeNode &node, const std::uint8_t updating_player,
-                   const ComboVector &opponent_reach, ComboVector &values_out) const {
+  std::optional<PostflopSolverError> fold_values_into(const PublicTreeNode &node,
+                                                      const std::uint8_t updating_player,
+                                                      const ComboVector &opponent_reach,
+                                                      ComboVector &values_out) const {
     const auto payoff_index = layout_.node_terminal_payoff[static_cast<std::size_t>(node.id)];
     if (payoff_index >= layout_.terminal_payoffs.size()) {
       return PostflopSolverError::InvalidConfiguration;
     }
-    return fold_values_with_payoff_into(layout_.node_board[static_cast<std::size_t>(node.id)],
-                                        layout_.terminal_payoffs[payoff_index]
-                                            .value_antes[updating_player][0],
-                                        updating_player, opponent_reach, values_out);
+    return fold_values_with_payoff_into(
+        layout_.node_board[static_cast<std::size_t>(node.id)],
+        layout_.terminal_payoffs[payoff_index].value_antes[updating_player][0], updating_player,
+        opponent_reach, values_out);
   }
 
   Result<ComboVector, PostflopSolverError> fold_values(const PublicState &state,
@@ -10448,8 +10029,8 @@ private:
       const auto &opponent_combos = board.player_combos[opponent];
       for (std::size_t local = 0; local < opponent_combos.size(); ++local) {
         const auto combo_id = opponent_combos[local];
-        const double weight = opponent_reach[
-            BoardLocal ? local : board.player_flop_slots[opponent][local]];
+        const double weight =
+            opponent_reach[BoardLocal ? local : board.player_flop_slots[opponent][local]];
         total += weight;
         by_card[layout_.combos[combo_id].first.value()] += weight;
         by_card[layout_.combos[combo_id].second.value()] += weight;
@@ -10470,21 +10051,19 @@ private:
       const auto &opponent_slots = board.player_opponent_flop_slots[updating_player];
       for (std::size_t local = 0; local < updating_combos.size(); ++local) {
         const auto &combo = layout_.combos[updating_combos[local]];
-        const auto opponent_slot = BoardLocal
-                                       ? board.terminal_combos[updating_player]
-                                             .opponent_local[local]
-                                       : opponent_slots[local];
-        const double own_weight = opponent_slot != TerminalComboData::invalid_slot
-                                      ? opponent_reach[opponent_slot]
-                                      : 0.0;
-        const double compatible = total - by_card[combo.first.value()] -
-                                  by_card[combo.second.value()] + own_weight;
-        const auto output_slot = BoardLocal
-                                     ? local
-                                     : (layout_.uses_canonical_public_dag
-                                            ? static_cast<std::size_t>(
-                                                  board.player_flop_slots[updating_player][local])
-                                            : local);
+        const auto opponent_slot =
+            BoardLocal ? board.terminal_combos[updating_player].opponent_local[local]
+                       : opponent_slots[local];
+        const double own_weight =
+            opponent_slot != TerminalComboData::invalid_slot ? opponent_reach[opponent_slot] : 0.0;
+        const double compatible =
+            total - by_card[combo.first.value()] - by_card[combo.second.value()] + own_weight;
+        const auto output_slot =
+            BoardLocal
+                ? local
+                : (layout_.uses_canonical_public_dag
+                       ? static_cast<std::size_t>(board.player_flop_slots[updating_player][local])
+                       : local);
         values_out[output_slot] =
             static_cast<Scalar>(compatible * payoff / layout_.initial_normalization);
       }
@@ -10522,14 +10101,15 @@ private:
           PostflopSolverError::InvalidConfiguration);
     }
     const auto &payoff = layout_.terminal_payoffs[payoff_index].value_antes[updating_player];
-    return showdown_values_with_payoffs(
-        layout_.node_board[static_cast<std::size_t>(node.id)], payoff[0], payoff[1], payoff[2],
-        updating_player, opponent_reach);
+    return showdown_values_with_payoffs(layout_.node_board[static_cast<std::size_t>(node.id)],
+                                        payoff[0], payoff[1], payoff[2], updating_player,
+                                        opponent_reach);
   }
 
-  std::optional<PostflopSolverError>
-  showdown_values_into(const PublicTreeNode &node, const std::uint8_t updating_player,
-                       const ComboVector &opponent_reach, ComboVector &values_out) {
+  std::optional<PostflopSolverError> showdown_values_into(const PublicTreeNode &node,
+                                                          const std::uint8_t updating_player,
+                                                          const ComboVector &opponent_reach,
+                                                          ComboVector &values_out) {
     const auto payoff_index = layout_.node_terminal_payoff[static_cast<std::size_t>(node.id)];
     if (payoff_index >= layout_.terminal_payoffs.size()) {
       return PostflopSolverError::InvalidConfiguration;
@@ -10542,12 +10122,10 @@ private:
 
   std::optional<PostflopSolverError>
   showdown_and_fold_values_into(const PublicTreeNode &showdown_node,
-                                const PublicTreeNode &fold_node,
-                                const std::uint8_t updating_player,
+                                const PublicTreeNode &fold_node, const std::uint8_t updating_player,
                                 const ComboVector &showdown_opponent_reach,
                                 const ComboVector &fold_opponent_reach,
-                                ComboVector &showdown_values_out,
-                                ComboVector &fold_values_out) {
+                                ComboVector &showdown_values_out, ComboVector &fold_values_out) {
     const auto showdown_payoff_index =
         layout_.node_terminal_payoff[static_cast<std::size_t>(showdown_node.id)];
     const auto fold_payoff_index =
@@ -10563,9 +10141,9 @@ private:
     const double fold_payoff =
         layout_.terminal_payoffs[fold_payoff_index].value_antes[updating_player][0];
     return showdown_values_with_payoffs_into<false, true>(
-        showdown_board, showdown_payoff[0], showdown_payoff[1], showdown_payoff[2],
-        updating_player, showdown_opponent_reach, showdown_values_out, fold_payoff,
-        &fold_values_out, &fold_opponent_reach);
+        showdown_board, showdown_payoff[0], showdown_payoff[1], showdown_payoff[2], updating_player,
+        showdown_opponent_reach, showdown_values_out, fold_payoff, &fold_values_out,
+        &fold_opponent_reach);
   }
 
   Result<ComboVector, PostflopSolverError> showdown_values(const PublicState &state,
@@ -10592,14 +10170,12 @@ private:
   }
 
   template <bool BoardLocal = false, bool PairedFold = false>
-  std::optional<PostflopSolverError>
-  showdown_values_with_payoffs_into(const std::uint32_t board_index, const double win_payoff,
-                                    const double tie_payoff, const double loss_payoff,
-                                    const std::uint8_t updating_player,
-                                    const ComboVector &opponent_reach, ComboVector &values_out,
-                                    const double paired_fold_payoff,
-                                    ComboVector *const paired_fold_values_out,
-                                    const ComboVector *const paired_fold_opponent_reach = nullptr) {
+  std::optional<PostflopSolverError> showdown_values_with_payoffs_into(
+      const std::uint32_t board_index, const double win_payoff, const double tie_payoff,
+      const double loss_payoff, const std::uint8_t updating_player,
+      const ComboVector &opponent_reach, ComboVector &values_out, const double paired_fold_payoff,
+      ComboVector *const paired_fold_values_out,
+      const ComboVector *const paired_fold_opponent_reach = nullptr) {
     const auto &board = layout_.boards[board_index];
     // solve_postflop_exact prepares every five-card board once, before any
     // worker starts. The previous hot-path call back into prepare_ranks()
@@ -10608,23 +10184,20 @@ private:
     if (!board.ranks_ready) {
       return PostflopSolverError::InvalidConfiguration;
     }
-    const auto rank_count = static_cast<std::size_t>(
-        PlayerIndexed ? board.player_rank_count : board.rank_count);
+    const auto rank_count =
+        static_cast<std::size_t>(PlayerIndexed ? board.player_rank_count : board.rank_count);
     const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
     if (hotpath_profiling_enabled()) {
-      const auto &hero_combos = PlayerIndexed
-                                    ? board.terminal_combos[updating_player]
-                                    : board.terminal_active_combos;
-      const auto &opponent_combos = PlayerIndexed
-                                        ? board.terminal_combos[opponent]
-                                        : board.terminal_active_combos;
+      const auto &hero_combos =
+          PlayerIndexed ? board.terminal_combos[updating_player] : board.terminal_active_combos;
+      const auto &opponent_combos =
+          PlayerIndexed ? board.terminal_combos[opponent] : board.terminal_active_combos;
       ++prof_telemetry_.showdown_calls;
       prof_telemetry_.showdown_hero_hands += hero_combos.size();
       prof_telemetry_.showdown_opponent_hands += opponent_combos.size();
       prof_telemetry_.showdown_rank_cells += rank_count;
-      prof_telemetry_.showdown_touched_rank_cells +=
-          opponent_combos.touched_rank_count;
+      prof_telemetry_.showdown_touched_rank_cells += opponent_combos.touched_rank_count;
       prof_telemetry_.showdown_touched_card_rank_cells +=
           opponent_combos.touched_by_rank_card.size();
 
@@ -10639,10 +10212,8 @@ private:
       mix(updating_player);
       mix(opponent_combos.size());
       for (std::size_t local = 0U; local < opponent_combos.size(); ++local) {
-        const auto slot = BoardLocal
-                              ? local
-                              : static_cast<std::size_t>(
-                                    opponent_combos.own_slot[local]);
+        const auto slot =
+            BoardLocal ? local : static_cast<std::size_t>(opponent_combos.own_slot[local]);
         if constexpr (std::is_same_v<Scalar, float>) {
           mix(std::bit_cast<std::uint32_t>(opponent_reach[slot]));
         } else {
@@ -10658,11 +10229,12 @@ private:
       const auto previous = prof_showdown_reach_last_sequence_.find(hash);
       if (previous != prof_showdown_reach_last_sequence_.end()) {
         const auto distance = sequence - previous->second;
-        const std::size_t bucket = distance == 1U ? 0U
-            : distance <= 4U ? 1U
-            : distance <= 16U ? 2U
-            : distance <= 64U ? 3U
-            : distance <= 256U ? 4U : 5U;
+        const std::size_t bucket = distance == 1U     ? 0U
+                                   : distance <= 4U   ? 1U
+                                   : distance <= 16U  ? 2U
+                                   : distance <= 64U  ? 3U
+                                   : distance <= 256U ? 4U
+                                                      : 5U;
         ++prof_telemetry_.showdown_reuse_distance_buckets[bucket];
         previous->second = sequence;
       } else {
@@ -10675,37 +10247,35 @@ private:
         return PostflopSolverError::InvalidConfiguration;
       }
     }
-    using PairedFoldAccumulator =
-        std::conditional_t<std::is_same_v<Scalar, float>, float, double>;
+    using PairedFoldAccumulator = std::conditional_t<std::is_same_v<Scalar, float>, float, double>;
     PairedFoldAccumulator paired_fold_total = PairedFoldAccumulator{0};
     std::array<PairedFoldAccumulator, 36U> paired_fold_by_card{};
-    const bool paired_fold_shares_reach = PairedFold &&
-        (paired_fold_opponent_reach == nullptr ||
-         paired_fold_opponent_reach == &opponent_reach);
+    const bool paired_fold_shares_reach =
+        PairedFold &&
+        (paired_fold_opponent_reach == nullptr || paired_fold_opponent_reach == &opponent_reach);
     const auto calculate = [&](auto &totals, auto &by_card, auto &prefix, auto &card_prefix) {
       using Accumulator = typename std::remove_reference_t<decltype(totals)>::value_type;
       const bool profile = hotpath_profiling_enabled();
-      const auto t_accumulate = profile ? std::chrono::steady_clock::now()
-                                        : std::chrono::steady_clock::time_point{};
+      const auto t_accumulate =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if constexpr (PlayerIndexed) {
         const auto &opponent_combos = board.terminal_combos[opponent];
-        const auto accumulate_one = [&](const std::size_t local,
-                                        const Accumulator weight) {
+        const auto accumulate_one = [&](const std::size_t local, const Accumulator weight) {
           totals[opponent_combos.rank[local]] += weight;
           by_card[opponent_combos.first_by_rank[local]] += weight;
           by_card[opponent_combos.second_by_rank[local]] += weight;
           if constexpr (PairedFold) {
             if (!paired_fold_shares_reach) {
-            const PairedFoldAccumulator fold_weight =
-                paired_fold_opponent_reach != nullptr
-                    ? static_cast<PairedFoldAccumulator>(
-                          (*paired_fold_opponent_reach)
-                              [BoardLocal ? local
-                                          : opponent_combos.own_slot[local]])
-                    : static_cast<PairedFoldAccumulator>(weight);
-            paired_fold_total += fold_weight;
-            paired_fold_by_card[opponent_combos.first_card[local]] += fold_weight;
-            paired_fold_by_card[opponent_combos.second_card[local]] += fold_weight;
+              const PairedFoldAccumulator fold_weight =
+                  paired_fold_opponent_reach != nullptr
+                      ? static_cast<PairedFoldAccumulator>(
+                            (*paired_fold_opponent_reach)[BoardLocal
+                                                              ? local
+                                                              : opponent_combos.own_slot[local]])
+                      : static_cast<PairedFoldAccumulator>(weight);
+              paired_fold_total += fold_weight;
+              paired_fold_by_card[opponent_combos.first_card[local]] += fold_weight;
+              paired_fold_by_card[opponent_combos.second_card[local]] += fold_weight;
             }
           }
         };
@@ -10719,8 +10289,7 @@ private:
             const auto reach_slot = [&](const std::size_t offset) {
               return BoardLocal
                          ? local + offset
-                         : static_cast<std::size_t>(
-                               opponent_combos.own_slot[local + offset]);
+                         : static_cast<std::size_t>(opponent_combos.own_slot[local + offset]);
             };
             const Accumulator weight_0 = opponent_reach[reach_slot(0U)];
             const Accumulator weight_1 = opponent_reach[reach_slot(1U)];
@@ -10734,22 +10303,21 @@ private:
         }
         for (; local < opponent_combos.size(); ++local) {
           const Accumulator weight = static_cast<Accumulator>(
-              opponent_reach[BoardLocal ? local
-                                        : opponent_combos.own_slot[local]]);
+              opponent_reach[BoardLocal ? local : opponent_combos.own_slot[local]]);
           accumulate_one(local, weight);
         }
       } else {
         const auto &opponent_combos = board.terminal_active_combos;
         for (std::size_t local = 0U; local < opponent_combos.size(); ++local) {
-          const Accumulator weight = static_cast<Accumulator>(
-              opponent_reach[opponent_combos.own_slot[local]]);
+          const Accumulator weight =
+              static_cast<Accumulator>(opponent_reach[opponent_combos.own_slot[local]]);
           totals[opponent_combos.rank[local]] += weight;
           by_card[opponent_combos.first_by_rank[local]] += weight;
           by_card[opponent_combos.second_by_rank[local]] += weight;
         }
       }
-      const auto t_prefix = profile ? std::chrono::steady_clock::now()
-                                    : std::chrono::steady_clock::time_point{};
+      const auto t_prefix =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
         prof_showdown_accumulate_seconds_ +=
             std::chrono::duration<double>(t_prefix - t_accumulate).count();
@@ -10761,20 +10329,16 @@ private:
         if constexpr (std::is_same_v<Accumulator, float>) {
           std::size_t card = 0U;
           for (; card + 8U <= 36U; card += 8U) {
-            _mm256_storeu_ps(
-                card_prefix.data() + destination + card,
-                _mm256_add_ps(
-                    _mm256_loadu_ps(card_prefix.data() + source + card),
-                    _mm256_loadu_ps(by_card.data() + source + card)));
+            _mm256_storeu_ps(card_prefix.data() + destination + card,
+                             _mm256_add_ps(_mm256_loadu_ps(card_prefix.data() + source + card),
+                                           _mm256_loadu_ps(by_card.data() + source + card)));
           }
           for (; card < 36U; ++card) {
-            card_prefix[destination + card] =
-                card_prefix[source + card] + by_card[source + card];
+            card_prefix[destination + card] = card_prefix[source + card] + by_card[source + card];
           }
         } else {
           for (std::size_t card = 0; card < 36U; ++card) {
-            card_prefix[destination + card] =
-                card_prefix[source + card] + by_card[source + card];
+            card_prefix[destination + card] = card_prefix[source + card] + by_card[source + card];
           }
         }
       }
@@ -10787,17 +10351,14 @@ private:
       }();
       const Accumulator total_reach = prefix[rank_count];
       for (std::size_t rank = 0; rank < rank_count; ++rank) {
-        rank_base[rank] =
-            prefix[rank] * static_cast<Accumulator>(win_payoff) +
-            totals[rank] * static_cast<Accumulator>(tie_payoff) +
-            (total_reach - prefix[rank + 1U]) *
-                static_cast<Accumulator>(loss_payoff);
+        rank_base[rank] = prefix[rank] * static_cast<Accumulator>(win_payoff) +
+                          totals[rank] * static_cast<Accumulator>(tie_payoff) +
+                          (total_reach - prefix[rank + 1U]) * static_cast<Accumulator>(loss_payoff);
       }
-      const auto t_output = profile ? std::chrono::steady_clock::now()
-                                    : std::chrono::steady_clock::time_point{};
+      const auto t_output =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
-        prof_showdown_prefix_seconds_ +=
-            std::chrono::duration<double>(t_output - t_prefix).count();
+        prof_showdown_prefix_seconds_ += std::chrono::duration<double>(t_output - t_prefix).count();
       }
       if constexpr (!PlayerIndexed) {
         zero_board_values_into(board, updating_player, values_out);
@@ -10810,73 +10371,54 @@ private:
         std::size_t local = 0U;
         {
           const __m256 loss = _mm256_set1_ps(static_cast<float>(loss_payoff));
-          const __m256 inverse_normalization = _mm256_set1_ps(
-              static_cast<float>(1.0 / layout_.initial_normalization));
+          const __m256 inverse_normalization =
+              _mm256_set1_ps(static_cast<float>(1.0 / layout_.initial_normalization));
           const __m256 zero = _mm256_setzero_ps();
           const __m256 lower_blocker_coefficient =
               _mm256_set1_ps(static_cast<float>(loss_payoff - win_payoff));
           const __m256 tie_blocker_coefficient =
               _mm256_set1_ps(static_cast<float>(loss_payoff - tie_payoff));
           const __m256 fold_scale = _mm256_set1_ps(
-              static_cast<float>(paired_fold_payoff /
-                                 layout_.initial_normalization));
+              static_cast<float>(paired_fold_payoff / layout_.initial_normalization));
           for (; local + 8U <= updating_combos.size(); local += 8U) {
-            const auto load_indices =
-                [local](const std::vector<std::uint16_t> &source) {
-                  return _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                      reinterpret_cast<const __m128i *>(source.data() + local)));
-                };
-            const __m256i opponent_indices =
-                load_indices(BoardLocal ? updating_combos.opponent_local
-                                        : updating_combos.opponent_slot);
+            const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
+              return _mm256_cvtepu16_epi32(
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(source.data() + local)));
+            };
+            const __m256i opponent_indices = load_indices(
+                BoardLocal ? updating_combos.opponent_local : updating_combos.opponent_slot);
             const __m256i valid_slots = _mm256_cmpgt_epi32(
-                _mm256_set1_epi32(
-                    static_cast<int>(TerminalComboData::invalid_slot)),
+                _mm256_set1_epi32(static_cast<int>(TerminalComboData::invalid_slot)),
                 opponent_indices);
             const __m256 own_reaches = _mm256_mask_i32gather_ps(
-                zero, opponent_reach.data(), opponent_indices,
-                _mm256_castsi256_ps(valid_slots), 4);
-            const __m256i first_by_rank =
-                load_indices(updating_combos.first_by_rank);
-            const __m256i second_by_rank =
-                load_indices(updating_combos.second_by_rank);
-            const __m256 invalid_lower = _mm256_add_ps(
-                _mm256_i32gather_ps(card_prefix.data(), first_by_rank, 4),
-                _mm256_i32gather_ps(card_prefix.data(), second_by_rank, 4));
-            const __m256 invalid_tie = _mm256_sub_ps(
-                _mm256_add_ps(
-                    _mm256_i32gather_ps(by_card.data(), first_by_rank, 4),
-                    _mm256_i32gather_ps(by_card.data(), second_by_rank, 4)),
-                own_reaches);
+                zero, opponent_reach.data(), opponent_indices, _mm256_castsi256_ps(valid_slots), 4);
+            const __m256i first_by_rank = load_indices(updating_combos.first_by_rank);
+            const __m256i second_by_rank = load_indices(updating_combos.second_by_rank);
+            const __m256 invalid_lower =
+                _mm256_add_ps(_mm256_i32gather_ps(card_prefix.data(), first_by_rank, 4),
+                              _mm256_i32gather_ps(card_prefix.data(), second_by_rank, 4));
+            const __m256 invalid_tie =
+                _mm256_sub_ps(_mm256_add_ps(_mm256_i32gather_ps(by_card.data(), first_by_rank, 4),
+                                            _mm256_i32gather_ps(by_card.data(), second_by_rank, 4)),
+                              own_reaches);
             const __m256i ranks = load_indices(updating_combos.rank);
-            const __m256i rank_offsets = _mm256_mullo_epi32(
-                ranks, _mm256_set1_epi32(36));
-            const __m256i first_cards =
-                _mm256_sub_epi32(first_by_rank, rank_offsets);
-            const __m256i second_cards =
-                _mm256_sub_epi32(second_by_rank, rank_offsets);
-            const auto *const all_by_card =
-                card_prefix.data() + rank_count * 36U;
-            const __m256 invalid_all = _mm256_sub_ps(
-                _mm256_add_ps(
-                    _mm256_i32gather_ps(all_by_card, first_cards, 4),
-                    _mm256_i32gather_ps(all_by_card, second_cards, 4)),
-                own_reaches);
-            __m256 numerator = _mm256_i32gather_ps(
-                rank_base.data(), ranks, 4);
-            numerator = _mm256_add_ps(
-                numerator,
-                _mm256_mul_ps(invalid_lower, lower_blocker_coefficient));
-            numerator = _mm256_add_ps(
-                numerator,
-                _mm256_mul_ps(invalid_tie, tie_blocker_coefficient));
-            numerator = _mm256_sub_ps(
-                numerator, _mm256_mul_ps(invalid_all, loss));
-            const __m256 result =
-                _mm256_mul_ps(numerator, inverse_normalization);
+            const __m256i rank_offsets = _mm256_mullo_epi32(ranks, _mm256_set1_epi32(36));
+            const __m256i first_cards = _mm256_sub_epi32(first_by_rank, rank_offsets);
+            const __m256i second_cards = _mm256_sub_epi32(second_by_rank, rank_offsets);
+            const auto *const all_by_card = card_prefix.data() + rank_count * 36U;
+            const __m256 invalid_all =
+                _mm256_sub_ps(_mm256_add_ps(_mm256_i32gather_ps(all_by_card, first_cards, 4),
+                                            _mm256_i32gather_ps(all_by_card, second_cards, 4)),
+                              own_reaches);
+            __m256 numerator = _mm256_i32gather_ps(rank_base.data(), ranks, 4);
+            numerator =
+                _mm256_add_ps(numerator, _mm256_mul_ps(invalid_lower, lower_blocker_coefficient));
+            numerator =
+                _mm256_add_ps(numerator, _mm256_mul_ps(invalid_tie, tie_blocker_coefficient));
+            numerator = _mm256_sub_ps(numerator, _mm256_mul_ps(invalid_all, loss));
+            const __m256 result = _mm256_mul_ps(numerator, inverse_normalization);
             if constexpr (BoardLocal) {
-              _mm256_storeu_ps(
-                  reinterpret_cast<float *>(values_out.data()) + local, result);
+              _mm256_storeu_ps(reinterpret_cast<float *>(values_out.data()) + local, result);
             }
             alignas(32) float result_lanes[8];
             if constexpr (!BoardLocal) {
@@ -10886,30 +10428,25 @@ private:
             if constexpr (PairedFold) {
               const __m256 fold_own_reaches =
                   paired_fold_opponent_reach != nullptr
-                      ? _mm256_mask_i32gather_ps(
-                            zero, paired_fold_opponent_reach->data(),
-                            opponent_indices,
-                            _mm256_castsi256_ps(valid_slots), 4)
+                      ? _mm256_mask_i32gather_ps(zero, paired_fold_opponent_reach->data(),
+                                                 opponent_indices, _mm256_castsi256_ps(valid_slots),
+                                                 4)
                       : own_reaches;
-              const float fold_total = paired_fold_shares_reach
-                                           ? prefix[rank_count]
-                                           : paired_fold_total;
+              const float fold_total =
+                  paired_fold_shares_reach ? prefix[rank_count] : paired_fold_total;
               const float *const fold_by_card =
                   paired_fold_shares_reach
                       ? all_by_card
                       : reinterpret_cast<const float *>(paired_fold_by_card.data());
               const __m256 compatible = _mm256_add_ps(
-                  _mm256_sub_ps(
-                      _mm256_sub_ps(
-                          _mm256_set1_ps(fold_total),
-                          _mm256_i32gather_ps(fold_by_card, first_cards, 4)),
-                      _mm256_i32gather_ps(fold_by_card, second_cards, 4)),
+                  _mm256_sub_ps(_mm256_sub_ps(_mm256_set1_ps(fold_total),
+                                              _mm256_i32gather_ps(fold_by_card, first_cards, 4)),
+                                _mm256_i32gather_ps(fold_by_card, second_cards, 4)),
                   fold_own_reaches);
               fold_result = _mm256_mul_ps(compatible, fold_scale);
               if constexpr (BoardLocal) {
-                _mm256_storeu_ps(
-                    reinterpret_cast<float *>(paired_fold_values_out->data()) + local,
-                    fold_result);
+                _mm256_storeu_ps(reinterpret_cast<float *>(paired_fold_values_out->data()) + local,
+                                 fold_result);
               }
             }
             if constexpr (!BoardLocal) {
@@ -10918,44 +10455,34 @@ private:
                 _mm256_store_ps(fold_result_lanes, fold_result);
               }
               for (std::size_t lane = 0U; lane < 8U; ++lane) {
-                const auto output_slot = static_cast<std::size_t>(
-                    updating_combos.own_slot[local + lane]);
+                const auto output_slot =
+                    static_cast<std::size_t>(updating_combos.own_slot[local + lane]);
                 values_out[output_slot] = result_lanes[lane];
                 if constexpr (PairedFold) {
-                  (*paired_fold_values_out)[output_slot] =
-                      fold_result_lanes[lane];
+                  (*paired_fold_values_out)[output_slot] = fold_result_lanes[lane];
                 }
               }
             }
           }
         }
         for (; local < updating_combos.size(); ++local) {
-          const auto opponent_slot = BoardLocal
-                                         ? updating_combos.opponent_local[local]
-                                         : updating_combos.opponent_slot[local];
+          const auto opponent_slot = BoardLocal ? updating_combos.opponent_local[local]
+                                                : updating_combos.opponent_slot[local];
           const float own_reach = opponent_slot != TerminalComboData::invalid_slot
                                       ? opponent_reach[opponent_slot]
                                       : 0.0F;
-          const float invalid_lower =
-              card_prefix[updating_combos.first_by_rank[local]] +
-              card_prefix[updating_combos.second_by_rank[local]];
-          const float invalid_tie =
-              by_card[updating_combos.first_by_rank[local]] +
-              by_card[updating_combos.second_by_rank[local]] - own_reach;
+          const float invalid_lower = card_prefix[updating_combos.first_by_rank[local]] +
+                                      card_prefix[updating_combos.second_by_rank[local]];
+          const float invalid_tie = by_card[updating_combos.first_by_rank[local]] +
+                                    by_card[updating_combos.second_by_rank[local]] - own_reach;
           const float invalid_all =
-              card_prefix[rank_count * 36U +
-                          updating_combos.first_card[local]] +
-              card_prefix[rank_count * 36U +
-                          updating_combos.second_card[local]] -
-              own_reach;
+              card_prefix[rank_count * 36U + updating_combos.first_card[local]] +
+              card_prefix[rank_count * 36U + updating_combos.second_card[local]] - own_reach;
           const auto rank = updating_combos.rank[local];
-          const auto output_slot = BoardLocal
-                                       ? local
-                                       : static_cast<std::size_t>(
-                                             updating_combos.own_slot[local]);
+          const auto output_slot =
+              BoardLocal ? local : static_cast<std::size_t>(updating_combos.own_slot[local]);
           values_out[output_slot] =
-              (rank_base[rank] +
-               invalid_lower * static_cast<float>(loss_payoff - win_payoff) +
+              (rank_base[rank] + invalid_lower * static_cast<float>(loss_payoff - win_payoff) +
                invalid_tie * static_cast<float>(loss_payoff - tie_payoff) -
                invalid_all * static_cast<float>(loss_payoff)) *
               static_cast<float>(1.0 / layout_.initial_normalization);
@@ -10965,21 +10492,17 @@ private:
                         opponent_slot != TerminalComboData::invalid_slot
                     ? static_cast<float>((*paired_fold_opponent_reach)[opponent_slot])
                     : own_reach;
-            const float fold_total = paired_fold_shares_reach
-                                         ? prefix[rank_count]
-                                         : paired_fold_total;
+            const float fold_total =
+                paired_fold_shares_reach ? prefix[rank_count] : paired_fold_total;
             const float *const fold_by_card =
                 paired_fold_shares_reach
                     ? card_prefix.data() + rank_count * 36U
                     : reinterpret_cast<const float *>(paired_fold_by_card.data());
-            const float compatible =
-                fold_total -
-                fold_by_card[updating_combos.first_card[local]] -
-                fold_by_card[updating_combos.second_card[local]] +
-                fold_own_reach;
+            const float compatible = fold_total - fold_by_card[updating_combos.first_card[local]] -
+                                     fold_by_card[updating_combos.second_card[local]] +
+                                     fold_own_reach;
             (*paired_fold_values_out)[output_slot] =
-                compatible * static_cast<float>(paired_fold_payoff /
-                                                layout_.initial_normalization);
+                compatible * static_cast<float>(paired_fold_payoff / layout_.initial_normalization);
           }
         }
       } else if constexpr (PlayerIndexed) {
@@ -10987,59 +10510,43 @@ private:
         std::size_t local = 0U;
         for (; local + 4U <= updating_combos.size(); local += 4U) {
           const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
-            return _mm_cvtepu16_epi32(_mm_loadl_epi64(
-                reinterpret_cast<const __m128i *>(source.data() + local)));
+            return _mm_cvtepu16_epi32(
+                _mm_loadl_epi64(reinterpret_cast<const __m128i *>(source.data() + local)));
           };
-          const __m128i opponent_indices = load_indices(
-              BoardLocal ? updating_combos.opponent_local
-                         : updating_combos.opponent_slot);
+          const __m128i opponent_indices = load_indices(BoardLocal ? updating_combos.opponent_local
+                                                                   : updating_combos.opponent_slot);
           const __m128i valid_slots = _mm_cmpgt_epi32(
-              _mm_set1_epi32(static_cast<int>(TerminalComboData::invalid_slot)),
-              opponent_indices);
-          const __m256d own_reaches = _mm256_mask_i32gather_pd(
-              _mm256_setzero_pd(), opponent_reach.data(), opponent_indices,
-              _mm256_castsi256_pd(_mm256_cvtepi32_epi64(valid_slots)), 8);
-          const __m128i first_by_rank =
-              load_indices(updating_combos.first_by_rank);
-          const __m128i second_by_rank =
-              load_indices(updating_combos.second_by_rank);
-          const __m256d invalid_lower = _mm256_add_pd(
-              _mm256_i32gather_pd(card_prefix.data(), first_by_rank, 8),
-              _mm256_i32gather_pd(card_prefix.data(), second_by_rank, 8));
-          const __m256d invalid_tie = _mm256_sub_pd(
-              _mm256_add_pd(
-                  _mm256_i32gather_pd(by_card.data(), first_by_rank, 8),
-                  _mm256_i32gather_pd(by_card.data(), second_by_rank, 8)),
-              own_reaches);
+              _mm_set1_epi32(static_cast<int>(TerminalComboData::invalid_slot)), opponent_indices);
+          const __m256d own_reaches =
+              _mm256_mask_i32gather_pd(_mm256_setzero_pd(), opponent_reach.data(), opponent_indices,
+                                       _mm256_castsi256_pd(_mm256_cvtepi32_epi64(valid_slots)), 8);
+          const __m128i first_by_rank = load_indices(updating_combos.first_by_rank);
+          const __m128i second_by_rank = load_indices(updating_combos.second_by_rank);
+          const __m256d invalid_lower =
+              _mm256_add_pd(_mm256_i32gather_pd(card_prefix.data(), first_by_rank, 8),
+                            _mm256_i32gather_pd(card_prefix.data(), second_by_rank, 8));
+          const __m256d invalid_tie =
+              _mm256_sub_pd(_mm256_add_pd(_mm256_i32gather_pd(by_card.data(), first_by_rank, 8),
+                                          _mm256_i32gather_pd(by_card.data(), second_by_rank, 8)),
+                            own_reaches);
           const __m128i ranks = load_indices(updating_combos.rank);
-          const __m128i rank_offsets = _mm_mullo_epi32(
-              ranks, _mm_set1_epi32(36));
-          const __m128i first_cards =
-              _mm_sub_epi32(first_by_rank, rank_offsets);
-          const __m128i second_cards =
-              _mm_sub_epi32(second_by_rank, rank_offsets);
-          const auto *const all_by_card =
-              card_prefix.data() + rank_count * 36U;
-          const __m256d invalid_all = _mm256_sub_pd(
-              _mm256_add_pd(
-                  _mm256_i32gather_pd(all_by_card, first_cards, 8),
-                  _mm256_i32gather_pd(all_by_card, second_cards, 8)),
-              own_reaches);
-          __m256d numerator =
-              _mm256_i32gather_pd(rank_base.data(), ranks, 8);
+          const __m128i rank_offsets = _mm_mullo_epi32(ranks, _mm_set1_epi32(36));
+          const __m128i first_cards = _mm_sub_epi32(first_by_rank, rank_offsets);
+          const __m128i second_cards = _mm_sub_epi32(second_by_rank, rank_offsets);
+          const auto *const all_by_card = card_prefix.data() + rank_count * 36U;
+          const __m256d invalid_all =
+              _mm256_sub_pd(_mm256_add_pd(_mm256_i32gather_pd(all_by_card, first_cards, 8),
+                                          _mm256_i32gather_pd(all_by_card, second_cards, 8)),
+                            own_reaches);
+          __m256d numerator = _mm256_i32gather_pd(rank_base.data(), ranks, 8);
           numerator = _mm256_add_pd(
-              numerator,
-              _mm256_mul_pd(invalid_lower,
-                            _mm256_set1_pd(loss_payoff - win_payoff)));
+              numerator, _mm256_mul_pd(invalid_lower, _mm256_set1_pd(loss_payoff - win_payoff)));
           numerator = _mm256_add_pd(
-              numerator,
-              _mm256_mul_pd(invalid_tie,
-                            _mm256_set1_pd(loss_payoff - tie_payoff)));
-          numerator = _mm256_sub_pd(
-              numerator,
-              _mm256_mul_pd(invalid_all, _mm256_set1_pd(loss_payoff)));
-          const __m256d result = _mm256_div_pd(
-              numerator, _mm256_set1_pd(layout_.initial_normalization));
+              numerator, _mm256_mul_pd(invalid_tie, _mm256_set1_pd(loss_payoff - tie_payoff)));
+          numerator =
+              _mm256_sub_pd(numerator, _mm256_mul_pd(invalid_all, _mm256_set1_pd(loss_payoff)));
+          const __m256d result =
+              _mm256_div_pd(numerator, _mm256_set1_pd(layout_.initial_normalization));
           if (layout_.uses_canonical_public_dag) {
             alignas(32) double result_lanes[4];
             _mm256_store_pd(result_lanes, result);
@@ -11054,41 +10561,32 @@ private:
             const __m256d fold_own_reaches =
                 paired_fold_opponent_reach != nullptr
                     ? _mm256_mask_i32gather_pd(
-                          _mm256_setzero_pd(),
-                          paired_fold_opponent_reach->data(), opponent_indices,
-                          _mm256_castsi256_pd(
-                              _mm256_cvtepi32_epi64(valid_slots)),
-                          8)
+                          _mm256_setzero_pd(), paired_fold_opponent_reach->data(), opponent_indices,
+                          _mm256_castsi256_pd(_mm256_cvtepi32_epi64(valid_slots)), 8)
                     : own_reaches;
-            const double fold_total = paired_fold_shares_reach
-                                          ? prefix[rank_count]
-                                          : paired_fold_total;
+            const double fold_total =
+                paired_fold_shares_reach ? prefix[rank_count] : paired_fold_total;
             const double *const fold_by_card =
                 paired_fold_shares_reach
                     ? all_by_card
                     : reinterpret_cast<const double *>(paired_fold_by_card.data());
             const __m256d compatible = _mm256_add_pd(
-                _mm256_sub_pd(
-                    _mm256_sub_pd(
-                        _mm256_set1_pd(fold_total),
-                        _mm256_i32gather_pd(fold_by_card, first_cards, 8)),
-                    _mm256_i32gather_pd(fold_by_card, second_cards, 8)),
+                _mm256_sub_pd(_mm256_sub_pd(_mm256_set1_pd(fold_total),
+                                            _mm256_i32gather_pd(fold_by_card, first_cards, 8)),
+                              _mm256_i32gather_pd(fold_by_card, second_cards, 8)),
                 fold_own_reaches);
-            const __m256d fold_result = _mm256_div_pd(
-                _mm256_mul_pd(compatible,
-                              _mm256_set1_pd(paired_fold_payoff)),
-                _mm256_set1_pd(layout_.initial_normalization));
+            const __m256d fold_result =
+                _mm256_div_pd(_mm256_mul_pd(compatible, _mm256_set1_pd(paired_fold_payoff)),
+                              _mm256_set1_pd(layout_.initial_normalization));
             if (layout_.uses_canonical_public_dag) {
               alignas(32) double fold_lanes[4];
               _mm256_store_pd(fold_lanes, fold_result);
               for (std::size_t lane = 0U; lane < 4U; ++lane) {
-                (*paired_fold_values_out)
-                    [updating_combos.own_slot[local + lane]] =
-                        static_cast<Scalar>(fold_lanes[lane]);
+                (*paired_fold_values_out)[updating_combos.own_slot[local + lane]] =
+                    static_cast<Scalar>(fold_lanes[lane]);
               }
             } else {
-              store_four_from_double(
-                  paired_fold_values_out->data() + local, fold_result);
+              store_four_from_double(paired_fold_values_out->data() + local, fold_result);
             }
           }
         }
@@ -11097,46 +10595,35 @@ private:
           const double own_reach = opponent_slot != TerminalComboData::invalid_slot
                                        ? opponent_reach[opponent_slot]
                                        : 0.0;
-          const double invalid_lower =
-              card_prefix[updating_combos.first_by_rank[local]] +
-              card_prefix[updating_combos.second_by_rank[local]];
-          const double invalid_tie =
-              by_card[updating_combos.first_by_rank[local]] +
-              by_card[updating_combos.second_by_rank[local]] - own_reach;
+          const double invalid_lower = card_prefix[updating_combos.first_by_rank[local]] +
+                                       card_prefix[updating_combos.second_by_rank[local]];
+          const double invalid_tie = by_card[updating_combos.first_by_rank[local]] +
+                                     by_card[updating_combos.second_by_rank[local]] - own_reach;
           const double invalid_all =
-              card_prefix[rank_count * 36U +
-                          updating_combos.first_card[local]] +
-              card_prefix[rank_count * 36U +
-                          updating_combos.second_card[local]] -
-              own_reach;
+              card_prefix[rank_count * 36U + updating_combos.first_card[local]] +
+              card_prefix[rank_count * 36U + updating_combos.second_card[local]] - own_reach;
           const auto combo_rank = updating_combos.rank[local];
           const double numerator =
-              rank_base[combo_rank] +
-              invalid_lower * (loss_payoff - win_payoff) +
-              invalid_tie * (loss_payoff - tie_payoff) -
-              invalid_all * loss_payoff;
+              rank_base[combo_rank] + invalid_lower * (loss_payoff - win_payoff) +
+              invalid_tie * (loss_payoff - tie_payoff) - invalid_all * loss_payoff;
           const auto output_slot = layout_.uses_canonical_public_dag
-                                       ? static_cast<std::size_t>(
-                                             updating_combos.own_slot[local])
+                                       ? static_cast<std::size_t>(updating_combos.own_slot[local])
                                        : local;
-          values_out[output_slot] =
-              static_cast<Scalar>(numerator / layout_.initial_normalization);
+          values_out[output_slot] = static_cast<Scalar>(numerator / layout_.initial_normalization);
           if constexpr (PairedFold) {
-            const double fold_own_reach =
-                paired_fold_opponent_reach != nullptr &&
-                        opponent_slot != TerminalComboData::invalid_slot
-                    ? (*paired_fold_opponent_reach)[opponent_slot]
-                    : own_reach;
-            const double fold_total = paired_fold_shares_reach
-                                          ? prefix[rank_count]
-                                          : paired_fold_total;
+            const double fold_own_reach = paired_fold_opponent_reach != nullptr &&
+                                                  opponent_slot != TerminalComboData::invalid_slot
+                                              ? (*paired_fold_opponent_reach)[opponent_slot]
+                                              : own_reach;
+            const double fold_total =
+                paired_fold_shares_reach ? prefix[rank_count] : paired_fold_total;
             const double *const fold_by_card =
                 paired_fold_shares_reach
                     ? card_prefix.data() + rank_count * 36U
                     : reinterpret_cast<const double *>(paired_fold_by_card.data());
-            const double compatible =
-                fold_total - fold_by_card[updating_combos.first_card[local]] -
-                fold_by_card[updating_combos.second_card[local]] + fold_own_reach;
+            const double compatible = fold_total - fold_by_card[updating_combos.first_card[local]] -
+                                      fold_by_card[updating_combos.second_card[local]] +
+                                      fold_own_reach;
             (*paired_fold_values_out)[output_slot] = static_cast<Scalar>(
                 compatible * paired_fold_payoff / layout_.initial_normalization);
           }
@@ -11148,49 +10635,42 @@ private:
           const __m256 win = _mm256_set1_ps(static_cast<float>(win_payoff));
           const __m256 tie = _mm256_set1_ps(static_cast<float>(tie_payoff));
           const __m256 loss = _mm256_set1_ps(static_cast<float>(loss_payoff));
-          const __m256 inverse_normalization = _mm256_set1_ps(
-              static_cast<float>(1.0 / layout_.initial_normalization));
+          const __m256 inverse_normalization =
+              _mm256_set1_ps(static_cast<float>(1.0 / layout_.initial_normalization));
           const __m256 total = _mm256_set1_ps(prefix[rank_count]);
           for (; local + 8U <= updating_combos.size(); local += 8U) {
             const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
-              return _mm256_cvtepu16_epi32(_mm_loadu_si128(
-                  reinterpret_cast<const __m128i *>(source.data() + local)));
+              return _mm256_cvtepu16_epi32(
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(source.data() + local)));
             };
             const __m256i slots = load_indices(updating_combos.own_slot);
-            const __m256 own_reaches =
-                _mm256_i32gather_ps(opponent_reach.data(), slots, 4);
-            const __m256i first_by_rank =
-                load_indices(updating_combos.first_by_rank);
-            const __m256i second_by_rank =
-                load_indices(updating_combos.second_by_rank);
-            const __m256 invalid_lower = _mm256_add_ps(
-                _mm256_i32gather_ps(card_prefix.data(), first_by_rank, 4),
-                _mm256_i32gather_ps(card_prefix.data(), second_by_rank, 4));
-            const __m256 invalid_tie = _mm256_sub_ps(
-                _mm256_add_ps(
-                    _mm256_i32gather_ps(by_card.data(), first_by_rank, 4),
-                    _mm256_i32gather_ps(by_card.data(), second_by_rank, 4)),
-                own_reaches);
+            const __m256 own_reaches = _mm256_i32gather_ps(opponent_reach.data(), slots, 4);
+            const __m256i first_by_rank = load_indices(updating_combos.first_by_rank);
+            const __m256i second_by_rank = load_indices(updating_combos.second_by_rank);
+            const __m256 invalid_lower =
+                _mm256_add_ps(_mm256_i32gather_ps(card_prefix.data(), first_by_rank, 4),
+                              _mm256_i32gather_ps(card_prefix.data(), second_by_rank, 4));
+            const __m256 invalid_tie =
+                _mm256_sub_ps(_mm256_add_ps(_mm256_i32gather_ps(by_card.data(), first_by_rank, 4),
+                                            _mm256_i32gather_ps(by_card.data(), second_by_rank, 4)),
+                              own_reaches);
             const __m256i first_all = load_indices(updating_combos.first_all);
             const __m256i second_all = load_indices(updating_combos.second_all);
-            const __m256 invalid_all = _mm256_sub_ps(
-                _mm256_add_ps(
-                    _mm256_i32gather_ps(card_prefix.data(), first_all, 4),
-                    _mm256_i32gather_ps(card_prefix.data(), second_all, 4)),
-                own_reaches);
+            const __m256 invalid_all =
+                _mm256_sub_ps(_mm256_add_ps(_mm256_i32gather_ps(card_prefix.data(), first_all, 4),
+                                            _mm256_i32gather_ps(card_prefix.data(), second_all, 4)),
+                              own_reaches);
             const __m256i ranks = load_indices(updating_combos.rank);
-            const __m256 lower = _mm256_sub_ps(
-                _mm256_i32gather_ps(prefix.data(), ranks, 4), invalid_lower);
-            const __m256 equal = _mm256_sub_ps(
-                _mm256_i32gather_ps(totals.data(), ranks, 4), invalid_tie);
-            const __m256 invalid_higher = _mm256_sub_ps(
-                _mm256_sub_ps(invalid_all, invalid_lower), invalid_tie);
+            const __m256 lower =
+                _mm256_sub_ps(_mm256_i32gather_ps(prefix.data(), ranks, 4), invalid_lower);
+            const __m256 equal =
+                _mm256_sub_ps(_mm256_i32gather_ps(totals.data(), ranks, 4), invalid_tie);
+            const __m256 invalid_higher =
+                _mm256_sub_ps(_mm256_sub_ps(invalid_all, invalid_lower), invalid_tie);
             const __m256 higher = _mm256_sub_ps(
                 _mm256_sub_ps(
-                    total,
-                    _mm256_i32gather_ps(
-                        prefix.data(),
-                        _mm256_add_epi32(ranks, _mm256_set1_epi32(1)), 4)),
+                    total, _mm256_i32gather_ps(prefix.data(),
+                                               _mm256_add_epi32(ranks, _mm256_set1_epi32(1)), 4)),
                 invalid_higher);
             __m256 numerator = _mm256_mul_ps(lower, win);
             if (tie_payoff != 0.0) {
@@ -11207,113 +10687,94 @@ private:
           for (; local < updating_combos.size(); ++local) {
             const auto slot = updating_combos.own_slot[local];
             const float own_reach = opponent_reach[slot];
-            const float invalid_lower =
-                card_prefix[updating_combos.first_by_rank[local]] +
-                card_prefix[updating_combos.second_by_rank[local]];
-            const float invalid_tie =
-                by_card[updating_combos.first_by_rank[local]] +
-                by_card[updating_combos.second_by_rank[local]] - own_reach;
-            const float invalid_all =
-                card_prefix[updating_combos.first_all[local]] +
-                card_prefix[updating_combos.second_all[local]] - own_reach;
+            const float invalid_lower = card_prefix[updating_combos.first_by_rank[local]] +
+                                        card_prefix[updating_combos.second_by_rank[local]];
+            const float invalid_tie = by_card[updating_combos.first_by_rank[local]] +
+                                      by_card[updating_combos.second_by_rank[local]] - own_reach;
+            const float invalid_all = card_prefix[updating_combos.first_all[local]] +
+                                      card_prefix[updating_combos.second_all[local]] - own_reach;
             const auto rank = updating_combos.rank[local];
             const float lower = prefix[rank] - invalid_lower;
             const float equal = totals[rank] - invalid_tie;
             const float higher = (prefix[rank_count] - prefix[rank + 1U]) -
                                  (invalid_all - invalid_lower - invalid_tie);
             values_out[slot] =
-                (lower * static_cast<float>(win_payoff) +
-                 equal * static_cast<float>(tie_payoff) +
+                (lower * static_cast<float>(win_payoff) + equal * static_cast<float>(tie_payoff) +
                  higher * static_cast<float>(loss_payoff)) *
                 static_cast<float>(1.0 / layout_.initial_normalization);
           }
         } else {
-        alignas(32) double result_lanes[4];
-        for (; local + 4U <= updating_combos.size(); local += 4U) {
-          const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
-            return _mm_cvtepu16_epi32(_mm_loadl_epi64(
-                reinterpret_cast<const __m128i *>(source.data() + local)));
-          };
-          const __m128i slots = load_indices(updating_combos.own_slot);
-          const __m256d own_reaches =
-              gather_four_as_double(opponent_reach.data(), slots);
-          const __m128i first_by_rank =
-              load_indices(updating_combos.first_by_rank);
-          const __m128i second_by_rank =
-              load_indices(updating_combos.second_by_rank);
-          const __m256d invalid_lower = _mm256_add_pd(
-              _mm256_i32gather_pd(card_prefix.data(), first_by_rank, 8),
-              _mm256_i32gather_pd(card_prefix.data(), second_by_rank, 8));
-          const __m256d invalid_tie = _mm256_sub_pd(
-              _mm256_add_pd(
-                  _mm256_i32gather_pd(by_card.data(), first_by_rank, 8),
-                  _mm256_i32gather_pd(by_card.data(), second_by_rank, 8)),
-              own_reaches);
-          const __m128i first_all = load_indices(updating_combos.first_all);
-          const __m128i second_all = load_indices(updating_combos.second_all);
-          const __m256d invalid_all = _mm256_sub_pd(
-              _mm256_add_pd(
-                  _mm256_i32gather_pd(card_prefix.data(), first_all, 8),
-                  _mm256_i32gather_pd(card_prefix.data(), second_all, 8)),
-              own_reaches);
-          const __m128i ranks = load_indices(updating_combos.rank);
-          const __m256d lower = _mm256_sub_pd(
-              _mm256_i32gather_pd(prefix.data(), ranks, 8), invalid_lower);
-          const __m256d equal = _mm256_sub_pd(
-              _mm256_i32gather_pd(totals.data(), ranks, 8), invalid_tie);
-          const __m256d invalid_higher = _mm256_sub_pd(
-              _mm256_sub_pd(invalid_all, invalid_lower), invalid_tie);
-          const __m256d higher = _mm256_sub_pd(
-              _mm256_sub_pd(
-                  _mm256_set1_pd(prefix[rank_count]),
-                  _mm256_i32gather_pd(
-                      prefix.data(),
-                      _mm_add_epi32(ranks, _mm_set1_epi32(1)), 8)),
-              invalid_higher);
-          __m256d numerator =
-              _mm256_mul_pd(lower, _mm256_set1_pd(win_payoff));
-          if (tie_payoff != 0.0) {
-            numerator = _mm256_add_pd(
-                numerator,
-                _mm256_mul_pd(equal, _mm256_set1_pd(tie_payoff)));
+          alignas(32) double result_lanes[4];
+          for (; local + 4U <= updating_combos.size(); local += 4U) {
+            const auto load_indices = [local](const std::vector<std::uint16_t> &source) {
+              return _mm_cvtepu16_epi32(
+                  _mm_loadl_epi64(reinterpret_cast<const __m128i *>(source.data() + local)));
+            };
+            const __m128i slots = load_indices(updating_combos.own_slot);
+            const __m256d own_reaches = gather_four_as_double(opponent_reach.data(), slots);
+            const __m128i first_by_rank = load_indices(updating_combos.first_by_rank);
+            const __m128i second_by_rank = load_indices(updating_combos.second_by_rank);
+            const __m256d invalid_lower =
+                _mm256_add_pd(_mm256_i32gather_pd(card_prefix.data(), first_by_rank, 8),
+                              _mm256_i32gather_pd(card_prefix.data(), second_by_rank, 8));
+            const __m256d invalid_tie =
+                _mm256_sub_pd(_mm256_add_pd(_mm256_i32gather_pd(by_card.data(), first_by_rank, 8),
+                                            _mm256_i32gather_pd(by_card.data(), second_by_rank, 8)),
+                              own_reaches);
+            const __m128i first_all = load_indices(updating_combos.first_all);
+            const __m128i second_all = load_indices(updating_combos.second_all);
+            const __m256d invalid_all =
+                _mm256_sub_pd(_mm256_add_pd(_mm256_i32gather_pd(card_prefix.data(), first_all, 8),
+                                            _mm256_i32gather_pd(card_prefix.data(), second_all, 8)),
+                              own_reaches);
+            const __m128i ranks = load_indices(updating_combos.rank);
+            const __m256d lower =
+                _mm256_sub_pd(_mm256_i32gather_pd(prefix.data(), ranks, 8), invalid_lower);
+            const __m256d equal =
+                _mm256_sub_pd(_mm256_i32gather_pd(totals.data(), ranks, 8), invalid_tie);
+            const __m256d invalid_higher =
+                _mm256_sub_pd(_mm256_sub_pd(invalid_all, invalid_lower), invalid_tie);
+            const __m256d higher = _mm256_sub_pd(
+                _mm256_sub_pd(
+                    _mm256_set1_pd(prefix[rank_count]),
+                    _mm256_i32gather_pd(prefix.data(), _mm_add_epi32(ranks, _mm_set1_epi32(1)), 8)),
+                invalid_higher);
+            __m256d numerator = _mm256_mul_pd(lower, _mm256_set1_pd(win_payoff));
+            if (tie_payoff != 0.0) {
+              numerator =
+                  _mm256_add_pd(numerator, _mm256_mul_pd(equal, _mm256_set1_pd(tie_payoff)));
+            }
+            numerator =
+                _mm256_add_pd(numerator, _mm256_mul_pd(higher, _mm256_set1_pd(loss_payoff)));
+            _mm256_store_pd(
+                result_lanes,
+                _mm256_div_pd(numerator, _mm256_set1_pd(layout_.initial_normalization)));
+            for (std::size_t lane = 0U; lane < 4U; ++lane) {
+              values_out[updating_combos.own_slot[local + lane]] =
+                  static_cast<Scalar>(result_lanes[lane]);
+            }
           }
-          numerator = _mm256_add_pd(
-              numerator,
-              _mm256_mul_pd(higher, _mm256_set1_pd(loss_payoff)));
-          _mm256_store_pd(
-              result_lanes,
-              _mm256_div_pd(numerator,
-                            _mm256_set1_pd(layout_.initial_normalization)));
-          for (std::size_t lane = 0U; lane < 4U; ++lane) {
-            values_out[updating_combos.own_slot[local + lane]] =
-                static_cast<Scalar>(result_lanes[lane]);
+          for (; local < updating_combos.size(); ++local) {
+            const auto slot = updating_combos.own_slot[local];
+            const double own_reach = opponent_reach[slot];
+            const double invalid_lower = card_prefix[updating_combos.first_by_rank[local]] +
+                                         card_prefix[updating_combos.second_by_rank[local]];
+            const double invalid_tie = by_card[updating_combos.first_by_rank[local]] +
+                                       by_card[updating_combos.second_by_rank[local]] - own_reach;
+            const double invalid_all = card_prefix[updating_combos.first_all[local]] +
+                                       card_prefix[updating_combos.second_all[local]] - own_reach;
+            const auto rank = updating_combos.rank[local];
+            const double lower = prefix[rank] - invalid_lower;
+            const double equal = totals[rank] - invalid_tie;
+            const double higher = (prefix[rank_count] - prefix[rank + 1U]) -
+                                  (invalid_all - invalid_lower - invalid_tie);
+            double numerator = lower * win_payoff;
+            if (tie_payoff != 0.0) {
+              numerator += equal * tie_payoff;
+            }
+            numerator += higher * loss_payoff;
+            values_out[slot] = static_cast<Scalar>(numerator / layout_.initial_normalization);
           }
-        }
-        for (; local < updating_combos.size(); ++local) {
-          const auto slot = updating_combos.own_slot[local];
-          const double own_reach = opponent_reach[slot];
-          const double invalid_lower =
-              card_prefix[updating_combos.first_by_rank[local]] +
-              card_prefix[updating_combos.second_by_rank[local]];
-          const double invalid_tie =
-              by_card[updating_combos.first_by_rank[local]] +
-              by_card[updating_combos.second_by_rank[local]] - own_reach;
-          const double invalid_all =
-              card_prefix[updating_combos.first_all[local]] +
-              card_prefix[updating_combos.second_all[local]] - own_reach;
-          const auto rank = updating_combos.rank[local];
-          const double lower = prefix[rank] - invalid_lower;
-          const double equal = totals[rank] - invalid_tie;
-          const double higher =
-              (prefix[rank_count] - prefix[rank + 1U]) - (invalid_all - invalid_lower - invalid_tie);
-          double numerator = lower * win_payoff;
-          if (tie_payoff != 0.0) {
-            numerator += equal * tie_payoff;
-          }
-          numerator += higher * loss_payoff;
-          values_out[slot] =
-              static_cast<Scalar>(numerator / layout_.initial_normalization);
-        }
         }
       }
       if (profile) {
@@ -11432,14 +10893,14 @@ private:
   }
 
   [[nodiscard]] ComboVector zeroed_board_values(const BoardData &board,
-                                                 const std::uint8_t updating_player) const {
+                                                const std::uint8_t updating_player) const {
     ComboVector values;
     zero_board_values_into(board, updating_player, values);
     return values;
   }
 
-  std::array<ComboVector, 2> block_card(const ReachRef &reach,
-                                        const BoardData &board, const CardId card) const {
+  std::array<ComboVector, 2> block_card(const ReachRef &reach, const BoardData &board,
+                                        const CardId card) const {
     if constexpr (PlayerIndexed) {
       // Per-player compact spaces: slots 0..player_flop_count[p]-1 are the
       // player's flop-range combos (contiguous), so the copy is a pair of
@@ -11483,8 +10944,7 @@ private:
   // contiguous prefix copies (~4.5 KB instead of ~10 KB); otherwise a full
   // copy preserves the zero-initialized state (identical to `auto copy =
   // reach;`).
-  std::array<ComboVector, 2> copy_reach(const ReachRef &reach,
-                                        const BoardData &board) const {
+  std::array<ComboVector, 2> copy_reach(const ReachRef &reach, const BoardData &board) const {
     static_cast<void>(board);
     if constexpr (PlayerIndexed) {
       std::array<ComboVector, 2> copy;
@@ -11764,17 +11224,13 @@ private:
     return std::nullopt;
   }
 
-
 #endif
 
-  std::optional<PostflopSolverError> cfr_chance(const PublicTreeNode &node,
-                                                const std::uint8_t updating_player,
-                                                const ReachRef &reach,
-                                                const double strategy_weight,
-                                                const bool updating_reach_nonzero,
-                                                const double public_update_multiplicity,
-                                                ComboVector &values_out,
-                                                const PhysicalOrbitContext *orbit_context) {
+  std::optional<PostflopSolverError>
+  cfr_chance(const PublicTreeNode &node, const std::uint8_t updating_player, const ReachRef &reach,
+             const double strategy_weight, const bool updating_reach_nonzero,
+             const double public_update_multiplicity, ComboVector &values_out,
+             const PhysicalOrbitContext *orbit_context) {
     const auto &board = layout_.boards[layout_.node_board[static_cast<std::size_t>(node.id)]];
     zero_board_values_into(board, updating_player, values_out);
     if (node.edges.empty() || node.edges.front().total_legal_outcome_count <= 4U) {
@@ -11800,8 +11256,7 @@ private:
           const auto combo_id = combos[local];
           if ((layout_.combo_masks[combo_id] & edge.chance_card.mask()) == 0U) {
             const auto slot = board_player_slot(board, updating_player, local);
-            values_out[slot] =
-                static_cast<Scalar>(values_out[slot] + probability * child[slot]);
+            values_out[slot] = static_cast<Scalar>(values_out[slot] + probability * child[slot]);
           }
         }
       }
@@ -11819,11 +11274,9 @@ private:
             const auto transformed_card = transform_card(
                 occurrence_edge.chance_card,
                 layout_.automorphisms[occurrence.physical_to_representative_automorphism].suits);
-            if (transformed_card &&
-                transformed_card.value() == representative_edge.chance_card) {
+            if (transformed_card && transformed_card.value() == representative_edge.chance_card) {
               child_context.push_back(
-                  {occurrence_edge.child,
-                   occurrence.physical_to_representative_automorphism});
+                  {occurrence_edge.child, occurrence.physical_to_representative_automorphism});
               matched = true;
               break;
             }
@@ -11833,11 +11286,10 @@ private:
           }
         }
         const auto child_reach = block_card(reach, board, representative_edge.chance_card);
-        if (const auto error = cfr_physical(
-                representative_edge.child, updating_player,
-                {&child_reach[0], &child_reach[1]}, strategy_weight,
-                updating_reach_nonzero, public_update_multiplicity, child_values,
-                &child_context)) {
+        if (const auto error = cfr_physical(representative_edge.child, updating_player,
+                                            {&child_reach[0], &child_reach[1]}, strategy_weight,
+                                            updating_reach_nonzero, public_update_multiplicity,
+                                            child_values, &child_context)) {
           return error;
         }
         accumulate(representative_edge, child_values);
@@ -11847,8 +11299,8 @@ private:
     if constexpr (!PlayerIndexed) {
       if (std::popcount(board.mask) == 3U && layout_.uses_range_aware_physical_orbits) {
         std::vector<bool> consumed(node.edges.size(), false);
-        for (std::size_t representative_index = 0U;
-             representative_index < node.edges.size(); ++representative_index) {
+        for (std::size_t representative_index = 0U; representative_index < node.edges.size();
+             ++representative_index) {
           if (consumed[representative_index]) {
             continue;
           }
@@ -11867,18 +11319,16 @@ private:
             for (std::size_t automorphism_index = 0U;
                  automorphism_index < layout_.automorphisms.size(); ++automorphism_index) {
               const auto transformed_card = transform_card(
-                  candidate_edge.chance_card,
-                  layout_.automorphisms[automorphism_index].suits);
+                  candidate_edge.chance_card, layout_.automorphisms[automorphism_index].suits);
               if (!transformed_card ||
                   transformed_card.value() != representative_edge.chance_card) {
                 continue;
               }
-              const auto transformed_reach = transform_reach(
-                  block_card(reach, board, candidate_edge.chance_card),
-                  static_cast<std::uint8_t>(automorphism_index));
+              const auto transformed_reach =
+                  transform_reach(block_card(reach, board, candidate_edge.chance_card),
+                                  static_cast<std::uint8_t>(automorphism_index));
               if (transformed_reach == representative_reach) {
-                orbit.emplace_back(candidate_index,
-                                   static_cast<std::uint8_t>(automorphism_index));
+                orbit.emplace_back(candidate_index, static_cast<std::uint8_t>(automorphism_index));
                 consumed[candidate_index] = true;
               }
               break;
@@ -11888,15 +11338,13 @@ private:
           PhysicalOrbitContext grouped_context;
           grouped_context.reserve(orbit.size());
           for (const auto [edge_index, automorphism_index] : orbit) {
-            grouped_context.push_back(
-                {node.edges[edge_index].child, automorphism_index});
+            grouped_context.push_back({node.edges[edge_index].child, automorphism_index});
           }
-          if (const auto error = cfr_physical(
-                  representative_edge.child, updating_player,
-                  {&representative_reach[0], &representative_reach[1]},
-                  strategy_weight, updating_reach_nonzero,
-                  public_update_multiplicity, representative_values,
-                  &grouped_context)) {
+          if (const auto error =
+                  cfr_physical(representative_edge.child, updating_player,
+                               {&representative_reach[0], &representative_reach[1]},
+                               strategy_weight, updating_reach_nonzero, public_update_multiplicity,
+                               representative_values, &grouped_context)) {
             return error;
           }
           static bool emitted_orbit_value_diagnostic = false;
@@ -11905,10 +11353,10 @@ private:
             const auto diagnostic_reach =
                 block_card(reach, board, node.edges[diagnostic_edge_index].chance_card);
             ComboVector diagnostic_values;
-            if (const auto error = cfr_physical(
-                    node.edges[diagnostic_edge_index].child, updating_player,
-                    {&diagnostic_reach[0], &diagnostic_reach[1]}, 0.0,
-                    updating_reach_nonzero, 0.0, diagnostic_values)) {
+            if (const auto error =
+                    cfr_physical(node.edges[diagnostic_edge_index].child, updating_player,
+                                 {&diagnostic_reach[0], &diagnostic_reach[1]}, 0.0,
+                                 updating_reach_nonzero, 0.0, diagnostic_values)) {
               return error;
             }
             const auto transformed_values = transform_values_to_parent(
@@ -11924,8 +11372,7 @@ private:
                            std::abs(static_cast<double>(diagnostic_values[combo]) -
                                     static_cast<double>(transformed_values[combo])));
             }
-            std::fprintf(stderr,
-                         "ORBIT_VALUE_DIAGNOSTIC player=%u maximum_difference=%.17g\n",
+            std::fprintf(stderr, "ORBIT_VALUE_DIAGNOSTIC player=%u maximum_difference=%.17g\n",
                          static_cast<unsigned>(updating_player), maximum_value_difference);
             emitted_orbit_value_diagnostic = true;
           }
@@ -11933,9 +11380,8 @@ private:
             if (edge_index == representative_index) {
               accumulate(node.edges[edge_index], representative_values);
             } else {
-              const auto physical_values =
-                  transform_values_to_parent(representative_values, automorphism_index,
-                                             updating_player);
+              const auto physical_values = transform_values_to_parent(
+                  representative_values, automorphism_index, updating_player);
               accumulate(node.edges[edge_index], physical_values);
             }
           }
@@ -11951,9 +11397,8 @@ private:
     const std::size_t edge_count = node.edges.size();
     const std::size_t worker_count =
         parallel_workers_.empty() ? parallel_pool_size_ : parallel_workers_.size();
-    const std::size_t split = (std::popcount(board.mask) == 3U && worker_count > 0U)
-                                  ? edge_count
-                                  : 0U;
+    const std::size_t split =
+        (std::popcount(board.mask) == 3U && worker_count > 0U) ? edge_count : 0U;
     const bool profile = hotpath_profiling_enabled();
     if (split == 0U) {
       ComboVector child;
@@ -11963,8 +11408,8 @@ private:
                              updating_reach_nonzero, public_update_multiplicity, child)) {
           return error;
         }
-        const auto t_chance = profile ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
+        const auto t_chance =
+            profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         accumulate(edge, child);
         if (profile) {
           prof_chance_seconds_ +=
@@ -11980,8 +11425,7 @@ private:
     // Pre-sized result vectors: every child writes directly into its own slot
     // (the workers write disjoint slots of the main thread's vector, which
     // stay valid until the join below).
-    auto chance_results =
-        std::make_unique_for_overwrite<ComboVector[]>(edge_count);
+    auto chance_results = std::make_unique_for_overwrite<ComboVector[]>(edge_count);
     for (std::size_t index = 0; index < split; ++index) {
       const auto &edge = node.edges[index];
       const ComboVector *child_reach_0 = reach[0];
@@ -12001,22 +11445,21 @@ private:
       futures.push_back(task.get_future());
       tasks.push_back(std::move(task));
     }
-    const auto t_sync = profile ? std::chrono::steady_clock::now()
-                                : std::chrono::steady_clock::time_point{};
+    const auto t_sync =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     dispatch_parallel_tasks(tasks);
     if (profile) {
       prof_sync_seconds_ +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - t_sync).count();
     }
-    // Both the worker subtrees and the main thread's share are joined, then accumulated in the original edge
-    // order so the floating-point summation is bit-identical to the serial
-    // traversal regardless of where the split boundary lies.
+    // Both the worker subtrees and the main thread's share are joined, then accumulated in the
+    // original edge order so the floating-point summation is bit-identical to the serial traversal
+    // regardless of where the split boundary lies.
     for (std::size_t index = split; index < edge_count; ++index) {
       const auto &edge = node.edges[index];
-      const auto error = cfr_physical(edge.child, updating_player, reach,
-                                      strategy_weight, updating_reach_nonzero,
-                                      public_update_multiplicity,
-                                      chance_results[index]);
+      const auto error =
+          cfr_physical(edge.child, updating_player, reach, strategy_weight, updating_reach_nonzero,
+                       public_update_multiplicity, chance_results[index]);
       if (error) {
         return error;
       }
@@ -12032,8 +11475,8 @@ private:
         return child.error();
       }
     }
-    const auto t_chance = profile ? std::chrono::steady_clock::now()
-                                  : std::chrono::steady_clock::time_point{};
+    const auto t_chance =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     for (std::size_t index = 0; index < edge_count; ++index) {
       accumulate(node.edges[index], chance_results[index]);
     }
@@ -12044,14 +11487,11 @@ private:
     return std::nullopt;
   }
 
-  std::optional<PostflopSolverError> cfr_decision(const PublicTreeNode &node,
-                                                   const std::uint8_t updating_player,
-                                                   const ReachRef &reach,
-                                                   const double strategy_weight,
-                                                   const bool updating_reach_nonzero,
-                                                   const double public_update_multiplicity,
-                                                   ComboVector &values_out,
-                                                   const PhysicalOrbitContext *orbit_context) {
+  std::optional<PostflopSolverError>
+  cfr_decision(const PublicTreeNode &node, const std::uint8_t updating_player,
+               const ReachRef &reach, const double strategy_weight,
+               const bool updating_reach_nonzero, const double public_update_multiplicity,
+               ComboVector &values_out, const PhysicalOrbitContext *orbit_context) {
     const auto &decision = layout_.decisions[static_cast<std::size_t>(node.id)];
     const auto &board = layout_.boards[decision.board_index];
     const auto action_count = static_cast<std::size_t>(decision.action_count);
@@ -12067,9 +11507,8 @@ private:
               occurrence_node.edges.size() != node.edges.size()) {
             return PostflopSolverError::InvalidConfiguration;
           }
-          child_context.push_back(
-              {occurrence_node.edges[action].child,
-               occurrence.physical_to_representative_automorphism});
+          child_context.push_back({occurrence_node.edges[action].child,
+                                   occurrence.physical_to_representative_automorphism});
         }
       }
     }
@@ -12079,8 +11518,8 @@ private:
     const double effective_regret_update_weight =
         regret_update_weight_ * public_update_multiplicity;
     const bool profile = hotpath_profiling_enabled();
-    const auto t_begin = profile ? std::chrono::steady_clock::now()
-                                 : std::chrono::steady_clock::time_point{};
+    const auto t_begin =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     // Strategies are only meaningful for the acting player's own live combos
     // (board.player_combos[decision.player]); for every other combo the
     // actor's reach is zero, so its strategy never contributes. Only the
@@ -12166,34 +11605,29 @@ private:
             const auto *const packed = state + local * 6U;
             const __m128 first_four = _mm_castsi128_ps(_mm_slli_epi32(
                 _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                        expand_words),
+                    _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                                     expand_words),
                     regret_mask),
                 18));
             const __m128 second_four = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                        expand_words),
-                    regret_mask),
+                _mm_and_si128(_mm_shuffle_epi8(
+                                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
+                                  expand_words),
+                              regret_mask),
                 18));
-            const __m256d first = _mm256_cvtps_pd(
-                _mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
-            const __m256d second = _mm256_cvtps_pd(
-                _mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(3, 1, 3, 1)));
+            const __m256d first =
+                _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
+            const __m256d second =
+                _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(3, 1, 3, 1)));
             const __m256d sums = _mm256_add_pd(first, second);
-            const __m256d no_positive_regret =
-                _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+            const __m256d no_positive_regret = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
             const __m256d inverse = _mm256_div_pd(one, sums);
             store_four_from_double(
                 strategies[0].data() + local,
-                _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half,
-                                 no_positive_regret));
+                _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, no_positive_regret));
             store_four_from_double(
                 strategies[1].data() + local,
-                _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half,
-                                 no_positive_regret));
+                _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, no_positive_regret));
           }
         } else if (action_count == 3U) {
           const __m128i expand_three_words =
@@ -12205,52 +11639,43 @@ private:
             const auto *const block = state + local * 9U;
             __m128 row0 = _mm_castsi128_ps(_mm_slli_epi32(
                 _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
-                        expand_three_words),
+                    _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
+                                     expand_three_words),
                     regret_mask),
                 18));
             __m128 row1 = _mm_castsi128_ps(_mm_slli_epi32(
                 _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
-                        expand_three_words),
+                    _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
+                                     expand_three_words),
                     regret_mask),
                 18));
             __m128 row2 = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
-                        expand_three_words),
-                    regret_mask),
+                _mm_and_si128(_mm_shuffle_epi8(
+                                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
+                                  expand_three_words),
+                              regret_mask),
                 18));
             __m128 row3 = _mm_castsi128_ps(_mm_slli_epi32(
-                _mm_and_si128(
-                    _mm_shuffle_epi8(
-                        _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
-                        expand_three_words),
-                    regret_mask),
+                _mm_and_si128(_mm_shuffle_epi8(
+                                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
+                                  expand_three_words),
+                              regret_mask),
                 18));
             _MM_TRANSPOSE4_PS(row0, row1, row2, row3);
             const __m256d first = _mm256_cvtps_pd(row0);
             const __m256d second = _mm256_cvtps_pd(row1);
             const __m256d third = _mm256_cvtps_pd(row2);
-            const __m256d sums =
-                _mm256_add_pd(_mm256_add_pd(first, second), third);
-            const __m256d no_positive_regret =
-                _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+            const __m256d sums = _mm256_add_pd(_mm256_add_pd(first, second), third);
+            const __m256d no_positive_regret = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
             store_four_from_double(
                 strategies[0].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(first, sums), uniform,
-                                 no_positive_regret));
+                _mm256_blendv_pd(_mm256_div_pd(first, sums), uniform, no_positive_regret));
             store_four_from_double(
                 strategies[1].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(second, sums), uniform,
-                                 no_positive_regret));
+                _mm256_blendv_pd(_mm256_div_pd(second, sums), uniform, no_positive_regret));
             store_four_from_double(
                 strategies[2].data() + local,
-                _mm256_blendv_pd(_mm256_div_pd(third, sums), uniform,
-                                 no_positive_regret));
+                _mm256_blendv_pd(_mm256_div_pd(third, sums), uniform, no_positive_regret));
           }
         }
       }
@@ -12259,8 +11684,8 @@ private:
         const auto *const block = state + local * action_count * 3U;
         double sum = 0.0;
         for (std::size_t action = 0; action < action_count; ++action) {
-          const double regret = decode_regret13(static_cast<std::uint16_t>(
-              compact_word(block + action * 3U) & 0x1fffU));
+          const double regret = decode_regret13(
+              static_cast<std::uint16_t>(compact_word(block + action * 3U) & 0x1fffU));
           strategies[action][slot] = static_cast<Scalar>(regret);
           sum += regret;
         }
@@ -12276,8 +11701,7 @@ private:
             strategies[1][slot] = static_cast<Scalar>(strategies[1][slot] * inverse);
           } else {
             for (std::size_t action = 0; action < action_count; ++action) {
-              strategies[action][slot] =
-                  static_cast<Scalar>(strategies[action][slot] / sum);
+              strategies[action][slot] = static_cast<Scalar>(strategies[action][slot] / sum);
             }
           }
         }
@@ -12300,27 +11724,24 @@ private:
         for (; local + 4U < actor_slot_count; local += 4U) {
           const auto *const packed = regrets + local * 6U;
           const __m128 first_four = _mm_castsi128_ps(_mm_slli_epi32(
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
-                  expand_float24),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                               expand_float24),
               7));
           const __m128 second_four = _mm_castsi128_ps(_mm_slli_epi32(
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                  expand_float24),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
+                               expand_float24),
               7));
-          const __m256d first = _mm256_cvtps_pd(
-              _mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
-          const __m256d second = _mm256_cvtps_pd(
-              _mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(3, 1, 3, 1)));
+          const __m256d first =
+              _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
+          const __m256d second =
+              _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(3, 1, 3, 1)));
           const __m256d sums = _mm256_add_pd(first, second);
-          const __m256d no_positive_regret =
-              _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+          const __m256d no_positive_regret = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
           const __m256d inverse = _mm256_div_pd(one, sums);
-          const __m256d first_strategy = _mm256_blendv_pd(
-              _mm256_mul_pd(first, inverse), half, no_positive_regret);
-          const __m256d second_strategy = _mm256_blendv_pd(
-              _mm256_mul_pd(second, inverse), half, no_positive_regret);
+          const __m256d first_strategy =
+              _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, no_positive_regret);
+          const __m256d second_strategy =
+              _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, no_positive_regret);
           store_four_from_double(strategies[0].data() + local, first_strategy);
           store_four_from_double(strategies[1].data() + local, second_strategy);
         }
@@ -12333,8 +11754,8 @@ private:
           std::memcpy(&packed_pair, regrets + local * 6U, 6U);
         }
         const auto first_bits = static_cast<std::uint32_t>(packed_pair & 0x00ffffffULL) << 7U;
-        const auto second_bits =
-            static_cast<std::uint32_t>((packed_pair >> 24U) & 0x00ffffffULL) << 7U;
+        const auto second_bits = static_cast<std::uint32_t>((packed_pair >> 24U) & 0x00ffffffULL)
+                                 << 7U;
         const double first = static_cast<double>(std::bit_cast<float>(first_bits));
         const double second = static_cast<double>(std::bit_cast<float>(second_bits));
         const double sum = first + second;
@@ -12349,8 +11770,7 @@ private:
         }
       }
     } else if (!locked_node && PlayerIndexed && action_count == 3U &&
-               layout_.uses_direct_action_bases &&
-               buffers_.regret_float24 != nullptr) {
+               layout_.uses_direct_action_bases && buffers_.regret_float24 != nullptr) {
       const auto *regrets =
           buffers_.regret_float24 + static_cast<std::size_t>(decision.action_base) * 3U;
       const __m256d zero = _mm256_setzero_pd();
@@ -12361,39 +11781,33 @@ private:
       for (; local + 4U < actor_slot_count; local += 4U) {
         const auto *const block = regrets + local * 9U;
         __m128 row0 = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
-                expand_three_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
+                             expand_three_float24),
             7));
         __m128 row1 = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
-                expand_three_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
+                             expand_three_float24),
             7));
         __m128 row2 = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
-                expand_three_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
+                             expand_three_float24),
             7));
         __m128 row3 = _mm_castsi128_ps(_mm_slli_epi32(
-            _mm_shuffle_epi8(
-                _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
-                expand_three_float24),
+            _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
+                             expand_three_float24),
             7));
         _MM_TRANSPOSE4_PS(row0, row1, row2, row3);
         const __m256d first = _mm256_cvtps_pd(row0);
         const __m256d second = _mm256_cvtps_pd(row1);
         const __m256d third = _mm256_cvtps_pd(row2);
-        const __m256d sums =
-            _mm256_add_pd(_mm256_add_pd(first, second), third);
-        const __m256d no_positive_regret =
-            _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
-        const __m256d first_strategy = _mm256_blendv_pd(
-            _mm256_div_pd(first, sums), uniform, no_positive_regret);
-        const __m256d second_strategy = _mm256_blendv_pd(
-            _mm256_div_pd(second, sums), uniform, no_positive_regret);
-        const __m256d third_strategy = _mm256_blendv_pd(
-            _mm256_div_pd(third, sums), uniform, no_positive_regret);
+        const __m256d sums = _mm256_add_pd(_mm256_add_pd(first, second), third);
+        const __m256d no_positive_regret = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
+        const __m256d first_strategy =
+            _mm256_blendv_pd(_mm256_div_pd(first, sums), uniform, no_positive_regret);
+        const __m256d second_strategy =
+            _mm256_blendv_pd(_mm256_div_pd(second, sums), uniform, no_positive_regret);
+        const __m256d third_strategy =
+            _mm256_blendv_pd(_mm256_div_pd(third, sums), uniform, no_positive_regret);
         store_four_from_double(strategies[0].data() + local, first_strategy);
         store_four_from_double(strategies[1].data() + local, second_strategy);
         store_four_from_double(strategies[2].data() + local, third_strategy);
@@ -12434,19 +11848,17 @@ private:
           }
         } else {
           for (std::size_t action = 0; action < action_count; ++action) {
-            strategies[action][slot] =
-                static_cast<Scalar>(strategies[action][slot] / sum);
+            strategies[action][slot] = static_cast<Scalar>(strategies[action][slot] / sum);
           }
         }
       }
     } else {
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
-        const auto locked = locked_node ? locked_root_strategy(board.local_index[combo_id])
-                                        : std::nullopt;
+        const auto locked =
+            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
         const auto strategy =
-            locked ? *locked
-                   : current_strategy(decision, static_cast<std::int16_t>(local), false);
+            locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), false);
         const auto slot = board_player_slot(board, decision.player, local);
         for (std::size_t action = 0; action < action_count; ++action) {
           strategies[action][slot] = static_cast<Scalar>(strategy[action]);
@@ -12471,11 +11883,10 @@ private:
         }
       }
     }
-    const auto t_after_strategy = profile ? std::chrono::steady_clock::now()
-                                          : std::chrono::steady_clock::time_point{};
+    const auto t_after_strategy =
+        profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     if (profile) {
-      prof_strategy_seconds_ +=
-          std::chrono::duration<double>(t_after_strategy - t_begin).count();
+      prof_strategy_seconds_ += std::chrono::duration<double>(t_after_strategy - t_begin).count();
     }
     auto t_child_end = t_after_strategy;
     auto t_prev = t_after_strategy;
@@ -12483,8 +11894,7 @@ private:
         PlayerIndexed ? decision.paired_fold_action : action_count;
     const std::size_t paired_showdown_action =
         PlayerIndexed ? decision.paired_showdown_action : action_count;
-    auto &actor_parent_reach_local =
-        scratch_lease.get().actor_parent_reach_local;
+    auto &actor_parent_reach_local = scratch_lease.get().actor_parent_reach_local;
     const bool has_board_local_parent =
         PlayerIndexed && (decision.player != updating_player || accumulate_average);
     if constexpr (PlayerIndexed) {
@@ -12492,16 +11902,14 @@ private:
         const auto *const slots = board.player_flop_slots[decision.player].data();
         std::size_t local = 0U;
         for (; local + 4U <= actor_slot_count; local += 4U) {
-          const __m128i packed_slots = _mm_loadl_epi64(
-              reinterpret_cast<const __m128i *>(slots + local));
+          const __m128i packed_slots =
+              _mm_loadl_epi64(reinterpret_cast<const __m128i *>(slots + local));
           const __m128i indices = _mm_cvtepu16_epi32(packed_slots);
-          store_four_from_double(
-              actor_parent_reach_local.data() + local,
-              gather_four_as_double((*reach[decision.player]).data(), indices));
+          store_four_from_double(actor_parent_reach_local.data() + local,
+                                 gather_four_as_double((*reach[decision.player]).data(), indices));
         }
         for (; local < actor_slot_count; ++local) {
-          actor_parent_reach_local[local] =
-              (*reach[decision.player])[slots[local]];
+          actor_parent_reach_local[local] = (*reach[decision.player])[slots[local]];
         }
       }
     }
@@ -12511,43 +11919,36 @@ private:
       if constexpr (PlayerIndexed) {
         return actor_parent_reach_local[local];
       }
-      return (*reach[updating_player])[
-          board_reach_slot(board, updating_player, local)];
+      return (*reach[updating_player])[board_reach_slot(board, updating_player, local)];
     };
     // Root action subtrees in the physical flop tree own disjoint action
     // indices and result vectors. Queue every branch after the first and let
     // those root tasks expose their turn-card chance layer. Ordinary chance
     // tasks remain non-nested. Parent reductions keep their original order.
     const bool parallel_root_actions =
-        PlayerIndexed && node.id == layout_.tree.root &&
-        std::popcount(board.mask) == 3U && !locked_node &&
-        (action_count == 2U || action_count == 3U) &&
-        decision.terminal_child_mask == 0U &&
-        paired_fold_action >= action_count && paired_showdown_action >= action_count &&
-        layout_.uses_direct_action_bases &&
+        PlayerIndexed && node.id == layout_.tree.root && std::popcount(board.mask) == 3U &&
+        !locked_node && (action_count == 2U || action_count == 3U) &&
+        decision.terminal_child_mask == 0U && paired_fold_action >= action_count &&
+        paired_showdown_action >= action_count && layout_.uses_direct_action_bases &&
         (!parallel_workers_.empty() || parallel_pool_size_ > 0U);
     if (parallel_root_actions) {
-      const bool actor_needed =
-          decision.player != updating_player || accumulate_average;
+      const bool actor_needed = decision.player != updating_player || accumulate_average;
       std::array<ReachRef, 3> child_refs{reach, reach, reach};
       std::array<bool, 3> actor_reach_nonzero{false, false, false};
       if (actor_needed) {
         for (std::size_t action = 0; action < action_count; ++action) {
           ComboVector &actor_reach = scratch_lease.get().reach_actor[action];
           actor_reach_nonzero[action] = materialize_actor_reach(
-              board, decision.player, *reach[decision.player], strategies[action],
-              actor_reach, actor_slot_count, true, board_local_parent);
-          child_refs[action] =
-              decision.player == 0U
-                  ? ReachRef{&actor_reach, reach[1]}
-                  : ReachRef{reach[0], &actor_reach};
+              board, decision.player, *reach[decision.player], strategies[action], actor_reach,
+              actor_slot_count, true, board_local_parent);
+          child_refs[action] = decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                     : ReachRef{reach[0], &actor_reach};
         }
       }
-      const auto t_copy_end = profile ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
+      const auto t_copy_end =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
-        prof_copy_seconds_ +=
-            std::chrono::duration<double>(t_copy_end - t_prev).count();
+        prof_copy_seconds_ += std::chrono::duration<double>(t_copy_end - t_prev).count();
       }
       std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
       std::vector<std::future<TraversalResult>> futures;
@@ -12556,21 +11957,19 @@ private:
       const std::size_t available_pool_size =
           parallel_workers_.empty() ? parallel_pool_size_ : parallel_workers_.size();
       for (std::size_t action = 1U; action < action_count; ++action) {
-        const bool child_nonzero =
-            decision.player == updating_player ? actor_reach_nonzero[action]
-                                               : updating_reach_nonzero;
+        const bool child_nonzero = decision.player == updating_player ? actor_reach_nonzero[action]
+                                                                      : updating_reach_nonzero;
         std::packaged_task<TraversalResult(DenseTraversal &)> task(
             [child = node.edges[action].child, updating_player,
-             child_reach_0 = child_refs[action][0],
-             child_reach_1 = child_refs[action][1], strategy_weight,
-             child_nonzero, public_update_multiplicity,
+             child_reach_0 = child_refs[action][0], child_reach_1 = child_refs[action][1],
+             strategy_weight, child_nonzero, public_update_multiplicity,
              root_pool_size = available_pool_size,
              result = &action_values[action]](DenseTraversal &self) {
               const std::size_t previous_pool_size = self.parallel_pool_size_;
               self.parallel_pool_size_ = root_pool_size;
               const auto error = self.cfr_physical(
-                  child, updating_player, {child_reach_0, child_reach_1},
-                  strategy_weight, child_nonzero, public_update_multiplicity, *result);
+                  child, updating_player, {child_reach_0, child_reach_1}, strategy_weight,
+                  child_nonzero, public_update_multiplicity, *result);
               self.parallel_pool_size_ = previous_pool_size;
               if (error) {
                 return Result<ComboVector, PostflopSolverError>::failure(*error);
@@ -12582,11 +11981,10 @@ private:
       }
       dispatch_parallel_tasks(tasks);
       const bool child_nonzero_0 =
-          decision.player == updating_player ? actor_reach_nonzero[0]
-                                             : updating_reach_nonzero;
-      const auto main_error = cfr_physical(
-          node.edges[0].child, updating_player, child_refs[0], strategy_weight,
-          child_nonzero_0, public_update_multiplicity, action_values[0]);
+          decision.player == updating_player ? actor_reach_nonzero[0] : updating_reach_nonzero;
+      const auto main_error =
+          cfr_physical(node.edges[0].child, updating_player, child_refs[0], strategy_weight,
+                       child_nonzero_0, public_update_multiplicity, action_values[0]);
       std::optional<PostflopSolverError> worker_error;
       for (auto &future : futures) {
         wait_for_parallel_future(future);
@@ -12595,11 +11993,10 @@ private:
           worker_error = worker_result.error();
         }
       }
-      t_child_end = profile ? std::chrono::steady_clock::now()
-                            : std::chrono::steady_clock::time_point{};
+      t_child_end =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
-        prof_children_seconds_ +=
-            std::chrono::duration<double>(t_child_end - t_copy_end).count();
+        prof_children_seconds_ += std::chrono::duration<double>(t_child_end - t_copy_end).count();
       }
       if (main_error) {
         return main_error;
@@ -12608,8 +12005,8 @@ private:
         return worker_error;
       }
     }
-    for (std::size_t action = parallel_root_actions ? action_count : 0U;
-         action < action_count; ++action) {
+    for (std::size_t action = parallel_root_actions ? action_count : 0U; action < action_count;
+         ++action) {
       if (action == paired_fold_action) {
         // The paired showdown action fills both result vectors from one
         // terminal pass. It may appear later in the action order; no parent
@@ -12624,9 +12021,8 @@ private:
       const bool terminal_child =
           (decision.terminal_child_mask & static_cast<std::uint8_t>(1U << action)) != 0U;
       const PublicTreeNode *const child_node =
-          terminal_child
-              ? &layout_.tree.nodes[static_cast<std::size_t>(node.edges[action].child)]
-              : nullptr;
+          terminal_child ? &layout_.tree.nodes[static_cast<std::size_t>(node.edges[action].child)]
+                         : nullptr;
       // The updating player's own reach only weights average-strategy
       // accumulation. Before averaging starts it is irrelevant to both
       // counterfactual values and regret deltas, so do not propagate it.
@@ -12642,112 +12038,97 @@ private:
       if (paired_terminal_opponent) {
         const auto nonzero = materialize_actor_reach_pair(
             board, decision.player, *reach[decision.player], strategies[action],
-            strategies[paired_fold_action], actor_reach, *fold_actor_reach,
-            actor_slot_count, true, board_local_parent);
+            strategies[paired_fold_action], actor_reach, *fold_actor_reach, actor_slot_count, true,
+            board_local_parent);
         actor_reach_nonzero = nonzero[0];
         paired_fold_reach_nonzero = nonzero[1];
       } else if (actor_needed) {
         // Fused actor write: only the actor's flop-range slots are set; the
         // opponent side remains shared from the parent.
         actor_reach_nonzero = materialize_actor_reach(
-            board, decision.player, *reach[decision.player], strategies[action],
-            actor_reach, actor_slot_count, true, board_local_parent);
+            board, decision.player, *reach[decision.player], strategies[action], actor_reach,
+            actor_slot_count, true, board_local_parent);
       }
-      const auto t_copy_end = profile ? std::chrono::steady_clock::now()
-                                      : std::chrono::steady_clock::time_point{};
+      const auto t_copy_end =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
-        prof_copy_seconds_ +=
-            std::chrono::duration<double>(t_copy_end - t_prev).count();
+        prof_copy_seconds_ += std::chrono::duration<double>(t_copy_end - t_prev).count();
       }
       // The child writes its value vector directly into this action's slot of
       // the parent's scratch (no Result<ComboVector> return, no prefix copy).
-      const ReachRef child_ref =
-          actor_needed
-              ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                       : ReachRef{reach[0], &actor_reach})
-              : ReachRef{reach[0], reach[1]};
+      const ReachRef child_ref = actor_needed
+                                     ? (decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                              : ReachRef{reach[0], &actor_reach})
+                                     : ReachRef{reach[0], reach[1]};
       const ComboVector *paired_fold_opponent_reach = child_ref[1U - updating_player];
       if (paired_terminal_opponent) {
         paired_fold_opponent_reach = fold_actor_reach;
       }
       std::optional<PostflopSolverError> error;
-      const bool zero_paired_showdown =
-          action == paired_showdown_action && decision.player != updating_player &&
-          !actor_reach_nonzero;
-      const bool zero_paired_fold =
-          action == paired_showdown_action && decision.player != updating_player &&
-          !paired_fold_reach_nonzero;
-      const bool zero_opponent_branch =
-          decision.player != updating_player && !actor_reach_nonzero &&
-          (action != paired_showdown_action || zero_paired_fold);
-      const bool average_only_allowed = terminal_child || strategy_weight == 0.0 ||
-                                        std::popcount(board.mask) >= 4;
-      const bool direct_physical_average =
-          PlayerIndexed && layout_.uses_direct_action_bases;
+      const bool zero_paired_showdown = action == paired_showdown_action &&
+                                        decision.player != updating_player && !actor_reach_nonzero;
+      const bool zero_paired_fold = action == paired_showdown_action &&
+                                    decision.player != updating_player &&
+                                    !paired_fold_reach_nonzero;
+      const bool zero_opponent_branch = decision.player != updating_player &&
+                                        !actor_reach_nonzero &&
+                                        (action != paired_showdown_action || zero_paired_fold);
+      const bool average_only_allowed =
+          terminal_child || strategy_weight == 0.0 || std::popcount(board.mask) >= 4;
+      const bool direct_physical_average = PlayerIndexed && layout_.uses_direct_action_bases;
       if (zero_opponent_branch && average_only_allowed && direct_physical_average) {
         if (!terminal_child && accumulate_average) {
           const auto average_only_begin =
-              profile ? std::chrono::steady_clock::now()
-                      : std::chrono::steady_clock::time_point{};
+              profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
           if (profile) {
             ++prof_average_only_calls_;
           }
-          error = accumulate_average_only(node.edges[action].child, updating_player,
-                                          child_ref, strategy_weight);
+          error = accumulate_average_only(node.edges[action].child, updating_player, child_ref,
+                                          strategy_weight);
           if (profile) {
             prof_average_only_seconds_ +=
-                std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                              average_only_begin)
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - average_only_begin)
                     .count();
           }
         }
         if (!error) {
           zero_board_values_into(board, updating_player, action_values[action]);
           if (action == paired_showdown_action) {
-            zero_board_values_into(board, updating_player,
-                                   action_values[paired_fold_action]);
+            zero_board_values_into(board, updating_player, action_values[paired_fold_action]);
           }
         }
       } else if (zero_paired_showdown) {
         zero_board_values_into(board, updating_player, action_values[action]);
         error = fold_values_into(
-            layout_.tree.nodes[static_cast<std::size_t>(
-                node.edges[paired_fold_action].child)],
-            updating_player, *paired_fold_opponent_reach,
-            action_values[paired_fold_action]);
+            layout_.tree.nodes[static_cast<std::size_t>(node.edges[paired_fold_action].child)],
+            updating_player, *paired_fold_opponent_reach, action_values[paired_fold_action]);
       } else if (zero_paired_fold) {
-        error = showdown_values_into(*child_node, updating_player,
-                                     *child_ref[1U - updating_player],
+        error = showdown_values_into(*child_node, updating_player, *child_ref[1U - updating_player],
                                      action_values[action]);
         if (!error) {
-          zero_board_values_into(board, updating_player,
-                                 action_values[paired_fold_action]);
+          zero_board_values_into(board, updating_player, action_values[paired_fold_action]);
         }
       } else {
         const bool child_updating_reach_nonzero =
-            decision.player == updating_player ? actor_reach_nonzero
-                                               : updating_reach_nonzero;
+            decision.player == updating_player ? actor_reach_nonzero : updating_reach_nonzero;
         error =
             action == paired_showdown_action
                 ? showdown_and_fold_values_into(
                       *child_node,
-                      layout_.tree.nodes[static_cast<std::size_t>(
-                          node.edges[paired_fold_action].child)],
+                      layout_.tree
+                          .nodes[static_cast<std::size_t>(node.edges[paired_fold_action].child)],
                       updating_player, *child_ref[1U - updating_player],
                       *paired_fold_opponent_reach, action_values[action],
                       action_values[paired_fold_action])
                 : cfr_physical(node.edges[action].child, updating_player, child_ref,
                                strategy_weight, child_updating_reach_nonzero,
-                               public_update_multiplicity,
-                               action_values[action],
-                               orbit_context == nullptr ? nullptr
-                                                        : &child_orbit_contexts[action]);
+                               public_update_multiplicity, action_values[action],
+                               orbit_context == nullptr ? nullptr : &child_orbit_contexts[action]);
       }
-      t_child_end = profile ? std::chrono::steady_clock::now()
-                            : std::chrono::steady_clock::time_point{};
+      t_child_end =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
-        prof_children_seconds_ +=
-            std::chrono::duration<double>(t_child_end - t_copy_end).count();
+        prof_children_seconds_ += std::chrono::duration<double>(t_child_end - t_copy_end).count();
       }
       t_prev = t_child_end;
       if (error) {
@@ -12806,8 +12187,8 @@ private:
           }
         }
       }
-      const auto t_after_value = profile ? std::chrono::steady_clock::now()
-                                         : std::chrono::steady_clock::time_point{};
+      const auto t_after_value =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
         prof_value_accumulate_seconds_ +=
             std::chrono::duration<double>(t_after_value - t_child_end).count();
@@ -12820,12 +12201,12 @@ private:
       // overhead; see journey §8.9.)
       const bool locked_root = is_locked_root(node);
       const auto updating_count = board.player_combos[updating_player].size();
-      const bool batch_half_average =
-          accumulate_average && action_count == 2U && layout_.uses_direct_action_bases &&
-          buffers_.strategy_float16 != nullptr;
-      const bool direct_compact_block_update =
-          !locked_root && layout_.uses_direct_action_bases && deferred_regret_delta_ == nullptr &&
-          buffers_.compact_state != nullptr;
+      const bool batch_half_average = accumulate_average && action_count == 2U &&
+                                      layout_.uses_direct_action_bases &&
+                                      buffers_.strategy_float16 != nullptr;
+      const bool direct_compact_block_update = !locked_root && layout_.uses_direct_action_bases &&
+                                               deferred_regret_delta_ == nullptr &&
+                                               buffers_.compact_state != nullptr;
       const bool direct_packed_pair_update =
           !locked_root && action_count == 2U && layout_.uses_direct_action_bases &&
           deferred_regret_delta_ == nullptr && buffers_.regret_float24 != nullptr &&
@@ -12849,29 +12230,25 @@ private:
                 _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, -1, -1, -1, -1);
             const __m128i regret_mask = _mm_set1_epi32(0x1fff);
             const auto encode_four_regrets = [](const __m256d input) {
-              const __m128i bits = _mm_and_si128(
-                  _mm_castps_si128(_mm256_cvtpd_ps(input)), _mm_set1_epi32(0x7fffffff));
-              const __m128i discarded =
-                  _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
+              const __m128i bits = _mm_and_si128(_mm_castps_si128(_mm256_cvtpd_ps(input)),
+                                                 _mm_set1_epi32(0x7fffffff));
+              const __m128i discarded = _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
               __m128i packed = _mm_srli_epi32(bits, 18);
-              const __m128i greater =
-                  _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
-              const __m128i equal =
-                  _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
-              const __m128i odd = _mm_cmpeq_epi32(
-                  _mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
-              packed = _mm_add_epi32(
-                  packed,
-                  _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                                _mm_set1_epi32(1)));
+              const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
+              const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
+              const __m128i odd =
+                  _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
+              packed = _mm_add_epi32(packed,
+                                     _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
+                                                   _mm_set1_epi32(1)));
               return _mm_min_epu32(packed, _mm_set1_epi32(0x1ffe));
             };
             const auto store_four_words = [compact_words](std::uint8_t *const destination,
                                                           const __m128i words) {
               const __m128i compact = _mm_shuffle_epi8(words, compact_words);
               _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
-              const std::uint32_t tail = static_cast<std::uint32_t>(
-                  _mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
+              const std::uint32_t tail =
+                  static_cast<std::uint32_t>(_mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
               std::memcpy(destination + 8U, &tail, sizeof(tail));
             };
             const __m256d zero = _mm256_setzero_pd();
@@ -12882,74 +12259,60 @@ private:
               const __m128i low_words = _mm_shuffle_epi8(
                   _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)), expand_words);
               const __m128i high_words = _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                  expand_words);
-              const __m128 low_regrets = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
-              const __m128 high_regrets = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
+                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)), expand_words);
+              const __m128 low_regrets =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(low_words, regret_mask), 18));
+              const __m128 high_regrets =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(high_words, regret_mask), 18));
               const __m256d first = _mm256_cvtps_pd(
                   _mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(2, 0, 2, 0)));
               const __m256d second = _mm256_cvtps_pd(
                   _mm_shuffle_ps(low_regrets, high_regrets, _MM_SHUFFLE(3, 1, 3, 1)));
               const __m256d current = load_four_as_double(values.data() + local);
               const __m128i encoded_first = encode_four_regrets(_mm256_max_pd(
-                      zero,
-                      _mm256_add_pd(
-                          first,
-                          _mm256_mul_pd(
-                              regret_weight,
-                              _mm256_sub_pd(
-                                  load_four_as_double(action_values[0].data() + local),
-                                  current)))));
+                  zero, _mm256_add_pd(
+                            first, _mm256_mul_pd(regret_weight,
+                                                 _mm256_sub_pd(load_four_as_double(
+                                                                   action_values[0].data() + local),
+                                                               current)))));
               const __m128i encoded_second = encode_four_regrets(_mm256_max_pd(
-                      zero,
-                      _mm256_add_pd(
-                          second,
-                          _mm256_mul_pd(
-                              regret_weight,
-                              _mm256_sub_pd(
-                                  load_four_as_double(action_values[1].data() + local),
-                                  current)))));
+                  zero, _mm256_add_pd(
+                            second,
+                            _mm256_mul_pd(
+                                regret_weight,
+                                _mm256_sub_pd(load_four_as_double(action_values[1].data() + local),
+                                              current)))));
               if (!accumulate_average) {
-                store_four_words(
-                    packed,
-                    _mm_or_si128(_mm_and_si128(low_words, strategy_mask),
-                                 _mm_unpacklo_epi32(encoded_first, encoded_second)));
-                store_four_words(
-                    packed + 12U,
-                    _mm_or_si128(_mm_and_si128(high_words, strategy_mask),
-                                 _mm_unpackhi_epi32(encoded_first, encoded_second)));
+                store_four_words(packed,
+                                 _mm_or_si128(_mm_and_si128(low_words, strategy_mask),
+                                              _mm_unpacklo_epi32(encoded_first, encoded_second)));
+                store_four_words(packed + 12U,
+                                 _mm_or_si128(_mm_and_si128(high_words, strategy_mask),
+                                              _mm_unpackhi_epi32(encoded_first, encoded_second)));
                 continue;
               }
               alignas(16) std::uint32_t encoded_first_values[4];
               alignas(16) std::uint32_t encoded_second_values[4];
-              _mm_store_si128(reinterpret_cast<__m128i *>(encoded_first_values),
-                              encoded_first);
-              _mm_store_si128(reinterpret_cast<__m128i *>(encoded_second_values),
-                              encoded_second);
+              _mm_store_si128(reinterpret_cast<__m128i *>(encoded_first_values), encoded_first);
+              _mm_store_si128(reinterpret_cast<__m128i *>(encoded_second_values), encoded_second);
               alignas(16) std::uint32_t words[8];
               _mm_store_si128(reinterpret_cast<__m128i *>(words), low_words);
               _mm_store_si128(reinterpret_cast<__m128i *>(words + 4U), high_words);
               for (std::size_t lane = 0U; lane < 4U; ++lane) {
                 auto first_strategy = static_cast<std::uint16_t>(words[lane * 2U] >> 13U);
-                auto second_strategy =
-                    static_cast<std::uint16_t>(words[lane * 2U + 1U] >> 13U);
+                auto second_strategy = static_cast<std::uint16_t>(words[lane * 2U + 1U] >> 13U);
                 const double average_weight =
                     strategy_weight * updating_parent_reach_at(local + lane);
-                first_strategy = encode_strategy11(
-                    decode_strategy11(first_strategy) +
-                    average_weight * strategies[0][local + lane]);
-                second_strategy = encode_strategy11(
-                    decode_strategy11(second_strategy) +
-                    average_weight * strategies[1][local + lane]);
+                first_strategy = encode_strategy11(decode_strategy11(first_strategy) +
+                                                   average_weight * strategies[0][local + lane]);
+                second_strategy = encode_strategy11(decode_strategy11(second_strategy) +
+                                                    average_weight * strategies[1][local + lane]);
                 words[lane * 2U] = encoded_first_values[lane] |
-                                         (static_cast<std::uint32_t>(first_strategy) << 13U);
+                                   (static_cast<std::uint32_t>(first_strategy) << 13U);
                 words[lane * 2U + 1U] = encoded_second_values[lane] |
-                                              (static_cast<std::uint32_t>(second_strategy) << 13U);
+                                        (static_cast<std::uint32_t>(second_strategy) << 13U);
               }
-              store_four_words(packed,
-                               _mm_load_si128(reinterpret_cast<const __m128i *>(words)));
+              store_four_words(packed, _mm_load_si128(reinterpret_cast<const __m128i *>(words)));
               store_four_words(packed + 12U,
                                _mm_load_si128(reinterpret_cast<const __m128i *>(words + 4U)));
             }
@@ -12957,30 +12320,25 @@ private:
           for (; local < updating_count; ++local) {
             const auto slot = board_player_slot(board, updating_player, local);
             const double average_weight =
-                accumulate_average ? strategy_weight * updating_parent_reach_at(local)
-                                   : 0.0;
+                accumulate_average ? strategy_weight * updating_parent_reach_at(local) : 0.0;
             auto *const block = state + local * 6U;
             std::uint64_t pair = 0U;
             std::memcpy(&pair, block, 6U);
             const auto first_word = static_cast<std::uint32_t>(pair & 0x00ffffffULL);
             const auto second_word = static_cast<std::uint32_t>((pair >> 24U) & 0x00ffffffULL);
             const auto first_regret = encode_regret13(std::max(
-                0.0,
-                decode_regret13(static_cast<std::uint16_t>(first_word & 0x1fffU)) +
-                     effective_regret_update_weight *
-                         (action_values[0][slot] - values[slot])));
+                0.0, decode_regret13(static_cast<std::uint16_t>(first_word & 0x1fffU)) +
+                         effective_regret_update_weight * (action_values[0][slot] - values[slot])));
             const auto second_regret = encode_regret13(std::max(
-                0.0,
-                decode_regret13(static_cast<std::uint16_t>(second_word & 0x1fffU)) +
-                     effective_regret_update_weight *
-                         (action_values[1][slot] - values[slot])));
+                0.0, decode_regret13(static_cast<std::uint16_t>(second_word & 0x1fffU)) +
+                         effective_regret_update_weight * (action_values[1][slot] - values[slot])));
             auto first_strategy = static_cast<std::uint16_t>(first_word >> 13U);
             auto second_strategy = static_cast<std::uint16_t>(second_word >> 13U);
             if (accumulate_average) {
-              first_strategy = encode_strategy11(
-                  decode_strategy11(first_strategy) + average_weight * strategies[0][slot]);
-              second_strategy = encode_strategy11(
-                  decode_strategy11(second_strategy) + average_weight * strategies[1][slot]);
+              first_strategy = encode_strategy11(decode_strategy11(first_strategy) +
+                                                 average_weight * strategies[0][slot]);
+              second_strategy = encode_strategy11(decode_strategy11(second_strategy) +
+                                                  average_weight * strategies[1][slot]);
             }
             pair = static_cast<std::uint64_t>(first_regret) |
                    (static_cast<std::uint64_t>(first_strategy) << 13U) |
@@ -12996,71 +12354,59 @@ private:
                 _mm_setr_epi8(0, 1, 2, 4, 5, 6, 8, 9, 10, -1, -1, -1, -1, -1, -1, -1);
             const __m128i regret_mask = _mm_set1_epi32(0x1fff);
             const auto encode_four_regrets = [](const __m256d input) {
-              const __m128i bits = _mm_and_si128(
-                  _mm_castps_si128(_mm256_cvtpd_ps(input)), _mm_set1_epi32(0x7fffffff));
-              const __m128i discarded =
-                  _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
+              const __m128i bits = _mm_and_si128(_mm_castps_si128(_mm256_cvtpd_ps(input)),
+                                                 _mm_set1_epi32(0x7fffffff));
+              const __m128i discarded = _mm_and_si128(bits, _mm_set1_epi32(0x3ffff));
               __m128i packed = _mm_srli_epi32(bits, 18);
-              const __m128i greater =
-                  _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
-              const __m128i equal =
-                  _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
-              const __m128i odd = _mm_cmpeq_epi32(
-                  _mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
-              packed = _mm_add_epi32(
-                  packed,
-                  _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                                _mm_set1_epi32(1)));
+              const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x20000));
+              const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x20000));
+              const __m128i odd =
+                  _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
+              packed = _mm_add_epi32(packed,
+                                     _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
+                                                   _mm_set1_epi32(1)));
               return _mm_min_epu32(packed, _mm_set1_epi32(0x1ffe));
             };
-            const auto store_three_words =
-                [compact_three_words](std::uint8_t *const destination,
-                                      const __m128i words) {
-                  const __m128i compact =
-                      _mm_shuffle_epi8(words, compact_three_words);
-                  _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
-                  destination[8] = static_cast<std::uint8_t>(
-                      _mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
+            const auto store_three_words = [compact_three_words](std::uint8_t *const destination,
+                                                                 const __m128i words) {
+              const __m128i compact = _mm_shuffle_epi8(words, compact_three_words);
+              _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
+              destination[8] =
+                  static_cast<std::uint8_t>(_mm_cvtsi128_si32(_mm_srli_si128(compact, 8)));
             };
             const __m256d zero = _mm256_setzero_pd();
             const __m256d regret_weight = _mm256_set1_pd(effective_regret_update_weight);
             for (; local + 4U < updating_count; local += 4U) {
               auto *const block = state + local * 9U;
               std::array<__m128i, 4> word_rows{
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
-                      expand_three_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
-                      expand_three_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
-                      expand_three_words),
-                  _mm_shuffle_epi8(
-                      _mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
-                      expand_three_words)};
-              __m128 first = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(word_rows[0], regret_mask), 18));
-              __m128 second = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(word_rows[1], regret_mask), 18));
-              __m128 third = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(word_rows[2], regret_mask), 18));
-              __m128 fourth = _mm_castsi128_ps(
-                  _mm_slli_epi32(_mm_and_si128(word_rows[3], regret_mask), 18));
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block)),
+                                   expand_three_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 9U)),
+                                   expand_three_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 18U)),
+                                   expand_three_words),
+                  _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(block + 27U)),
+                                   expand_three_words)};
+              __m128 first =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[0], regret_mask), 18));
+              __m128 second =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[1], regret_mask), 18));
+              __m128 third =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[2], regret_mask), 18));
+              __m128 fourth =
+                  _mm_castsi128_ps(_mm_slli_epi32(_mm_and_si128(word_rows[3], regret_mask), 18));
               _MM_TRANSPOSE4_PS(first, second, third, fourth);
               const __m256d current = load_four_as_double(values.data() + local);
               alignas(16) std::uint32_t encoded[3][4];
               const std::array<__m128, 3> regret_rows{first, second, third};
               for (std::size_t action = 0U; action < 3U; ++action) {
                 const __m256d updated = _mm256_max_pd(
-                    zero,
-                    _mm256_add_pd(
-                        _mm256_cvtps_pd(regret_rows[action]),
-                        _mm256_mul_pd(
-                            regret_weight,
-                            _mm256_sub_pd(
-                                load_four_as_double(action_values[action].data() + local),
-                                current))));
+                    zero, _mm256_add_pd(
+                              _mm256_cvtps_pd(regret_rows[action]),
+                              _mm256_mul_pd(regret_weight,
+                                            _mm256_sub_pd(load_four_as_double(
+                                                              action_values[action].data() + local),
+                                                          current))));
                 _mm_store_si128(reinterpret_cast<__m128i *>(encoded[action]),
                                 encode_four_regrets(updated));
               }
@@ -13072,25 +12418,21 @@ private:
                     words[lane][action] =
                         (words[lane][action] & 0x00ffe000U) | encoded[action][lane];
                   }
-                  store_three_words(
-                      block + lane * 9U,
-                      _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
+                  store_three_words(block + lane * 9U,
+                                    _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
                   continue;
                 }
                 const double average_weight =
                     strategy_weight * updating_parent_reach_at(local + lane);
                 for (std::size_t action = 0U; action < 3U; ++action) {
                   auto strategy = static_cast<std::uint16_t>(words[lane][action] >> 13U);
-                  strategy = encode_strategy11(
-                      decode_strategy11(strategy) +
-                      average_weight * strategies[action][local + lane]);
+                  strategy = encode_strategy11(decode_strategy11(strategy) +
+                                               average_weight * strategies[action][local + lane]);
                   words[lane][action] =
-                      encoded[action][lane] |
-                      (static_cast<std::uint32_t>(strategy) << 13U);
+                      encoded[action][lane] | (static_cast<std::uint32_t>(strategy) << 13U);
                 }
-                store_three_words(
-                    block + lane * 9U,
-                    _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
+                store_three_words(block + lane * 9U,
+                                  _mm_load_si128(reinterpret_cast<const __m128i *>(words[lane])));
               }
             }
           }
@@ -13104,11 +12446,9 @@ private:
             auto *const bytes = block + action * 3U;
             const auto word = compact_word(bytes);
             const double regret_delta =
-                effective_regret_update_weight *
-                (action_values[action][slot] - values[slot]);
+                effective_regret_update_weight * (action_values[action][slot] - values[slot]);
             const auto regret = encode_regret13(std::max(
-                0.0, decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU)) +
-                         regret_delta));
+                0.0, decode_regret13(static_cast<std::uint16_t>(word & 0x1fffU)) + regret_delta));
             auto strategy = static_cast<std::uint16_t>(word >> 13U);
             if (accumulate_average) {
               strategy = encode_strategy11(decode_strategy11(strategy) +
@@ -13135,16 +12475,13 @@ private:
           const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x40));
           const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x40));
           const __m128i odd =
-              _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)),
-                              _mm_set1_epi32(1));
+              _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
           const __m128i increment =
-              _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                            _mm_set1_epi32(1));
+              _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)), _mm_set1_epi32(1));
           packed = _mm_add_epi32(packed, increment);
           return packed;
         };
-        const auto store_four = [&](std::uint8_t *const destination,
-                                    const __m128i packed) {
+        const auto store_four = [&](std::uint8_t *const destination, const __m128i packed) {
           const __m128i compact = _mm_shuffle_epi8(packed, compact_float24);
           _mm_storel_epi64(reinterpret_cast<__m128i *>(destination), compact);
           const std::uint32_t tail =
@@ -13154,13 +12491,12 @@ private:
         for (; local + 4U < updating_count; local += 4U) {
           auto *const packed = regrets + local * 6U;
           const __m128 first_four = _mm_castsi128_ps(_mm_slli_epi32(
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)), expand_float24),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed)),
+                               expand_float24),
               7));
           const __m128 second_four = _mm_castsi128_ps(_mm_slli_epi32(
-              _mm_shuffle_epi8(
-                  _mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
-                  expand_float24),
+              _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i *>(packed + 12U)),
+                               expand_float24),
               7));
           const __m256d first_regrets =
               _mm256_cvtps_pd(_mm_shuffle_ps(first_four, second_four, _MM_SHUFFLE(2, 0, 2, 0)));
@@ -13170,20 +12506,18 @@ private:
           const __m256d regret_weight = _mm256_set1_pd(effective_regret_update_weight);
           const __m256d updated_first = _mm256_max_pd(
               _mm256_setzero_pd(),
-              _mm256_add_pd(first_regrets,
-                            _mm256_mul_pd(
-                                regret_weight,
-                                _mm256_sub_pd(
-                                    load_four_as_double(action_values[0].data() + local),
-                                    current_values))));
+              _mm256_add_pd(
+                  first_regrets,
+                  _mm256_mul_pd(regret_weight,
+                                _mm256_sub_pd(load_four_as_double(action_values[0].data() + local),
+                                              current_values))));
           const __m256d updated_second = _mm256_max_pd(
               _mm256_setzero_pd(),
-              _mm256_add_pd(second_regrets,
-                            _mm256_mul_pd(
-                                regret_weight,
-                                _mm256_sub_pd(
-                                    load_four_as_double(action_values[1].data() + local),
-                                    current_values))));
+              _mm256_add_pd(
+                  second_regrets,
+                  _mm256_mul_pd(regret_weight,
+                                _mm256_sub_pd(load_four_as_double(action_values[1].data() + local),
+                                              current_values))));
           const __m128i encoded_first = encode_four(updated_first);
           const __m128i encoded_second = encode_four(updated_second);
           store_four(packed, _mm_unpacklo_epi32(encoded_first, encoded_second));
@@ -13200,10 +12534,9 @@ private:
               packed_pair |= static_cast<std::uint64_t>(packed[byte]) << (byte * 8U);
             }
           }
-          const auto first_bits =
-              static_cast<std::uint32_t>(packed_pair & 0x00ffffffULL) << 7U;
-          const auto second_bits =
-              static_cast<std::uint32_t>((packed_pair >> 24U) & 0x00ffffffULL) << 7U;
+          const auto first_bits = static_cast<std::uint32_t>(packed_pair & 0x00ffffffULL) << 7U;
+          const auto second_bits = static_cast<std::uint32_t>((packed_pair >> 24U) & 0x00ffffffULL)
+                                   << 7U;
           const double first = static_cast<double>(std::bit_cast<float>(first_bits));
           const double second = static_cast<double>(std::bit_cast<float>(second_bits));
           const double first_delta =
@@ -13228,11 +12561,11 @@ private:
           __m128i packed = _mm_srli_epi32(bits, 7);
           const __m128i greater = _mm_cmpgt_epi32(discarded, _mm_set1_epi32(0x40));
           const __m128i equal = _mm_cmpeq_epi32(discarded, _mm_set1_epi32(0x40));
-          const __m128i odd = _mm_cmpeq_epi32(
-              _mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
+          const __m128i odd =
+              _mm_cmpeq_epi32(_mm_and_si128(packed, _mm_set1_epi32(1)), _mm_set1_epi32(1));
           return _mm_add_epi32(
-              packed, _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)),
-                                    _mm_set1_epi32(1)));
+              packed,
+              _mm_and_si128(_mm_or_si128(greater, _mm_and_si128(equal, odd)), _mm_set1_epi32(1)));
         };
         std::size_t local = 0U;
         for (; local + 4U < updating_count; local += 4U) {
@@ -13252,12 +12585,10 @@ private:
                 _mm256_setzero_pd(),
                 _mm256_add_pd(
                     _mm256_load_pd(decoded[action]),
-                    _mm256_mul_pd(
-                        weight,
-                        _mm256_sub_pd(
-                            load_four_as_double(action_values[action].data() + local), current))));
-            _mm_store_si128(reinterpret_cast<__m128i *>(encoded[action]),
-                            encode_four(updated));
+                    _mm256_mul_pd(weight, _mm256_sub_pd(load_four_as_double(
+                                                            action_values[action].data() + local),
+                                                        current))));
+            _mm_store_si128(reinterpret_cast<__m128i *>(encoded[action]), encode_four(updated));
           }
           for (std::size_t lane = 0; lane < 4U; ++lane) {
             auto *const destination = regrets + (local + lane) * 9U;
@@ -13266,31 +12597,26 @@ private:
                 (static_cast<std::uint64_t>(encoded[1][lane]) << 24U) |
                 (static_cast<std::uint64_t>(encoded[2][lane]) << 48U);
             std::memcpy(destination, &first_eight, sizeof(first_eight));
-            destination[8] =
-                static_cast<std::uint8_t>(encoded[2][lane] >> 16U);
+            destination[8] = static_cast<std::uint8_t>(encoded[2][lane] >> 16U);
           }
         }
         for (; local < updating_count; ++local) {
           auto *const tail_block = regrets + local * 9U;
           for (std::size_t action = 0; action < 3U; ++action) {
-            const double delta = effective_regret_update_weight *
-                                 (action_values[action][local] - values[local]);
-            encode_float24(tail_block + action * 3U,
-                           std::max(0.0,
-                                    static_cast<double>(
-                                        decode_float24(tail_block + action * 3U)) +
-                                        delta));
+            const double delta =
+                effective_regret_update_weight * (action_values[action][local] - values[local]);
+            encode_float24(
+                tail_block + action * 3U,
+                std::max(0.0,
+                         static_cast<double>(decode_float24(tail_block + action * 3U)) + delta));
           }
         }
         if (accumulate_average) {
           for (std::size_t local_index = 0; local_index < updating_count; ++local_index) {
-            const double weight = strategy_weight *
-                                  updating_parent_reach_at(local_index);
-            const auto offset = static_cast<std::size_t>(decision.action_base) +
-                                local_index * 3U;
+            const double weight = strategy_weight * updating_parent_reach_at(local_index);
+            const auto offset = static_cast<std::size_t>(decision.action_base) + local_index * 3U;
             for (std::size_t action = 0; action < 3U; ++action) {
-              add_strategy(offset + action,
-                           weight * strategies[action][local_index]);
+              add_strategy(offset + action, weight * strategies[action][local_index]);
             }
           }
         }
@@ -13303,11 +12629,9 @@ private:
           for (std::size_t action = 0; action < action_count; ++action) {
             auto *const packed = block + action * 3U;
             const double regret_delta =
-                effective_regret_update_weight *
-                (action_values[action][slot] - values[slot]);
+                effective_regret_update_weight * (action_values[action][slot] - values[slot]);
             encode_float24(
-                packed,
-                std::max(0.0, static_cast<double>(decode_float24(packed)) + regret_delta));
+                packed, std::max(0.0, static_cast<double>(decode_float24(packed)) + regret_delta));
           }
         }
         if (accumulate_average) {
@@ -13323,11 +12647,9 @@ private:
         }
       } else {
         const auto update_occurrence =
-            [&](const DecisionLayout &occurrence_decision,
-                const BoardData &occurrence_board,
+            [&](const DecisionLayout &occurrence_decision, const BoardData &occurrence_board,
                 const std::uint8_t physical_to_representative_automorphism) {
-              const auto occurrence_count =
-                  occurrence_board.player_combos[updating_player].size();
+              const auto occurrence_count = occurrence_board.player_combos[updating_player].size();
               for (std::size_t local = 0; local < occurrence_count; ++local) {
                 const auto occurrence_combo =
                     occurrence_board.player_combos[updating_player][local];
@@ -13341,39 +12663,32 @@ private:
                 if (representative_local < 0) {
                   return false;
                 }
-                const auto slot = board_player_slot(
-                    board, updating_player,
-                    static_cast<std::size_t>(representative_local));
-                const auto offset = decision_action_base(
-                    layout_, occurrence_decision, static_cast<std::int16_t>(local));
+                const auto slot = board_player_slot(board, updating_player,
+                                                    static_cast<std::size_t>(representative_local));
+                const auto offset = decision_action_base(layout_, occurrence_decision,
+                                                         static_cast<std::int16_t>(local));
                 for (std::size_t action = 0; action < action_count; ++action) {
                   const auto index = static_cast<std::size_t>(offset + action);
                   if (!locked_root) {
-                    const auto regret_delta =
-                        effective_regret_update_weight *
-                        (action_values[action][slot] - values[slot]);
+                    const auto regret_delta = effective_regret_update_weight *
+                                              (action_values[action][slot] - values[slot]);
                     if (deferred_regret_delta_ != nullptr) {
                       add_deferred_regret(index, regret_delta);
                     } else if (buffers_.regret_float24 != nullptr) {
                       auto *const packed = buffers_.regret_float24 + index * 3U;
-                      encode_float24(
-                          packed,
-                          std::max(0.0,
-                                   static_cast<double>(decode_float24(packed)) +
-                                       regret_delta));
+                      encode_float24(packed,
+                                     std::max(0.0, static_cast<double>(decode_float24(packed)) +
+                                                       regret_delta));
                     } else {
-                      buffers_.set_regret(
-                          index,
-                          std::max(0.0, buffers_.regret_at(index) + regret_delta));
+                      buffers_.set_regret(index,
+                                          std::max(0.0, buffers_.regret_at(index) + regret_delta));
                     }
                   }
                   if (!batch_half_average && accumulate_average) {
-                    add_strategy(
-                        index,
-                        strategy_weight *
-                            updating_parent_reach_at(
-                                static_cast<std::size_t>(representative_local)) *
-                            strategies[action][slot]);
+                    add_strategy(index, strategy_weight *
+                                            updating_parent_reach_at(
+                                                static_cast<std::size_t>(representative_local)) *
+                                            strategies[action][slot]);
                   }
                 }
               }
@@ -13383,11 +12698,9 @@ private:
           for (const auto &occurrence : *orbit_context) {
             const auto &occurrence_decision =
                 layout_.decisions[static_cast<std::size_t>(occurrence.node)];
-            const auto &occurrence_board =
-                layout_.boards[occurrence_decision.board_index];
-            if (!update_occurrence(
-                    occurrence_decision, occurrence_board,
-                    occurrence.physical_to_representative_automorphism)) {
+            const auto &occurrence_board = layout_.boards[occurrence_decision.board_index];
+            if (!update_occurrence(occurrence_decision, occurrence_board,
+                                   occurrence.physical_to_representative_automorphism)) {
               return PostflopSolverError::InvalidConfiguration;
             }
           }
@@ -13397,8 +12710,8 @@ private:
           }
         }
       }
-      const auto t_after_regret = profile ? std::chrono::steady_clock::now()
-                                          : std::chrono::steady_clock::time_point{};
+      const auto t_after_regret =
+          profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       if (profile) {
         prof_regret_update_seconds_ +=
             std::chrono::duration<double>(t_after_regret - t_after_value).count();
@@ -13416,13 +12729,11 @@ private:
           _mm256_store_ps(current_values, current);
           for (std::size_t lane = 0; lane < 4U; ++lane) {
             const auto value_slot = board_player_slot(board, updating_player, local + lane);
-            const double weight = strategy_weight *
-                                  updating_parent_reach_at(local + lane);
-            updated[lane * 2U] = static_cast<double>(current_values[lane * 2U]) +
-                                 weight * strategies[0][value_slot];
-            updated[lane * 2U + 1U] =
-                static_cast<double>(current_values[lane * 2U + 1U]) +
-                weight * strategies[1][value_slot];
+            const double weight = strategy_weight * updating_parent_reach_at(local + lane);
+            updated[lane * 2U] =
+                static_cast<double>(current_values[lane * 2U]) + weight * strategies[0][value_slot];
+            updated[lane * 2U + 1U] = static_cast<double>(current_values[lane * 2U + 1U]) +
+                                      weight * strategies[1][value_slot];
           }
           const __m128 low = _mm256_cvtpd_ps(_mm256_load_pd(updated));
           const __m128 high = _mm256_cvtpd_ps(_mm256_load_pd(updated + 4U));
@@ -13514,8 +12825,7 @@ private:
                                   : 0U;
     if (split == 0U) {
       for (const auto &edge : node.edges) {
-        const auto child =
-            policy_physical(edge.child, updating_player, reach, best_response);
+        const auto child = policy_physical(edge.child, updating_player, reach, best_response);
         if (!child) {
           return child;
         }
@@ -13534,8 +12844,8 @@ private:
       std::packaged_task<TraversalResult(DenseTraversal &)> task(
           [child = edge.child, updating_player, child_reach_0, child_reach_1,
            best_response](DenseTraversal &self) {
-            return self.policy_physical(child, updating_player,
-                                        {child_reach_0, child_reach_1}, best_response);
+            return self.policy_physical(child, updating_player, {child_reach_0, child_reach_1},
+                                        best_response);
           });
       futures.push_back(task.get_future());
       tasks.push_back(std::move(task));
@@ -13553,8 +12863,7 @@ private:
     main_results.reserve(edge_count - split);
     for (std::size_t index = split; index < edge_count; ++index) {
       const auto &edge = node.edges[index];
-      const auto child =
-          policy_physical(edge.child, updating_player, reach, best_response);
+      const auto child = policy_physical(edge.child, updating_player, reach, best_response);
       if (!child) {
         return child;
       }
@@ -13588,8 +12897,7 @@ private:
     auto &strategies = scratch_lease.get().strategies;
     const auto &actor_combos = board.player_combos[decision.player];
     const bool locked_node = is_locked_root(node);
-    if (PlayerIndexed && !locked_node && action_count == 2U &&
-        layout_.uses_direct_action_bases &&
+    if (PlayerIndexed && !locked_node && action_count == 2U && layout_.uses_direct_action_bases &&
         buffers_.strategy_float16 != nullptr) {
       const auto *averages =
           buffers_.strategy_float16 + static_cast<std::size_t>(decision.action_base);
@@ -13598,26 +12906,21 @@ private:
       const __m256d half = _mm256_set1_pd(0.5);
       std::size_t local = 0U;
       for (; local + 4U <= actor_combos.size(); local += 4U) {
-        const __m256 decoded = _mm256_cvtph_ps(_mm_loadu_si128(
-            reinterpret_cast<const __m128i *>(averages + local * 2U)));
+        const __m256 decoded = _mm256_cvtph_ps(
+            _mm_loadu_si128(reinterpret_cast<const __m128i *>(averages + local * 2U)));
         const __m128 low = _mm256_castps256_ps128(decoded);
         const __m128 high = _mm256_extractf128_ps(decoded, 1);
-        const __m256d first =
-            _mm256_cvtps_pd(_mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0)));
-        const __m256d second =
-            _mm256_cvtps_pd(_mm_shuffle_ps(low, high, _MM_SHUFFLE(3, 1, 3, 1)));
+        const __m256d first = _mm256_cvtps_pd(_mm_shuffle_ps(low, high, _MM_SHUFFLE(2, 0, 2, 0)));
+        const __m256d second = _mm256_cvtps_pd(_mm_shuffle_ps(low, high, _MM_SHUFFLE(3, 1, 3, 1)));
         const __m256d sums = _mm256_add_pd(first, second);
         const __m256d empty = _mm256_cmp_pd(sums, zero, _CMP_LE_OS);
         const __m256d inverse = _mm256_div_pd(one, _mm256_blendv_pd(sums, one, empty));
-        const __m256d first_strategy =
-            _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, empty);
+        const __m256d first_strategy = _mm256_blendv_pd(_mm256_mul_pd(first, inverse), half, empty);
         const __m256d second_strategy =
             _mm256_blendv_pd(_mm256_mul_pd(second, inverse), half, empty);
         if constexpr (std::is_same_v<Scalar, float>) {
-          _mm_storeu_ps(strategies[0].data() + local,
-                        _mm256_cvtpd_ps(first_strategy));
-          _mm_storeu_ps(strategies[1].data() + local,
-                        _mm256_cvtpd_ps(second_strategy));
+          _mm_storeu_ps(strategies[0].data() + local, _mm256_cvtpd_ps(first_strategy));
+          _mm_storeu_ps(strategies[1].data() + local, _mm256_cvtpd_ps(second_strategy));
         } else {
           store_four_from_double(strategies[0].data() + local, first_strategy);
           store_four_from_double(strategies[1].data() + local, second_strategy);
@@ -13657,19 +12960,18 @@ private:
           }
         } else {
           for (std::size_t action = 0; action < action_count; ++action) {
-            strategies[action][slot] = static_cast<Scalar>(
-                static_cast<double>(strategies[action][slot]) / sum);
+            strategies[action][slot] =
+                static_cast<Scalar>(static_cast<double>(strategies[action][slot]) / sum);
           }
         }
       }
     } else {
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
-        const auto locked = locked_node ? locked_root_strategy(board.local_index[combo_id])
-                                        : std::nullopt;
+        const auto locked =
+            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
         const auto strategy =
-            locked ? *locked
-                   : current_strategy(decision, static_cast<std::int16_t>(local), true);
+            locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), true);
         const auto slot = board_player_slot(board, decision.player, local);
         for (std::size_t action = 0; action < action_count; ++action) {
           strategies[action][slot] = static_cast<Scalar>(strategy[action]);
@@ -13678,8 +12980,8 @@ private:
     }
     for (std::size_t action = 0; action < action_count; ++action) {
       if (decision.player == updating_player) {
-        const auto child = policy_physical(node.edges[action].child, updating_player,
-                                           reach, best_response);
+        const auto child =
+            policy_physical(node.edges[action].child, updating_player, reach, best_response);
         if (!child) {
           return child;
         }
@@ -13695,15 +12997,14 @@ private:
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto strategy_slot = board_player_slot(board, decision.player, local);
         const auto reach_slot = board_reach_slot(board, decision.player, local);
-        actor_reach[reach_slot] = static_cast<Scalar>(
-            static_cast<double>((*reach[decision.player])[reach_slot]) *
-            static_cast<double>(strategies[action][strategy_slot]));
+        actor_reach[reach_slot] =
+            static_cast<Scalar>(static_cast<double>((*reach[decision.player])[reach_slot]) *
+                                static_cast<double>(strategies[action][strategy_slot]));
       }
-      const ReachRef child_reach =
-          decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                : ReachRef{reach[0], &actor_reach};
-      const auto child = policy_physical(node.edges[action].child, updating_player,
-                                         child_reach, best_response);
+      const ReachRef child_reach = decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
+                                                         : ReachRef{reach[0], &actor_reach};
+      const auto child =
+          policy_physical(node.edges[action].child, updating_player, child_reach, best_response);
       if (!child) {
         return child;
       }
@@ -13725,10 +13026,9 @@ private:
           std::size_t slot = 0U;
           if constexpr (std::is_same_v<Scalar, float>) {
             for (; slot + 8U <= updating_count; slot += 8U) {
-              _mm256_storeu_ps(
-                  values.data() + slot,
-                  _mm256_max_ps(_mm256_loadu_ps(values.data() + slot),
-                                _mm256_loadu_ps(action_values[action].data() + slot)));
+              _mm256_storeu_ps(values.data() + slot,
+                               _mm256_max_ps(_mm256_loadu_ps(values.data() + slot),
+                                             _mm256_loadu_ps(action_values[action].data() + slot)));
             }
           } else {
             for (; slot + 4U <= updating_count; slot += 4U) {
@@ -13829,8 +13129,7 @@ private:
   double negative_regret_discount_{1.0};
 };
 
-template <std::size_t Capacity, bool PlayerIndexed,
-          typename Scalar = TraversalScalar<Capacity>>
+template <std::size_t Capacity, bool PlayerIndexed, typename Scalar = TraversalScalar<Capacity>>
 std::array<std::array<Scalar, Capacity>, 2> initial_reach(const DenseLayout &layout) {
   std::array<std::array<Scalar, Capacity>, 2> reach{};
   if constexpr (PlayerIndexed) {
@@ -13840,8 +13139,7 @@ std::array<std::array<Scalar, Capacity>, 2> initial_reach(const DenseLayout &lay
     for (std::uint8_t player = 0; player < 2U; ++player) {
       for (std::size_t slot = 0; slot < layout.player_flop_count[player]; ++slot) {
         const auto combo = layout.player_flop_combos[player][slot];
-        reach[player][slot] = static_cast<Scalar>(
-            layout.initial_reach[player][combo]);
+        reach[player][slot] = static_cast<Scalar>(layout.initial_reach[player][combo]);
       }
     }
   } else {
@@ -13859,15 +13157,18 @@ std::array<std::array<Scalar, Capacity>, 2> initial_reach(const DenseLayout &lay
 class DenseTraversalRunner {
 public:
   virtual ~DenseTraversalRunner() = default;
-  [[nodiscard]] virtual Result<bool, PostflopSolverError> cfr(std::uint8_t updating_player,
-                                                              double strategy_weight,
-                                                              double regret_update_weight,
-                                                              double positive_regret_discount,
-                                                              double negative_regret_discount) = 0;
-  [[nodiscard]] virtual Result<bool, PostflopSolverError> cfr_simultaneous(
-      double strategy_weight, double regret_update_weight,
+  [[nodiscard]] virtual Result<bool, PostflopSolverError>
+  cfr(std::uint8_t updating_player, double strategy_weight, double regret_update_weight,
       double positive_regret_discount, double negative_regret_discount) = 0;
+  [[nodiscard]] virtual Result<bool, PostflopSolverError>
+  cfr_simultaneous(double strategy_weight, double regret_update_weight,
+                   double positive_regret_discount, double negative_regret_discount) = 0;
   [[nodiscard]] virtual Result<bool, PostflopSolverError> apply_deferred_regrets() = 0;
+  [[nodiscard]] virtual Result<PostflopArchitecturalShadowSample, PostflopSolverError>
+  architectural_shadow(const std::vector<PostflopRiverWorkUnit> &units,
+                       std::uint8_t updating_player, std::uint64_t repetitions,
+                       std::uint64_t next_iteration, double positive_regret_exponent,
+                       double average_exponent) = 0;
   [[nodiscard]] virtual std::uint64_t traversed_nodes() const noexcept = 0;
   [[nodiscard]] virtual PostflopWorkCounters work_counters() const noexcept = 0;
   [[nodiscard]] virtual double maximum_normalization_error() const noexcept = 0;
@@ -13881,12 +13182,11 @@ public:
                             std::vector<double> *deferred_regret_delta,
                             const std::uint8_t parallel_action_depth,
                             const PreparedRootLock *root_lock)
-      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth,
-                   root_lock, false),
+      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock, false),
         reach_(initial_reach<Capacity, PlayerIndexed, ComputeScalar>(layout)),
         root_(layout.tree.root),
-        physical_node_count_(layout.uses_canonical_public_dag ? 0U
-                                                              : layout.tree.stats.node_count) {}
+        physical_node_count_(layout.uses_canonical_public_dag ? 0U : layout.tree.stats.node_count) {
+  }
 
   Result<bool, PostflopSolverError> cfr(const std::uint8_t updating_player,
                                         const double strategy_weight,
@@ -13894,10 +13194,9 @@ public:
                                         const double positive_regret_discount,
                                         const double negative_regret_discount) override {
     const auto t0 = std::chrono::steady_clock::now();
-    const auto traversed = traversal_.cfr(root_, updating_player, {&reach_[0], &reach_[1]},
-                                          strategy_weight, regret_update_weight,
-                                          positive_regret_discount,
-                                          negative_regret_discount);
+    const auto traversed =
+        traversal_.cfr(root_, updating_player, {&reach_[0], &reach_[1]}, strategy_weight,
+                       regret_update_weight, positive_regret_discount, negative_regret_discount);
     const double wall =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
     if (!traversed) {
@@ -13910,14 +13209,13 @@ public:
     return Result<bool, PostflopSolverError>::success(true);
   }
 
-  Result<bool, PostflopSolverError> cfr_simultaneous(
-      const double strategy_weight,
-      const double regret_update_weight,
-      const double positive_regret_discount,
-      const double negative_regret_discount) override {
-    const auto traversed = traversal_.cfr_simultaneous(
-        {&reach_[0], &reach_[1]}, strategy_weight, regret_update_weight,
-        positive_regret_discount, negative_regret_discount);
+  Result<bool, PostflopSolverError>
+  cfr_simultaneous(const double strategy_weight, const double regret_update_weight,
+                   const double positive_regret_discount,
+                   const double negative_regret_discount) override {
+    const auto traversed =
+        traversal_.cfr_simultaneous({&reach_[0], &reach_[1]}, strategy_weight, regret_update_weight,
+                                    positive_regret_discount, negative_regret_discount);
     if (traversed) {
       return Result<bool, PostflopSolverError>::failure(*traversed);
     }
@@ -13926,6 +13224,15 @@ public:
 
   Result<bool, PostflopSolverError> apply_deferred_regrets() override {
     return traversal_.apply_deferred_regrets();
+  }
+  Result<PostflopArchitecturalShadowSample, PostflopSolverError>
+  architectural_shadow(const std::vector<PostflopRiverWorkUnit> &units,
+                       const std::uint8_t updating_player, const std::uint64_t repetitions,
+                       const std::uint64_t next_iteration, const double positive_regret_exponent,
+                       const double average_exponent) override {
+    return traversal_.architectural_shadow_group(units, updating_player, repetitions,
+                                                 next_iteration, positive_regret_exponent,
+                                                 average_exponent, reach_);
   }
   [[nodiscard]] std::uint64_t traversed_nodes() const noexcept override {
     return physical_node_count_ != 0U ? physical_passes_ * physical_node_count_
@@ -13946,20 +13253,17 @@ private:
   std::uint64_t physical_passes_{0};
 };
 
-std::unique_ptr<DenseTraversalRunner>
-make_dense_traversal_runner(DenseLayout &layout, const ActionBuffers buffers,
-                            std::vector<double> *deferred_regret_delta,
-                            const std::uint8_t parallel_action_depth,
-                            const PreparedRootLock *root_lock) {
+std::unique_ptr<DenseTraversalRunner> make_dense_traversal_runner(
+    DenseLayout &layout, const ActionBuffers buffers, std::vector<double> *deferred_regret_delta,
+    const std::uint8_t parallel_action_depth, const PreparedRootLock *root_lock) {
   if (layout.uses_canonical_public_dag) {
-    const bool compact_compute = buffers.compact_state != nullptr ||
-                                 buffers.scaled_regret != nullptr;
+    const bool compact_compute =
+        buffers.compact_state != nullptr || buffers.scaled_regret != nullptr;
     const auto maximum_player_combos =
         std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
     if (maximum_player_combos <= medium_combo_capacity) {
       if (compact_compute) {
-        return std::make_unique<
-            TypedDenseTraversalRunner<medium_combo_capacity, true, float>>(
+        return std::make_unique<TypedDenseTraversalRunner<medium_combo_capacity, true, float>>(
             layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
       }
       return std::make_unique<TypedDenseTraversalRunner<medium_combo_capacity, true>>(
@@ -13967,8 +13271,7 @@ make_dense_traversal_runner(DenseLayout &layout, const ActionBuffers buffers,
     }
     if (maximum_player_combos <= short_deck_range_capacity) {
       if (compact_compute) {
-        return std::make_unique<
-            TypedDenseTraversalRunner<short_deck_range_capacity, true, float>>(
+        return std::make_unique<TypedDenseTraversalRunner<short_deck_range_capacity, true, float>>(
             layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
       }
       return std::make_unique<TypedDenseTraversalRunner<short_deck_range_capacity, true>>(
@@ -13985,8 +13288,7 @@ make_dense_traversal_runner(DenseLayout &layout, const ActionBuffers buffers,
     }
     if (maximum_player_combos <= large_range_capacity) {
       if (compact_compute) {
-        return std::make_unique<
-            TypedDenseTraversalRunner<large_range_capacity, true, float>>(
+        return std::make_unique<TypedDenseTraversalRunner<large_range_capacity, true, float>>(
             layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
       }
       return std::make_unique<TypedDenseTraversalRunner<large_range_capacity, true>>(
@@ -14140,9 +13442,8 @@ double root_public_reach_probability(const DenseLayout &layout,
       }
     }
   }
-  return layout.initial_normalization > 0.0
-             ? compatible_pair_mass / layout.initial_normalization
-             : 0.0;
+  return layout.initial_normalization > 0.0 ? compatible_pair_mass / layout.initial_normalization
+                                            : 0.0;
 }
 
 template <std::size_t Capacity, bool PlayerIndexed>
@@ -14178,19 +13479,17 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     // the in-memory backend retains turn-chance parallelism.
     const std::uint8_t certification_parallel_depth = buffers.paged != nullptr ? 0U : 7U;
     DenseTraversal<Capacity, PlayerIndexed> traversal(layout, buffers, nullptr,
-                                                       certification_parallel_depth, root_lock);
+                                                      certification_parallel_depth, root_lock);
     PostflopCertification certification;
     certification.iteration = iteration;
-    const auto evaluate = [&](const std::uint8_t player, const bool best_response)
-        -> Result<double, PostflopSolverError> {
+    const auto evaluate = [&](const std::uint8_t player,
+                              const bool best_response) -> Result<double, PostflopSolverError> {
       const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
-      const auto values =
-          traversal.policy(layout.tree.root, player, reach_ref, best_response);
+      const auto values = traversal.policy(layout.tree.root, player, reach_ref, best_response);
       if (!values) {
         return Result<double, PostflopSolverError>::failure(values.error());
       }
-      return Result<double, PostflopSolverError>::success(
-          aggregate_value(player, values.value()));
+      return Result<double, PostflopSolverError>::success(aggregate_value(player, values.value()));
     };
     const auto profile_zero = evaluate(0U, false);
     const auto response_zero = evaluate(0U, true);
@@ -14229,12 +13528,10 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     }
     return Result<PostflopCertification, PostflopSolverError>::success(certification);
   }
-  const auto evaluate = [&layout, buffers, &reach, root_lock,
-                         public_reach_probability](const std::uint8_t player,
-                                                   const bool best_response,
-                                                   const std::uint8_t worker_count) {
-    const std::uint8_t certification_worker_count =
-        buffers.paged != nullptr ? 0U : worker_count;
+  const auto evaluate = [&layout, buffers, &reach, root_lock, public_reach_probability](
+                            const std::uint8_t player, const bool best_response,
+                            const std::uint8_t worker_count) {
+    const std::uint8_t certification_worker_count = buffers.paged != nullptr ? 0U : worker_count;
     auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
         layout, buffers, nullptr, certification_worker_count, root_lock);
     const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
@@ -14246,30 +13543,23 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
         reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value(), player) /
         public_reach_probability);
   };
-  const auto evaluate_pair = [&layout, buffers, &reach, root_lock,
-                              public_reach_probability](
-                                 const std::uint8_t player,
-                                 const std::uint8_t worker_count) {
-    const std::uint8_t certification_worker_count =
-        buffers.paged != nullptr ? 0U : worker_count;
+  const auto evaluate_pair = [&layout, buffers, &reach, root_lock, public_reach_probability](
+                                 const std::uint8_t player, const std::uint8_t worker_count) {
+    const std::uint8_t certification_worker_count = buffers.paged != nullptr ? 0U : worker_count;
     auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
         layout, buffers, nullptr, certification_worker_count, root_lock);
-    const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{
-        &reach[0], &reach[1]};
+    const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
     auto values = traversal->policy_profile_br_pair(player, reach_ref);
     if (!values) {
-      return Result<std::array<double, 2>, PostflopSolverError>::failure(
-          values.error());
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(values.error());
     }
     std::array<double, 2> aggregated{};
     for (std::size_t lane = 0U; lane < aggregated.size(); ++lane) {
       aggregated[lane] =
-          reach_weighted_sum<Capacity, PlayerIndexed>(
-              layout, reach, values.value()[lane], player) /
+          reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value()[lane], player) /
           public_reach_probability;
     }
-    return Result<std::array<double, 2>, PostflopSolverError>::success(
-        aggregated);
+    return Result<std::array<double, 2>, PostflopSolverError>::success(aggregated);
   };
   const auto evaluated = [&]() -> std::array<Result<double, PostflopSolverError>, 4> {
 #pragma warning(push)
@@ -14288,33 +13578,28 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
         player_zero = evaluate_pair(std::uint8_t{0}, 0U);
         player_one = evaluate_pair(std::uint8_t{1}, 0U);
       } else {
-        auto zero = std::async(std::launch::async, evaluate_pair,
-                               std::uint8_t{0}, std::uint8_t{3});
-        auto one = std::async(std::launch::async, evaluate_pair,
-                              std::uint8_t{1}, std::uint8_t{3});
+        auto zero = std::async(std::launch::async, evaluate_pair, std::uint8_t{0}, std::uint8_t{3});
+        auto one = std::async(std::launch::async, evaluate_pair, std::uint8_t{1}, std::uint8_t{3});
         player_zero = zero.get();
         player_one = one.get();
       }
       if (!player_zero || !player_one) {
-        const auto error = !player_zero ? player_zero.error()
-                                        : player_one.error();
+        const auto error = !player_zero ? player_zero.error() : player_one.error();
         return {Result<double, PostflopSolverError>::failure(error),
                 Result<double, PostflopSolverError>::failure(error),
                 Result<double, PostflopSolverError>::failure(error),
                 Result<double, PostflopSolverError>::failure(error)};
       }
-      return {
-          Result<double, PostflopSolverError>::success(player_zero.value()[0]),
-          Result<double, PostflopSolverError>::success(player_zero.value()[1]),
-          Result<double, PostflopSolverError>::success(
-              layout.tree.config.rake.enabled ? player_one.value()[0]
-                                              : -player_zero.value()[0]),
-          Result<double, PostflopSolverError>::success(player_one.value()[1])};
+      return {Result<double, PostflopSolverError>::success(player_zero.value()[0]),
+              Result<double, PostflopSolverError>::success(player_zero.value()[1]),
+              Result<double, PostflopSolverError>::success(layout.tree.config.rake.enabled
+                                                               ? player_one.value()[0]
+                                                               : -player_zero.value()[0]),
+              Result<double, PostflopSolverError>::success(player_one.value()[1])};
     }
     const auto mirror_profile = [](const Result<double, PostflopSolverError> &profile) {
-      return profile
-                 ? Result<double, PostflopSolverError>::success(-profile.value())
-                 : Result<double, PostflopSolverError>::failure(profile.error());
+      return profile ? Result<double, PostflopSolverError>::success(-profile.value())
+                     : Result<double, PostflopSolverError>::failure(profile.error());
     };
     if (buffers.paged != nullptr) {
       // PagedActionFile owns a mutable LRU page cache. Concurrent get() calls
@@ -14324,40 +13609,38 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
       auto profile_zero = evaluate(std::uint8_t{0}, false, 0U);
       auto response_zero = evaluate(std::uint8_t{0}, true, 0U);
       auto response_one = evaluate(std::uint8_t{1}, true, 0U);
-      auto profile_one = layout.tree.config.rake.enabled
-                             ? evaluate(std::uint8_t{1}, false, 0U)
-                             : mirror_profile(profile_zero);
-      return {std::move(profile_zero), std::move(response_zero),
-              std::move(profile_one), std::move(response_one)};
+      auto profile_one = layout.tree.config.rake.enabled ? evaluate(std::uint8_t{1}, false, 0U)
+                                                         : mirror_profile(profile_zero);
+      return {std::move(profile_zero), std::move(response_zero), std::move(profile_one),
+              std::move(response_one)};
     }
     if (!layout.tree.config.rake.enabled) {
       // Zero-rake heads-up poker is exactly zero-sum, so profile EV1 is the
       // negative of profile EV0.  Three independent traversals remain; assign
       // 2, 3 and 3 threads respectively (async caller included) for exactly
       // eight certification threads.
-      auto profile_zero = std::async(std::launch::async, evaluate,
-                                     std::uint8_t{0}, false, std::uint8_t{1});
-      auto response_zero = std::async(std::launch::async, evaluate,
-                                      std::uint8_t{0}, true, std::uint8_t{2});
-      auto response_one = std::async(std::launch::async, evaluate,
-                                     std::uint8_t{1}, true, std::uint8_t{2});
+      auto profile_zero =
+          std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1});
+      auto response_zero =
+          std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{2});
+      auto response_one =
+          std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{2});
       auto profile_zero_result = profile_zero.get();
       auto profile_one_result = mirror_profile(profile_zero_result);
-      return {std::move(profile_zero_result), response_zero.get(),
-              std::move(profile_one_result), response_one.get()};
+      return {std::move(profile_zero_result), response_zero.get(), std::move(profile_one_result),
+              response_one.get()};
     }
     // With rake, all four profile/BR values are independent. One worker per
     // async traversal keeps the total at exactly eight threads.
-    auto profile_zero = std::async(std::launch::async, evaluate,
-                                   std::uint8_t{0}, false, std::uint8_t{1});
-    auto response_zero = std::async(std::launch::async, evaluate,
-                                    std::uint8_t{0}, true, std::uint8_t{1});
-    auto profile_one = std::async(std::launch::async, evaluate,
-                                  std::uint8_t{1}, false, std::uint8_t{1});
-    auto response_one = std::async(std::launch::async, evaluate,
-                                   std::uint8_t{1}, true, std::uint8_t{1});
-    return {profile_zero.get(), response_zero.get(), profile_one.get(),
-            response_one.get()};
+    auto profile_zero =
+        std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1});
+    auto response_zero =
+        std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{1});
+    auto profile_one =
+        std::async(std::launch::async, evaluate, std::uint8_t{1}, false, std::uint8_t{1});
+    auto response_one =
+        std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{1});
+    return {profile_zero.get(), response_zero.get(), profile_one.get(), response_one.get()};
   }();
   for (const auto &value : evaluated) {
     if (!value) {
@@ -14386,9 +13669,10 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
   return Result<PostflopCertification, PostflopSolverError>::success(certification);
 }
 
-Result<PostflopCertification, PostflopSolverError>
-certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration,
-        const PreparedRootLock *root_lock) {
+Result<PostflopCertification, PostflopSolverError> certify(DenseLayout &layout,
+                                                           const ActionBuffers buffers,
+                                                           const std::uint64_t iteration,
+                                                           const PreparedRootLock *root_lock) {
   if (layout.uses_canonical_public_dag) {
     const auto maximum_player_combos =
         std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
@@ -14396,12 +13680,11 @@ certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t it
       return certify_typed<medium_combo_capacity, true>(layout, buffers, iteration, root_lock);
     }
     if (maximum_player_combos <= short_deck_range_capacity) {
-      return certify_typed<short_deck_range_capacity, true>(layout, buffers, iteration,
-                                                             root_lock);
+      return certify_typed<short_deck_range_capacity, true>(layout, buffers, iteration, root_lock);
     }
     if (maximum_player_combos <= compact_player_combo_capacity) {
       return certify_typed<compact_player_combo_capacity, true>(layout, buffers, iteration,
-                                                                 root_lock);
+                                                                root_lock);
     }
     if (maximum_player_combos <= large_range_capacity) {
       return certify_typed<large_range_capacity, true>(layout, buffers, iteration, root_lock);
@@ -14412,7 +13695,7 @@ certify(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t it
     if (std::max(layout.player_flop_count[0], layout.player_flop_count[1]) <=
         compact_player_combo_capacity) {
       return certify_typed<compact_player_combo_capacity, true>(layout, buffers, iteration,
-                                                                 root_lock);
+                                                                root_lock);
     }
     return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock);
   }
@@ -14431,10 +13714,8 @@ profile_root_values_typed(DenseLayout &layout, const ActionBuffers buffers) {
   }
   auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
       layout, buffers, nullptr, std::uint8_t{0}, nullptr);
-  const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{
-      &reach[0], &reach[1]};
-  const auto evaluate = [&](const std::uint8_t player)
-      -> Result<double, PostflopSolverError> {
+  const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
+  const auto evaluate = [&](const std::uint8_t player) -> Result<double, PostflopSolverError> {
     const auto values = traversal->policy(layout.tree.root, player, reach_ref, false);
     if (!values) {
       return Result<double, PostflopSolverError>::failure(values.error());
@@ -14445,15 +13726,13 @@ profile_root_values_typed(DenseLayout &layout, const ActionBuffers buffers) {
   };
   const auto profile_zero = evaluate(0U);
   if (!profile_zero) {
-    return Result<std::array<double, 2>, PostflopSolverError>::failure(
-        profile_zero.error());
+    return Result<std::array<double, 2>, PostflopSolverError>::failure(profile_zero.error());
   }
   std::array<double, 2> profile{profile_zero.value(), -profile_zero.value()};
   if (layout.tree.config.rake.enabled) {
     const auto profile_one = evaluate(1U);
     if (!profile_one) {
-      return Result<std::array<double, 2>, PostflopSolverError>::failure(
-          profile_one.error());
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(profile_one.error());
     }
     profile[1] = profile_one.value();
   }
@@ -14577,14 +13856,12 @@ query_strategy_from_layout(const DenseLayout &layout, const ActionBuffers buffer
   query.probabilities.resize(decision.action_count);
   double sum = 0.0;
   for (std::size_t action = 0; action < decision.action_count; ++action) {
-    query.actions.push_back(canonical != nullptr
-                                ? canonical->edges[action].action
-                                : layout.tree.nodes[static_cast<std::size_t>(public_node)]
-                                      .edges[action]
-                                      .action);
+    query.actions.push_back(
+        canonical != nullptr
+            ? canonical->edges[action].action
+            : layout.tree.nodes[static_cast<std::size_t>(public_node)].edges[action].action);
     const auto state_index =
-        canonical != nullptr &&
-                (buffers.scaled_strategy != nullptr || buffers.action_major_compact)
+        canonical != nullptr && (buffers.scaled_strategy != nullptr || buffers.action_major_compact)
             ? canonical_action_major_index(*canonical, static_cast<std::size_t>(local), action)
             : static_cast<std::size_t>(offset + action);
     query.probabilities[action] = buffers.strategy_at(state_index);
@@ -14619,19 +13896,14 @@ in_memory_checkpoint_buffers(const PostflopCheckpoint &checkpoint) {
     }
     ActionBuffers buffers;
     buffers.count = static_cast<std::size_t>(checkpoint.action_count);
-    buffers.scaled_regret =
-        const_cast<std::uint16_t *>(checkpoint.cumulative_regret_uint16.data());
+    buffers.scaled_regret = const_cast<std::uint16_t *>(checkpoint.cumulative_regret_uint16.data());
     buffers.scaled_strategy =
         const_cast<std::uint16_t *>(checkpoint.cumulative_strategy_uint16.data());
-    buffers.regret_node_scale =
-        const_cast<float *>(checkpoint.regret_node_scale.data());
-    buffers.strategy_node_scale =
-        const_cast<float *>(checkpoint.strategy_node_scale.data());
-    buffers.decision_node_count =
-        static_cast<std::size_t>(checkpoint.decision_node_count);
-    buffers.signed_scaled_regret =
-        checkpoint.algorithm == PostflopAlgorithm::Dcfr ||
-        checkpoint.algorithm == PostflopAlgorithm::HsDcfr30;
+    buffers.regret_node_scale = const_cast<float *>(checkpoint.regret_node_scale.data());
+    buffers.strategy_node_scale = const_cast<float *>(checkpoint.strategy_node_scale.data());
+    buffers.decision_node_count = static_cast<std::size_t>(checkpoint.decision_node_count);
+    buffers.signed_scaled_regret = checkpoint.algorithm == PostflopAlgorithm::Dcfr ||
+                                   checkpoint.algorithm == PostflopAlgorithm::HsDcfr30;
     return Result<ActionBuffers, PostflopSolverError>::success(buffers);
   }
   if (checkpoint.state_precision == PostflopStatePrecision::Float13RegretFloat11Strategy ||
@@ -14649,11 +13921,9 @@ in_memory_checkpoint_buffers(const PostflopCheckpoint &checkpoint) {
     }
     ActionBuffers buffers;
     buffers.count = static_cast<std::size_t>(checkpoint.action_count);
-    buffers.compact_state =
-        const_cast<std::uint8_t *>(checkpoint.cumulative_compact_state.data());
-    buffers.action_major_compact =
-        checkpoint.state_precision ==
-        PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
+    buffers.compact_state = const_cast<std::uint8_t *>(checkpoint.cumulative_compact_state.data());
+    buffers.action_major_compact = checkpoint.state_precision ==
+                                   PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
     return Result<ActionBuffers, PostflopSolverError>::success(buffers);
   }
   if (checkpoint.state_precision == PostflopStatePrecision::Float24RegretFloat16Strategy) {
@@ -14745,21 +14015,20 @@ RbpReadOnlyTelemetry &RbpReadOnlyTelemetry::operator=(RbpReadOnlyTelemetry &&) n
 namespace {
 
 [[nodiscard]] std::uint64_t rbp_saturating_add(const std::uint64_t left,
-                                                const std::uint64_t right) noexcept {
+                                               const std::uint64_t right) noexcept {
   return right > std::numeric_limits<std::uint64_t>::max() - left
              ? std::numeric_limits<std::uint64_t>::max()
              : left + right;
 }
 
 [[nodiscard]] std::uint64_t rbp_saturating_multiply(const std::uint64_t left,
-                                                     const std::uint64_t right) noexcept {
+                                                    const std::uint64_t right) noexcept {
   return left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left
              ? std::numeric_limits<std::uint64_t>::max()
              : left * right;
 }
 
-void rbp_add_work(RbpReadOnlyWorkEstimate &destination,
-                  const RbpReadOnlyWorkEstimate &source,
+void rbp_add_work(RbpReadOnlyWorkEstimate &destination, const RbpReadOnlyWorkEstimate &source,
                   const std::uint64_t multiplicity = 1U) noexcept {
   const auto add = [multiplicity](std::uint64_t &value, const std::uint64_t increment) {
     value = rbp_saturating_add(value, rbp_saturating_multiply(increment, multiplicity));
@@ -14927,9 +14196,8 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
           const double negative_threshold_multiple = -regret / payoff_bound;
           negative_threshold_sum[player] += negative_threshold_multiple;
           ++bounded_negative_count[player];
-          metrics.maximum_negative_regret_threshold_multiple =
-              std::max(metrics.maximum_negative_regret_threshold_multiple,
-                       negative_threshold_multiple);
+          metrics.maximum_negative_regret_threshold_multiple = std::max(
+              metrics.maximum_negative_regret_threshold_multiple, negative_threshold_multiple);
         }
         if (!(payoff_bound > 0.0) || -regret < payoff_bound) {
           continue;
@@ -14978,14 +14246,14 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
   for (std::uint8_t player = 0U; player < 2U; ++player) {
     auto &metrics = snapshot.players[player];
     if (metrics.original_formula_candidates != 0U) {
-      metrics.mean_candidate_regret_antes = static_cast<double>(
-          regret_sum[player] / metrics.original_formula_candidates);
-      metrics.mean_threshold_multiple = static_cast<double>(
-          threshold_sum[player] / metrics.original_formula_candidates);
+      metrics.mean_candidate_regret_antes =
+          static_cast<double>(regret_sum[player] / metrics.original_formula_candidates);
+      metrics.mean_threshold_multiple =
+          static_cast<double>(threshold_sum[player] / metrics.original_formula_candidates);
     }
     if (bounded_negative_count[player] != 0U) {
-      metrics.mean_negative_regret_threshold_multiple = static_cast<double>(
-          negative_threshold_sum[player] / bounded_negative_count[player]);
+      metrics.mean_negative_regret_threshold_multiple =
+          static_cast<double>(negative_threshold_sum[player] / bounded_negative_count[player]);
     }
   }
   for (std::size_t word = 0U; word < word_count; ++word) {
@@ -15031,9 +14299,8 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
   implementation->ranges = ranges;
   implementation->layout = std::move(layout.value());
   if (prepare_analysis && implementation->layout.tree.nodes.empty()) {
-    auto analysis_layout =
-        build_layout(config, ranges, enable_lossless_isomorphism,
-                     enable_canonical_public_dag, true);
+    auto analysis_layout = build_layout(config, ranges, enable_lossless_isomorphism,
+                                        enable_canonical_public_dag, true);
     if (!analysis_layout) {
       return Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>::failure(
           analysis_layout.error());
@@ -15056,6 +14323,482 @@ PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedT
           layout.actions,
           layout.actions * sizeof(double),
           layout.actions * sizeof(double)};
+}
+
+Result<PostflopArchitecturalTopology, PostflopSolverError>
+inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
+  if (!prepared.implementation_) {
+    return Result<PostflopArchitecturalTopology, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &layout = prepared.implementation_->layout;
+  const auto &graph = layout.canonical_public_graph;
+  if (!layout.uses_canonical_public_dag || graph.nodes.empty()) {
+    return Result<PostflopArchitecturalTopology, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+
+  constexpr std::uint64_t fnv_offset = 1469598103934665603ULL;
+  constexpr std::uint64_t fnv_prime = 1099511628211ULL;
+  const auto mix = [](std::uint64_t &hash, const std::uint64_t value) noexcept {
+    hash ^= value;
+    hash *= fnv_prime;
+  };
+  const auto add = [](std::uint64_t &target, const std::uint64_t value) noexcept {
+    target = value > std::numeric_limits<std::uint64_t>::max() - target
+                 ? std::numeric_limits<std::uint64_t>::max()
+                 : target + value;
+  };
+  const auto narrow_add = [](std::uint32_t &target, const std::uint32_t value) noexcept {
+    target = value > std::numeric_limits<std::uint32_t>::max() - target
+                 ? std::numeric_limits<std::uint32_t>::max()
+                 : target + value;
+  };
+
+  struct Summary {
+    std::uint64_t structural{fnv_offset};
+    std::uint64_t relaxed{fnv_offset};
+    std::uint64_t payoff{fnv_offset};
+    std::uint64_t state_shape{fnv_offset};
+    std::uint64_t state_begin{std::numeric_limits<std::uint64_t>::max()};
+    std::uint64_t state_end{0U};
+    std::uint64_t showdown_work{0U};
+    std::uint64_t action_entries{0U};
+    std::uint64_t value_entries{0U};
+    std::uint64_t state_entries{0U};
+    std::uint64_t terminal_bytes{0U};
+    std::uint64_t value_bytes{0U};
+    std::uint64_t state_bytes{0U};
+    std::uint64_t reach_bytes{0U};
+    std::uint32_t public_nodes{0U};
+    std::uint32_t decision_nodes{0U};
+    std::uint32_t showdown_terminals{0U};
+    std::uint32_t chance_descendants{0U};
+    std::uint32_t identity_transforms{0U};
+    std::uint32_t nonidentity_transforms{0U};
+    bool state_interval_present{false};
+    bool valid{true};
+  };
+
+  struct ControlOp {
+    std::uint32_t node_kind{0U};
+    std::uint32_t board_index{0U};
+    std::uint32_t edge_count{0U};
+    std::uint32_t hot_metadata{0U};
+  };
+
+  PostflopArchitecturalTopology report;
+  std::vector<ControlOp> control_plan;
+  std::vector<std::uint32_t> control_roots;
+  std::uint64_t root_count = 0U;
+  for (const auto &node : graph.nodes) {
+    if (node.kind == PublicNodeKind::Chance && node.board_index < layout.boards.size() &&
+        std::popcount(layout.boards[node.board_index].mask) == 4) {
+      root_count += node.edges.size();
+    }
+  }
+  if (root_count > std::numeric_limits<std::size_t>::max() / 2U) {
+    return Result<PostflopArchitecturalTopology, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  report.river_work_units.reserve(static_cast<std::size_t>(root_count * 2U));
+
+  std::function<Summary(std::uint32_t, std::uint8_t, std::uint32_t)> summarize;
+  summarize = [&](const std::uint32_t node_id, const std::uint8_t update_player,
+                  const std::uint32_t recursion_depth) -> Summary {
+    Summary summary;
+    if (node_id >= graph.nodes.size() || recursion_depth > graph.nodes.size()) {
+      summary.valid = false;
+      return summary;
+    }
+    ++report.analyzed_public_nodes;
+    const auto &node = graph.nodes[node_id];
+    if (node.board_index >= layout.boards.size()) {
+      summary.valid = false;
+      return summary;
+    }
+    const auto &board = layout.boards[node.board_index];
+    control_plan.push_back({static_cast<std::uint32_t>(node.kind), node.board_index,
+                            static_cast<std::uint32_t>(node.edges.size()),
+                            node.kind == PublicNodeKind::Decision
+                                ? static_cast<std::uint32_t>(node.decision.action_base ^
+                                                             (node.decision.action_count << 24U))
+                                : 0U});
+    summary.public_nodes = 1U;
+    mix(summary.structural, static_cast<std::uint8_t>(node.kind));
+    mix(summary.relaxed, static_cast<std::uint8_t>(node.kind));
+    mix(summary.structural, board.player_combos[update_player].size());
+    mix(summary.structural, board.player_combos[1U - update_player].size());
+    mix(summary.structural, board.player_rank_count);
+
+    if (node.kind == PublicNodeKind::TerminalFold) {
+      mix(summary.payoff, std::bit_cast<std::uint64_t>(node.fold_payoff_antes[update_player]));
+      const auto hero = static_cast<std::uint64_t>(board.player_combos[update_player].size());
+      const auto opponent =
+          static_cast<std::uint64_t>(board.player_combos[1U - update_player].size());
+      summary.terminal_bytes = opponent * sizeof(float) + hero * sizeof(float);
+      return summary;
+    }
+    if (node.kind == PublicNodeKind::TerminalShowdown) {
+      summary.showdown_terminals = 1U;
+      const auto hero = static_cast<std::uint64_t>(board.player_combos[update_player].size());
+      const auto opponent =
+          static_cast<std::uint64_t>(board.player_combos[1U - update_player].size());
+      const auto ranks = static_cast<std::uint64_t>(board.player_rank_count);
+      summary.showdown_work = hero + opponent + ranks * 37U;
+      // Byte model: opponent reach, total/rank-card accumulator writes,
+      // prefix write+read, and one hero output. It is intentionally explicit
+      // and conservative; it does not assume cache hits or cross-node reuse.
+      summary.terminal_bytes = opponent * sizeof(float) + opponent * 3U * sizeof(float) +
+                               (ranks + 1U) * 37U * 2U * sizeof(float) + hero * sizeof(float);
+      for (const auto payoff : node.showdown_payoff_antes[update_player]) {
+        mix(summary.payoff, std::bit_cast<std::uint64_t>(payoff));
+      }
+      return summary;
+    }
+    if (node.kind == PublicNodeKind::Decision) {
+      ++summary.decision_nodes;
+      const auto actor = node.decision.player;
+      const auto action_count = static_cast<std::uint64_t>(node.decision.action_count);
+      const auto actor_combos = static_cast<std::uint64_t>(board.player_combos[actor].size());
+      const auto value_combos =
+          static_cast<std::uint64_t>(board.player_combos[update_player].size());
+      const auto actor_entries = actor_combos * action_count;
+      const auto value_entries = value_combos * action_count;
+      add(summary.action_entries, actor_entries);
+      add(summary.value_entries, value_entries);
+      add(summary.reach_bytes, actor_entries * sizeof(float));
+      add(summary.value_bytes,
+          value_entries * 2U * sizeof(float) + value_combos * 2U * sizeof(float));
+      // ScaledUint16 production model: every decision reads uint16 strategy;
+      // the updating player's nodes additionally read/write both uint16 state
+      // streams and touch two float scales. Immediate values are counted in
+      // value_bytes rather than duplicated here.
+      add(summary.state_bytes, actor_entries * sizeof(std::uint16_t));
+      if (actor == update_player) {
+        add(summary.state_entries, actor_entries);
+        add(summary.state_bytes, actor_entries * (sizeof(std::uint16_t) * 3U) + sizeof(float) * 4U);
+      }
+      const auto begin = node.decision.action_base;
+      const auto end = begin + node.local_action_count;
+      summary.state_begin = begin;
+      summary.state_end = end;
+      summary.state_interval_present = node.local_action_count != 0U;
+      mix(summary.structural, actor);
+      mix(summary.structural, action_count);
+      mix(summary.structural, node.decision.terminal_child_mask);
+      mix(summary.structural, actor_combos);
+      mix(summary.structural, node.local_action_count);
+      mix(summary.relaxed, actor);
+      mix(summary.relaxed, action_count);
+      mix(summary.relaxed, node.decision.terminal_child_mask);
+      mix(summary.state_shape, actor);
+      mix(summary.state_shape, action_count);
+      mix(summary.state_shape, node.local_action_count);
+    } else if (node.kind == PublicNodeKind::Chance) {
+      ++summary.chance_descendants;
+    }
+
+    mix(summary.structural, node.edges.size());
+    mix(summary.relaxed, node.edges.size());
+    for (const auto &edge : node.edges) {
+      mix(summary.structural, static_cast<std::uint8_t>(edge.action.type));
+      mix(summary.structural, static_cast<std::uint8_t>(edge.action.all_in_kind));
+      mix(summary.relaxed, static_cast<std::uint8_t>(edge.action.type));
+      mix(summary.relaxed, static_cast<std::uint8_t>(edge.action.all_in_kind));
+      mix(summary.structural, edge.outcomes.size());
+      mix(summary.relaxed, edge.outcomes.size());
+      if (edge.outcomes.empty()) {
+        summary.valid = false;
+        continue;
+      }
+      for (const auto &outcome : edge.outcomes) {
+        const bool identity = outcome.physical_to_child_automorphism == 0U;
+        if (identity) {
+          ++summary.identity_transforms;
+        } else {
+          ++summary.nonidentity_transforms;
+        }
+        mix(summary.structural, identity ? 0U : 1U);
+        mix(summary.relaxed, identity ? 0U : 1U);
+      }
+      const auto child_id = edge.outcomes.front().child;
+      if (child_id <= node_id) {
+        summary.valid = false;
+        continue;
+      }
+      auto child = summarize(child_id, update_player, recursion_depth + 1U);
+      summary.valid = summary.valid && child.valid;
+      mix(summary.structural, child.structural);
+      mix(summary.relaxed, child.relaxed);
+      mix(summary.payoff, child.payoff);
+      mix(summary.state_shape, child.state_shape);
+      add(summary.showdown_work, child.showdown_work);
+      add(summary.action_entries, child.action_entries);
+      add(summary.value_entries, child.value_entries);
+      add(summary.state_entries, child.state_entries);
+      add(summary.terminal_bytes, child.terminal_bytes);
+      add(summary.value_bytes, child.value_bytes);
+      add(summary.state_bytes, child.state_bytes);
+      add(summary.reach_bytes, child.reach_bytes);
+      narrow_add(summary.public_nodes, child.public_nodes);
+      narrow_add(summary.decision_nodes, child.decision_nodes);
+      narrow_add(summary.showdown_terminals, child.showdown_terminals);
+      narrow_add(summary.chance_descendants, child.chance_descendants);
+      narrow_add(summary.identity_transforms, child.identity_transforms);
+      narrow_add(summary.nonidentity_transforms, child.nonidentity_transforms);
+      if (child.state_interval_present) {
+        summary.state_begin = std::min(summary.state_begin, child.state_begin);
+        summary.state_end = std::max(summary.state_end, child.state_end);
+        summary.state_interval_present = true;
+      }
+    }
+    return summary;
+  };
+
+  for (std::uint32_t source_id = 0U; source_id < graph.nodes.size(); ++source_id) {
+    const auto &source = graph.nodes[source_id];
+    if (source.kind != PublicNodeKind::Chance || source.board_index >= layout.boards.size() ||
+        std::popcount(layout.boards[source.board_index].mask) != 4) {
+      continue;
+    }
+    const auto sibling_count = static_cast<std::uint16_t>(
+        std::min<std::size_t>(source.edges.size(), std::numeric_limits<std::uint16_t>::max()));
+    for (const auto &edge : source.edges) {
+      if (edge.outcomes.empty() || edge.outcomes.front().child >= graph.nodes.size()) {
+        report.invalid_or_cyclic_units += 2U;
+        continue;
+      }
+      const auto &root_outcome = edge.outcomes.front();
+      const auto &root = graph.nodes[root_outcome.child];
+      if (root.board_index >= layout.boards.size() ||
+          std::popcount(layout.boards[root.board_index].mask) != 5) {
+        report.invalid_or_cyclic_units += 2U;
+        continue;
+      }
+      const auto &river_board = layout.boards[root.board_index];
+      for (std::uint8_t update_player = 0U; update_player < 2U; ++update_player) {
+        control_roots.push_back(root_outcome.child);
+        auto summary = summarize(root_outcome.child, update_player, 0U);
+        if (!summary.valid) {
+          ++report.invalid_or_cyclic_units;
+          continue;
+        }
+        PostflopRiverWorkUnit unit;
+        unit.source_chance_node = source_id;
+        unit.river_root_node = root_outcome.child;
+        unit.board_mask = river_board.mask;
+        unit.structural_signature = summary.structural;
+        unit.relaxed_signature = summary.relaxed;
+        unit.payoff_signature = summary.payoff;
+        unit.state_shape_signature = summary.state_shape;
+        unit.state_begin = summary.state_interval_present ? summary.state_begin : 0U;
+        unit.state_end = summary.state_end;
+        unit.showdown_work = summary.showdown_work;
+        unit.action_entries = summary.action_entries;
+        unit.value_entries = summary.value_entries;
+        unit.state_entries = summary.state_entries;
+        unit.terminal_bytes = summary.terminal_bytes;
+        unit.value_bytes = summary.value_bytes;
+        unit.state_bytes = summary.state_bytes;
+        unit.reach_bytes = summary.reach_bytes;
+        unit.public_nodes = summary.public_nodes;
+        unit.decision_nodes = summary.decision_nodes;
+        unit.showdown_terminals = summary.showdown_terminals;
+        unit.chance_descendants = summary.chance_descendants;
+        unit.identity_transforms = summary.identity_transforms;
+        unit.nonidentity_transforms = summary.nonidentity_transforms;
+        unit.live_hero_combos =
+            static_cast<std::uint16_t>(river_board.player_combos[update_player].size());
+        unit.live_opponent_combos =
+            static_cast<std::uint16_t>(river_board.player_combos[1U - update_player].size());
+        unit.rank_count = river_board.player_rank_count;
+        unit.source_sibling_count = sibling_count;
+        unit.actor = root.kind == PublicNodeKind::Decision
+                         ? static_cast<std::uint8_t>(root.decision.player)
+                         : std::uint8_t{0};
+        unit.update_player = update_player;
+        unit.action_count = root.kind == PublicNodeKind::Decision
+                                ? static_cast<std::uint8_t>(root.decision.action_count)
+                                : 0U;
+        unit.terminal_child_pattern =
+            root.kind == PublicNodeKind::Decision
+                ? static_cast<std::uint8_t>(root.decision.terminal_child_mask)
+                : 0U;
+        unit.state_interval_present = summary.state_interval_present;
+        unit.root_transform_identity = root_outcome.physical_to_child_automorphism == 0U;
+        report.river_work_units.push_back(unit);
+      }
+    }
+  }
+  const auto mix_control = [&](std::uint64_t &hash, const ControlOp &op) noexcept {
+    mix(hash, op.node_kind);
+    mix(hash, op.board_index);
+    mix(hash, op.edge_count);
+    mix(hash, op.hot_metadata);
+  };
+  const auto benchmark_repetitions = 3U;
+  std::function<void(std::uint32_t, std::uint64_t &)> visit_control;
+  visit_control = [&](const std::uint32_t node_id, std::uint64_t &hash) {
+    const auto &node = graph.nodes[node_id];
+    const ControlOp op{static_cast<std::uint32_t>(node.kind), node.board_index,
+                       static_cast<std::uint32_t>(node.edges.size()),
+                       node.kind == PublicNodeKind::Decision
+                           ? static_cast<std::uint32_t>(node.decision.action_base ^
+                                                        (node.decision.action_count << 24U))
+                           : 0U};
+    mix_control(hash, op);
+    for (const auto &edge : node.edges) {
+      if (!edge.outcomes.empty()) {
+        visit_control(edge.outcomes.front().child, hash);
+      }
+    }
+  };
+  const auto recursive_started = std::chrono::steady_clock::now();
+  for (auto repetition = 0U; repetition < benchmark_repetitions; ++repetition) {
+    std::uint64_t hash = fnv_offset;
+    for (const auto root : control_roots) {
+      visit_control(root, hash);
+    }
+    report.recursive_control_checksum ^= hash;
+  }
+  report.recursive_control_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - recursive_started).count() /
+      benchmark_repetitions;
+  const auto linear_started = std::chrono::steady_clock::now();
+  for (auto repetition = 0U; repetition < benchmark_repetitions; ++repetition) {
+    std::uint64_t hash = fnv_offset;
+    for (const auto &op : control_plan) {
+      mix_control(hash, op);
+    }
+    report.linear_control_checksum ^= hash;
+  }
+  report.linear_control_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - linear_started).count() /
+      benchmark_repetitions;
+  report.control_plan_ops = control_plan.size();
+  report.control_plan_bytes = control_plan.capacity() * sizeof(ControlOp);
+  report.temporary_metadata_bytes = static_cast<std::uint64_t>(report.river_work_units.capacity()) *
+                                        sizeof(PostflopRiverWorkUnit) +
+                                    report.control_plan_bytes +
+                                    control_roots.capacity() * sizeof(std::uint32_t);
+  return Result<PostflopArchitecturalTopology, PostflopSolverError>::success(std::move(report));
+}
+
+Result<PostflopArchitecturalShadowReport, PostflopSolverError>
+benchmark_postflop_architectural_shadow(PostflopPreparedTree &prepared,
+                                        PostflopCheckpoint &checkpoint,
+                                        const std::uint8_t batch_width,
+                                        const std::uint64_t repetitions) {
+  if (!prepared.implementation_ || batch_width < 2U || batch_width > 8U || repetitions == 0U ||
+      checkpoint.algorithm != PostflopAlgorithm::Dcfr ||
+      checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+      checkpoint.game_fingerprint != prepared.implementation_->layout.fingerprint ||
+      checkpoint.action_count != prepared.implementation_->layout.actions ||
+      checkpoint.completed_iterations == std::numeric_limits<std::uint64_t>::max()) {
+    return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+  auto &layout = prepared.implementation_->layout;
+  if (!layout.uses_canonical_public_dag || !layout.uses_direct_action_bases) {
+    return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  for (std::uint32_t board_index = 0U; board_index < layout.boards.size(); ++board_index) {
+    if (std::popcount(layout.boards[board_index].mask) == 5) {
+      const auto ready = prepare_ranks(layout, board_index);
+      if (!ready) {
+        return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+            ready.error());
+      }
+    }
+  }
+  auto topology = inspect_postflop_architectural_topology(prepared);
+  if (!topology) {
+    return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+        topology.error());
+  }
+  const auto buffers = in_memory_checkpoint_buffers(checkpoint);
+  if (!buffers || buffers.value().scaled_regret == nullptr ||
+      !buffers.value().signed_scaled_regret) {
+    return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+        buffers ? PostflopSolverError::CheckpointMismatch : buffers.error());
+  }
+
+  using Key = std::array<std::uint64_t, 7>;
+  struct Candidate {
+    std::vector<PostflopRiverWorkUnit> units;
+    std::uint64_t bytes{0U};
+  };
+  std::array<std::vector<Candidate>, 2> candidates;
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    std::map<Key, std::vector<PostflopRiverWorkUnit>> groups;
+    for (const auto &unit : topology.value().river_work_units) {
+      if (unit.update_player != player || !unit.state_interval_present || unit.action_count == 0U) {
+        continue;
+      }
+      Key key{unit.structural_signature,
+              unit.state_shape_signature,
+              unit.update_player,
+              unit.actor,
+              unit.action_count,
+              unit.terminal_child_pattern,
+              unit.root_transform_identity ? 0U : 1U};
+      auto &members = groups[key];
+      const bool duplicate = std::ranges::any_of(members, [&](const auto &existing) {
+        return existing.source_chance_node == unit.source_chance_node ||
+               existing.river_root_node == unit.river_root_node;
+      });
+      if (!duplicate) {
+        members.push_back(unit);
+      }
+    }
+    for (auto &[key, members] : groups) {
+      static_cast<void>(key);
+      if (members.size() < batch_width) {
+        continue;
+      }
+      Candidate candidate;
+      candidate.units.assign(members.begin(), members.begin() + batch_width);
+      for (const auto &unit : candidate.units) {
+        candidate.bytes +=
+            unit.terminal_bytes + unit.value_bytes + unit.state_bytes + unit.reach_bytes;
+      }
+      candidates[player].push_back(std::move(candidate));
+    }
+    std::ranges::sort(candidates[player], {}, &Candidate::bytes);
+    if (candidates[player].empty()) {
+      return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+  }
+
+  auto traversal = make_dense_traversal_runner(
+      layout, buffers.value(), nullptr, static_cast<std::uint8_t>(batch_width - 1U), nullptr);
+  PostflopArchitecturalShadowReport report;
+  report.repetitions = repetitions;
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    const std::array<std::pair<const char *, std::size_t>, 2> selections{
+        std::pair{"median", candidates[player].size() / 2U},
+        std::pair{"heavy", candidates[player].size() - 1U}};
+    for (const auto &[label, index] : selections) {
+      auto sample = traversal->architectural_shadow(
+          candidates[player][index].units, player, repetitions,
+          checkpoint.completed_iterations + 1U, checkpoint.dcfr_positive_regret_exponent,
+          checkpoint.dcfr_average_exponent);
+      if (!sample) {
+        return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::failure(
+            sample.error());
+      }
+      sample.value().workload_class = label;
+      report.additional_bytes =
+          std::max(report.additional_bytes, sample.value().copied_state_bytes +
+                                                sample.value().copied_scale_bytes +
+                                                sample.value().descriptor_bytes);
+      report.samples.push_back(std::move(sample.value()));
+    }
+  }
+  return Result<PostflopArchitecturalShadowReport, PostflopSolverError>::success(std::move(report));
 }
 
 std::shared_ptr<const PublicTree>
@@ -15165,8 +14908,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   if (!validate_postflop_ranges(config, ranges) ||
       !std::isfinite(options.dcfr_positive_regret_exponent) ||
       !std::isfinite(options.dcfr_average_exponent) ||
-      options.dcfr_positive_regret_exponent < 0.0 ||
-      options.dcfr_average_exponent < 0.0 ||
+      options.dcfr_positive_regret_exponent < 0.0 || options.dcfr_average_exponent < 0.0 ||
       options.enable_lossless_isomorphism !=
           prepared.implementation_->lossless_isomorphism_enabled ||
       options.enable_canonical_public_dag !=
@@ -15208,8 +14950,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         ++decision_nodes_by_actions[action_count];
         state_entries_by_actions[action_count] += node.local_action_count;
       }
-      const bool river_decision =
-          std::popcount(layout.value().boards[node.board_index].mask) == 5U;
+      const bool river_decision = std::popcount(layout.value().boards[node.board_index].mask) == 5U;
       if (river_decision && node.edges.size() != action_count) {
         return Result<PostflopSolveResult, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
@@ -15222,11 +14963,9 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         for (const auto &outcome : edge.outcomes) {
           ++decision_edges;
           const bool identity_outcome =
-              outcome.physical_to_child_automorphism <
-                  layout.value().automorphisms.size() &&
-              layout.value()
-                      .automorphisms[outcome.physical_to_child_automorphism]
-                      .suits == identity;
+              outcome.physical_to_child_automorphism < layout.value().automorphisms.size() &&
+              layout.value().automorphisms[outcome.physical_to_child_automorphism].suits ==
+                  identity;
           if (identity_outcome) {
             ++identity_decision_edges;
           }
@@ -15242,14 +14981,12 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                  "identity_decision_edges=%llu\n",
                  static_cast<unsigned long long>(decision_edges),
                  static_cast<unsigned long long>(identity_decision_edges));
-    for (std::size_t action_count = 1U; action_count <= maximum_action_count;
-         ++action_count) {
+    for (std::size_t action_count = 1U; action_count <= maximum_action_count; ++action_count) {
       if (decision_nodes_by_actions[action_count] != 0U) {
-        std::fprintf(stderr,
-                     "solver_profile=action_arity actions=%zu nodes=%llu state_entries=%llu\n",
-                     action_count,
-                     static_cast<unsigned long long>(decision_nodes_by_actions[action_count]),
-                     static_cast<unsigned long long>(state_entries_by_actions[action_count]));
+        std::fprintf(
+            stderr, "solver_profile=action_arity actions=%zu nodes=%llu state_entries=%llu\n",
+            action_count, static_cast<unsigned long long>(decision_nodes_by_actions[action_count]),
+            static_cast<unsigned long long>(state_entries_by_actions[action_count]));
       }
     }
   }
@@ -15262,8 +14999,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         resume_from->averaging_delay != options.averaging_delay ||
         resume_from->state_precision != options.state_precision ||
         resume_from->algorithm != options.algorithm ||
-        resume_from->dcfr_positive_regret_exponent !=
-            options.dcfr_positive_regret_exponent ||
+        resume_from->dcfr_positive_regret_exponent != options.dcfr_positive_regret_exponent ||
         resume_from->dcfr_average_exponent != options.dcfr_average_exponent ||
         (!target_driven_without_iteration_limit &&
          resume_from->completed_iterations > options.iterations) ||
@@ -15327,8 +15063,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     const bool mixed_state =
         options.state_precision == PostflopStatePrecision::Float24RegretFloat16Strategy;
     const bool action_major_compact_state =
-        options.state_precision ==
-        PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
+        options.state_precision == PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy;
     const bool compact_state =
         options.state_precision == PostflopStatePrecision::Float13RegretFloat11Strategy ||
         action_major_compact_state;
@@ -15339,12 +15074,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         scaled_uint16_state
             ? checkpoint.cumulative_regret_uint16.size() == layout.value().actions &&
                   checkpoint.cumulative_strategy_uint16.size() == layout.value().actions &&
-                  checkpoint.regret_node_scale.size() ==
-                      layout.value().canonical_decision_nodes &&
+                  checkpoint.regret_node_scale.size() == layout.value().canonical_decision_nodes &&
                   checkpoint.strategy_node_scale.size() ==
                       layout.value().canonical_decision_nodes &&
-                  checkpoint.cumulative_regret.empty() &&
-                  checkpoint.cumulative_strategy.empty() &&
+                  checkpoint.cumulative_regret.empty() && checkpoint.cumulative_strategy.empty() &&
                   checkpoint.cumulative_regret_float32.empty() &&
                   checkpoint.cumulative_strategy_float32.empty() &&
                   checkpoint.cumulative_regret_float24.empty() &&
@@ -15387,8 +15120,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     }
     if (resume_from == nullptr) {
       if (scaled_uint16_state) {
-        checkpoint.cumulative_regret_uint16.resize(
-            static_cast<std::size_t>(layout.value().actions), std::uint16_t{0});
+        checkpoint.cumulative_regret_uint16.resize(static_cast<std::size_t>(layout.value().actions),
+                                                   std::uint16_t{0});
         checkpoint.cumulative_strategy_uint16.resize(
             static_cast<std::size_t>(layout.value().actions), std::uint16_t{0});
         checkpoint.regret_node_scale.resize(
@@ -15433,19 +15166,12 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       buffers.strategy_node_scale = checkpoint.strategy_node_scale.data();
       buffers.decision_node_count =
           static_cast<std::size_t>(layout.value().canonical_decision_nodes);
-      buffers.signed_scaled_regret =
-          options.algorithm == PostflopAlgorithm::Dcfr ||
-          options.algorithm == PostflopAlgorithm::HsDcfr30;
+      buffers.signed_scaled_regret = options.algorithm == PostflopAlgorithm::Dcfr ||
+                                     options.algorithm == PostflopAlgorithm::HsDcfr30;
     } else if (compact_state) {
-      buffers = {nullptr,
-                 nullptr,
-                 static_cast<std::size_t>(layout.value().actions),
-                 nullptr,
-                 nullptr,
-                 nullptr,
-                 nullptr,
-                 nullptr,
-                 checkpoint.cumulative_compact_state.data()};
+      buffers = {nullptr, nullptr, static_cast<std::size_t>(layout.value().actions),
+                 nullptr, nullptr, nullptr,
+                 nullptr, nullptr, checkpoint.cumulative_compact_state.data()};
       buffers.action_major_compact = action_major_compact_state;
     } else if (mixed_state) {
       buffers = {nullptr,
@@ -15501,23 +15227,21 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   result.timings.initialization_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - initialization_started)
           .count();
-  const auto attach_runtime_telemetry =
-      [&](PostflopCertification point) {
-        point.solver_elapsed_seconds =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                          initialization_started)
-                .count();
-        point.traversal_elapsed_seconds = result.timings.traversal_seconds;
-        point.certification_elapsed_seconds = result.timings.certification_seconds;
-        point.traversed_nodes = traversal->traversed_nodes();
-        point.work_counters = traversal->work_counters();
-        return point;
-      };
+  const auto attach_runtime_telemetry = [&](PostflopCertification point) {
+    point.solver_elapsed_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - initialization_started)
+            .count();
+    point.traversal_elapsed_seconds = result.timings.traversal_seconds;
+    point.certification_elapsed_seconds = result.timings.certification_seconds;
+    point.traversed_nodes = traversal->traversed_nodes();
+    point.work_counters = traversal->work_counters();
+    return point;
+  };
   if (!target_driven_without_iteration_limit &&
       checkpoint.completed_iterations == options.iterations) {
     const auto certification_started = std::chrono::steady_clock::now();
-    const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
-                                       prepared_root_lock.get());
+    const auto certification =
+        certify(layout.value(), buffers, checkpoint.completed_iterations, prepared_root_lock.get());
     result.timings.certification_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
             .count();
@@ -15533,8 +15257,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       return Result<PostflopSolveResult, PostflopSolverError>::failure(
           PostflopSolverError::IoFailure);
     }
-    if (options.checkpoint_callback &&
-        !options.checkpoint_callback(point, checkpoint)) {
+    if (options.checkpoint_callback && !options.checkpoint_callback(point, checkpoint)) {
       return Result<PostflopSolveResult, PostflopSolverError>::failure(
           PostflopSolverError::IoFailure);
     }
@@ -15553,9 +15276,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   // strategy only when that horizon doubles. This preserves the exact t^gamma
   // relative weighting without tying the algorithm to a future stop count.
   std::uint64_t dcfr_strategy_horizon = 0U;
-  if (target_driven_without_iteration_limit &&
-      (options.algorithm == PostflopAlgorithm::DcfrPlus ||
-       options.algorithm == PostflopAlgorithm::Dcfr)) {
+  if (target_driven_without_iteration_limit && (options.algorithm == PostflopAlgorithm::DcfrPlus ||
+                                                options.algorithm == PostflopAlgorithm::Dcfr)) {
     constexpr std::uint64_t minimum_horizon = 256U;
     const std::uint64_t required =
         std::max({minimum_horizon, options.certification_interval,
@@ -15567,26 +15289,20 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   std::uint64_t previous_certification_iteration = 0U;
   std::uint64_t adaptive_certification_iteration = 0U;
   const auto increment_saturated = [](const std::uint64_t value) {
-    return value == std::numeric_limits<std::uint64_t>::max() ? value
-                                                               : value + 1U;
+    return value == std::numeric_limits<std::uint64_t>::max() ? value : value + 1U;
   };
-  const auto first_periodic_base =
-      std::max(increment_saturated(checkpoint.completed_iterations),
-               increment_saturated(options.averaging_delay));
-  const auto periodic_remainder =
-      first_periodic_base % options.certification_interval;
+  const auto first_periodic_base = std::max(increment_saturated(checkpoint.completed_iterations),
+                                            increment_saturated(options.averaging_delay));
+  const auto periodic_remainder = first_periodic_base % options.certification_interval;
   const auto periodic_round_up =
-      periodic_remainder == 0U ? 0U
-                               : options.certification_interval - periodic_remainder;
+      periodic_remainder == 0U ? 0U : options.certification_interval - periodic_remainder;
   std::uint64_t next_periodic_certification_iteration =
-      first_periodic_base <=
-              std::numeric_limits<std::uint64_t>::max() - periodic_round_up
+      first_periodic_base <= std::numeric_limits<std::uint64_t>::max() - periodic_round_up
           ? first_periodic_base + periodic_round_up
           : std::numeric_limits<std::uint64_t>::max();
 #pragma warning(push)
 #pragma warning(disable : 4996)
-  const bool diagnostic_simultaneous =
-      std::getenv("GTOSD_DIAGNOSTIC_SIMULTANEOUS") != nullptr;
+  const bool diagnostic_simultaneous = std::getenv("GTOSD_DIAGNOSTIC_SIMULTANEOUS") != nullptr;
 #pragma warning(pop)
   while (target_driven_without_iteration_limit || iteration < options.iterations) {
     if (iteration == std::numeric_limits<std::uint64_t>::max()) {
@@ -15611,8 +15327,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         }
         const auto next_horizon = dcfr_strategy_horizon * 2U;
         const double rescale =
-            std::pow(static_cast<double>(dcfr_strategy_horizon) /
-                         static_cast<double>(next_horizon),
+            std::pow(static_cast<double>(dcfr_strategy_horizon) / static_cast<double>(next_horizon),
                      std::max(0.0, options.dcfr_average_exponent - 1.0));
         buffers.scale_strategy(rescale);
         dcfr_strategy_horizon = next_horizon;
@@ -15621,27 +15336,21 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
           std::pow(static_cast<double>(iteration), options.dcfr_positive_regret_exponent);
       dcfr_regret_scale *= powered / (powered + 1.0);
       regret_update_weight = 1.0 / dcfr_regret_scale;
-      const auto normalization_horizon = target_driven_without_iteration_limit
-                                             ? dcfr_strategy_horizon
-                                             : options.iterations;
+      const auto normalization_horizon =
+          target_driven_without_iteration_limit ? dcfr_strategy_horizon : options.iterations;
       strategy_weight = effective_iteration == 0.0
                             ? 0.0
                             : std::pow(effective_iteration, options.dcfr_average_exponent) /
                                   std::pow(static_cast<double>(normalization_horizon),
-                                          std::max(0.0,
-                                                    options.dcfr_average_exponent - 1.0));
+                                           std::max(0.0, options.dcfr_average_exponent - 1.0));
     } else if (options.algorithm == PostflopAlgorithm::Dcfr) {
-      const double alpha_iteration =
-          static_cast<double>(iteration > 0U ? iteration - 1U : 0U);
-      const double powered =
-          std::pow(alpha_iteration, options.dcfr_positive_regret_exponent);
+      const double alpha_iteration = static_cast<double>(iteration > 0U ? iteration - 1U : 0U);
+      const double powered = std::pow(alpha_iteration, options.dcfr_positive_regret_exponent);
       positive_regret_discount = powered / (powered + 1.0);
       negative_regret_discount = 0.5;
-      strategy_weight =
-          effective_iteration == 0.0
-              ? 0.0
-              : std::pow(effective_iteration,
-                         options.dcfr_average_exponent);
+      strategy_weight = effective_iteration == 0.0
+                            ? 0.0
+                            : std::pow(effective_iteration, options.dcfr_average_exponent);
     } else if (options.algorithm == PostflopAlgorithm::HsDcfr30) {
       const auto schedule = hs_dcfr30_schedule(iteration);
       const double discount_iteration = static_cast<double>(iteration - 1U);
@@ -15663,22 +15372,19 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       const double hs_average_discount =
           iteration == 1U
               ? 0.0
-              : std::pow(discount_iteration / static_cast<double>(iteration),
-                         schedule.gamma);
+              : std::pow(discount_iteration / static_cast<double>(iteration), schedule.gamma);
       buffers.scale_strategy(hs_average_discount);
       strategy_weight = effective_iteration == 0.0 ? 0.0 : 1.0;
     }
     if (!std::isfinite(strategy_weight) || !std::isfinite(regret_update_weight) ||
-        !std::isfinite(positive_regret_discount) ||
-        !std::isfinite(negative_regret_discount)) {
+        !std::isfinite(positive_regret_discount) || !std::isfinite(negative_regret_discount)) {
       return Result<PostflopSolveResult, PostflopSolverError>::failure(
           PostflopSolverError::NumericalFailure);
     }
     if (diagnostic_simultaneous) {
       const auto traversed =
           traversal->cfr_simultaneous(strategy_weight, regret_update_weight,
-                                      positive_regret_discount,
-                                      negative_regret_discount);
+                                      positive_regret_discount, negative_regret_discount);
       if (!traversed) {
         return Result<PostflopSolveResult, PostflopSolverError>::failure(traversed.error());
       }
@@ -15693,13 +15399,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       }
     } else {
       for (std::uint8_t player = 0; player < 2U; ++player) {
-        const auto traversed =
-              traversal->cfr(player, strategy_weight, regret_update_weight,
-                             positive_regret_discount,
-                             negative_regret_discount);
+        const auto traversed = traversal->cfr(player, strategy_weight, regret_update_weight,
+                                              positive_regret_discount, negative_regret_discount);
         if (!traversed) {
-          return Result<PostflopSolveResult, PostflopSolverError>::failure(
-              traversed.error());
+          return Result<PostflopSolveResult, PostflopSolverError>::failure(traversed.error());
         }
         const auto regret_application_started = std::chrono::steady_clock::now();
         const auto applied = traversal->apply_deferred_regrets();
@@ -15708,8 +15411,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                                           regret_application_started)
                 .count();
         if (!applied) {
-          return Result<PostflopSolveResult, PostflopSolverError>::failure(
-              applied.error());
+          return Result<PostflopSolveResult, PostflopSolverError>::failure(applied.error());
         }
       }
     }
@@ -15717,14 +15419,14 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         std::chrono::duration<double>(std::chrono::steady_clock::now() - traversal_started).count();
     checkpoint.completed_iterations = iteration;
     if (iteration <= 5U || iteration % 20U == 0U) {
-      std::fprintf(stderr,
-                   "solver_phase=iteration_complete iteration=%llu traversal_seconds=%.6f "
-                   "traversed_nodes=%llu\n",
-                   static_cast<unsigned long long>(iteration),
-                   std::chrono::duration<double>(std::chrono::steady_clock::now() -
-                                                 traversal_started)
-                       .count(),
-                   static_cast<unsigned long long>(traversal->traversed_nodes()));
+      std::fprintf(
+          stderr,
+          "solver_phase=iteration_complete iteration=%llu traversal_seconds=%.6f "
+          "traversed_nodes=%llu\n",
+          static_cast<unsigned long long>(iteration),
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - traversal_started)
+              .count(),
+          static_cast<unsigned long long>(traversal->traversed_nodes()));
     }
     const auto control = options.control_callback ? options.control_callback(iteration)
                                                   : PostflopControlCommand::Continue;
@@ -15735,18 +15437,15 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     // finite-run finalization and explicit pause/cancel still force one so
     // callers always receive an observable terminal checkpoint.
     const bool periodic_certification_due =
-        iteration > options.averaging_delay &&
-        iteration == next_periodic_certification_iteration;
+        iteration > options.averaging_delay && iteration == next_periodic_certification_iteration;
     const bool adaptive_certification_due =
-        adaptive_certification_iteration != 0U &&
-        iteration == adaptive_certification_iteration;
+        adaptive_certification_iteration != 0U && iteration == adaptive_certification_iteration;
     bool converged = false;
     if (periodic_certification_due || adaptive_certification_due ||
-        (!target_driven_without_iteration_limit && iteration == options.iterations) ||
-        stopping) {
+        (!target_driven_without_iteration_limit && iteration == options.iterations) || stopping) {
       const auto certification_started = std::chrono::steady_clock::now();
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
-                                       prepared_root_lock.get());
+                                         prepared_root_lock.get());
       result.timings.certification_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
               .count();
@@ -15760,11 +15459,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       if (options.target_normalized_nash_conv) {
         certification_metric = certification.value().normalized_nash_conv;
         certification_target = *options.target_normalized_nash_conv;
-        converged = options.strict_target
-                        ? certification.value().normalized_nash_conv <
-                              *options.target_normalized_nash_conv
-                        : certification.value().normalized_nash_conv <=
-                              *options.target_normalized_nash_conv;
+        converged = options.strict_target ? certification.value().normalized_nash_conv <
+                                                *options.target_normalized_nash_conv
+                                          : certification.value().normalized_nash_conv <=
+                                                *options.target_normalized_nash_conv;
       } else if (options.target_normalized_max_deviation) {
         const auto deviation =
             normalized_max_deviation_gain(certification.value(), config.initial_pot);
@@ -15784,9 +15482,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         // response can be omitted after two measurements both remain well
         // outside the target neighborhood. This never changes CFR state; it
         // only avoids an expensive observation that cannot stop the run.
-        if (!converged && target_driven_without_iteration_limit &&
-            certification_metric && certification_target &&
-            previous_certification_metric &&
+        if (!converged && target_driven_without_iteration_limit && certification_metric &&
+            certification_target && previous_certification_metric &&
             *certification_metric > *certification_target * 1.25 &&
             *previous_certification_metric > *certification_target * 1.25 &&
             periodic_step <= std::numeric_limits<std::uint64_t>::max() / 2U) {
@@ -15798,17 +15495,16 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                 : std::numeric_limits<std::uint64_t>::max();
       }
       if (!converged && target_driven_without_iteration_limit && certification_metric &&
-          certification_target && *certification_metric > 0.0 &&
-          *certification_target > 0.0 &&
-          *certification_metric <= *certification_target * 1.25 &&
-          previous_certification_metric && previous_certification_iteration < iteration &&
+          certification_target && *certification_metric > 0.0 && *certification_target > 0.0 &&
+          *certification_metric <= *certification_target * 1.25 && previous_certification_metric &&
+          previous_certification_iteration < iteration &&
           *previous_certification_metric > *certification_metric) {
-        const double exponent =
-            std::log(*previous_certification_metric / *certification_metric) /
-            std::log(static_cast<double>(iteration) /
-                     static_cast<double>(previous_certification_iteration));
+        const double exponent = std::log(*previous_certification_metric / *certification_metric) /
+                                std::log(static_cast<double>(iteration) /
+                                         static_cast<double>(previous_certification_iteration));
         if (std::isfinite(exponent) && exponent > 0.0) {
-          const double predicted = static_cast<double>(iteration) *
+          const double predicted =
+              static_cast<double>(iteration) *
               std::pow(*certification_metric / *certification_target, 1.0 / exponent);
           const auto candidate = static_cast<std::uint64_t>(std::ceil(predicted));
           const auto next_periodic = next_periodic_certification_iteration;
@@ -15828,8 +15524,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         return Result<PostflopSolveResult, PostflopSolverError>::failure(
             PostflopSolverError::IoFailure);
       }
-      if (options.checkpoint_callback &&
-          !options.checkpoint_callback(point, checkpoint)) {
+      if (options.checkpoint_callback && !options.checkpoint_callback(point, checkpoint)) {
         return Result<PostflopSolveResult, PostflopSolverError>::failure(
             PostflopSolverError::IoFailure);
       }
@@ -15872,8 +15567,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                !finite_vector(checkpoint.strategy_node_scale) ||
                std::ranges::any_of(checkpoint.regret_node_scale,
                                    [](const float value) { return value < 0.0F; }) ||
-                 std::ranges::any_of(checkpoint.strategy_node_scale,
-                                     [](const float value) { return value < 0.0F; })))) {
+               std::ranges::any_of(checkpoint.strategy_node_scale,
+                                   [](const float value) { return value < 0.0F; })))) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(
         PostflopSolverError::NumericalFailure);
   }
@@ -16068,10 +15763,9 @@ estimate_postflop_layout(const PostflopTreeConfig &config, const PostflopRanges 
 static Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &checkpoint,
                                   const NodeId public_node) {
-  const bool direct_canonical_root =
-      dense.tree.nodes.empty() && dense.uses_canonical_public_dag &&
-      public_node == dense.canonical_public_graph.root &&
-      public_node < dense.canonical_public_graph.nodes.size();
+  const bool direct_canonical_root = dense.tree.nodes.empty() && dense.uses_canonical_public_dag &&
+                                     public_node == dense.canonical_public_graph.root &&
+                                     public_node < dense.canonical_public_graph.nodes.size();
   if (!direct_canonical_root && public_node >= dense.tree.nodes.size()) {
     return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
@@ -16081,13 +15775,12 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
           ? &dense.canonical_public_graph.nodes[static_cast<std::size_t>(public_node)]
           : nullptr;
   const auto *physical_target =
-      direct_canonical_root ? nullptr
-                            : &dense.tree.nodes[static_cast<std::size_t>(public_node)];
+      direct_canonical_root ? nullptr : &dense.tree.nodes[static_cast<std::size_t>(public_node)];
   const auto target_kind =
       canonical_target != nullptr ? canonical_target->kind : physical_target->kind;
-  const auto target_player_to_act =
-      canonical_target != nullptr ? canonical_target->decision.player
-                                  : physical_target->state.player_to_act;
+  const auto target_player_to_act = canonical_target != nullptr
+                                        ? canonical_target->decision.player
+                                        : physical_target->state.player_to_act;
   if (target_kind != PublicNodeKind::Decision || checkpoint.game_fingerprint != dense.fingerprint ||
       checkpoint.action_count != dense.actions) {
     return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
@@ -16193,8 +15886,7 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
                      "error=%s\n",
                      static_cast<unsigned long long>(parent.id), step.edge,
                      static_cast<unsigned int>(combo),
-                     query ? "edge_out_of_range"
-                           : postflop_solver_error_name(query.error()));
+                     query ? "edge_out_of_range" : postflop_solver_error_name(query.error()));
         return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
@@ -16344,18 +16036,15 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
   }
   for (std::uint8_t player = 0; player < 2U; ++player) {
     if (root_profile_values) {
-      analysis.profile_value_antes[player] =
-          (*root_profile_values)[player];
+      analysis.profile_value_antes[player] = (*root_profile_values)[player];
     } else {
       DenseTraversal<combo_count> traversal(dense, buffers);
-      const auto values = traversal.policy_from_physical_node(public_node, player,
-                                                              {&reach[0], &reach[1]});
+      const auto values =
+          traversal.policy_from_physical_node(public_node, player, {&reach[0], &reach[1]});
       if (!values) {
-        std::fprintf(stderr,
-                     "node_analysis_failure phase=policy node=%llu player=%u error=%s\n",
+        std::fprintf(stderr, "node_analysis_failure phase=policy node=%llu player=%u error=%s\n",
                      static_cast<unsigned long long>(public_node),
-                     static_cast<unsigned int>(player),
-                     postflop_solver_error_name(values.error()));
+                     static_cast<unsigned int>(player), postflop_solver_error_name(values.error()));
         return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(values.error());
       }
       double weighted_value = 0.0;
@@ -16368,7 +16057,8 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
         analysis.profile_value_antes[player] +
         (canonical_target != nullptr
              ? dense.initial_pot_contribution_antes[player]
-             : static_cast<double>(physical_target->state.initial_pot_contributions[player].units()) /
+             : static_cast<double>(
+                   physical_target->state.initial_pot_contributions[player].units()) /
                    units_per_ante);
     if (!std::isfinite(analysis.gto_plus_ev_antes[player])) {
       return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
@@ -16444,15 +16134,13 @@ analyze_postflop_node(PostflopPreparedTree &prepared, const PostflopCheckpoint &
                       const NodeId public_node) {
   auto &production_layout = prepared.implementation_->layout;
   const bool production_canonical_root =
-      production_layout.uses_canonical_public_dag &&
-      production_layout.tree.nodes.empty() &&
+      production_layout.uses_canonical_public_dag && production_layout.tree.nodes.empty() &&
       public_node == production_layout.canonical_public_graph.root;
   // A prepared browser may own a materialized physical tree for history
   // navigation. The root remains authoritative in the production canonical
   // layout so it uses the same capacity-dispatched profile evaluation as
   // certification; only non-root browser nodes require the physical layout.
-  auto &layout = prepared.implementation_->analysis_layout &&
-                         !production_canonical_root
+  auto &layout = prepared.implementation_->analysis_layout && !production_canonical_root
                      ? *prepared.implementation_->analysis_layout
                      : production_layout;
   return analyze_postflop_node_with_layout(layout, checkpoint, public_node);
