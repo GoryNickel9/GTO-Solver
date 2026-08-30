@@ -26,6 +26,19 @@ target_link_libraries(gtosd_hero_tiled_treelet_benchmark
   PRIVATE benchmark::benchmark benchmark::benchmark_main)
 gtosd_set_warnings(gtosd_hero_tiled_treelet_benchmark)
 
+add_executable(gtosd_exact_state_representation_benchmark
+  exact_state_representation_benchmark.cpp)
+target_link_libraries(gtosd_exact_state_representation_benchmark
+  PRIVATE benchmark::benchmark)
+gtosd_set_warnings(gtosd_exact_state_representation_benchmark)
+
+add_test(NAME gtosd_exact_state_representation_benchmark_smoke
+  COMMAND gtosd_exact_state_representation_benchmark
+    --benchmark_min_time=0.01s
+    --benchmark_repetitions=1)
+set_tests_properties(gtosd_exact_state_representation_benchmark_smoke
+  PROPERTIES LABELS "benchmark;postflop;state;phase7")
+
 add_test(NAME gtosd_showdown_fusion_benchmark_smoke
   COMMAND gtosd_showdown_fusion_benchmark
     --benchmark_filter=BM_Showdown.*small
