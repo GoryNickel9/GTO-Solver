@@ -23,6 +23,9 @@
 #include <iomanip>
 #include <immintrin.h>
 #include <limits>
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+#include <map>
+#endif
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -2415,6 +2418,23 @@ struct HotpathTelemetry {
   std::uint64_t river_frontier_showdowns = 0U;
   std::uint64_t river_frontier_full_batches = 0U;
   std::uint64_t river_frontier_tail_lanes = 0U;
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  std::uint64_t river_topology_sites = 0U;
+  std::uint64_t river_topology_roots = 0U;
+  std::uint64_t river_topology_groups = 0U;
+  std::uint64_t river_topology_singletons = 0U;
+  std::uint64_t river_topology_full_batches = 0U;
+  std::uint64_t river_topology_tail_lanes = 0U;
+  std::uint64_t river_topology_batchable_roots = 0U;
+  std::uint64_t river_topology_padded_slots = 0U;
+  std::uint64_t river_topology_full_pairs = 0U;
+  std::uint64_t river_topology_pair_batchable_roots = 0U;
+  std::uint64_t river_topology_pair_padded_slots = 0U;
+  std::uint64_t river_topology_pair_batchable_work = 0U;
+  std::uint64_t river_topology_work = 0U;
+  std::uint64_t river_topology_padded_work = 0U;
+  std::uint64_t river_topology_ineligible_roots = 0U;
+#endif
 
   HotpathTelemetry &operator+=(const HotpathTelemetry &other) noexcept {
 #define GTOSD_ADD_PROFILE_FIELD(field) field += other.field
@@ -2448,6 +2468,23 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(river_frontier_showdowns);
     GTOSD_ADD_PROFILE_FIELD(river_frontier_full_batches);
     GTOSD_ADD_PROFILE_FIELD(river_frontier_tail_lanes);
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    GTOSD_ADD_PROFILE_FIELD(river_topology_sites);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_roots);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_groups);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_singletons);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_full_batches);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_tail_lanes);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_batchable_roots);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_padded_slots);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_full_pairs);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_pair_batchable_roots);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_pair_padded_slots);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_pair_batchable_work);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_work);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_padded_work);
+    GTOSD_ADD_PROFILE_FIELD(river_topology_ineligible_roots);
+#endif
 #undef GTOSD_ADD_PROFILE_FIELD
     return *this;
   }
@@ -2685,6 +2722,10 @@ public:
   mutable HotpathTelemetry prof_telemetry_{};
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
   mutable std::unordered_set<std::uint64_t> prof_showdown_reach_hashes_{};
+  mutable std::vector<std::uint32_t> prof_river_topology_class_cache_{};
+  mutable std::vector<std::uint64_t> prof_river_topology_work_cache_{};
+  mutable std::map<std::vector<std::uint64_t>, std::uint32_t>
+      prof_river_topology_classes_{};
 #endif
 
   // Per-pass profile (GTOSD_PROFILE_HOTPATH=1): sums this traversal's and its
@@ -2710,6 +2751,179 @@ public:
     return false;
 #endif
   }
+
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+  [[nodiscard]] std::uint32_t
+  profile_river_topology_class(const std::uint32_t node_id) const {
+    constexpr auto invalid = std::numeric_limits<std::uint32_t>::max();
+    constexpr auto building = invalid - 1U;
+    const auto node_count = layout_.canonical_public_graph.nodes.size();
+    if (prof_river_topology_class_cache_.size() != node_count) {
+      prof_river_topology_class_cache_.assign(node_count, invalid);
+      prof_river_topology_work_cache_.assign(node_count, 0U);
+      prof_river_topology_classes_.clear();
+    }
+    if (node_id >= node_count) {
+      return 0U;
+    }
+    auto &cached = prof_river_topology_class_cache_[node_id];
+    if (cached != invalid && cached != building) {
+      return cached;
+    }
+    if (cached == building) {
+      return 0U;
+    }
+    cached = building;
+    const auto &node = layout_.canonical_public_graph.nodes[node_id];
+    std::vector<std::uint64_t> descriptor;
+    descriptor.reserve(16U + node.edges.size() * 8U);
+    descriptor.push_back(static_cast<std::uint8_t>(node.kind));
+    descriptor.push_back(root_lock_ != nullptr &&
+                         node_id == layout_.canonical_public_graph.root);
+    descriptor.push_back(node.edges.size());
+    if (node.kind == PublicNodeKind::Decision) {
+      descriptor.push_back(node.decision.player);
+      descriptor.push_back(node.decision.action_count);
+      descriptor.push_back(node.decision.terminal_child_mask);
+      descriptor.push_back(node.decision.paired_fold_action);
+      descriptor.push_back(node.decision.paired_showdown_action);
+      descriptor.push_back(node.decision.subtree_player_mask);
+      descriptor.push_back(node.decision.descendant_player_mask);
+    }
+    for (const auto &edge : node.edges) {
+      // Amounts, payoff, state offsets and physical metadata remain lane-local
+      // inputs in a possible batched traversal. They do not alter the control
+      // shape and including them here would turn this upper-bound telemetry
+      // into a false-negative test for parametrically identical subtrees.
+      descriptor.push_back(static_cast<std::uint8_t>(edge.action.type));
+      descriptor.push_back(static_cast<std::uint8_t>(edge.action.all_in_kind));
+      descriptor.push_back(edge.outcomes.size());
+      for (const auto &outcome : edge.outcomes) {
+        descriptor.push_back(profile_river_topology_class(outcome.child));
+      }
+    }
+    const auto found = prof_river_topology_classes_.find(descriptor);
+    if (found != prof_river_topology_classes_.end()) {
+      cached = found->second;
+      return cached;
+    }
+    const auto next_class = static_cast<std::uint32_t>(
+        prof_river_topology_classes_.size() + 1U);
+    prof_river_topology_classes_.emplace(std::move(descriptor), next_class);
+    cached = next_class;
+    return cached;
+  }
+
+  [[nodiscard]] std::uint64_t
+  profile_river_topology_work(const std::uint32_t node_id) const {
+    const auto node_count = layout_.canonical_public_graph.nodes.size();
+    if (prof_river_topology_work_cache_.size() != node_count) {
+      prof_river_topology_class_cache_.assign(
+          node_count, std::numeric_limits<std::uint32_t>::max());
+      prof_river_topology_work_cache_.assign(node_count, 0U);
+      prof_river_topology_classes_.clear();
+    }
+    if (node_id >= node_count) {
+      return 0U;
+    }
+    auto &cached = prof_river_topology_work_cache_[node_id];
+    if (cached != 0U) {
+      return cached;
+    }
+    const auto &node = layout_.canonical_public_graph.nodes[node_id];
+    const auto &board = layout_.boards[node.board_index];
+    std::uint64_t work = 1U;
+    if (node.kind == PublicNodeKind::TerminalFold) {
+      work += board.player_combos[0].size() +
+              board.player_combos[1].size();
+    } else if (node.kind == PublicNodeKind::TerminalShowdown) {
+      work += board.player_combos[0].size() +
+              board.player_combos[1].size() +
+              static_cast<std::uint64_t>(board.player_rank_count) * 37U;
+    } else if (node.kind == PublicNodeKind::Decision) {
+      work += static_cast<std::uint64_t>(
+                  board.player_combos[node.decision.player].size()) *
+              node.decision.action_count;
+    }
+    for (const auto &edge : node.edges) {
+      for (const auto &outcome : edge.outcomes) {
+        work += profile_river_topology_work(outcome.child);
+      }
+    }
+    cached = work;
+    return cached;
+  }
+
+  void profile_river_topology_compatibility(
+      const CanonicalPublicNode &turn_chance,
+      const std::uint8_t updating_player) const {
+    struct Group {
+      std::uint64_t count{0U};
+      std::uint64_t unit_work{0U};
+    };
+    std::map<std::vector<std::uint64_t>, Group> groups;
+    ++prof_telemetry_.river_topology_sites;
+    prof_telemetry_.river_topology_roots += turn_chance.edges.size();
+    for (const auto &edge : turn_chance.edges) {
+      if (edge.outcomes.empty()) {
+        ++prof_telemetry_.river_topology_ineligible_roots;
+        continue;
+      }
+      const auto child_id = edge.outcomes.front().child;
+      if (child_id >= layout_.canonical_public_graph.nodes.size()) {
+        ++prof_telemetry_.river_topology_ineligible_roots;
+        continue;
+      }
+      const auto &root = layout_.canonical_public_graph.nodes[child_id];
+      const auto &river_board = layout_.boards[root.board_index];
+      if (std::popcount(river_board.mask) != 5) {
+        ++prof_telemetry_.river_topology_ineligible_roots;
+        continue;
+      }
+      const auto work = profile_river_topology_work(child_id);
+      std::vector<std::uint64_t> key{
+          profile_river_topology_class(child_id), updating_player,
+          std::is_same_v<Scalar, float> ? 1U : 0U,
+          PlayerIndexed ? 1U : 0U,
+          river_board.rank_count, river_board.player_rank_count,
+          work};
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        const auto &terminal = river_board.terminal_combos[player];
+        key.push_back(river_board.player_combos[player].size());
+        key.push_back(river_board.player_flop_slots[player].size());
+        key.push_back(terminal.size());
+        key.push_back(terminal.touched_rank_count);
+        key.push_back(terminal.touched_by_rank_card.size());
+        key.push_back(terminal.size() / 8U);
+        key.push_back(terminal.size() % 8U);
+      }
+      auto &[count, unit_work] = groups[std::move(key)];
+      ++count;
+      unit_work = work;
+    }
+    prof_telemetry_.river_topology_groups += groups.size();
+    for (const auto &[key, group] : groups) {
+      static_cast<void>(key);
+      const auto full_batches = group.count / 4U;
+      const auto tail = group.count % 4U;
+      const auto padded = ((group.count + 3U) / 4U) * 4U;
+      const auto full_pairs = group.count / 2U;
+      const auto pair_padded = ((group.count + 1U) / 2U) * 2U;
+      prof_telemetry_.river_topology_singletons += group.count == 1U ? 1U : 0U;
+      prof_telemetry_.river_topology_full_batches += full_batches;
+      prof_telemetry_.river_topology_tail_lanes += tail;
+      prof_telemetry_.river_topology_batchable_roots += full_batches * 4U;
+      prof_telemetry_.river_topology_padded_slots += padded;
+      prof_telemetry_.river_topology_full_pairs += full_pairs;
+      prof_telemetry_.river_topology_pair_batchable_roots += full_pairs * 2U;
+      prof_telemetry_.river_topology_pair_padded_slots += pair_padded;
+      prof_telemetry_.river_topology_pair_batchable_work +=
+          full_pairs * 2U * group.unit_work;
+      prof_telemetry_.river_topology_work += group.count * group.unit_work;
+      prof_telemetry_.river_topology_padded_work += padded * group.unit_work;
+    }
+  }
+#endif
 
   [[nodiscard]] static bool diagnostic_certify_current_strategy() noexcept {
 #pragma warning(push)
@@ -2998,6 +3212,43 @@ public:
         static_cast<unsigned long long>(telemetry.river_frontier_showdowns),
         static_cast<unsigned long long>(telemetry.river_frontier_full_batches),
         static_cast<unsigned long long>(telemetry.river_frontier_tail_lanes));
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    std::fprintf(
+        stderr,
+        "  river subtree compatibility: sites=%llu roots=%llu groups=%llu singleton=%llu full_batches=%llu tail_lanes=%llu batchable_roots=%llu padded_slots=%llu ineligible=%llu lane_occupancy=%.6f work_occupancy=%.6f pairs=%llu pair_batchable_roots=%llu pair_lane_occupancy=%.6f pair_work_coverage=%.6f\n",
+        static_cast<unsigned long long>(telemetry.river_topology_sites),
+        static_cast<unsigned long long>(telemetry.river_topology_roots),
+        static_cast<unsigned long long>(telemetry.river_topology_groups),
+        static_cast<unsigned long long>(telemetry.river_topology_singletons),
+        static_cast<unsigned long long>(telemetry.river_topology_full_batches),
+        static_cast<unsigned long long>(telemetry.river_topology_tail_lanes),
+        static_cast<unsigned long long>(telemetry.river_topology_batchable_roots),
+        static_cast<unsigned long long>(telemetry.river_topology_padded_slots),
+        static_cast<unsigned long long>(telemetry.river_topology_ineligible_roots),
+        telemetry.river_topology_padded_slots == 0U
+            ? 0.0
+            : static_cast<double>(telemetry.river_topology_roots -
+                                  telemetry.river_topology_ineligible_roots) /
+                  static_cast<double>(telemetry.river_topology_padded_slots),
+        telemetry.river_topology_padded_work == 0U
+            ? 0.0
+            : static_cast<double>(telemetry.river_topology_work) /
+                  static_cast<double>(telemetry.river_topology_padded_work),
+        static_cast<unsigned long long>(telemetry.river_topology_full_pairs),
+        static_cast<unsigned long long>(
+            telemetry.river_topology_pair_batchable_roots),
+        telemetry.river_topology_pair_padded_slots == 0U
+            ? 0.0
+            : static_cast<double>(telemetry.river_topology_roots -
+                                  telemetry.river_topology_ineligible_roots) /
+                  static_cast<double>(
+                      telemetry.river_topology_pair_padded_slots),
+        telemetry.river_topology_work == 0U
+            ? 0.0
+            : static_cast<double>(
+                  telemetry.river_topology_pair_batchable_work) /
+                  static_cast<double>(telemetry.river_topology_work));
+#endif
     std::fprintf(stderr, "  task distribution: main=%llu/%.1fms",
                  static_cast<unsigned long long>(prof_tasks_),
                  prof_task_wall_seconds_ * 1000.0);
@@ -7617,6 +7868,11 @@ private:
     zero_values_into(updating_player, values);
     const std::size_t worker_count = parallel_workers_.size();
     const auto board_card_count = std::popcount(board.mask);
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+    if (profile && board_card_count == 4U) {
+      profile_river_topology_compatibility(canonical, updating_player);
+    }
+#endif
     // Flop representatives are always large enough to amortize dispatch.  On
     // the turn, split river representatives only when the shared queue has
     // drained and pool workers would otherwise sit idle.  This targets the
