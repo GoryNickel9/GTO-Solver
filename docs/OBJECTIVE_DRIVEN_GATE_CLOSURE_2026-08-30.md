@@ -61,7 +61,11 @@ annullare il gate RAM production.
 | 1 | worst correctness 156.825x | scomposizione chance | distinguere identity/transform/multiplicity | identity <=4,4e-16; transformed 1,56e-7; multiplicity zero | root cause confermata | invariato |
 | 2 | reuse con reach non invariante | rivalutare outcome con reach opponent distinto | payoff <=1e-11, BR/profile exact | TST@5 6,143e-9 -> -8,88e-16; TST@20 -> -3,39e-15; target -> 3,22e-15 | PROMOTE `40104f0` | correctness `(2,156825x) -> (0,0)` |
 | 3 | certification aumentata | BR actor fast path | -5..15% certification, bit-identico | tre A/B: certification mediana 9,6249 -> 9,0981 s; solver 27,9039 -> 26,1106 s | PROMOTE `c9acfe3` | correctness invariata; time migliorato ma FAIL TST |
-| 4 | traversal TST dominante | paired profile / joint lanes / state fusion | massimo 3..8% solver per candidate noto | gap target resta circa 49%; state updater già fused | CLOSE per questa fase: upside insufficiente | TST time resta dominante |
+| 4 | traversal TST dominante | signed state pass fusion | eliminare almeno una passata >=5% traversal | updater già fuso; 396,8 ms / 26.103,8 ms = 1,52% wall profilato | CLOSE | invariato |
+| 5 | certification duplicata | pair profile+BR dello stesso player | -20..35% certification, bit-identico | tre A/B: cert mediana 9,96 -> 7,75 s; exact differential e zero-rake mirror PASS | PROMOTE `4a7e851` | performance migliora, TST time ancora FAIL |
+| 6 | terminal/showdown dominante | frontier batching 4-lane | iniziale 2,2..2,9x kernel sintetico | benchmark non faithful: baseline scalarizza prefix/output già AVX2 production; coverage root-local 53,695% | CLOSE autonomo; tooling conservato `0b71489` | informazione acquisita, F invariato |
+| 7 | distinct-outcome tail seriale | flat worklist exact + nested pool | -15..30% certification residua | tre A/B con binari distinti: cert mediana 7,148 -> 5,904 s; payoff/BR/profile bit-identici | PROMOTE `0d51fd6` | performance migliora, TST time ancora FAIL |
+| 8 | traversal target > limite anche con certification gratuita | whole-river lanes / cross-root broker / continuation | richiede >=30% traversal | hero-SIMD già 8-wide, state disgiunto richiede gather, RAM margin ~27 MB; upper bound credibile 0..13% | REJECT/CLOSE fino a nuovo cost model faithful | blocker architetturale distinto |
 
 ## 5. AHK correctness audit
 
@@ -137,6 +141,47 @@ Tutti i profile EV, BR, dEV e payoff-sum dei tre candidate run sono identici al
 baseline. Il traversal non è modificato dal candidato; la sua variazione non è
 attribuita causalmente al patch.
 
+Il ciclo successivo ha accoppiato, per ciascun player, profile evaluation ed
+exact BR. Le due lane condividono opponent reach, terminal kernel, chance
+transform e policy decode; divergono soltanto nella riduzione ai decision node
+del player (`sum sigma*child` contro `max child`). Root lock e zero-rake mirror
+mantengono esattamente la semantica legacy. Un oracle nel reference test
+confronta i bit di profile P0/P1, BR P0/P1, payoff-sum e NashConv.
+
+TST@20, tre processi per variante:
+
+| Variante | solver mediana | traversal mediana | certification mediana |
+|---|---:|---:|---:|
+| legacy quattro traversal | 28,82 s | 18,43 s | 9,96 s |
+| same-player pair | 25,45 s | 17,53 s | 7,75 s |
+| delta certification |  |  | **-22,2%** |
+
+La residual tail era ancora seriale: dopo il join dei representative, gli
+outcome con opponent reach trasformato distinto venivano rivalutati dal solo
+caller. La worklist finale materializza representative e distinct reach come
+work item read-only, li distribuisce sul pool anche ai chance annidati e salva i
+risultati per indice. L'accumulo resta successivo al join e nello stesso ordine
+canonico, quindi non cambia l'ordine IEEE.
+
+Attribuzione TST@20:
+
+- flat worklist soltanto: `7,744 -> 6,644 s` certification (`-14,21%`);
+- flat + nested: `6,644 -> 5,329 s` nel run di isolamento (`-19,79%`);
+- combined contro paired baseline: `-31,18%` nel run di selezione.
+
+L'A/B definitivo ha usato un binario detached esatto a `4a7e851` e il binario
+candidate, ordine B/C/B/C/B/C:
+
+| Pair | baseline cert | candidate cert | baseline solver | candidate solver |
+|---:|---:|---:|---:|---:|
+| 1 | 7,343335 s | 5,994388 s | 25,372564 s | 23,578930 s |
+| 2 | 6,770451 s | 5,904024 s | 24,200711 s | 21,905603 s |
+| 3 | 7,148386 s | 5,610861 s | 24,930610 s | 22,856513 s |
+| mediana | **7,148386 s** | **5,904024 s** | **24,930610 s** | **22,856513 s** |
+
+Tutti i valori matematici sono identici. Il peak massimo passa da
+`1.971.040.256 B` a `1.972.858.880 B`, entro il cap.
+
 ## 8. Signed state byte/pass profiling
 
 L'ispezione del path production mostra che l'updater signed è già fuso. Per un
@@ -148,27 +193,41 @@ nodo con `E = actions * live_hands`:
    `4E`;
 3. encode/writeback: legge scratch `8E`, scrive code `4E` e scale `8 B/node`.
 
-Il solo traffico state+scratch è quindi `24E + 16 B/node`, prima di action
-values, reach e value vector. Max scan e average non sono passate complete
-separate. I contatori esistenti misurano entry aggiornate/re-encoded, scale
-checks/rescale e strategy density; non separano ancora tutti i byte per fase.
-Questa lacuna resta esplicita: non è stata inventata una misura runtime che il
-build corrente non produce.
+Il cost model completo del path generico float è circa `40 B/action update`:
+`28 B` letti e `12 B` scritti, più `16 B/node` per read/write delle due scale.
+I kernel specializzati valgono circa `36 B/entry` a due azioni e `34,7 B/entry`
+a tre. Max scan e average non sono passate complete separate: la prima passata
+produce entrambi gli scratch e i massimi; la seconda deve attendere le scale
+globali definitive prima di quantizzare e scrivere i due code.
+
+Il profilo TST@20 attribuisce all'intero signed update `396,8 ms` su
+`26.103,8 ms` wall (`1,52%`). Anche eliminarlo interamente, cosa non exact,
+resterebbe sotto la soglia economica. `full state-pass fusion` è quindi CLOSE.
 
 ## 9. Ranking architetturale
 
 | Candidate | Gain atteso solver | Confidenza | Costo/rischio | Esito |
 |---|---:|---:|---|---|
-| BR actor fast path | 1-3% atteso, 6,43% short osservato | alta | basso/basso | PROMOTE |
-| paired profile P0/P1 | 3-5% | medio-alta | medio-alto/medio | plausibile, insufficiente da solo |
-| joint certification lanes | 4-8% | media | alto/medio-alto | fase distinta |
-| arena chance scratch | 1-5% certification | media | medio/basso | non prioritario |
-| full state-pass fusion | <5% non dimostrato | alta sul cost model | alto/alto | CLOSE |
-| traversal architecture non ancora identificata | deve valere almeno 30-45% | bassa | alta | blocker di ricerca |
+| BR actor fast path | 1-3% atteso, 6,43% short osservato | alta | basso/basso | PROMOTE `c9acfe3` |
+| same-player profile+BR pair | 20-35% certification | medio-alta | medio/medio-basso | PROMOTE `4a7e851` |
+| flat distinct worklist + nested pool | 15-30% certification residua | alta dopo A/B | medio/medio-basso | PROMOTE `0d51fd6` |
+| frontier batching sola accumulation | <=6-7% traversal root-local | alta sull'upper bound | alto/medio | CLOSE |
+| cross-root terminal broker | <=12-13% traversal ideale | bassa | alto/alto | MEASURE, insufficiente da solo |
+| four-lane whole river | 0-10% pratico non dimostrato | bassa | molto alto/alto RAM | REJECT come integrazione minima |
+| four-lane joint certification | 8-18% certification residua | media-bassa | alto/alto | CLOSE per economics |
+| full state-pass fusion | <=1,52% traversal assoluto | alta | alto/alto | CLOSE |
 
-Anche rendendo gratuita la certification baseline, il traversal TST originario
-restava sopra il limite. Dopo il fix exact la distanza è maggiore: nessuna delle
-candidate certification note può chiudere il gate.
+Il benchmark four-lane conserva valore come proof-of-concept bit-identica con
+quattro reach e payoff distinti, ma non come prova prestazionale production:
+la baseline sintetica usa prefix/output scalari, mentre production usa AVX2 su
+otto card/hero. La telemetria su 40 player-pass misura `22.132.502` showdown in
+`6.231.136` river root; solo `53,695%` cade in quartetti root-local. Non è stato
+promosso alcun path sulla proiezione non faithful.
+
+Anche rendendo gratuita la certification, il traversal target post-fix
+misurato (`183,04 s`) supera il limite solver (`128,989 s`). Nessuna candidate
+certification può chiudere il gate; serve una riduzione traversal architetturale
+di almeno circa 30%, non dimostrata dalle famiglie rimaste.
 
 ## 10. Candidate provati, differential e rollback
 
@@ -178,7 +237,15 @@ candidate certification note può chiudere il gate.
 - decision-node rounding come root cause: REJECT, il primo salto è chance;
 - terminal payoff correction: REJECT, terminali già entro circa 1e-15;
 - post-hoc zero-sum/mirror/tolerance change: vietati e non implementati;
-- full state-pass fusion: CLOSE, nessuna passata completa eliminabile exact.
+- full state-pass fusion: CLOSE, nessuna passata completa eliminabile exact;
+- same-player profile+BR pair: PROMOTE, commit `4a7e851`;
+- four-lane terminal proof-of-concept e frontier telemetry: tooling PROMOTE
+  `0b71489`, integrazione production CLOSE;
+- flat distinct-outcome worklist + nested read-only pool: PROMOTE `0d51fd6`;
+- whole-river four-lane: REJECT come minima integrazione per perdita hero-SIMD,
+  gather state e rischio RAM;
+- cross-root broker: MEASURE soltanto, upper bound insufficiente senza un nuovo
+  benchmark production-faithful.
 
 La regressione generica nel reference test usa un DAG realmente compresso,
 DCFR signed e `ScaledUint16RegretStrategy`; richiede payoff-sum `<1e-11` senza
@@ -199,6 +266,11 @@ dopo fix correctness, target misurato:
 dopo BR fast path:
   correctness invariata; TST@20 solver -6.43%; nessun nuovo target-driven
   perché l'upside massimo del candidato non può chiudere il ratio 1.958.
+
+dopo certification pair + worklist/nested:
+  correctness invariata; certification TST@20 9.96 -> 7.75 -> 5.90 s nelle
+  rispettive mediane; il target solver resta proiettato ampiamente >1.0 perché
+  il solo traversal target noto vale circa 1.419x il limite.
 ```
 
 Il peggioramento temporale del fix è accettato soltanto perché correctness è il
@@ -214,36 +286,48 @@ termine lessicograficamente superiore. Non è presentato come chiusura performan
 | layout/convergence | PASS | PASS | PASS |
 | solver state | 5.300.664 B PASS | 334.452.416 B PASS | 1.472.605.376 B PASS |
 | peak RSS | 166.567.936 B PASS cap | 797.335.552 B PASS cap | 1.968.865.280 B PASS cap |
-| solver time | 0,783254 s PASS | 20,841874 s run corrente FAIL; baseline pulito 19,446404 PASS | 252,534707 s FAIL |
+| solver time | 0,688 s fixed@80 PASS | 18,638 s fixed@80 PASS nel sanity corrente | 252,534707 s target pre-perf FAIL; nessun nuovo target promosso |
 
-Il target TST è stato eseguito prima del fast path BR; il fast path è stato
-promosso su tre A/B @20 e non giustifica un altro target lungo perché il suo
-massimo upside non può chiudere il gate. Il run TH corrente è più lento del
-limite ma confligge con il baseline pulito; deve essere ripetuto in un protocollo
-scarico prima della certificazione finale.
+Il TST@80 finale del nuovo scheduling misura solver `80,554211 s`, traversal
+`73,862787 s`, certification `6,280057 s`, payoff-sum `-3,33e-16`, peak RSS
+`1.972.805.632 B` e state `1.472.605.376 B`. Il dEV `3,19058%` è atteso per il
+fixed-mid e non è un correctness fail. Non è stato speso un nuovo target@202:
+anche l'upper bound dei candidati promossi non può portare il traversal noto
+sotto il limite totale.
 
 ## 13. Validazione
 
 - build Release `gto_cli` e `gtosd_gto_plus_reference_tests`: PASS;
-- full CTest Release: 20/20 PASS in 199,47 s;
+- full CTest Release finale a `0d51fd6`: 20/20 PASS in 210,70 s;
 - reference test completo: PASS, 24 assertion più regression zero-sum;
 - TST fixed @5 e @20: correctness differential PASS;
 - tre TST@20 baseline/candidate alternati: exact-value differential PASS;
+- same-player pair: tre processi per variante, bit differential PASS;
+- worklist+nested: tre B/C alternati con due binari distinti, tutte le coppie
+  più veloci e exact-value differential PASS;
+- showdown four-lane proof-of-concept: small/medium/large bit identity con
+  reach e payoff lane-specific; timing non usato come production evidence;
+- frontier occupancy TST@20: 40 player-pass, coverage quartet root-local
+  `53,695%`;
+- TST@80 mid: payoff/RAM/state PASS;
 - AHK/TH target sanity: correctness PASS;
 - TST target correctness: PASS;
 - `git diff --check`: PASS (soli warning EOL Windows).
 
 ## 14. Five-process e parity
 
-`five-process certification`: **NON AUTORIZZATA**. TST time è ancora rosso e
-TH richiede un timing pulito. La parity production completa non è dichiarata.
+`five-process certification`: **NON AUTORIZZATA**. TST time è ancora rosso.
+La parity production completa non è dichiarata.
 
 ## 15. Stato conclusivo e prossimo passo
 
 Gate chiusi: correctness formale AHK e TST, dEV, Root, layout, convergence,
-solver state e RAM cap. Gate aperti: TST solver time; timing TH da riconfermare
-su host scarico. Non resta una micro-ottimizzazione credibile capace di colmare
-il gap. Il prossimo singolo passo ad alta priorità è profilare e progettare una
-traversal organization exact con upside dimostrabile almeno 30%, mantenendo il
-nuovo requisito: ogni outcome trasformato deve usare il reach opponent reale o
-una prova di invarianza esatta.
+solver state e RAM cap; TH fixed@80 rientra nel tempo nel sanity finale. Gate
+aperto: TST solver time. La five-process resta congelata.
+
+Il prossimo singolo passo ad alta priorità è una fase distinta di ricerca per
+un benchmark 2D-tiling production-faithful (hero SIMD x subtree lanes) e
+telemetria di compatibilità degli interi river subtree. Deve dimostrare almeno
+circa 30% traversal end-to-end prima di una mutazione production; non basta
+accelerare la sola accumulation terminale. Ogni outcome trasformato continua a
+richiedere il reach opponent reale o una prova di invarianza bytewise.
