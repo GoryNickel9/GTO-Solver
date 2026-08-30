@@ -2411,6 +2411,10 @@ struct HotpathTelemetry {
   std::uint64_t showdown_touched_card_rank_cells = 0U;
   std::uint64_t showdown_reach_hash_unique = 0U;
   std::uint64_t showdown_reach_hash_repeats = 0U;
+  std::uint64_t river_frontier_roots = 0U;
+  std::uint64_t river_frontier_showdowns = 0U;
+  std::uint64_t river_frontier_full_batches = 0U;
+  std::uint64_t river_frontier_tail_lanes = 0U;
 
   HotpathTelemetry &operator+=(const HotpathTelemetry &other) noexcept {
 #define GTOSD_ADD_PROFILE_FIELD(field) field += other.field
@@ -2440,6 +2444,10 @@ struct HotpathTelemetry {
     GTOSD_ADD_PROFILE_FIELD(showdown_touched_card_rank_cells);
     GTOSD_ADD_PROFILE_FIELD(showdown_reach_hash_unique);
     GTOSD_ADD_PROFILE_FIELD(showdown_reach_hash_repeats);
+    GTOSD_ADD_PROFILE_FIELD(river_frontier_roots);
+    GTOSD_ADD_PROFILE_FIELD(river_frontier_showdowns);
+    GTOSD_ADD_PROFILE_FIELD(river_frontier_full_batches);
+    GTOSD_ADD_PROFILE_FIELD(river_frontier_tail_lanes);
 #undef GTOSD_ADD_PROFILE_FIELD
     return *this;
   }
@@ -2945,7 +2953,8 @@ public:
         stderr,
         "  scale telemetry: checks=%llu unchanged=%llu changed=%llu required=%llu overflow=%llu reencoded=%llu required_entries=%llu delta=[%llu,%llu,%llu,%llu,%llu,%llu]\n"
         "  strategy density: zero=%llu positive<1e-6=%llu positive<1e-4=%llu total=%llu whole-zero=%llu skipped_actions=%llu skipped_subtrees=%llu skipped_entries=%llu\n"
-        "  showdown workload: calls=%llu hero=%llu opponent=%llu rank_cells=%llu touched_ranks=%llu touched_card_ranks=%llu reach_hash_unique=%llu reach_hash_repeats=%llu\n",
+        "  showdown workload: calls=%llu hero=%llu opponent=%llu rank_cells=%llu touched_ranks=%llu touched_card_ranks=%llu reach_hash_unique=%llu reach_hash_repeats=%llu\n"
+        "  river frontier upper bound: roots=%llu showdowns=%llu full_batches=%llu tail_lanes=%llu\n",
         static_cast<unsigned long long>(telemetry.scale_checks),
         static_cast<unsigned long long>(telemetry.scale_unchanged),
         static_cast<unsigned long long>(telemetry.scale_changed),
@@ -2974,7 +2983,11 @@ public:
         static_cast<unsigned long long>(telemetry.showdown_touched_rank_cells),
         static_cast<unsigned long long>(telemetry.showdown_touched_card_rank_cells),
         static_cast<unsigned long long>(telemetry.showdown_reach_hash_unique),
-        static_cast<unsigned long long>(telemetry.showdown_reach_hash_repeats));
+        static_cast<unsigned long long>(telemetry.showdown_reach_hash_repeats),
+        static_cast<unsigned long long>(telemetry.river_frontier_roots),
+        static_cast<unsigned long long>(telemetry.river_frontier_showdowns),
+        static_cast<unsigned long long>(telemetry.river_frontier_full_batches),
+        static_cast<unsigned long long>(telemetry.river_frontier_tail_lanes));
     std::fprintf(stderr, "  task distribution: main=%llu/%.1fms",
                  static_cast<unsigned long long>(prof_tasks_),
                  prof_task_wall_seconds_ * 1000.0);
@@ -7423,10 +7436,21 @@ private:
       }
     }
     ComboVector local_values{};
+    const bool profile_frontier = hotpath_profiling_enabled();
+    const std::uint64_t showdowns_before =
+        profile_frontier ? prof_telemetry_.showdown_calls : 0U;
     if (const auto error = cfr_canonical_river_into(
             node_id, updating_player, {&local_reach[0], &local_reach[1]},
             strategy_weight, local_values)) {
       return error;
+    }
+    if (profile_frontier) {
+      const std::uint64_t showdown_count =
+          prof_telemetry_.showdown_calls - showdowns_before;
+      ++prof_telemetry_.river_frontier_roots;
+      prof_telemetry_.river_frontier_showdowns += showdown_count;
+      prof_telemetry_.river_frontier_full_batches += showdown_count / 4U;
+      prof_telemetry_.river_frontier_tail_lanes += showdown_count % 4U;
     }
     zero_values_into(updating_player, flop_values);
     const auto &slots = board.player_flop_slots[updating_player];
