@@ -12,6 +12,20 @@ Il contratto production è rimasto invariato: exact alternating DCFR, alpha 1,5,
 beta 0, gamma 2, average immediato reach-weighted con peso `t^2`, signed regret,
 `ScaledUint16RegretStrategy`, exact BR, CPU/RAM e massimo otto thread.
 
+### Revalidation omogenea sull'HEAD pubblicato
+
+Dopo il rilievo che la prima matrice finale mescolava run di diversa freschezza,
+le tre fixture sono state rieseguite target-driven sullo stesso binario Release
+costruito da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`. Gli artifact locali sono:
+
+- `out/objective-gate-closure-20260830/final-head-ahkhqh.json`;
+- `out/objective-gate-closure-20260830/final-head-th7d6s.json`;
+- `out/objective-gate-closure-20260830/final-head-tstc9d.json`.
+
+Questi tre singoli processi sostituiscono i numeri finali eterogenei riportati
+nella prima revisione del documento. Non sono la certificazione a cinque
+processi, che resta vietata perché TST non supera il gate temporale.
+
 ## 2. Funzione obiettivo e loop
 
 Il loop ha minimizzato lessicograficamente, senza somme compensabili:
@@ -48,10 +62,11 @@ sostituiscono la baseline.
 | TSTC9D | 0,991865% PASS | 8,494698 / -0,006952 PASS | 2,862e-7 FAIL | FAIL | 206,257104 s FAIL | 1,969 GB PASS | 1.472.605.376 B PASS |
 
 Il runner espone anche `memory_gate` contro la memoria GTO+ (8 MB AHK e un
-riferimento analogo TH): questo check risulta rosso pur con il gate production
-RAM dichiarato verde. Nel presente report `peak RSS` e `solver_state_bytes`
-restano separati; il confronto RSS-vs-GTO+ non viene rinominato né usato per
-annullare il gate RAM production.
+riferimento analogo TH): sul final HEAD questo check è rosso per AHK e TH,
+verde per TST. Nel presente report `peak RSS`, cap desktop production da 2 GB e
+`solver_state_bytes` restano tre condizioni separate. Di conseguenza non viene
+più usata la dicitura non qualificata `RAM PASS`: il cap desktop e lo stato
+solver passano su tutte le fixture, mentre il confronto peak-RSS-vs-GTO+ no.
 
 ## 4. Loop ledger
 
@@ -76,6 +91,7 @@ annullare il gate RAM production.
 | 16 | pipeline terminal-to-state | opponent reach pack + direct value sink | coverage e speedup composti >=30% traversal | leaf coverage 38,40%; signed 40,66%; opponent 36,17%; upper bound generoso circa 26,6% | REJECT; telemetry PROMOTE `4a0ce8c` | F invariato |
 | 17 | traversal TST ratio 1,958 | recursive sink / flat arena / hero-tiled treelet | identificare una famiglia exact con ceiling >=30% | sink opponent ceiling bandwidth 20,25%; arena flat circa 28,7 MB prima dei metadata; solo hero tiling supera appena Level 0 con ceiling 34,76% | sink e arena CLOSE; hero tiling a Level 1 | F invariato, informazione acquisita |
 | 18 | verificare il ceiling hero-tiled | treelet depth-3 tile 32/64 | exact, RAM <=16 MB/8 worker e >=1,50x P0/P1 | oracle bitwise PASS; RAM max 1.623.488 B; speedup P0 0,958/0,971x, P1 0,861/0,867x | REJECT al Level 1; tooling conservato | F invariato |
+| 19 | freschezza non omogenea della matrice | final-head target-driven AHK/TH/TST | sostituire inferenze e run fixed con tre misure comparabili | AHK 0,670928 s PASS; TH 17,645055 s PASS; TST 208,111772 s FAIL; correctness/state PASS; `memory_gate` AHK/TH FAIL | ACCEPT revalidation; nessuna modifica production | `F_runner=(0,0,2,1,613409,0,955256,20,813824,7,933239)`; `F_desktop=(0,0,0,1,613409,0,955256,0,984961,0,489134)` |
 
 Candidate pool dell'ultima iterazione, ordinato per expected information gain:
 
@@ -123,7 +139,7 @@ il risultato negativo chiude la famiglia senza una mutazione production.
 | child EV after bet | 16,004087; delta -1,505913 | +/-0,05 | no | diagnostic FAIL |
 | root bet/check frequency | 0,254208 / 0,745792 | 0,197 / 0,803 +/-0,01 | no | diagnostic FAIL |
 | solver state | 5.300.664 B | 8.000.000 B | sì | PASS |
-| solver time | 0,783254 s | limite production 1,900 s | sì | PASS |
+| solver time | 0,670928 s | limite production 1,900 s | sì | PASS |
 
 `ev_correctness_passed` e `action_frequency_correctness_passed` sono
 diagnostici. `correctness_gate` nel JSON indica soltanto il Root EV, mentre
@@ -167,8 +183,9 @@ era già condiviso. Sono duplicati policy decode, reach reconstruction, chance
 transform, scratch e worker-pool setup.
 
 Il fix correctness aumenta correttamente il lavoro quando un outcome ha reach
-opponent distinto: TST target ha misurato traversal `183,039575 s`,
-certification `69,069453 s`, solver `252,534707 s`. Il fast path BR promosso
+opponent distinto: il target **pre-ottimizzazioni certification** ha misurato
+traversal `183,039575 s`, certification `69,069453 s`, solver `252,534707 s`.
+Questi numeri descrivono il cost model storico, non il final HEAD. Il fast path BR promosso
 elimina policy decode, strategy scratch e copie actor-reach ai nodi unlocked del
 best responder. Nel TST@20 A/B:
 
@@ -490,6 +507,15 @@ dopo audit sink/arena e hero-tiled Level 1:
   F invariato; sink opponent e arena flat sono chiusi staticamente, mentre
   il solo ceiling >30% è falsificato da speedup 0,861-0,971x. Nessuna mutazione
   production corrente è autorizzata.
+
+revalidation omogenea final-head:
+  F_runner = (0, 0, 2, 1.613409, 0.955256, 20.813824, 7.933239)
+  usando il `memory_gate` canonico peak-RSS-vs-GTO+ delle fixture.
+  F_desktop = (0, 0, 0, 1.613409, 0.955256, 0.984961, 0.489134)
+  usando invece il cap operativo uniforme 2 GB richiesto dalla missione.
+  Il primo è il vettore conservativo della suite versionata; il secondo misura
+  la sola idoneità desktop. Nessuno dei due consente compensazioni e non devono
+  essere fusi sotto una generica etichetta `RAM PASS`.
 ```
 
 Il peggioramento temporale del fix è accettato soltanto perché correctness è il
@@ -500,19 +526,27 @@ termine lessicograficamente superiore. Non è presentato come chiusura performan
 | Gate | AHKHQH | TH7D6S | TSTC9D |
 |---|---|---|---|
 | dEV | 0,655665% PASS | 0,806385% PASS | 0,991863% PASS |
-| Root EV | 19,108984 PASS | PASS/invariato | 8,494698 regime PASS |
+| Root EV | 19,108984 PASS | 8,221632 PASS | 8,494698 PASS |
 | payoff/correctness | 0 PASS | -4,44e-16 PASS | 3,22e-15 PASS |
 | layout/convergence | PASS | PASS | PASS |
 | solver state | 5.300.664 B PASS | 334.452.416 B PASS | 1.472.605.376 B PASS |
-| peak RSS | 166.567.936 B PASS cap | 797.335.552 B PASS cap | 1.968.865.280 B PASS cap |
-| solver time | 0,688 s fixed@80 PASS | 18,638 s fixed@80 PASS nel sanity corrente | 252,534707 s target pre-perf FAIL; nessun nuovo target promosso |
+| peak RSS / cap desktop 2 GB | 166.510.592 B PASS | 798.371.840 B PASS | 1.969.922.048 B PASS |
+| solver time | 0,670928 s target PASS | 17,645055 s target PASS | 208,111772 s target FAIL |
 
-Il TST@80 finale del nuovo scheduling misura solver `80,554211 s`, traversal
-`73,862787 s`, certification `6,280057 s`, payoff-sum `-3,33e-16`, peak RSS
-`1.972.805.632 B` e state `1.472.605.376 B`. Il dEV `3,19058%` è atteso per il
-fixed-mid e non è un correctness fail. Non è stato speso un nuovo target@202:
-anche l'upper bound dei candidati promossi non può portare il traversal noto
-sotto il limite totale.
+La tabella è ora interamente derivata dai tre run final-head. Per TST @202:
+traversal `174,926380 s`, certification `32,780800 s`, payoff-sum
+`3,22e-15`, peak RSS `1.969.922.048 B` e state `1.472.605.376 B`. Il limite
+temporale è `128,988889 s`: il solver eccede di `79,122883 s`, rapporto
+`1,613409x`, cioè `+61,3409%`. La precedente misura `252,534707 s` era
+pre-ottimizzazione della certification e non è più il numero finale corrente.
+
+Semantica memoria final-head:
+
+| Gate memoria | AHKHQH | TH7D6S | TSTC9D |
+|---|---:|---:|---:|
+| `solver_state_bytes` / limite fixture | 5.300.664 / 8.000.000 PASS | 334.452.416 / 399.000.000 PASS | 1.472.605.376 / 2.000.000.000 PASS |
+| peak RSS / cap desktop 2 GB | 166.510.592 PASS | 798.371.840 PASS | 1.969.922.048 PASS |
+| JSON `memory_gate` peak RSS / riferimento GTO+ | 166.510.592 / 8.000.000 FAIL | 798.371.840 / 399.000.000 FAIL | 1.969.922.048 / 2.000.000.000 PASS |
 
 ## 13. Validazione
 
@@ -566,31 +600,43 @@ sotto il limite totale.
   **20/20 PASS in 192,11 s**, incluso benchmark smoke e reference differential;
 - build Release completo dopo reach-view/sink telemetry: PASS; full CTest a
   `4a0ce8c`: **20/20 PASS in 193,85 s**;
-- build Release finale post-Level-1: PASS; full CTest a `ea657f7`:
+- build Release finale post-Level-1: PASS; full CTest a `6508bdd`:
   **21/21 PASS in 193,72 s**, incluso il nuovo treelet smoke;
-- TST@80 mid: payoff/RAM/state PASS;
-- AHK/TH target sanity: correctness PASS;
-- TST target correctness: PASS;
+- final-head AHK target-driven: @80, dEV/root/payoff/state/time PASS, solver
+  `0,670928 s`, artifact `final-head-ahkhqh.json`;
+- final-head TH target-driven: @80, dEV/root/payoff/state/time PASS, solver
+  `17,645055 s`, artifact `final-head-th7d6s.json`;
+- final-head TST target-driven: @202, dEV/root/payoff/state PASS e time FAIL,
+  solver `208,111772 s`, artifact `final-head-tstc9d.json`;
 - `git diff --check`: PASS (soli warning EOL Windows).
 
 ## 14. Five-process e parity
 
-`five-process certification`: **NON AUTORIZZATA**. TST time è ancora rosso.
-La parity production completa non è dichiarata.
+`five-process certification`: **NON AUTORIZZATA**. TST time e i `memory_gate`
+AHK/TH sono rossi. La parity production completa non è dichiarata.
 
 ## 15. Stato conclusivo e prossimo passo
 
-Gate chiusi: correctness formale AHK e TST, dEV, Root, layout, convergence,
-solver state e RAM cap; TH fixed@80 rientra nel tempo nel sanity finale. Gate
-aperto: TST solver time. La five-process resta congelata.
+Gate final-head chiusi: correctness formale, dEV, Root, layout, convergence,
+`solver_state_bytes`, cap desktop 2 GB e tempo AHK/TH. Gate aperti nella suite
+versionata: `memory_gate` peak-RSS-vs-GTO+ per AHK/TH e TST solver time. Il
+termine dominante lessicografico torna quindi a essere il conteggio hard-gate
+(`2`), non il tempo. La five-process resta congelata.
 
 Il 2D-tiling production-faithful e la compatibilità degli interi river subtree
 sono ora misurati e chiusi. Il traversal visita `630.596` decision node nel
 player-pass pieno, pari al numero totale di decision node riportato dal layout:
 non emerge una seconda valutazione dello stesso decision state da eliminare.
 
-Il prossimo singolo passo ad alta priorità richiede quindi una fase
-architetturale distinta. Il layout reach/rank-card e signed-state tile-local è
+Il prossimo singolo passo ad alta priorità è chiudere l'ambiguità normativa
+RAM con unità omogenee: stabilire se il gate autorevole è peak RSS contro un
+vero peak RSS GTO+, oppure il cap desktop 2 GB separato dallo stato solver, e
+versionare tale scelta nelle fixture e nel runner. Finché questo non è deciso,
+ottimizzare AHK verso `8 MB` di RSS o dichiararlo PASS a `166,5 MB` sarebbero
+entrambi arbitrari.
+
+Dopo quel hard gate, il residuo temporale richiede una fase architetturale
+distinta. Il layout reach/rank-card e signed-state tile-local è
 stato ora falsificato nella forma bounded treelet: conserva hero-SIMD, scala
 exact, stato serializzato, ordine IEEE e margine RAM, ma non riduce il tempo.
 Il cost model ora

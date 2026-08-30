@@ -1,8 +1,31 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-08-29
+Aggiornato: 2026-08-30
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **Checkpoint final-head omogeneo 2026-08-30 — prevale su tutti i checkpoint
+> sottostanti per lo stato corrente.** I tre benchmark target-driven sono stati
+> rieseguiti in tre processi separati, uno alla volta, sul binario
+> Release da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`, contratto comune exact
+> alternating DCFR signed `alpha=1.5`, `beta=0`, `gamma=2`, delay zero e otto
+> thread massimi.
+>
+> | Fixture | Iter / dEV | Root / riferimento | Payoff-sum | Solver / limite | Peak RSS | State | Esito |
+> |---|---:|---:|---:|---:|---:|---:|---|
+> | AHKHQH | 80 / 0,655665% | 19,108984 / 19,15 | 0 | 0,670928 / 1,900000 s | 166.510.592 B | 5.300.664 B | correctness/dEV/root/state/time PASS |
+> | TH7D6S | 80 / 0,806385% | 8,221632 / 8,22198 | -4,44e-16 | 17,645055 / 19,622222 s | 798.371.840 B | 334.452.416 B | correctness/dEV/root/state/time PASS |
+> | TSTC9D | 202 / 0,991863% | 8,494698 / 8,50165 | 3,22e-15 | 208,111772 / 128,988889 s | 1.969.922.048 B | 1.472.605.376 B | correctness/dEV/root/state PASS; time FAIL |
+>
+> TST traversal è `174,926380 s` e certification `32,780800 s`. Il gap finale
+> è `79,122883 s`, rapporto `1,613409x`, `+61,3409%`. Il precedente
+> `252,534707 s` era pre-ottimizzazione certification e non rappresenta più il
+> final HEAD. Tutte le fixture rientrano nel cap desktop 2 GB e nello
+> `solver_state_bytes` fixture; il distinto `memory_gate` peak-RSS-vs-GTO+
+> resta FAIL per AHK e TH, PASS per TST. Non usare quindi `RAM PASS` senza
+> nominare il gate. Full CTest 21/21 PASS; five-process ancora congelata.
+> Evidenza dettagliata:
+> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
 > **Root-analysis fix 2026-08-30.** Il precedente Root FAIL AHKHQH era un bug
 > di dispatch: con browser fisico preparato, il root non usava il layout

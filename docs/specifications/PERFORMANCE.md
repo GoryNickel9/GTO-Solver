@@ -1,5 +1,16 @@
 # Performance
 
+> **Revalidation production final-head 2026-08-30 — stato corrente.** Sul
+> binario Release da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`, AHKHQH
+> converge @80 in `0,670928 s`, TH7D6S @80 in `17,645055 s` e TSTC9D @202 in
+> `208,111772 s`. I limiti sono rispettivamente `1,900000 s`, `19,622222 s` e
+> `128,988889 s`: AHK/TH time PASS, TST time FAIL di `79,122883 s`
+> (`1,613409x`, `+61,3409%`). TST traversal/certification sono
+> `174,926380 / 32,780800 s`. Tutte e tre passano dEV, Root,
+> `solver_state_bytes` e cap desktop 2 GB; il distinto `memory_gate`
+> peak-RSS-vs-GTO+ fallisce per AHK/TH e passa per TST. La fonte completa è
+> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](../OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
+
 > **Correzione root-analysis 2026-08-30.** Il Root FAIL AHKHQH della baseline
 > normalizzata era diagnostico: l'overload prepared valutava il root sul layout
 > fisico del browser. Dopo il dispatch al layout production canonico, AHK, TH e
@@ -13,7 +24,7 @@
 > [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](../PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
 > Le baseline DCFR+ e il profilo TST-specifico `1.9/0/3` riportati sotto sono
 > storici/superseded per confronti production comuni. Il prerequisito root e'
-> ora superato; RBP non e' stato ancora avviato.
+> ora superato; l'audit RBP è chiuso Categoria C e non abilita pruning.
 
 Analisi trasversale corrente del motore generale, con profiling fixed-iteration,
 scaling thread, confronto algoritmico e limiti di telemetria:
@@ -75,7 +86,7 @@ naturale):
 Il tentativo GTO+ a target 0,10% è censurato a `>245 s` e non sostituisce il
 riferimento operativo senza ridefinire l'intero protocollo.
 
-## Checkpoint corrente della suite — 2026-08-14
+## Checkpoint storico della suite — 2026-08-14
 
 Stato di chiusura RAM: i tre scenari sono stati rieseguiti separatamente sul
 build Release `out/build/windows-release-current` con il formato core packed

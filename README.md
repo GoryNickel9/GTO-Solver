@@ -203,16 +203,21 @@ The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
 Further roadmap phases are frozen by the three-fixture GTO+ parity gate. The
-authoritative checkpoint is dated 2026-08-14 and is recorded in
-`docs/GTO_PLUS_PARITY_JOURNEY.md`: all three single-process Release runs pass
-strict `Target dEV < 1%`, root EV and `solver_state_bytes`; all three execution
-time gates fail. The 90%-of-GTO+ time ceilings are `1.900000 s`, `19.622222 s`
-and `128.988889 s`. The TST ceiling uses the user-confirmed GTO+ convergence
-trace whose first strict sub-1% point is `116.09 s` (`0.91%`, `0.146 ante`),
-superseding the earlier isolated `108.54 s` observation. Solver-state limits remain the direct GTO+ values
-`8.000.000 B`, `399.000.000 B` and `2.000.000.000 B`; peak RSS is reported
-separately and never substitutes this metric. A five-process timing
-certification is intentionally deferred until single runs pass.
+authoritative single-process checkpoint is the homogeneous final-head
+revalidation dated 2026-08-30 and recorded in
+`docs/OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`. All three Release runs pass
+strict `Target dEV < 1%`, root EV and `solver_state_bytes`; AHKHQH and TH7D6S
+pass their time ceilings, while TSTC9D remains the timing blocker. The measured
+solver times are `0.670928 s`, `17.645055 s` and `208.111772 s` against limits
+`1.900000 s`, `19.622222 s` and `128.988889 s`. TST therefore exceeds its
+limit by `79.122883 s` (`1.613409x`, `+61.3409%`). Its user-confirmed raw GTO+
+reference remains `116.09 s` at the first strict sub-1% point.
+
+Solver-state limits remain `8.000.000 B`, `399.000.000 B` and
+`2.000.000.000 B`, and all three pass. Peak RSS is a separate metric: all three
+fit the desktop 2 GB cap, but the runner's stricter peak-RSS-vs-GTO+
+`memory_gate` still fails for AHKHQH and TH7D6S. A five-process certification
+is intentionally deferred: the two memory-parity gates and TST time are red.
 
 The three-fixture suite also contains `GTP-TH7D6S-101` and
 `GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected
@@ -224,13 +229,13 @@ policy without benchmark-ID branches. GTO+ benchmarks are target-driven with
 no iteration cap and stop only at a certified `Target dEV < 1%`. Periodic
 best-response certification starts only after average-strategy sampling begins;
 finite completion, pause and cancellation still force a final certification.
-The production core also provides a benchmark-independent three-byte action
-state (`float13` non-negative CFR+ regret plus `float11` average strategy,
-with `float64` computation). Current single Release runs pass solver-state RAM,
-dEV and root-EV gates on AHKHQH, TH7D6S and TSTC9D. The current reports are
-`AHKHQH 4.970917 s / 2.503.908 B`,
-`TH7D6S 37.810434 s / 249.955.776 B` and
-`TSTC9D 690.307523 s / 1.747.903.656 B`. These are single runs used to close
-correctness and RAM, not promoted timing medians. Execution time is the sole
-remaining parity blocker; machine pressure is not accepted as an explanation
-for a failed gate.
+The production core uses benchmark-independent signed regret and average
+strategy state through `ScaledUint16RegretStrategy`, with the exact common
+DCFR `1.5/0/2` contract. Current single Release runs pass dEV, root EV and
+solver-state gates on all three fixtures. AHKHQH is `0.655665% @80`,
+`19.108984`, `0.670928 s` and `5.300.664 B`; TH7D6S is `0.806385% @80`,
+`8.221632`, `17.645055 s` and `334.452.416 B`; TSTC9D is `0.991863% @202`,
+`8.494698`, `208.111772 s` and `1.472.605.376 B`. These are comparable single
+processes, not promoted timing medians. TST execution time and the separate
+AHK/TH peak-RSS parity comparisons remain red; none is hidden under a generic
+RAM label.
