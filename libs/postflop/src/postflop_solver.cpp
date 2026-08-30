@@ -3189,6 +3189,17 @@ public:
     return policy_physical(node_id, updating_player, reach, best_response);
   }
 
+  Result<std::array<ComboVector, 2>, PostflopSolverError>
+  policy_profile_br_pair(const std::uint8_t updating_player,
+                         const ReachRef &reach) {
+    if (!layout_.uses_canonical_public_dag) {
+      return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    return policy_canonical_profile_br_pair(
+        layout_.canonical_public_graph.root, updating_player, reach);
+  }
+
   Result<ComboVector, PostflopSolverError>
   policy_from_physical_node(const NodeId node_id, const std::uint8_t updating_player,
                             const ReachRef &reach) {
@@ -7505,6 +7516,52 @@ private:
     return Result<ComboVector, PostflopSolverError>::success(std::move(values));
   }
 
+  Result<std::array<ComboVector, 2>, PostflopSolverError>
+  policy_canonical_profile_br_pair(const std::uint32_t node_id,
+                                   const std::uint8_t updating_player,
+                                   const ReachRef &reach) {
+    ++traversed_nodes_;
+    const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
+    switch (canonical.kind) {
+    case PublicNodeKind::TerminalFold: {
+      auto value = fold_values_with_payoff(
+          canonical.board_index,
+          canonical.fold_payoff_antes[updating_player], updating_player,
+          *reach[1U - updating_player]);
+      if (!value) {
+        return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
+            value.error());
+      }
+      auto profile = std::move(value.value());
+      return Result<std::array<ComboVector, 2>, PostflopSolverError>::success(
+          {profile, std::move(profile)});
+    }
+    case PublicNodeKind::TerminalShowdown: {
+      auto value = showdown_values_with_payoffs(
+          canonical.board_index,
+          canonical.showdown_payoff_antes[updating_player][0],
+          canonical.showdown_payoff_antes[updating_player][1],
+          canonical.showdown_payoff_antes[updating_player][2], updating_player,
+          *reach[1U - updating_player]);
+      if (!value) {
+        return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
+            value.error());
+      }
+      auto profile = std::move(value.value());
+      return Result<std::array<ComboVector, 2>, PostflopSolverError>::success(
+          {profile, std::move(profile)});
+    }
+    case PublicNodeKind::Chance:
+      return policy_canonical_profile_br_chance(canonical, updating_player,
+                                                reach);
+    case PublicNodeKind::Decision:
+      return policy_canonical_profile_br_decision(canonical, updating_player,
+                                                  reach);
+    }
+    return Result<std::array<ComboVector, 2>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+
   Result<ComboVector, PostflopSolverError> policy_canonical(const std::uint32_t node_id,
                                                             const std::uint8_t updating_player,
                                                             const ReachRef &reach,
@@ -9147,6 +9204,282 @@ private:
               .count();
     }
     return std::nullopt;
+  }
+
+  Result<std::array<ComboVector, 2>, PostflopSolverError>
+  policy_canonical_profile_br_chance(const CanonicalPublicNode &canonical,
+                                     const std::uint8_t updating_player,
+                                     const ReachRef &reach) {
+    using PairValues = std::array<ComboVector, 2>;
+    using PairResult = Result<PairValues, PostflopSolverError>;
+    if (canonical.total_legal_outcome_count <= 4U) {
+      return PairResult::failure(PostflopSolverError::InvalidConfiguration);
+    }
+    const auto &board = layout_.boards[canonical.board_index];
+    const double denominator =
+        static_cast<double>(canonical.total_legal_outcome_count - 4U);
+    PairValues values{zeroed_values(updating_player),
+                      zeroed_values(updating_player)};
+    const std::size_t edge_count = canonical.edges.size();
+    auto representative_reaches =
+        std::make_unique_for_overwrite<std::array<ComboVector, 2>[]>(edge_count);
+    auto child_values = std::make_unique<PairValues[]>(edge_count);
+    for (std::size_t index = 0U; index < edge_count; ++index) {
+      const auto &edge = canonical.edges[index];
+      if (edge.outcomes.empty()) {
+        return PairResult::failure(PostflopSolverError::InvalidConfiguration);
+      }
+      representative_reaches[index] = transform_reach(
+          {*reach[0], *reach[1]},
+          edge.outcomes.front().physical_to_child_automorphism);
+    }
+    const std::size_t worker_count = parallel_workers_.size();
+    if (std::popcount(board.mask) == 3U && worker_count > 0U &&
+        edge_count > 1U) {
+      const std::size_t task_count =
+          std::min(edge_count, worker_count + 1U);
+      std::atomic<std::size_t> next_edge{1U};
+      std::vector<std::packaged_task<TraversalResult(DenseTraversal &)>> tasks;
+      std::vector<std::future<TraversalResult>> futures;
+      tasks.reserve(task_count - 1U);
+      futures.reserve(task_count - 1U);
+      for (std::size_t task_index = 1U; task_index < task_count;
+           ++task_index) {
+        std::packaged_task<TraversalResult(DenseTraversal &)> task(
+            [edges = &canonical.edges, reaches = representative_reaches.get(),
+             results = child_values.get(), next = &next_edge, edge_count,
+             updating_player](DenseTraversal &self) {
+              while (true) {
+                const std::size_t index =
+                    next->fetch_add(1U, std::memory_order_relaxed);
+                if (index >= edge_count) {
+                  break;
+                }
+                auto child = self.policy_canonical_profile_br_pair(
+                    (*edges)[index].outcomes.front().child, updating_player,
+                    {&reaches[index][0], &reaches[index][1]});
+                if (!child) {
+                  return TraversalResult::failure(child.error());
+                }
+                results[index] = std::move(child.value());
+              }
+              return TraversalResult::success(ComboVector{});
+            });
+        futures.push_back(task.get_future());
+        tasks.push_back(std::move(task));
+      }
+      dispatch_parallel_tasks(tasks);
+      std::optional<PostflopSolverError> main_error;
+      auto first_child = policy_canonical_profile_br_pair(
+          canonical.edges[0U].outcomes.front().child, updating_player,
+          {&representative_reaches[0U][0], &representative_reaches[0U][1]});
+      if (!first_child) {
+        main_error = first_child.error();
+      } else {
+        child_values[0U] = std::move(first_child.value());
+      }
+      while (!main_error) {
+        const std::size_t index =
+            next_edge.fetch_add(1U, std::memory_order_relaxed);
+        if (index >= edge_count) {
+          break;
+        }
+        auto child = policy_canonical_profile_br_pair(
+            canonical.edges[index].outcomes.front().child, updating_player,
+            {&representative_reaches[index][0],
+             &representative_reaches[index][1]});
+        if (!child) {
+          main_error = child.error();
+        } else {
+          child_values[index] = std::move(child.value());
+        }
+      }
+      std::optional<PostflopSolverError> worker_error;
+      for (auto &future : futures) {
+        wait_for_parallel_future(future);
+        auto result = future.get();
+        if (!result && !worker_error) {
+          worker_error = result.error();
+        }
+      }
+      if (main_error || worker_error) {
+        return PairResult::failure(main_error ? *main_error : *worker_error);
+      }
+    } else {
+      for (std::size_t index = 0U; index < edge_count; ++index) {
+        auto child = policy_canonical_profile_br_pair(
+            canonical.edges[index].outcomes.front().child, updating_player,
+            {&representative_reaches[index][0],
+             &representative_reaches[index][1]});
+        if (!child) {
+          return child;
+        }
+        child_values[index] = std::move(child.value());
+      }
+    }
+    const auto opponent = static_cast<std::uint8_t>(1U - updating_player);
+    const std::size_t opponent_slots =
+        PlayerIndexed ? layout_.player_flop_count[opponent] : Capacity;
+    for (std::size_t index = 0U; index < edge_count; ++index) {
+      const auto &edge = canonical.edges[index];
+      for (const auto &outcome : edge.outcomes) {
+        const double probability =
+            static_cast<double>(outcome.physical_outcome_count) / denominator;
+        const PairValues *outcome_values = &child_values[index];
+        std::optional<PairValues> distinct_outcome_values;
+        std::optional<std::array<ComboVector, 2>> distinct_outcome_reach;
+        if (std::addressof(outcome) !=
+            std::addressof(edge.outcomes.front())) {
+          distinct_outcome_reach = transform_reach(
+              {*reach[0], *reach[1]},
+              outcome.physical_to_child_automorphism);
+          const bool same_opponent_reach = std::equal(
+              distinct_outcome_reach->at(opponent).begin(),
+              distinct_outcome_reach->at(opponent).begin() + opponent_slots,
+              representative_reaches[index][opponent].begin());
+          if (!same_opponent_reach) {
+            auto evaluated_outcome = policy_canonical_profile_br_pair(
+                edge.outcomes.front().child, updating_player,
+                {&distinct_outcome_reach->at(0U),
+                 &distinct_outcome_reach->at(1U)});
+            if (!evaluated_outcome) {
+              return evaluated_outcome;
+            }
+            distinct_outcome_values =
+                std::move(evaluated_outcome.value());
+            outcome_values = &*distinct_outcome_values;
+          }
+        }
+        for (std::size_t lane = 0U; lane < 2U; ++lane) {
+          accumulate_transformed_values_to_parent(
+              values[lane], (*outcome_values)[lane],
+              outcome.physical_to_child_automorphism, updating_player, board,
+              outcome.chance_card, probability);
+        }
+      }
+    }
+    return PairResult::success(std::move(values));
+  }
+
+  Result<std::array<ComboVector, 2>, PostflopSolverError>
+  policy_canonical_profile_br_decision(const CanonicalPublicNode &canonical,
+                                       const std::uint8_t updating_player,
+                                       const ReachRef &reach) {
+    using PairValues = std::array<ComboVector, 2>;
+    using PairResult = Result<PairValues, PostflopSolverError>;
+    const auto &decision = canonical.decision;
+    const auto &board = layout_.boards[decision.board_index];
+    const auto action_count = static_cast<std::size_t>(decision.action_count);
+    if (canonical.edges.size() != action_count) {
+      return PairResult::failure(PostflopSolverError::InvalidConfiguration);
+    }
+    DecisionScratchLease scratch_lease(*this);
+    auto &profile_actions = scratch_lease.get().action_values;
+    auto &response_actions = scratch_lease.get().opponent_action_values;
+    auto &strategies = scratch_lease.get().strategies;
+    auto &actor_reach = scratch_lease.get().reach_actor[0];
+    const bool locked_root = is_locked_root(canonical);
+    const bool actor_best_response =
+        decision.player == updating_player && !locked_root;
+    const bool average_policy = !diagnostic_certify_current_strategy();
+    const bool local_scaled_average =
+        average_policy && !locked_root && scaled_action_major_state();
+    if (local_scaled_average) {
+      load_canonical_current_strategies(canonical, board, decision.player,
+                                        strategies, true, true);
+    } else {
+      for (const ComboId combo : board.player_combos[decision.player]) {
+        const auto actor_local = board.player_local[decision.player][combo];
+        const auto locked = locked_root ? locked_root_strategy(actor_local)
+                                        : std::nullopt;
+        const auto strategy =
+            locked ? *locked
+                   : current_strategy(canonical, actor_local, average_policy);
+        const auto slot = value_slot(combo, decision.player);
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          strategies[action][slot] = static_cast<Scalar>(strategy[action]);
+        }
+      }
+    }
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      if (canonical.edges[action].outcomes.size() != 1U) {
+        return PairResult::failure(PostflopSolverError::InvalidConfiguration);
+      }
+      const auto &outcome = canonical.edges[action].outcomes.front();
+      if (!identity_automorphism(outcome.physical_to_child_automorphism)) {
+        return PairResult::failure(PostflopSolverError::InvalidConfiguration);
+      }
+      actor_reach = *reach[decision.player];
+      const auto &actor_combos = board.player_combos[decision.player];
+      for (std::size_t local = 0U; local < actor_combos.size(); ++local) {
+        const auto slot = value_slot(actor_combos[local], decision.player);
+        const auto strategy_slot = local_scaled_average ? local : slot;
+        actor_reach[slot] *= strategies[action][strategy_slot];
+      }
+      const ReachRef child_reach =
+          decision.player == 0U
+              ? ReachRef{&actor_reach, reach[1]}
+              : ReachRef{reach[0], &actor_reach};
+      auto child = policy_canonical_profile_br_pair(
+          outcome.child, updating_player, child_reach);
+      if (!child) {
+        return child;
+      }
+      profile_actions[action] = std::move(child.value()[0]);
+      response_actions[action] = std::move(child.value()[1]);
+    }
+    PairValues values{zeroed_values(updating_player),
+                      zeroed_values(updating_player)};
+    const auto &updating_combos = board.player_combos[updating_player];
+    if constexpr (PlayerIndexed) {
+      const auto slot_count = layout_.player_flop_count[updating_player];
+      if (decision.player != updating_player) {
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          for (std::size_t slot = 0U; slot < slot_count; ++slot) {
+            values[0][slot] += profile_actions[action][slot];
+            values[1][slot] += response_actions[action][slot];
+          }
+        }
+        return PairResult::success(std::move(values));
+      }
+      if (actor_best_response) {
+        std::copy_n(response_actions[0].begin(), slot_count,
+                    values[1].begin());
+        for (std::size_t action = 1U; action < action_count; ++action) {
+          for (std::size_t slot = 0U; slot < slot_count; ++slot) {
+            values[1][slot] =
+                std::max(values[1][slot], response_actions[action][slot]);
+          }
+        }
+      }
+    }
+    for (std::size_t local = 0U; local < updating_combos.size(); ++local) {
+      const auto slot = value_slot(updating_combos[local], updating_player);
+      if (decision.player == updating_player) {
+        const auto strategy_slot = local_scaled_average ? local : slot;
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          values[0][slot] += strategies[action][strategy_slot] *
+                             profile_actions[action][slot];
+          if (!actor_best_response) {
+            values[1][slot] += strategies[action][strategy_slot] *
+                               response_actions[action][slot];
+          }
+        }
+        if (actor_best_response && !PlayerIndexed) {
+          values[1][slot] = response_actions[0][slot];
+          for (std::size_t action = 1U; action < action_count; ++action) {
+            values[1][slot] =
+                std::max(values[1][slot], response_actions[action][slot]);
+          }
+        }
+      } else if constexpr (!PlayerIndexed) {
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          values[0][slot] += profile_actions[action][slot];
+          values[1][slot] += response_actions[action][slot];
+        }
+      }
+    }
+    return PairResult::success(std::move(values));
   }
 
   Result<ComboVector, PostflopSolverError>
@@ -13410,7 +13743,71 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
         reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value(), player) /
         public_reach_probability);
   };
+  const auto evaluate_pair = [&layout, buffers, &reach, root_lock,
+                              public_reach_probability](
+                                 const std::uint8_t player,
+                                 const std::uint8_t worker_count) {
+    const std::uint8_t certification_worker_count =
+        buffers.paged != nullptr ? 0U : worker_count;
+    auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
+        layout, buffers, nullptr, certification_worker_count, root_lock);
+    const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{
+        &reach[0], &reach[1]};
+    auto values = traversal->policy_profile_br_pair(player, reach_ref);
+    if (!values) {
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(
+          values.error());
+    }
+    std::array<double, 2> aggregated{};
+    for (std::size_t lane = 0U; lane < aggregated.size(); ++lane) {
+      aggregated[lane] =
+          reach_weighted_sum<Capacity, PlayerIndexed>(
+              layout, reach, values.value()[lane], player) /
+          public_reach_probability;
+    }
+    return Result<std::array<double, 2>, PostflopSolverError>::success(
+        aggregated);
+  };
   const auto evaluated = [&]() -> std::array<Result<double, PostflopSolverError>, 4> {
+#pragma warning(push)
+#pragma warning(disable : 4996)
+    const bool legacy_certification =
+        std::getenv("GTOSD_DIAGNOSTIC_LEGACY_CERTIFICATION") != nullptr;
+#pragma warning(pop)
+    if (!legacy_certification) {
+      Result<std::array<double, 2>, PostflopSolverError> player_zero =
+          Result<std::array<double, 2>, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+      Result<std::array<double, 2>, PostflopSolverError> player_one =
+          Result<std::array<double, 2>, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+      if (buffers.paged != nullptr) {
+        player_zero = evaluate_pair(std::uint8_t{0}, 0U);
+        player_one = evaluate_pair(std::uint8_t{1}, 0U);
+      } else {
+        auto zero = std::async(std::launch::async, evaluate_pair,
+                               std::uint8_t{0}, std::uint8_t{3});
+        auto one = std::async(std::launch::async, evaluate_pair,
+                              std::uint8_t{1}, std::uint8_t{3});
+        player_zero = zero.get();
+        player_one = one.get();
+      }
+      if (!player_zero || !player_one) {
+        const auto error = !player_zero ? player_zero.error()
+                                        : player_one.error();
+        return {Result<double, PostflopSolverError>::failure(error),
+                Result<double, PostflopSolverError>::failure(error),
+                Result<double, PostflopSolverError>::failure(error),
+                Result<double, PostflopSolverError>::failure(error)};
+      }
+      return {
+          Result<double, PostflopSolverError>::success(player_zero.value()[0]),
+          Result<double, PostflopSolverError>::success(player_zero.value()[1]),
+          Result<double, PostflopSolverError>::success(
+              layout.tree.config.rake.enabled ? player_one.value()[0]
+                                              : -player_zero.value()[0]),
+          Result<double, PostflopSolverError>::success(player_one.value()[1])};
+    }
     const auto mirror_profile = [](const Result<double, PostflopSolverError> &profile) {
       return profile
                  ? Result<double, PostflopSolverError>::success(-profile.value())

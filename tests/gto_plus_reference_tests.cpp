@@ -3,8 +3,10 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
@@ -21,6 +23,18 @@ void require(const bool condition, const std::string &message) {
   if (!condition) {
     throw std::runtime_error(message);
   }
+}
+
+void select_legacy_certification(const bool enabled) {
+#ifdef _WIN32
+  _putenv_s("GTOSD_DIAGNOSTIC_LEGACY_CERTIFICATION", enabled ? "1" : "");
+#else
+  if (enabled) {
+    setenv("GTOSD_DIAGNOSTIC_LEGACY_CERTIFICATION", "1", 1);
+  } else {
+    unsetenv("GTOSD_DIAGNOSTIC_LEGACY_CERTIFICATION");
+  }
+#endif
 }
 
 gtosd::PostflopTreeConfig make_reference_config() {
@@ -409,6 +423,58 @@ void test_prepared_compressed_root_analysis_matches_certification() {
   const auto &certification = solved.value().convergence.back();
   require(std::abs(certification.expected_payoff_sum_antes) < 1.0e-11,
           "compressed canonical certification evaluates distinct transformed reaches exactly");
+  select_legacy_certification(true);
+  const auto legacy_certification = gtosd::certify_postflop_checkpoint(
+      config, ranges, solved.value().checkpoint);
+  select_legacy_certification(false);
+  const auto paired_certification = gtosd::certify_postflop_checkpoint(
+      config, ranges, solved.value().checkpoint);
+  require(legacy_certification.has_value() && paired_certification.has_value(),
+          "legacy and same-player paired certification both succeed");
+  for (std::size_t player = 0U; player < 2U; ++player) {
+    require(std::bit_cast<std::uint64_t>(
+                legacy_certification.value().profile_value_antes[player]) ==
+                std::bit_cast<std::uint64_t>(
+                    paired_certification.value().profile_value_antes[player]) &&
+                std::bit_cast<std::uint64_t>(
+                    legacy_certification.value().best_response_value_antes[player]) ==
+                std::bit_cast<std::uint64_t>(paired_certification.value()
+                                                 .best_response_value_antes[player]),
+            "same-player paired certification preserves profile and BR bits");
+  }
+  require(std::bit_cast<std::uint64_t>(
+              legacy_certification.value().expected_payoff_sum_antes) ==
+              std::bit_cast<std::uint64_t>(
+                  paired_certification.value().expected_payoff_sum_antes) &&
+              std::bit_cast<std::uint64_t>(
+                  legacy_certification.value().normalized_nash_conv) ==
+              std::bit_cast<std::uint64_t>(
+                  paired_certification.value().normalized_nash_conv),
+          "same-player paired certification preserves aggregate gate bits");
+
+  auto zero_rake_config = config;
+  zero_rake_config.rake.enabled = false;
+  auto zero_rake_options = options;
+  zero_rake_options.iterations = 2U;
+  zero_rake_options.certification_interval = 2U;
+  const auto zero_rake_solved =
+      gtosd::solve_postflop_exact(zero_rake_config, ranges, zero_rake_options);
+  require(zero_rake_solved.has_value(),
+          "zero-rake paired-certification fixture solves");
+  select_legacy_certification(true);
+  const auto zero_rake_legacy = gtosd::certify_postflop_checkpoint(
+      zero_rake_config, ranges, zero_rake_solved.value().checkpoint);
+  select_legacy_certification(false);
+  const auto zero_rake_paired = gtosd::certify_postflop_checkpoint(
+      zero_rake_config, ranges, zero_rake_solved.value().checkpoint);
+  require(zero_rake_legacy.has_value() && zero_rake_paired.has_value() &&
+              std::bit_cast<std::uint64_t>(
+                  zero_rake_legacy.value().profile_value_antes[1]) ==
+                  std::bit_cast<std::uint64_t>(
+                      zero_rake_paired.value().profile_value_antes[1]) &&
+              zero_rake_paired.value().profile_value_antes[1] ==
+                  -zero_rake_paired.value().profile_value_antes[0],
+          "paired certification preserves the exact zero-rake mirror contract");
   const auto direct = gtosd::analyze_postflop_node(
       config, ranges, solved.value().checkpoint, 0U);
   const auto browser_tree = gtosd::prepared_postflop_public_tree(prepared);
