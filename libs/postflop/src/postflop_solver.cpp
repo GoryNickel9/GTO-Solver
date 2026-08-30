@@ -9302,13 +9302,15 @@ private:
     auto &strategies = scratch_lease.get().strategies;
     auto &actor_reach = scratch_lease.get().reach_actor[0];
     const bool locked_root = is_locked_root(canonical);
+    const bool unlocked_actor_best_response =
+        best_response && decision.player == updating_player && !locked_root;
     const bool average_policy = !diagnostic_certify_current_strategy();
     const bool local_scaled_average =
         average_policy && !locked_root && scaled_action_major_state();
-    if (local_scaled_average) {
+    if (!unlocked_actor_best_response && local_scaled_average) {
       load_canonical_current_strategies(canonical, board, decision.player,
                                         strategies, true, true);
-    } else {
+    } else if (!unlocked_actor_best_response) {
       for (const ComboId combo : board.player_combos[decision.player]) {
         const auto actor_local = board.player_local[decision.player][combo];
         const auto locked = locked_root ? locked_root_strategy(actor_local)
@@ -9332,8 +9334,8 @@ private:
         return Result<ComboVector, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      actor_reach = *reach[decision.player];
-      if (!(best_response && decision.player == updating_player)) {
+      if (!unlocked_actor_best_response) {
+        actor_reach = *reach[decision.player];
         const auto &actor_combos = board.player_combos[decision.player];
         for (std::size_t local = 0U; local < actor_combos.size(); ++local) {
           const auto slot = value_slot(actor_combos[local], decision.player);
@@ -9341,9 +9343,11 @@ private:
           actor_reach[slot] *= strategies[action][strategy_slot];
         }
       }
-      const ReachRef child_reach =
-          decision.player == 0U ? ReachRef{&actor_reach, reach[1]}
-                                : ReachRef{reach[0], &actor_reach};
+      const ReachRef child_reach = unlocked_actor_best_response
+                                       ? reach
+                                       : (decision.player == 0U
+                                              ? ReachRef{&actor_reach, reach[1]}
+                                              : ReachRef{reach[0], &actor_reach});
       auto child = policy_canonical(outcome.child, updating_player, child_reach,
                                     best_response);
       if (!child) {
@@ -9355,7 +9359,7 @@ private:
     const auto &updating_combos = board.player_combos[updating_player];
     if constexpr (PlayerIndexed) {
       const auto slot_count = layout_.player_flop_count[updating_player];
-      if (best_response && decision.player == updating_player && !locked_root) {
+      if (unlocked_actor_best_response) {
         std::copy_n(action_values[0].begin(), slot_count, values.begin());
         for (std::size_t action = 1U; action < action_count; ++action) {
           for (std::size_t slot = 0U; slot < slot_count; ++slot) {
@@ -9375,7 +9379,7 @@ private:
     }
     for (std::size_t local = 0U; local < updating_combos.size(); ++local) {
       const auto slot = value_slot(updating_combos[local], updating_player);
-      if (best_response && decision.player == updating_player && !is_locked_root(canonical)) {
+      if (unlocked_actor_best_response) {
         values[slot] = action_values[0][slot];
         for (std::size_t action = 1; action < action_count; ++action) {
           values[slot] = std::max(values[slot], action_values[action][slot]);
