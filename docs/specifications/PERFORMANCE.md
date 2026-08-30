@@ -1,5 +1,16 @@
 # Performance
 
+> **New representation decision — 2026-08-31.** Le scale tile-local condivise
+> fra tutte le actions sono matematicamente valide per regret matching, ma lo
+> sweep reale `K=8/16/32/64` misura `0,948x–0,977x` nel fused shadow; per-hand
+> è `0,874x` e TST usa 2.631.753.824 B. Power-of-two K32 è `0,972x`. Direct
+> bfloat16 fallisce il probe AHK@20 (`84,2584%` dEV e ~2x traversal), mentre
+> signed-float24/bfloat16 è solo `1,396x`. Nessuna representation è promossa e
+> la baseline `ScaledUint16RegretStrategy` non cambia. Non riaprire queste
+> famiglie nella stessa forma senza un real-node replay corpus che dimostri
+> insieme precisione e throughput. Protocollo e ledger:
+> [`../NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](../NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
+
 > **Frozen exact-state decision — 2026-08-30.** Il pass
 > `prequantized values -> node-global scale -> encode` di
 > `ScaledUint16RegretStrategy` è strutturale sotto checkpoint byte-identico.

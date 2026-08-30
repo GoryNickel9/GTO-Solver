@@ -1,5 +1,15 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **New state representation decision 2026-08-31:**
+> **REPRESENTATION SPACE EXHAUSTED** per le famiglie obbligatorie studiate.
+> Tile float/power-of-two e per-hand non superano il fused shadow/RAM; hybrid
+> conserva un global barrier; direct bfloat16 fallisce AHK@20 (`84,2584%` dEV,
+> traversal circa 2x più lento); signed-float24/bfloat16 resta sotto il gate
+> `1,5x`. Ogni dispatch sperimentale è stato rimosso. Restano soltanto
+> telemetria layout e benchmark/oracle generalizzabili; production e checkpoint
+> sono invariati. Vedere
+> [`NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
+
 > **Exact state decision 2026-08-30:** **EXACT REPRESENTATION BLOCKER PROVEN**
 > per `ScaledUint16RegretStrategy` byte-identico. Retain, recompute, mixed,
 > sparse e hierarchical non superano i gate shadow/economici; production resta

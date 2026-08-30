@@ -1,8 +1,19 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-08-30
+Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **New production state representation loop 2026-08-31.**
+> **REPRESENTATION SPACE EXHAUSTED** per tile-local float/power-of-two,
+> per-hand, hybrid, adaptive e direct compact studiati. Il fused shadow finale
+> misura `0,874x–0,977x` per le scale locali; il direct bfloat16 arriva a
+> `1,465x` nello shadow ma, integrato sperimentalmente, AHK@20 regredisce da
+> `8,24777%` a `84,2584%` dEV e da `0,169024` a `0,341450 s`. Il path è stato
+> rimosso. Signed-float24/bfloat16 è numericamente migliore ma solo `1,396x`.
+> Production, checkpoint e baseline restano invariati; il nuovo blocker è la
+> combinazione producer whole-vector + costo local-scale/direct packing.
+> Evidenza: [`NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
 
 > **Exact state representation loop 2026-08-30.** **EXACT REPRESENTATION
 > BLOCKER PROVEN.** Il codec node-global byte-identico richiede almeno 32 bit
