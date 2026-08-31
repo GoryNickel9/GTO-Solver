@@ -218,7 +218,8 @@ lower bound `float32/infoset`.
 
 ## 11. Operational RAM margin, sparse e recompute
 
-Il margine nominale B è `30.077.952 B`, appena `0,254 bit/infoset` TST. Non
+Il margine nominale B è `30.077.952 B`, pari a circa `0,206687 B/infoset`
+(`1,653496 bit/infoset`) TST. Non
 può contenere un residuo di trigger indipendente.
 
 Sparse metadata non salva il worst case: tutti i descendant infoset possono
