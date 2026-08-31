@@ -1,5 +1,22 @@
 # Performance
 
+> **Predictive-CFR feasibility — 2026-08-31.** PCFR+ e PDCFR+ sono chiusi
+> sotto il contratto corrente come **PREDICTIVE FAMILY EXHAUSTED UNDER THE
+> FROZEN RAM/STATE CONTRACT**. La policy predittiva non è ricostruibile dal
+> cumulative regret che deve sopravvivere all'update; la cumulative average è
+> anch'essa necessaria. Il lower bound TST `uint16(actions-infosets)` porta il
+> peak proiettato a `2.412.654.048 B` contro 2 GB. Nessun solve o target-driven
+> è stato autorizzato. Production resta common `1.5/0/2`; S6 `1.5/0/5` resta
+> STRONG RESEARCH BASELINE. Protocollo e state proof:
+> [`../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
+> **Common schedule result — 2026-08-31.** **COMMON EXACT SCHEDULE SPACE
+> EXHAUSTED** per le famiglie schedule/fixed exact studiate. S6 `1.5/0/5`
+> migliora TST di circa 20–21% in iterazioni ma resta a `1,35433%` @120 e
+> proietta il target circa @160 (`1,25–1,46x`). Non è production; B
+> `1.5/0/2` rimane authority. Evidenza:
+> [`../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
+
 > **Constraint governance gate — 2026-08-31.** L'optimization research è
 > sospesa in attesa di una decisione esplicita. Il minimum resource-only
 > boundary è `>=1,615339x` effective speedup su traversal+exact BR; RAM-only

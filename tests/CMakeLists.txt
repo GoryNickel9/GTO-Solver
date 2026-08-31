@@ -139,6 +139,12 @@ add_test(NAME gtosd_phase10_tests COMMAND gtosd_phase10_tests)
 set_tests_properties(gtosd_phase10_tests
   PROPERTIES LABELS "phase10;postflop;ranges;storage;regression")
 
+add_executable(gtosd_predictive_cfr_oracle_tests predictive_cfr_oracle_tests.cpp)
+gtosd_set_warnings(gtosd_predictive_cfr_oracle_tests)
+add_test(NAME gtosd_predictive_cfr_oracle_tests COMMAND gtosd_predictive_cfr_oracle_tests)
+set_tests_properties(gtosd_predictive_cfr_oracle_tests
+  PROPERTIES LABELS "postflop;predictive-cfr;oracle")
+
 add_executable(gtosd_gto_plus_reference_tests gto_plus_reference_tests.cpp)
 target_link_libraries(gtosd_gto_plus_reference_tests PRIVATE gtosd::postflop)
 gtosd_set_warnings(gtosd_gto_plus_reference_tests)

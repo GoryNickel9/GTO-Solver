@@ -1,5 +1,20 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Predictive-CFR decision 2026-08-31:** **PREDICTIVE FAMILY EXHAUSTED UNDER
+> THE FROZEN RAM/STATE CONTRACT.** Il predictor PCFR+/PDCFR+ separa policy
+> corrente predetta e cumulative regret; cumulative average occupa già il
+> secondo payload production. Il lower bound TST aggiunge `442.732.000 B` e
+> proietta `2.412.654.048 B` peak, quindi nessun solver candidate è stato
+> autorizzato. Oracle formula 169/169 PASS; nessun enum/dispatch production.
+> Production resta `1.5/0/2`, S6 `1.5/0/5` resta STRONG RESEARCH BASELINE.
+> Report: [`EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
+> **Common schedule decision 2026-08-31:** **COMMON EXACT SCHEDULE SPACE
+> EXHAUSTED.** S6 `1.5/0/5` è il migliore common schedule studiato ma proietta
+> TST circa @160 e worst ratio `1,25–1,46`, quindi non è production. Il
+> contratto globale resta signed DCFR `1.5/0/2`. Dettagli:
+> [`COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
+
 > **Constraint governance 2026-08-31:** optimization research in pausa. Il
 > gate quantitativo conclude che RAM-only e certification-only non chiudono
 > TST. La minima single relaxation plausibile è hardware S1 con speedup

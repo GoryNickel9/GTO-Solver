@@ -4,6 +4,24 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Predictive-CFR feasibility 2026-08-31.** **PREDICTIVE FAMILY EXHAUSTED
+> UNDER THE FROZEN RAM/STATE CONTRACT.** PCFR+ e PDCFR+ richiedono una current
+> predictive policy distinta da cumulative regret e cumulative average. Anche
+> il lower bound `uint16` su `actions-infosets` aggiunge `442.732.000 B` su
+> TST e proietta peak RSS `2.412.654.048 B`, oltre il cap 2 GB. Il RAM kill
+> gate ha quindi impedito solver probe e target-driven; l'oracle separato passa
+> 169 asserzioni. Production resta common signed DCFR `1.5/0/2`; `1.5/0/5`
+> resta STRONG RESEARCH BASELINE, non production. Prossima famiglia soltanto
+> dopo pre-gate RAM: Lazy-CFR. Evidenza:
+> [`EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
+> **Common exact schedule loop 2026-08-31.** **COMMON EXACT SCHEDULE SPACE
+> EXHAUSTED** per static signed DCFR alpha/gamma, beta positivo, DCFR+ e
+> HS-DCFR(30). Il migliore common result è S6 `1.5/0/5`: TST `1,35433%` @120,
+> crossing circa @160 e worst ratio proiettato `1,25–1,46`; resta research
+> comparator e non sostituisce production `1.5/0/2`. Evidenza:
+> [`COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
+
 > **Constraint governance gate 2026-08-31.** L'optimization research è in
 > pausa al governance gate. RAM-only e certification-only sono insufficienti;
 > la minimum-change frontier è un hardware resource change con speedup
