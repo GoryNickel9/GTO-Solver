@@ -1,7 +1,9 @@
 # Memory-neutral exact FD-FTRL / FD-OMD feasibility loop
 
-Data: 2026-08-31  
-Fixture: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`  
+Data: 2026-08-31
+
+Fixture: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
+
 Outcome: **FD-FTRL/OMD LOCAL-COST BLOCKER**
 
 La famiglia practical `R` può essere rappresentata, in linea di principio,
