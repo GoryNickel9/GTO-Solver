@@ -1,5 +1,17 @@
 # Performance
 
+> **Real-node joint lower bound — 2026-08-31.** Il corpus production bounded
+> AHK/TH/TST è replay-fedele su code, scale e parent output. La precision
+> frontier elimina regret 16–24 bit per drift multi-step e float32 direct per
+> RAM (`6–8 B/action`); il producer materialization streaming vale soltanto
+> ~`1,041x`. Le proiezioni TST sono `93,299454 s` ideal-state,
+> `168,036868 s` ideal-producer e `89,624835 s` joint ideal. Poiché nessun
+> punto realizzabile passa precisione, cap desktop e traversal
+> `<=96,208089 s`, la famiglia è chiusa come strada primaria e non autorizza
+> altri codec o full target-driven. Il confronto peak-RSS-vs-GTO+ non cambia.
+> Protocollo, frontier e ledger:
+> [`../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
+
 > **New representation decision — 2026-08-31.** Le scale tile-local condivise
 > fra tutte le actions sono matematicamente valide per regret matching, ma lo
 > sweep reale `K=8/16/32/64` misura `0,948x–0,977x` nel fused shadow; per-hand

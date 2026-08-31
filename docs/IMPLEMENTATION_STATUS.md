@@ -1,5 +1,16 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Real-node replay decision 2026-08-31:** **JOINT STATE/PRODUCER
+> LOWER-BOUND BLOCKER** sotto contratto e cap correnti. Il corpus bounded AHK,
+> TH e TST ha replay autorevole byte/bit-identico. Precisioni regret 16–24 bit
+> mostrano drift/outlier multi-step; float32 regret è stabile ma le varianti
+> direct `6–8 B/action` falliscono il cap desktop TST. Il producer streaming
+> isolato ha ceiling misurato ~`1,041x` e proietta `168,036868 s`; nessun
+> candidate supera insieme numerical, RAM e time gates. Non sono stati
+> eseguiti solver probe candidate né target-driven. Il prossimo passo è un gate
+> di governance sui vincoli. Vedere
+> [`REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
+
 > **New state representation decision 2026-08-31:**
 > **REPRESENTATION SPACE EXHAUSTED** per le famiglie obbligatorie studiate.
 > Tile float/power-of-two e per-hand non superano il fused shadow/RAM; hybrid
@@ -71,7 +82,7 @@
 > prepared-root 2026-08-30. L'audit RBP read-only successivo ha Esito C e non
 > modifica il motore production.
 
-Aggiornato: 2026-08-30
+Aggiornato: 2026-08-31
 
 Le specifiche tecniche canoniche sono indicizzate in
 [`specifications/README.md`](specifications/README.md). Questo documento

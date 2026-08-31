@@ -4,6 +4,20 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Real-node replay e producer lower bound 2026-08-31.**
+> **JOINT STATE/PRODUCER LOWER-BOUND BLOCKER.** Il replay production è fedele
+> su `288` decision node reali (`162.317` action entry): regret/strategy code,
+> scale e parent value autorevoli sono byte/bit-identici. Lo sweep mostra che
+> regret sotto float32 sviluppa outlier di policy nel replay multi-step; i
+> punti float32 abbastanza stabili richiedono `6–8 B/action` e superano il cap
+> desktop TST. Lo streaming della sola materializzazione producer misura circa
+> `1,041x`, insufficiente; l'ideal producer proietta `168,036868 s`, mentre
+> solo il joint ideal perfetto raggiunge `89,624835 s`. Nessun candidate e
+> nessun target-driven sono stati autorizzati. Production e baseline restano
+> invariati; il prossimo passo è un gate esplicito sui vincoli, non un altro
+> codec. Evidenza:
+> [`REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
+
 > **New production state representation loop 2026-08-31.**
 > **REPRESENTATION SPACE EXHAUSTED** per tile-local float/power-of-two,
 > per-hand, hybrid, adaptive e direct compact studiati. Il fused shadow finale
