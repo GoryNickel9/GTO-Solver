@@ -4,6 +4,15 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Constraint governance gate 2026-08-31.** L'optimization research è in
+> pausa al governance gate. RAM-only e certification-only sono insufficienti;
+> la minimum-change frontier è un hardware resource change con speedup
+> effettivo traversal+BR `>=1,615339x`, oppure RAM raw
+> `>=3.432.437.888 B` più exact final BR `<=8,604297 s`. Entrambe sono soltanto
+> `POTENTIALLY SUFFICIENT — NEEDS NEW STUDY`; nessun contratto è stato scelto
+> o implementato. Vedere
+> [`CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
+
 > **Real-node replay e producer lower bound 2026-08-31.**
 > **JOINT STATE/PRODUCER LOWER-BOUND BLOCKER.** Il replay production è fedele
 > su `288` decision node reali (`162.317` action entry): regret/strategy code,

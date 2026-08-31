@@ -1,5 +1,14 @@
 # Performance
 
+> **Constraint governance gate — 2026-08-31.** L'optimization research è
+> sospesa in attesa di una decisione esplicita. Il minimum resource-only
+> boundary è `>=1,615339x` effective speedup su traversal+exact BR; RAM-only
+> resta insufficiente, mentre la pair 8 B/action richiede cap raw
+> `>=3.432.437.888 B` e exact final certification `<=8,604297 s`. Questi sono
+> boundary E1/E2, non una promozione production né una modifica del benchmark.
+> Matrice, dominance e decisione richiesta:
+> [`../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
+
 > **Real-node joint lower bound — 2026-08-31.** Il corpus production bounded
 > AHK/TH/TST è replay-fedele su code, scale e parent output. La precision
 > frontier elimina regret 16–24 bit per drift multi-step e float32 direct per

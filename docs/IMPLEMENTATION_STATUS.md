@@ -1,5 +1,13 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Constraint governance 2026-08-31:** optimization research in pausa. Il
+> gate quantitativo conclude che RAM-only e certification-only non chiudono
+> TST. La minima single relaxation plausibile è hardware S1 con speedup
+> effettivo traversal+BR `>=1,615339x`; la prima pair è RAM raw
+> `>=3.432.437.888 B` più exact final BR `<=8,604297 s`. Sono requisiti di
+> governance, non nuovi contratti production. Dettagli e Pareto frontier in
+> [`CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
+
 > **Real-node replay decision 2026-08-31:** **JOINT STATE/PRODUCER
 > LOWER-BOUND BLOCKER** sotto contratto e cap correnti. Il corpus bounded AHK,
 > TH e TST ha replay autorevole byte/bit-identico. Precisioni regret 16–24 bit
