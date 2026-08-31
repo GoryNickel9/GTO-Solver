@@ -4,6 +4,17 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Lazy-CFR feasibility 2026-08-31.** **LAZY FAMILY RAM BLOCKER.** La
+> segmentazione exact pubblicata richiede almeno un residuo di reach
+> indipendente per infoset e l'implementazione efficiente mantiene inoltre
+> `alpha`, `alpha_hat` e `beta` sulle histories/history-actions. Anche il
+> lower bound deliberatamente favorevole di un solo `float32/infoset` aggiunge
+> `582.096.608 B` su TST e proietta `2.552.018.656 B` peak RSS, oltre il cap
+> di `552.018.656 B`. Trace, oracle e solve sono quindi rimasti a zero. Non
+> esiste una derivazione pubblicata Lazy-DCFR/S6; production resta common
+> `1.5/0/2` e S6 `1.5/0/5` resta STRONG RESEARCH BASELINE. Evidenza:
+> [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Predictive-CFR feasibility 2026-08-31.** **PREDICTIVE FAMILY EXHAUSTED
 > UNDER THE FROZEN RAM/STATE CONTRACT.** PCFR+ e PDCFR+ richiedono una current
 > predictive policy distinta da cumulative regret e cumulative average. Anche

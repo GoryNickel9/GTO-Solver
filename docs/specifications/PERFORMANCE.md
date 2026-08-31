@@ -1,5 +1,16 @@
 # Performance
 
+> **Lazy-CFR feasibility — 2026-08-31.** La famiglia pubblicata è chiusa sotto
+> il contratto corrente come **LAZY FAMILY RAM BLOCKER**. Un solo accumulatore
+> `float32` per i `145.524.152` infoset TST aggiungerebbe `582.096.608 B` e
+> porterebbe il peak ottimistico a `2.552.018.656 B`; le vere DS
+> `alpha/alpha_hat/beta` per history/history-action sono maggiori. Il bitset
+> nominalmente allocabile non rappresenta il residuo continuo del trigger.
+> Nessun trace, oracle, solve o target-driven è stato eseguito. Production
+> resta common `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH BASELINE.
+> Protocollo e lower bound:
+> [`../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Predictive-CFR feasibility — 2026-08-31.** PCFR+ e PDCFR+ sono chiusi
 > sotto il contratto corrente come **PREDICTIVE FAMILY EXHAUSTED UNDER THE
 > FROZEN RAM/STATE CONTRACT**. La policy predittiva non è ricostruibile dal

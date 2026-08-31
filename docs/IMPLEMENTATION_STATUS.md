@@ -1,5 +1,15 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Lazy-CFR decision 2026-08-31:** **LAZY FAMILY RAM BLOCKER.** La regola
+> exact `m(I)>=B` richiede un accumulatore di reach pending distinto per
+> infoset; il path pubblicato è ancora più grande perché usa state
+> history/history-action. Il lower bound `float32/infoset` porta TST da
+> `1.969.922.048 B` a `2.552.018.656 B`, quindi nessun trace, oracle o solver
+> candidate è stato autorizzato. Una composizione Lazy-DCFR/S6 non ha una
+> derivazione primaria sound. Production resta `1.5/0/2`; S6 `1.5/0/5` resta
+> STRONG RESEARCH BASELINE. Report:
+> [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Predictive-CFR decision 2026-08-31:** **PREDICTIVE FAMILY EXHAUSTED UNDER
 > THE FROZEN RAM/STATE CONTRACT.** Il predictor PCFR+/PDCFR+ separa policy
 > corrente predetta e cumulative regret; cumulative average occupa già il
