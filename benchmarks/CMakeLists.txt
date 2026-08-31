@@ -43,6 +43,19 @@ add_executable(gtosd_real_node_state_replay real_node_state_replay.cpp)
 target_link_libraries(gtosd_real_node_state_replay PRIVATE nlohmann_json::nlohmann_json)
 gtosd_set_warnings(gtosd_real_node_state_replay)
 
+add_executable(gtosd_fd_ftrl_omd_local_benchmark fd_ftrl_omd_local_benchmark.cpp)
+target_link_libraries(gtosd_fd_ftrl_omd_local_benchmark
+  PRIVATE benchmark::benchmark)
+gtosd_set_warnings(gtosd_fd_ftrl_omd_local_benchmark)
+
+add_test(NAME gtosd_fd_ftrl_omd_local_benchmark_smoke
+  COMMAND gtosd_fd_ftrl_omd_local_benchmark
+    --benchmark_filter=local/.*_direct
+    --benchmark_min_time=0.01s
+    --benchmark_repetitions=1)
+set_tests_properties(gtosd_fd_ftrl_omd_local_benchmark_smoke
+  PROPERTIES LABELS "benchmark;postflop;fd-ftrl;fd-omd;oracle")
+
 add_test(NAME gtosd_exact_state_representation_benchmark_smoke
   COMMAND gtosd_exact_state_representation_benchmark
     --benchmark_min_time=0.01s
