@@ -1,5 +1,16 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **FD-FTRL/OMD decision 2026-08-31:** **FD-FTRL/OMD LOCAL-COST BLOCKER.**
+> Il reuse byte-level `payload A = R'/Q'`, `payload B = linear average` passa
+> il RAM pre-gate senza un terzo state; l'oracolo CFR/RM e CFR+/RM+ passa
+> `18.670` asserzioni. Il kernel direct sul mix TST è però `3,513x` FTRL e
+> `3,303x` OMD rispetto a RM. Un lower bound già favorevole lascia soltanto
+> `82,4768/84,2703` iterazioni entro il limite, mentre S6 attraversa circa
+> @145. Nessun solver path, enum o checkpoint FD è stato introdotto.
+> Production resta common `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH
+> BASELINE. Report:
+> [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Lazy-CFR decision 2026-08-31:** **LAZY FAMILY RAM BLOCKER.** La regola
 > exact `m(I)>=B` richiede un accumulatore di reach pending distinto per
 > infoset; il path pubblicato è ancora più grande perché usa state

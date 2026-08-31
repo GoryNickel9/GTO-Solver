@@ -1,5 +1,16 @@
 # Performance
 
+> **FD-FTRL/OMD feasibility — 2026-08-31.** Le practical `R` variants possono
+> riusare esattamente i due payload action correnti, ma sono chiuse come
+> **FD-FTRL/OMD LOCAL-COST BLOCKER**. Sul mix TST, direct small-N è migliore
+> di sort/bisection ma misura ancora `24,577/23,107 ns` per infoset contro
+> `6,996 ns` RM. Il boundary ottimistico, con certification congelata e
+> scaling locale perfetto su otto thread, richiede target prima di
+> `82,4768/84,2703` iterazioni. S6 è ancora `1,35433%` @120 e crossing circa
+> @145; nessun tiny, curve o target-driven FD è stato autorizzato. Production
+> resta `1.5/0/2`; S6 resta STRONG RESEARCH BASELINE. Protocollo e misure:
+> [`../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Lazy-CFR feasibility — 2026-08-31.** La famiglia pubblicata è chiusa sotto
 > il contratto corrente come **LAZY FAMILY RAM BLOCKER**. Un solo accumulatore
 > `float32` per i `145.524.152` infoset TST aggiungerebbe `582.096.608 B` e

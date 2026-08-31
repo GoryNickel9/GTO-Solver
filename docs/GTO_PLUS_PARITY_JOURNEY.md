@@ -4,6 +4,18 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Memory-neutral FD-FTRL/OMD feasibility 2026-08-31.**
+> **FD-FTRL/OMD LOCAL-COST BLOCKER.** Le practical `R` variants sono
+> preliminarmente rappresentabili nei due payload correnti: TST resta a
+> `1.472.605.376 B` state e `1.969.922.048 B` peak. L'oracolo di equivalenza
+> FD-FTRL(CFR)/RM e FD-OMD(CFR)/RM+ passa `18.670` asserzioni. Il mix reale di
+> arità misura però `3,513x/3,303x` local cost; anche attribuendo soltanto il
+> delta e scaling perfetto a otto thread, il limite TST richiede crossing
+> `<82,4768/<84,2703` iterazioni, contro S6 circa @145. Zero solver run, zero
+> candidate production. B resta `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH
+> BASELINE. Evidenza:
+> [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
+
 > **Lazy-CFR feasibility 2026-08-31.** **LAZY FAMILY RAM BLOCKER.** La
 > segmentazione exact pubblicata richiede almeno un residuo di reach
 > indipendente per infoset e l'implementazione efficiente mantiene inoltre
