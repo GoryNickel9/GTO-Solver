@@ -145,6 +145,12 @@ add_test(NAME gtosd_predictive_cfr_oracle_tests COMMAND gtosd_predictive_cfr_ora
 set_tests_properties(gtosd_predictive_cfr_oracle_tests
   PROPERTIES LABELS "postflop;predictive-cfr;oracle")
 
+add_executable(gtosd_fd_ftrl_omd_oracle_tests fd_ftrl_omd_oracle_tests.cpp)
+gtosd_set_warnings(gtosd_fd_ftrl_omd_oracle_tests)
+add_test(NAME gtosd_fd_ftrl_omd_oracle_tests COMMAND gtosd_fd_ftrl_omd_oracle_tests)
+set_tests_properties(gtosd_fd_ftrl_omd_oracle_tests
+  PROPERTIES LABELS "postflop;fd-ftrl;fd-omd;oracle")
+
 add_executable(gtosd_gto_plus_reference_tests gto_plus_reference_tests.cpp)
 target_link_libraries(gtosd_gto_plus_reference_tests PRIVATE gtosd::postflop)
 gtosd_set_warnings(gtosd_gto_plus_reference_tests)
