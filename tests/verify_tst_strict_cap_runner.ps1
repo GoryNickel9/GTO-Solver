@@ -11,6 +11,7 @@ $required = @(
     'process.json',
     'validity.json',
     'PeakWorkingSet64',
+    'GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT',
     '-ge $MemoryCapBytes',
     'Stop-Process',
     "'strict_less_than'",

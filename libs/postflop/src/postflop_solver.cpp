@@ -2901,9 +2901,22 @@ public:
     static const bool enabled = [] {
 #pragma warning(push)
 #pragma warning(disable : 4996)
-      return std::getenv("GTOSD_PROFILE_HOTPATH") != nullptr;
+      return std::getenv("GTOSD_PROFILE_HOTPATH") != nullptr ||
+             std::getenv("GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT") != nullptr;
 #pragma warning(pop)
     }();
+    return enabled;
+#else
+    return false;
+#endif
+  }
+
+  [[nodiscard]] static bool hotpath_heavy_profiling_enabled() noexcept {
+#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+    static const bool enabled = std::getenv("GTOSD_PROFILE_HOTPATH") != nullptr;
+#pragma warning(pop)
     return enabled;
 #else
     return false;
@@ -8427,7 +8440,7 @@ private:
     const std::size_t worker_count = parallel_workers_.size();
     const auto board_card_count = std::popcount(board.mask);
 #if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
-    if (profile && board_card_count == 4U) {
+    if (profile && hotpath_heavy_profiling_enabled() && board_card_count == 4U) {
       profile_river_topology_compatibility(canonical, updating_player);
     }
 #endif
@@ -10705,44 +10718,46 @@ private:
       prof_telemetry_.showdown_touched_card_rank_cells +=
           opponent_combos.touched_by_rank_card.size();
 
-      // Hash the exact IEEE representation of the relevant opponent reach.
-      // Repeats are telemetry-only reuse candidates; no cached value is used.
-      std::uint64_t hash = 1469598103934665603ULL;
-      const auto mix = [&hash](const std::uint64_t value) {
-        hash ^= value;
-        hash *= 1099511628211ULL;
-      };
-      mix(board_index);
-      mix(updating_player);
-      mix(opponent_combos.size());
-      for (std::size_t local = 0U; local < opponent_combos.size(); ++local) {
-        const auto slot =
-            BoardLocal ? local : static_cast<std::size_t>(opponent_combos.own_slot[local]);
-        if constexpr (std::is_same_v<Scalar, float>) {
-          mix(std::bit_cast<std::uint32_t>(opponent_reach[slot]));
-        } else {
-          mix(std::bit_cast<std::uint64_t>(opponent_reach[slot]));
+      if (hotpath_heavy_profiling_enabled()) {
+        // Hash the exact IEEE representation of the relevant opponent reach.
+        // Repeats are telemetry-only reuse candidates; no cached value is used.
+        std::uint64_t hash = 1469598103934665603ULL;
+        const auto mix = [&hash](const std::uint64_t value) {
+          hash ^= value;
+          hash *= 1099511628211ULL;
+        };
+        mix(board_index);
+        mix(updating_player);
+        mix(opponent_combos.size());
+        for (std::size_t local = 0U; local < opponent_combos.size(); ++local) {
+          const auto slot =
+              BoardLocal ? local : static_cast<std::size_t>(opponent_combos.own_slot[local]);
+          if constexpr (std::is_same_v<Scalar, float>) {
+            mix(std::bit_cast<std::uint32_t>(opponent_reach[slot]));
+          } else {
+            mix(std::bit_cast<std::uint64_t>(opponent_reach[slot]));
+          }
         }
-      }
-      if (prof_showdown_reach_hashes_.insert(hash).second) {
-        ++prof_telemetry_.showdown_reach_hash_unique;
-      } else {
-        ++prof_telemetry_.showdown_reach_hash_repeats;
-      }
-      const auto sequence = ++prof_showdown_reach_sequence_;
-      const auto previous = prof_showdown_reach_last_sequence_.find(hash);
-      if (previous != prof_showdown_reach_last_sequence_.end()) {
-        const auto distance = sequence - previous->second;
-        const std::size_t bucket = distance == 1U     ? 0U
-                                   : distance <= 4U   ? 1U
-                                   : distance <= 16U  ? 2U
-                                   : distance <= 64U  ? 3U
-                                   : distance <= 256U ? 4U
-                                                      : 5U;
-        ++prof_telemetry_.showdown_reuse_distance_buckets[bucket];
-        previous->second = sequence;
-      } else {
-        prof_showdown_reach_last_sequence_.emplace(hash, sequence);
+        if (prof_showdown_reach_hashes_.insert(hash).second) {
+          ++prof_telemetry_.showdown_reach_hash_unique;
+        } else {
+          ++prof_telemetry_.showdown_reach_hash_repeats;
+        }
+        const auto sequence = ++prof_showdown_reach_sequence_;
+        const auto previous = prof_showdown_reach_last_sequence_.find(hash);
+        if (previous != prof_showdown_reach_last_sequence_.end()) {
+          const auto distance = sequence - previous->second;
+          const std::size_t bucket = distance == 1U     ? 0U
+                                     : distance <= 4U   ? 1U
+                                     : distance <= 16U  ? 2U
+                                     : distance <= 64U  ? 3U
+                                     : distance <= 256U ? 4U
+                                                        : 5U;
+          ++prof_telemetry_.showdown_reuse_distance_buckets[bucket];
+          previous->second = sequence;
+        } else {
+          prof_showdown_reach_last_sequence_.emplace(hash, sequence);
+        }
       }
     }
 #endif

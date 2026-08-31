@@ -11,6 +11,8 @@ param(
 
     [switch]$TargetDriven,
 
+    [switch]$LightweightHotpathProfile,
+
     [string]$BuildDir = 'out/build/windows-release',
     [string]$OutputRoot = '.tmp/tst-strict-2gb-bottleneck-loop/03-baseline',
 
@@ -149,6 +151,7 @@ $runDocument = [ordered]@{
     }
     binary = [ordered]@{ path = $executable; sha256 = $binaryHash }
     mode = if ($TargetDriven) { 'target_driven' } else { 'fixed_iteration_diagnostic' }
+    lightweight_hotpath_profile = [bool]$LightweightHotpathProfile
     requested_iterations = if ($TargetDriven) { $null } else { $Iterations }
     contract = $contract
     contract_sha256 = $contractHash
@@ -178,6 +181,7 @@ Write-Json $environmentPath $environmentDocument
 $oldFixed = $env:GTOSD_DIAGNOSTIC_FIXED_ITERATIONS
 $oldLimit = $env:GTOSD_DIAGNOSTIC_ITERATION_LIMIT
 $oldInterval = $env:GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL
+$oldLightweightProfile = $env:GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT
 $process = $null
 $observedPeak = [uint64]0
 $capReached = $false
@@ -188,6 +192,9 @@ try {
         $env:GTOSD_DIAGNOSTIC_FIXED_ITERATIONS = '1'
         $env:GTOSD_DIAGNOSTIC_ITERATION_LIMIT = [string]$Iterations
         $env:GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL = '20'
+    }
+    if ($LightweightHotpathProfile) {
+        $env:GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT = '1'
     }
     $process = Start-Process -FilePath $executable `
         -ArgumentList @('postflop', 'benchmark-gto-plus', $fixturePath, $reportPath) `
@@ -225,6 +232,8 @@ finally {
     else { $env:GTOSD_DIAGNOSTIC_ITERATION_LIMIT = $oldLimit }
     if ($null -eq $oldInterval) { Remove-Item Env:GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL -ErrorAction SilentlyContinue }
     else { $env:GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL = $oldInterval }
+    if ($null -eq $oldLightweightProfile) { Remove-Item Env:GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT -ErrorAction SilentlyContinue }
+    else { $env:GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT = $oldLightweightProfile }
 }
 
 $exitCode = if ($process) { $process.ExitCode } else { -1 }
