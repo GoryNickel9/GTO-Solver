@@ -1887,10 +1887,28 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     return Result<DenseLayout, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
-  // The legacy physical traversal does not aggregate public suit orbits. This
-  // flag is retained for its specialized inspection path, not for the
-  // node-owned chance tree selected above.
+  // Production never aggregates public suit orbits in the legacy physical
+  // traversal.  A separately compiled, default-OFF oracle target can enable
+  // the rejected path to preserve its asymmetric-range counterexample as a
+  // regression shield; the production gtosd_postflop target compiles this out.
+#if defined(GTOSD_ENABLE_RANGE_ORBIT_ORACLE)
+#ifdef _WIN32
+  char *range_orbit_oracle = nullptr;
+  std::size_t range_orbit_oracle_size = 0U;
+  const auto range_orbit_oracle_error =
+      _dupenv_s(&range_orbit_oracle, &range_orbit_oracle_size, "GTOSD_RANGE_ORBIT_ORACLE");
+  layout.uses_range_aware_physical_orbits = range_orbit_oracle_error == 0 &&
+                                            range_orbit_oracle != nullptr &&
+                                            std::string_view{range_orbit_oracle} == "1";
+  std::free(range_orbit_oracle);
+#else
+  const auto *const range_orbit_oracle = std::getenv("GTOSD_RANGE_ORBIT_ORACLE");
+  layout.uses_range_aware_physical_orbits =
+      range_orbit_oracle != nullptr && std::string_view{range_orbit_oracle} == "1";
+#endif
+#else
   layout.uses_range_aware_physical_orbits = false;
+#endif
 
   const auto &flop_board = layout.boards[layout.node_board[layout.tree.root]];
   layout.active_combos = flop_board.legal_combos;
