@@ -151,6 +151,16 @@ add_test(NAME gtosd_fd_ftrl_omd_oracle_tests COMMAND gtosd_fd_ftrl_omd_oracle_te
 set_tests_properties(gtosd_fd_ftrl_omd_oracle_tests
   PROPERTIES LABELS "postflop;fd-ftrl;fd-omd;oracle")
 
+add_executable(gtosd_pure_cfr_recheck_oracle_tests pure_cfr_recheck_oracle_tests.cpp)
+target_link_libraries(gtosd_pure_cfr_recheck_oracle_tests
+  PRIVATE
+    gtosd::solver
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_pure_cfr_recheck_oracle_tests)
+add_test(NAME gtosd_pure_cfr_recheck_oracle_tests COMMAND gtosd_pure_cfr_recheck_oracle_tests)
+set_tests_properties(gtosd_pure_cfr_recheck_oracle_tests
+  PROPERTIES LABELS "solver;pure-cfr;sync-pcfr;oracle;exact")
+
 add_executable(gtosd_gto_plus_reference_tests gto_plus_reference_tests.cpp)
 target_link_libraries(gtosd_gto_plus_reference_tests PRIVATE gtosd::postflop)
 gtosd_set_warnings(gtosd_gto_plus_reference_tests)
