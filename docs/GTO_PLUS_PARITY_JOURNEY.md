@@ -4,6 +4,14 @@ Aggiornato: 2026-08-31
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Range-aware physical-orbit oracle 2026-09-01.** **FAMILY CLOSED FOR
+> PRODUCTION.** Un oracle default-OFF riproduce il controesempio asimmetrico in
+> tre iterazioni: child value `5,0104e-05`, profile EV `1,00178e-04`, BR
+> `1,32975e-07`, cumulative regret `2,2076` e strategy `3,89099e-04` divergono
+> a parità di fingerprint/layout. Il target GTO+ production resta PASS e il
+> percorso orbit resta disabilitato. Evidenza:
+> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md).
+
 > **Memory-neutral FD-FTRL/OMD feasibility 2026-08-31.**
 > **FD-FTRL/OMD LOCAL-COST BLOCKER.** Le practical `R` variants sono
 > preliminarmente rappresentabili nei due payload correnti: TST resta a

@@ -1,5 +1,13 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Range-aware physical-orbit decision 2026-09-01:** **FAMILY CLOSED FOR
+> PRODUCTION.** Il controesempio minimo su range asimmetrici cambia child
+> value, profile EV, BR, regret e strategy già alla terza iterazione, pur
+> mantenendo fingerprint e layout identici. L'oracle è disponibile soltanto
+> con build gate default-OFF; `uses_range_aware_physical_orbits` resta `false`
+> nella libreria production. Report:
+> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md).
+
 > **FD-FTRL/OMD decision 2026-08-31:** **FD-FTRL/OMD LOCAL-COST BLOCKER.**
 > Il reuse byte-level `payload A = R'/Q'`, `payload B = linear average` passa
 > il RAM pre-gate senza un terzo state; l'oracolo CFR/RM e CFR+/RM+ passa

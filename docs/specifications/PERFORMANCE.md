@@ -1,5 +1,13 @@
 # Performance
 
+> **Range-aware physical-orbit oracle — 2026-09-01.** Il riuso di chance
+> subtree trasformati è chiuso prima del timing gate: a tre iterazioni e range
+> asimmetrici diverge su child value `5,0104e-05`, profile EV `1,00178e-04`,
+> BR `1,32975e-07`, regret `2,2076` e strategy `3,89099e-04`. Fingerprint e
+> layout sono identici; quindi la differenza è semantica di traversal/update,
+> non una diversa configurazione. Production resta default-OFF. Protocollo:
+> [`../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md).
+
 > **FD-FTRL/OMD feasibility — 2026-08-31.** Le practical `R` variants possono
 > riusare esattamente i due payload action correnti, ma sono chiuse come
 > **FD-FTRL/OMD LOCAL-COST BLOCKER**. Sul mix TST, direct small-N è migliore
