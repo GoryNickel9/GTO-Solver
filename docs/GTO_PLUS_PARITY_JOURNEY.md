@@ -1,8 +1,41 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-08-31
-Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
+Aggiornato: 2026-09-01
+Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **Production DCFR integration final-head 2026-09-01 — stato corrente.**
+> Il candidato comune `bounded65-upstream-after65` e' integrato come
+> `production_dcfr`: DCFR exact signed `1.5/0/3`, reset one-based limitati a
+> `1,2,5,17,65` e clock di regret post-65 ritardato di una iterazione. Non usa
+> nomi o logica specifici per fixture; stato, precisione, massimo otto thread e
+> CPU-only restano invariati. Il valore checkpoint enum `11` e' preservato.
+> Le fixture production usano `certification_interval=20`.
+>
+> Cinque processi auditabili final-head (`r2-r6`), ciascuno preceduto da
+> preflight persistito e contenente tutti e tre i benchmark target-driven,
+> riproducono esattamente `80/80/160` iterazioni e dEV
+> `0,951423%/0,807956%/0,904505%`. Mediana/p95 solver:
+> AHK `0,758705/0,790918 s`, TH `19,948228/24,192260 s`, TST
+> `184,095930/197,865030 s`. Root EV deterministici:
+> `19,118977716/8,226793157/8,495660681`. Tutti i `15/15` solve passano
+> correctness, layout ed exact outcomes. Peak RSS massimo TST
+> `1.969.860.608 B < 2.000.000.000 B`; state TST `1.472.605.376 B`.
+> CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
+> Full CTest Release `26/26 PASS`.
+>
+> La promozione migliora la Release comune precedente ed elimina il suo FAIL
+> di correttezza AHK, ma **non** chiude la parita' temporale GTO+. La mediana TH
+> `19,948228 s` supera `19,622222 s` di `0,326006 s` (`1,661%`); la mediana TST
+> `184,095930 s` supera `128,988889 s` del `42,722%`. Il parity gate
+> complessivo resta quindi bloccante su TH e TST. Evidenza e protocollo:
+> [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
+> `out/production-final-head-20260901/`.
+
+> **Precedenza storica.** Tutti i blocchi datati 2026-08-31 o precedenti sotto
+> questa sezione conservano decisioni e misure valide nel loro contesto, ma le
+> frasi che indicano `1.5/0/2` come production corrente o la five-process come
+> congelata sono superseded dalla qualificazione 2026-09-01 sopra.
 
 > **Memory-neutral FD-FTRL/OMD feasibility 2026-08-31.**
 > **FD-FTRL/OMD LOCAL-COST BLOCKER.** Le practical `R` variants sono

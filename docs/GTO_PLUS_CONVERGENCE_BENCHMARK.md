@@ -7,12 +7,14 @@
 Benchmark ID: `GTP-AHKHQH-003`
 Schema: `gtosd.gto_plus_convergence_benchmark.v1`
 
-> **Checkpoint operativo 2026-08-14.** Il protocollo v2 è applicato alla suite
+> **Checkpoint operativo 2026-09-01.** Il protocollo v2 è applicato alla suite
 > AHKHQH/TH7D6S/TSTC9D senza iteration cap e con arresto stretto a
-> `Target dEV < 1%`. I tre report correnti passano dEV, root EV e
-> `solver_state_bytes`; falliscono tutti il tempo. Valori e report autorevoli
-> sono nel parity journey. Le sezioni v1 e le diagnosi successive restano
-> evidenza storica del protocollo, non il dashboard corrente.
+> `Target dEV < 1%`. Cinque processi production passano dEV, root, layout,
+> exact outcomes, stato e cap desktop su `15/15` solve; AHK passa il tempo,
+> TH e TST falliscono la mediana rispettivamente del `1,661%` e `42,722%`.
+> Valori e report autorevoli sono nel parity journey. Le sezioni v1 e le
+> diagnosi successive restano evidenza storica del protocollo, non il dashboard
+> corrente.
 > Il protocollo misura esclusivamente il backend CPU/RAM: non sono ammessi
 > offload o kernel GPU durante solving e certificazione.
 

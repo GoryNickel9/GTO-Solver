@@ -16,23 +16,27 @@ nel workflow postflop di prodotto.
 
 ## Percorso HU postflop production
 
-Il percorso production corrente usa DCFR standard exact con aggiornamenti
-alternati su tutte le combo e chance compatibili. Il contratto e' congelato a
-`alpha=1.5`, `beta=0`, `gamma=2`, regret signed e average immediato
-(`averaging_delay=0`). Non usa sampling, bucketing o astrazione lossy.
-L'isomorfismo globale e il DAG canonico sono riduzioni lossless.
+Il percorso production corrente usa `ProductionDcfr`, una schedule DCFR signed
+exact-outcome con aggiornamenti alternati su tutte le combo e chance
+compatibili. Il contratto e' `alpha=1.5`, `beta=0`, `gamma=3`, regret signed e
+average immediato (`averaging_delay=0`). L'average viene azzerato alle
+iterazioni one-based `1,2,5,17,65`; dopo 65 l'ultima epoca viene mantenuta. Non
+usa sampling, bucketing o astrazione del gioco. L'isomorfismo globale e il DAG
+canonico sono riduzioni lossless; lo stato cumulativo production usa il codec
+node-scaled uint16 dichiarato nella specifica di precisione.
 
 L'intero percorso, inclusi exact BR e certificazione, viene eseguito su CPU con
 stato e workspace in RAM. Un backend GPU non fa parte delle varianti ammesse e
 non è un'estensione pianificata: ottimizzazioni future devono restare CPU-only.
 
 Per ogni giocatore una traversata calcola i valori counterfactuali e produce
-delta separati. Nel backend signed, all'iterazione `t`, i regret positivi
-precedenti sono moltiplicati per `(t-1)^alpha/((t-1)^alpha+1)` e quelli non
-positivi per `(t-1)^beta/((t-1)^beta+1)`; con
-`beta=0` il fattore negativo effettivo e' `1/2`. L'average strategy accumula
-`t^gamma * pi_i^sigma(I) * sigma_i^t(I,a)` dalla prima iterazione e la strategia
-esposta deriva da tale accumulo reach-weighted.
+delta separati. Nel production backend, all'iterazione `t`, il clock positivo
+e' `r=t-1` fino a 65 e `r=t-2` dopo 65; i regret positivi precedenti sono
+moltiplicati per `r^alpha/(r^alpha+1)` e quelli non positivi per `1/2`.
+All'interno di ogni epoca l'average strategy accumula con peso cubico
+`(k+1)^3`, dove `k` parte da zero al reset. Questa forma additiva e' equivalente
+fino a scala comune al discount ricorsivo gamma 3. La strategia esposta deriva
+dall'accumulatore reach-weighted.
 
 ## Varianti
 
@@ -41,11 +45,14 @@ esposta deriva da tale accumulo reach-weighted.
 | Vanilla CFR | somma integrale | uniforme | laboratorio |
 | CFR+ | cumulativo troncato a zero | con delay | oracle/fallback exact |
 | Linear CFR | peso crescente con iterazione | lineare | laboratorio |
-| DCFR | discount separato positivo/negativo/strategy | parametrico | postflop production |
+| DCFR | discount separato positivo/negativo/strategy | parametrico `1.5/0/2` di default | laboratorio/comparator |
+| Production DCFR | DCFR signed, reset bounded e pesi cubici | contratto fisso `1.5/0/3` | postflop production |
 | External Sampling MCCFR | stima campionata | dipende dal campione | laboratorio |
 
-DCFR espone gli esponenti `alpha=1.5`, `beta=0`, `gamma=2` come default
-versionati. MCCFR registra seed e non può essere chiamato exact.
+DCFR continua a esporre `alpha=1.5`, `beta=0`, `gamma=2` come variante
+parametrica versionata. `ProductionDcfr` ha identita' checkpoint distinta
+(`11`) e non accetta una gamma alternativa. MCCFR registra seed e non può
+essere chiamato exact.
 
 ## Parallelismo
 
@@ -95,9 +102,11 @@ separate; NashConv HU zero-sum non viene trasferita per assunzione.
 
 L'ADR
 [`ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md`](../ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md)
-seleziona DCFR standard (`alpha=1.5`, `beta=0`, `gamma=2`) come regret minimizer
-production iniziale del nuovo kernel canonico, con CFR+ come oracle e fallback.
-Le tre fixture production AHKHQH, TH7D6S e TSTC9D applicano questo stesso
-contratto. `DcfrPlus` conserva una proiezione non-negativa custom e un
-identificatore distinto; non viene usato per scegliere parametri diversi in
-base al benchmark.
+selezionava DCFR standard (`alpha=1.5`, `beta=0`, `gamma=2`) come regret
+minimizer production iniziale del nuovo kernel canonico, con CFR+ come oracle e
+fallback. La decisione successiva del 2026-09-01 promuove la schedule comune
+`ProductionDcfr` descritta sopra; l'ADR resta la motivazione del backend
+memory-bounded, non l'autorita' della schedule corrente. Le tre fixture
+AHKHQH, TH7D6S e TSTC9D applicano lo stesso contratto e non esiste selezione per
+benchmark. `DcfrPlus` conserva una proiezione non-negativa custom e un
+identificatore distinto.

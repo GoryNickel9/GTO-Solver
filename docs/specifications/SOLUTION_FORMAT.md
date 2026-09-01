@@ -19,14 +19,18 @@ config, range, checkpoint e certificazione coerenti.
 - fingerprint del gioco;
 - iterazioni completate e averaging delay;
 - numero di action slot;
+- numero di decision node e relative scale, per gli stati node-scaled;
 - precisione dello stato;
+- algoritmo e parametri DCFR versionati;
 - eventuale backing file;
-- cumulative regret e cumulative strategy in `double` oppure `float`.
+- cumulative regret e cumulative strategy nel payload selezionato (`double`,
+  `float`, packed legacy oppure uint16 action-major con scale float32).
 
-Il resume rifiuta versione, fingerprint, layout o precisione incompatibili. Lo
-stato non contiene una strategia root esterna implicita: il futuro esperimento
-F10.4 dovrà avere un marker diagnostico esplicito e non potrà essere riaperto
-come equilibrio standard.
+Il resume rifiuta versione, fingerprint, layout, precisione o algoritmo
+incompatibili. `ProductionDcfr` conserva il valore enum/checkpoint `11`; la
+schedule e' coperta da resume continuo/segmentato byte-equivalent. Lo stato non
+contiene una strategia root esterna implicita: F10.4 resta un percorso
+diagnostico esplicito e non può essere riaperto come equilibrio standard.
 
 ## Container `.gtsd`
 
@@ -76,9 +80,14 @@ e normalized NashConv. Non è parte della catena di integrità del `.gtsd` e non
 
 ## Precisione e compatibilità
 
-Il percorso predefinito conserva strategia e regret senza quantizzazione. La
-quantizzazione `uint16` è sperimentale, deve impostare il feature bit dedicato e
-non è accettata come formato exact. Zstandard è lossless.
+Il percorso benchmark production usa `ScaledUint16RegretStrategy`: codici
+uint16 action-major per regret signed e average strategy, con una scala float32
+per decision node e payload. Il codec e' numericamente lossy rispetto a uno
+stato real-valued, ma e' un formato production versionato e qualificato tramite
+dEV, root EV, resume byte-equivalent, finiteness e cinque processi. La dicitura
+`exact outcomes` significa enumerazione completa degli outcome del gioco
+discretizzato, non identita' numerica con `Float64`. Zstandard resta lossless
+rispetto ai byte del payload scelto.
 
 Una major sconosciuta viene rifiutata. Feature sconosciute vengono rifiutate
 prima della lettura dei chunk. Una minor compatibile può essere accettata solo

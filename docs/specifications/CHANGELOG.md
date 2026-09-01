@@ -3,6 +3,27 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-09-01
+
+### Aggiornato
+
+- Promossa la schedule comune `production_dcfr` (`1.5/0/3`, reset
+  `1,2,5,17,65`, regret clock post-65 ritardato di una iterazione).
+- Allineate le tre fixture production e mantenuta l'identita' checkpoint `11`.
+- Registrata la qualificazione final-head a cinque processi: `15/15` solve con
+  dEV `<1%`, correctness/layout/exact outcomes e cap desktop PASS.
+- Pubblicati mediana/p95 AHK `0,758705/0,790918 s`, TH
+  `19,948228/24,192260 s`, TST `184,095930/197,865030 s`.
+- Corretto lo stato del parity gate: AHK time PASS; TH e TST time FAIL
+  rispettivamente del `1,661%` e `42,722%` sulla mediana.
+- Reso `ScaledUint16RegretStrategy` il formato benchmark production dichiarato;
+  “exact outcomes” non implica identita' numerica con Float64.
+
+### Verificato
+
+- CTest Release `26/26 PASS`.
+- Contratto fixture, resume byte-equivalent, PowerShell parse e diff check PASS.
+
 ## 2026-08-14
 
 ### Aggiornato

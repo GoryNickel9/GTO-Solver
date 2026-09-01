@@ -1,5 +1,24 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Production DCFR integration 2026-09-01 — stato corrente.** Il contratto
+> comune AHK/TH/TST e' ora `production_dcfr`: exact alternating signed DCFR
+> `1.5/0/3`, reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di
+> una iterazione, delay zero, `ScaledUint16RegretStrategy`, CPU-only e massimo
+> otto thread. Cinque processi final-head auditabili (`r2-r6`) passano `15/15`
+> solve con dEV `<1%`, correctness/layout/exact outcomes e peak TST sotto 2 GB.
+> Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
+> `0,758705/19,948228/184,095930 s`; p95
+> `0,790918/24,192260/197,865030 s`. Full CTest Release `26/26 PASS`.
+> La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
+> GTO+ resta non superato per i tempi TH e TST: mediane rispettivamente
+> `1,661%` e `42,722%` sopra i limiti. Report:
+> [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
+
+> **Precedenza storica.** Gli aggiornamenti datati 2026-08-31 e precedenti
+> sotto questa sezione restano ledger storico. Ogni loro frase che presenta
+> `1.5/0/2` come production corrente o la five-process come congelata e'
+> superseded dal blocco 2026-09-01 sopra.
+
 > **FD-FTRL/OMD decision 2026-08-31:** **FD-FTRL/OMD LOCAL-COST BLOCKER.**
 > Il reuse byte-level `payload A = R'/Q'`, `payload B = linear average` passa
 > il RAM pre-gate senza un terzo state; l'oracolo CFR/RM e CFR+/RM+ passa
@@ -126,7 +145,7 @@
 > prepared-root 2026-08-30. L'audit RBP read-only successivo ha Esito C e non
 > modifica il motore production.
 
-Aggiornato: 2026-08-31
+Aggiornato: 2026-09-01
 
 Le specifiche tecniche canoniche sono indicizzate in
 [`specifications/README.md`](specifications/README.md). Questo documento
@@ -147,7 +166,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; TST time blocker in scope** | Final-head comune DCFR exact signed `1.5/0/2`: AHK `0,655665% @80`, root `19,108984`, `0,670928 s`; TH `0,806385% @80`, root `8,221632`, `17,645055 s`; TST `0,991863% @202`, root `8,494698`, payoff-sum `3,22e-15`, `208,111772 s` (`174,926380` traversal + `32,780800` certification), stato `1.472.605.376 B`, peak RSS `1.969.922.048 B`. TST supera il limite `128,988889 s` del `61,3409%`; AHK/TH time PASS. Il confronto peak-RSS-vs-campo-memory GTO+ è deferred e non viene reinterpretato; cap desktop e state PASS. Full CTest 21/21 PASS | Il cumulative loop è EXHAUSTED: proseguire solo con una nuova rappresentazione exact dello state/dataflow che superi il ceiling documentato. F11+ e cinque processi restano congelati |
+| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes e cap desktop PASS; Full CTest 26/26 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+ |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 

@@ -50,12 +50,11 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
 
 ## Flusso del solve postflop
 
-> **Migrazione architetturale accettata e avviata.**
+> **Migrazione architetturale completata per il percorso production corrente.**
 > [`ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md`](../ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md)
-> sostituisce come target il flusso fisico descritto sotto. Il compilatore
-> layout-only è implementato; finché il traversal non supera i gate
-> differenziali, questo paragrafo continua a descrivere il
-> codice production corrente e non la capacità futura.
+> definisce il backend memory-bounded iniziale; il traversal production usa il
+> layout canonico lossless e lo stato node-scaled qualificato. La schedule
+> corrente e' definita in `SOLVER_ALGORITHMS.md`, non nell'ADR storico.
 
 1. Il config versionato viene parsato e validato.
 2. Range e blocker vengono validati senza rinormalizzazione implicita.
@@ -64,7 +63,8 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
    canonical chance tree senza unificare history arbitrarie.
 5. `prepare_postflop_tree` crea il layout infoset/action e, se richiesto, gli
    indici analytics.
-6. CFR+ aggiorna regret e strategy sum nel backend scelto.
+6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture production
+   usano `ProductionDcfr`, mentre CFR+ resta oracle/fallback.
 7. A intervalli espliciti la best response certifica il profilo medio.
 8. Checkpoint e soluzione possono essere salvati e ripresi solo con fingerprint
    compatibile.

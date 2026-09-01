@@ -1,5 +1,25 @@
 # Performance
 
+> **Production final-head — 2026-09-01, stato corrente.** La schedule comune
+> qualificata e' `production_dcfr`: exact alternating signed DCFR `1.5/0/3`,
+> reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di una
+> iterazione, delay zero, stato scaled uint16, massimo otto thread e nessuna
+> logica fixture-specific. Cinque processi auditabili (`r2-r6`) con
+> `certification_interval=20` riproducono AHK/TH/TST a `80/80/160` iterazioni,
+> dEV `0,951423%/0,807956%/0,904505%` e mediana/p95 solver
+> `0,758705/0,790918 s`, `19,948228/24,192260 s`,
+> `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, sotto il
+> cap stretto `2.000.000.000 B`; full CTest Release `26/26 PASS`. Il precedente
+> `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
+> Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
+> `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
+> [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
+
+> **Precedenza storica.** I checkpoint e feasibility block datati 2026-08-31 o
+> precedenti sotto questa nota restano evidenza storica. Le loro diciture
+> `production resta 1.5/0/2`, `stato corrente` e five-process congelata sono
+> superseded dal final-head 2026-09-01 sopra.
+
 > **FD-FTRL/OMD feasibility — 2026-08-31.** Le practical `R` variants possono
 > riusare esattamente i due payload action correnti, ma sono chiuse come
 > **FD-FTRL/OMD LOCAL-COST BLOCKER**. Sul mix TST, direct small-N è migliore
@@ -90,7 +110,7 @@
 > byte model e risultati sono in
 > [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](../ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
 
-> **Revalidation production final-head 2026-08-30 — stato corrente.** Sul
+> **Revalidation production final-head 2026-08-30 — storico/superseded.** Sul
 > binario Release da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`, AHKHQH
 > converge @80 in `0,670928 s`, TH7D6S @80 in `17,645055 s` e TSTC9D @202 in
 > `208,111772 s`. I limiti sono rispettivamente `1,900000 s`, `19,622222 s` e
@@ -107,7 +127,7 @@
 > TST hanno Root PASS con contratto invariato. Vedere
 > [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](../AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
 
-> **Baseline production corrente (2026-08-29/30).** AHKHQH, TH7D6S e TSTC9D
+> **Baseline production storica (2026-08-29/30; superseded).** AHKHQH, TH7D6S e TSTC9D
 > usano ora lo stesso DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
 > `averaging_delay=0` e massimo otto thread. Golden, curve fixed e time-to-target
 > sono in
