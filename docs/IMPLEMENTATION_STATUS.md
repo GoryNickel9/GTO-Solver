@@ -1,5 +1,13 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Sync-PCFR trajectory decision 2026-09-01:** **FAMILY CLOSED.** Il probe
+> signed-uint16 Pure-CFR è disponibile soltanto con
+> `GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE=ON`. AHK @80 misura `0/80` fasi
+> comprimibili sia alternating sia simultaneous; dEV Pure `32,870859%` contro
+> production DCFR `0,655665%`. Nessun enum/checkpoint/default è cambiato e TH/
+> TST non sono stati eseguiti. Report:
+> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md).
+
 > **Exact-algorithm recheck 2026-09-01:** outcome **B. SYNC-PCFR REQUIRES AN
 > ISOLATED POSTFLOP TRAJECTORY GATE**. Pure/Sync-PCFR passa il pre-gate state
 > con gli stessi `1.472.605.376 B` TST. Pure-only è temporalmente insufficiente;

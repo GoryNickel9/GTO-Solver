@@ -1,5 +1,15 @@
 # Performance
 
+> **Sync-PCFR postflop trajectory gate — 2026-09-01.** La famiglia è chiusa:
+> AHK @80 ha minimum pursuit phase `1` in tutte le iterazioni, sia alternating
+> sia simultaneous, quindi la sincronizzazione non elimina traversal. Pure CFR
+> misura dEV `32,870859%`, NashConv `0,603126` e traversal `0,817103 s`; DCFR
+> misura `0,655665%`, `0,0119318` e `0,804234 s`. Anche un delta TST float32
+> aggiungerebbe `1.467.560.608 B` e porterebbe il fresh peak almeno a
+> `3.438.596.768 B`; una seconda traversal non aiuta con fase 1. TH/TST sono
+> stati correttamente saltati. Protocollo:
+> [`../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md).
+
 > **Strict exact-algorithm recheck — 2026-09-01.** Le famiglie precedentemente
 > escluse restano tali dopo un audit indipendente. Pure CFR è memory-neutral ma
 > la occupancy non-iniziale TST `0,832335` limita lo speedup ideale a

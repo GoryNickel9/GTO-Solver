@@ -4,6 +4,15 @@ Aggiornato: 2026-09-01
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **Sync-PCFR postflop trajectory gate 2026-09-01.** **SYNC-PCFR POSTFLOP
+> FAMILY CLOSED UNDER THE STRICT CONTRACT.** Il river oracle passa, ma AHK @80
+> produce minimum phase globale `1` in `80/80` iterazioni sia alternating sia
+> simultaneous: zero compressione. Pure CFR resta a dEV `32,870859%` contro
+> DCFR `0,655665%` a pari @80, con traversal `0,817103/0,804234 s`. TH/TST
+> saltati per kill gate. Il probe è compile-time gated e default-off; nessuna
+> production promotion. Evidenza:
+> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md).
+
 > **Strict exact-algorithm recheck 2026-09-01.** Tutte le esclusioni
 > precedenti sono state rivalutate e restano chiuse. Pure CFR riusa i due
 > payload correnti ma fallisce il limite temporale postflop; Sync-PCFR resta
