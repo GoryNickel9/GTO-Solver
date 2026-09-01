@@ -29,6 +29,13 @@ if(GTOSD_ENABLE_REAL_NODE_REPLAY)
   target_compile_definitions(gtosd_postflop PRIVATE GTOSD_ENABLE_REAL_NODE_REPLAY=1)
 endif()
 
+option(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE
+  "Compile the bounded diagnostic Pure/Sync-PCFR trajectory probe" OFF)
+if(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  target_compile_definitions(gtosd_postflop
+    PRIVATE GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE=1)
+endif()
+
 # The desktop performance target is x86-64 with AVX2. Keep strict IEEE
 # semantics (no /fp:fast), while enabling whole-program optimization and the
 # native vector instruction set for the exact postflop hot path.

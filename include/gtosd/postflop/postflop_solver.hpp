@@ -291,6 +291,14 @@ struct PostflopSolveOptions {
   // solve call. Default nullptr = unconstrained solve.
   const DiagnosticRootLock *diagnostic_root_lock{nullptr};
   const PostflopRealNodeReplayCapture *diagnostic_real_node_replay{nullptr};
+  // Research-only, default-off Pure-CFR trajectory probe. It reinterprets
+  // the signed scaled regret payload as cumulative Q, selects a deterministic
+  // argmax action per hand, performs one uncompressed Pure-CFR update per
+  // iteration, and records the Sync-PCFR pursuit horizon. It does not apply
+  // phase compression and is intentionally unavailable for resume/checkpoint
+  // promotion decisions.
+  bool diagnostic_pure_cfr_trajectory{false};
+  std::uint64_t diagnostic_pure_cfr_phase_cap{1'000'000U};
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>
@@ -379,6 +387,14 @@ struct PostflopSolveTimings {
   double total_seconds{0.0};
 };
 
+struct PostflopPureCfrTrajectoryPoint {
+  std::uint64_t iteration{0};
+  std::uint64_t minimum_phase{1};
+  std::uint64_t finite_pursuits{0};
+  std::uint64_t unit_pursuits{0};
+  double pursuit_scan_seconds{0.0};
+};
+
 [[nodiscard]] Result<double, PostflopSolverError>
 normalized_max_deviation_gain(const PostflopCertification &certification, Money initial_pot);
 
@@ -395,6 +411,7 @@ struct PostflopSolveResult {
   PostflopSolveTimings timings;
   PostflopStopReason stop_reason{PostflopStopReason::Completed};
   std::optional<PostflopRealNodeReplayCorpus> diagnostic_real_node_replay;
+  std::vector<PostflopPureCfrTrajectoryPoint> diagnostic_pure_cfr_trajectory;
 };
 
 struct PostflopStrategyQuery {

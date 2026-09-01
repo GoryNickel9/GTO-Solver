@@ -81,6 +81,10 @@ endif()
 add_executable(gtosd_phase7_tests phase7_tests.cpp)
 target_compile_definitions(gtosd_phase7_tests PRIVATE
   GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+if(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  target_compile_definitions(gtosd_phase7_tests
+    PRIVATE GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE=1)
+endif()
 target_link_libraries(gtosd_phase7_tests PRIVATE gtosd::postflop)
 gtosd_set_warnings(gtosd_phase7_tests)
 add_test(NAME gtosd_phase7_tests COMMAND gtosd_phase7_tests)
