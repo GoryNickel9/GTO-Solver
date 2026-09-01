@@ -27,14 +27,14 @@ foreach(index RANGE 0 2)
   string(JSON actual_reference_memory GET "${document}" gto_plus_reference solver_memory_bytes)
   string(JSON target GET "${document}" gto_plus_reference target_dev_percent)
 
-  if(NOT algorithm STREQUAL "dcfr" OR
+  if(NOT algorithm STREQUAL "production_dcfr" OR
      NOT alpha EQUAL 1.5 OR
-     NOT gamma EQUAL 2 OR
+     NOT gamma EQUAL 3 OR
      NOT delay EQUAL 0 OR
      NOT precision STREQUAL "scaled_uint16_regret_strategy" OR
      NOT parallel_depth EQUAL 7 OR
      NOT maximum_threads EQUAL 8)
-    message(FATAL_ERROR "${fixture}: production DCFR contract drifted")
+    message(FATAL_ERROR "${fixture}: qualified production DCFR contract drifted")
   endif()
   if(decision_scales LESS 1)
     message(FATAL_ERROR "${fixture}: missing signed-state scale golden")

@@ -236,6 +236,104 @@ void test_hs_dcfr30_schedule_and_resume() {
           "HS-DCFR(30) resume is byte-equivalent to a continuous run");
 }
 
+void test_production_dcfr_schedule_and_resume() {
+  const auto at_one = gtosd::production_dcfr_schedule(1U);
+  const auto at_two = gtosd::production_dcfr_schedule(2U);
+  const auto at_three = gtosd::production_dcfr_schedule(3U);
+  const auto at_five = gtosd::production_dcfr_schedule(5U);
+  const auto at_seventeen = gtosd::production_dcfr_schedule(17U);
+  const auto at_sixty_five = gtosd::production_dcfr_schedule(65U);
+  const auto at_sixty_six = gtosd::production_dcfr_schedule(66U);
+  const auto at_one_twenty = gtosd::production_dcfr_schedule(120U);
+  const auto at_two_fifty_seven = gtosd::production_dcfr_schedule(257U);
+  require(at_one.reset_average_strategy && at_one.epoch_start_iteration == 1U &&
+              at_one.regret_discount_iteration == 0U &&
+              at_one.average_strategy_weight == 1.0,
+          "production DCFR initializes the first epoch");
+  require(at_two.reset_average_strategy && at_two.epoch_start_iteration == 2U &&
+              at_two.regret_discount_iteration == 1U &&
+              at_two.average_strategy_weight == 1.0,
+          "production DCFR resets at iteration 2 on the production alpha clock");
+  require(!at_three.reset_average_strategy && at_three.epoch_index == 1U &&
+              at_three.regret_discount_iteration == 2U &&
+              at_three.average_strategy_weight == 8.0,
+          "production DCFR uses cubic weights before the clock cutover");
+  require(at_five.reset_average_strategy && at_five.epoch_start_iteration == 5U &&
+              at_seventeen.reset_average_strategy &&
+              at_seventeen.epoch_start_iteration == 17U &&
+              at_sixty_five.reset_average_strategy &&
+              at_sixty_five.epoch_start_iteration == 65U,
+          "production DCFR resets only at the qualified bounded epochs");
+  require(!at_sixty_six.reset_average_strategy && at_sixty_six.epoch_index == 1U &&
+              at_sixty_six.regret_discount_iteration == 64U &&
+              at_sixty_six.average_strategy_weight == 8.0,
+          "production DCFR switches to the upstream alpha clock after iteration 65");
+  require(!at_one_twenty.reset_average_strategy && at_one_twenty.epoch_index == 55U &&
+              at_one_twenty.regret_discount_iteration == 118U &&
+              at_one_twenty.average_strategy_weight == 175'616.0 &&
+              !at_two_fifty_seven.reset_average_strategy &&
+              at_two_fifty_seven.epoch_start_iteration == 65U &&
+              at_two_fifty_seven.average_strategy_weight == 7'189'057.0,
+          "production DCFR retains the final epoch beyond the former reset at 257");
+
+  // The additive cubic weights are a common-scale rewrite of
+  // S_k=(k/(k+1))^3*S_{k-1}+sigma_k. Verify the identity independently.
+  double discounted = 0.0;
+  double weighted = 0.0;
+  for (std::uint64_t k = 0U; k < 12U; ++k) {
+    const double sample = static_cast<double>(k + 2U) / 13.0;
+    const double current = static_cast<double>(k);
+    const double discount = k == 0U ? 0.0 : std::pow(current / (current + 1.0), 3.0);
+    discounted = discounted * discount + sample;
+    const double weight = static_cast<double>((k + 1U) * (k + 1U) * (k + 1U));
+    weighted += weight * sample;
+    require(std::abs(discounted - weighted / weight) < 1.0e-12,
+            "cubic additive weights equal the recursive gamma=3 discount up to common scale");
+  }
+
+  const auto config = make_small_config();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  auto continuous_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 70U;
+  options.certification_interval = 70U;
+  options.algorithm = gtosd::PostflopAlgorithm::ProductionDcfr;
+  options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  const auto continuous = gtosd::solve_postflop_exact(*continuous_tree, options);
+  require(continuous.has_value(), continuous.has_value()
+                                      ? "production DCFR continuous solve succeeds"
+                                      : std::string{"production DCFR solve failed: "} +
+                                            gtosd::postflop_solver_error_name(continuous.error()));
+
+  auto resumed_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  auto partial_options = options;
+  partial_options.iterations = 64U;
+  partial_options.certification_interval = 64U;
+  const auto partial = gtosd::solve_postflop_exact(*resumed_tree, partial_options);
+  require(partial.has_value(), partial.has_value()
+                                   ? "production DCFR partial solve succeeds"
+                                   : std::string{"production DCFR partial solve failed: "} +
+                                         gtosd::postflop_solver_error_name(partial.error()));
+  const auto resumed =
+      gtosd::solve_postflop_exact(*resumed_tree, options, &partial.value().checkpoint);
+  require(resumed.has_value(), resumed.has_value()
+                                   ? "production DCFR checkpoint resumes"
+                                   : std::string{"production DCFR resume failed: "} +
+                                         gtosd::postflop_solver_error_name(resumed.error()));
+  require(continuous.value().checkpoint.cumulative_regret_uint16 ==
+                  resumed.value().checkpoint.cumulative_regret_uint16 &&
+              continuous.value().checkpoint.cumulative_strategy_uint16 ==
+                  resumed.value().checkpoint.cumulative_strategy_uint16 &&
+              continuous.value().checkpoint.regret_node_scale ==
+                  resumed.value().checkpoint.regret_node_scale &&
+              continuous.value().checkpoint.strategy_node_scale ==
+                  resumed.value().checkpoint.strategy_node_scale,
+          "production DCFR resume across the final reset is byte-equivalent");
+  require(continuous.value().checkpoint.algorithm == gtosd::PostflopAlgorithm::ProductionDcfr &&
+              static_cast<std::uint8_t>(continuous.value().checkpoint.algorithm) == 11U,
+          "production DCFR preserves the qualified checkpoint identity");
+}
+
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
 void test_real_node_replay_capture_is_bounded_and_authoritative() {
   const auto config = make_small_config();
@@ -292,6 +390,7 @@ int main() {
     test_empty_range_rejected();
     test_architectural_topology_is_read_only_and_disjoint();
     test_hs_dcfr30_schedule_and_resume();
+    test_production_dcfr_schedule_and_resume();
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
     test_real_node_replay_capture_is_bounded_and_authoritative();
 #endif

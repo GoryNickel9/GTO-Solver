@@ -14431,8 +14431,7 @@ in_memory_checkpoint_buffers(const PostflopCheckpoint &checkpoint) {
     buffers.regret_node_scale = const_cast<float *>(checkpoint.regret_node_scale.data());
     buffers.strategy_node_scale = const_cast<float *>(checkpoint.strategy_node_scale.data());
     buffers.decision_node_count = static_cast<std::size_t>(checkpoint.decision_node_count);
-    buffers.signed_scaled_regret = checkpoint.algorithm == PostflopAlgorithm::Dcfr ||
-                                   checkpoint.algorithm == PostflopAlgorithm::HsDcfr30;
+    buffers.signed_scaled_regret = is_signed_scaled_dcfr_algorithm(checkpoint.algorithm);
     return Result<ActionBuffers, PostflopSolverError>::success(buffers);
   }
   if (checkpoint.state_precision == PostflopStatePrecision::Float13RegretFloat11Strategy ||
@@ -14510,6 +14509,29 @@ HsDcfrSchedulePoint hs_dcfr30_schedule(const std::uint64_t iteration) noexcept {
       .alpha = std::min(5.0, 1.0 + 0.003 * t),
       .beta = std::max(-5.0, -1.0 - 0.002 * t),
       .gamma = std::max(5.0, 30.0 - 0.005 * t),
+  };
+}
+
+ProductionDcfrSchedulePoint
+production_dcfr_schedule(const std::uint64_t iteration) noexcept {
+  const std::uint64_t zero_based_iteration = iteration == 0U ? 0U : iteration - 1U;
+  std::uint64_t epoch_start = 0U;
+  if (zero_based_iteration != 0U) {
+    const auto highest_bit = static_cast<unsigned>(
+        std::numeric_limits<std::uint64_t>::digits - 1U -
+        std::countl_zero(zero_based_iteration));
+    epoch_start = std::min<std::uint64_t>(std::uint64_t{1} << (highest_bit & ~1U), 64U);
+  }
+  const std::uint64_t epoch_index = zero_based_iteration - epoch_start;
+  const double sample_index = static_cast<double>(epoch_index) + 1.0;
+  return {
+      .epoch_start_iteration = epoch_start + 1U,
+      .epoch_index = epoch_index,
+      .regret_discount_iteration = zero_based_iteration <= 64U
+                                       ? zero_based_iteration
+                                       : zero_based_iteration - 1U,
+      .average_strategy_weight = sample_index * sample_index * sample_index,
+      .reset_average_strategy = epoch_index == 0U,
   };
 }
 
@@ -15426,8 +15448,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       options.memory_backend == MemoryPrototype::StreetDecomposition ||
       (options.memory_backend == MemoryPrototype::OutOfCore &&
        options.state_precision != PostflopStatePrecision::Float64) ||
-      ((options.algorithm == PostflopAlgorithm::Dcfr ||
-        options.algorithm == PostflopAlgorithm::HsDcfr30) &&
+      (is_signed_scaled_dcfr_algorithm(options.algorithm) &&
        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
       (options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy &&
        !options.enable_canonical_public_dag)) {
@@ -15718,8 +15739,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       buffers.strategy_node_scale = checkpoint.strategy_node_scale.data();
       buffers.decision_node_count =
           static_cast<std::size_t>(layout.value().canonical_decision_nodes);
-      buffers.signed_scaled_regret = options.algorithm == PostflopAlgorithm::Dcfr ||
-                                     options.algorithm == PostflopAlgorithm::HsDcfr30;
+      buffers.signed_scaled_regret = is_signed_scaled_dcfr_algorithm(options.algorithm);
     } else if (compact_state) {
       buffers = {nullptr, nullptr, static_cast<std::size_t>(layout.value().actions),
                  nullptr, nullptr, nullptr,
@@ -15915,14 +15935,28 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                             : std::pow(effective_iteration, options.dcfr_average_exponent) /
                                   std::pow(static_cast<double>(normalization_horizon),
                                            std::max(0.0, options.dcfr_average_exponent - 1.0));
-    } else if (options.algorithm == PostflopAlgorithm::Dcfr) {
-      const double alpha_iteration = static_cast<double>(iteration > 0U ? iteration - 1U : 0U);
+    } else if (options.algorithm == PostflopAlgorithm::Dcfr ||
+               options.algorithm == PostflopAlgorithm::ProductionDcfr) {
+      const bool production = options.algorithm == PostflopAlgorithm::ProductionDcfr;
+      const auto schedule = production ? production_dcfr_schedule(iteration)
+                                       : ProductionDcfrSchedulePoint{};
+      const double alpha_iteration = production
+                                         ? static_cast<double>(schedule.regret_discount_iteration)
+                                         : static_cast<double>(iteration - 1U);
       const double powered = std::pow(alpha_iteration, options.dcfr_positive_regret_exponent);
       positive_regret_discount = powered / (powered + 1.0);
       negative_regret_discount = 0.5;
-      strategy_weight = effective_iteration == 0.0
-                            ? 0.0
-                            : std::pow(effective_iteration, options.dcfr_average_exponent);
+      if (production) {
+        if (schedule.reset_average_strategy) {
+          buffers.scale_strategy(0.0);
+        }
+        strategy_weight =
+            effective_iteration == 0.0 ? 0.0 : schedule.average_strategy_weight;
+      } else {
+        strategy_weight = effective_iteration == 0.0
+                              ? 0.0
+                              : std::pow(effective_iteration, options.dcfr_average_exponent);
+      }
     } else if (options.algorithm == PostflopAlgorithm::HsDcfr30) {
       const auto schedule = hs_dcfr30_schedule(iteration);
       const double discount_iteration = static_cast<double>(iteration - 1U);
