@@ -1,5 +1,12 @@
 # Benchmark end-to-end di convergenza GTO+
 
+> **CONTRATTO RISORSE 2026-09-01.** I report run/summary correnti sono v2 e
+> separano `solver_state_bytes <= gto_plus_reference.solver_memory_bytes` dal
+> gate operativo comune `peak_rss_bytes < 2 GiB` (`2.147.483.648 B`). I valori
+> esterni storici restano immutati. Per TST, pot `16` e `0,146 ante` implicano
+> `0,9125%`, visualizzato `0,91%`. Decisione e frontier recheck:
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
 > **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v2 è
 > parametrico e va usato per nuovi scenari; questo documento conserva il
 > protocollo della fixture `GTP-AHKHQH-003` senza sostituire il parity journey.
@@ -72,7 +79,7 @@ per il run sorgente da `1,71 s`.
   (vedi sotto);
 - `schemas/gto_plus_convergence_benchmark.schema.json`: schema del contratto;
 - `gto_cli postflop benchmark-gto-plus`: un singolo processo indipendente e un
-  report atomico `gtosd.gto_plus_convergence_run.v1`;
+  report atomico `gtosd.gto_plus_convergence_run.v2`;
 - `tools/run_gto_plus_convergence_benchmark.ps1`: almeno cinque processi,
   mediana, p95 nearest-rank, score e gate separati.
 
@@ -102,7 +109,10 @@ valori. La v2 rende ogni parametro leggibile dalla specifica:
   strada (i nodi chance non sono risolvibili da un path di sole azioni);
 - **expected_layout**: fingerprint e conteggi, come in v1.
 
-Il report prodotto è identico nella forma (`gtosd.gto_plus_convergence_run.v1`);
+Il report corrente usa `gtosd.gto_plus_convergence_run.v2`: conserva i campi
+di correttezza e stato, aggiunge `gto_plus_reference_memory` e rende
+`memory_gate` esclusivamente il confronto stretto del peak RSS col cap comune.
+Le chiavi applicative restano stabili;
 le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `reference_node_action_frequencies` sono gli `id` dichiarati nella specifica
 (per `GTP-AHKHQH-003` restano `flop_co_root`, `flop_btn_after_co_check`,

@@ -1,5 +1,12 @@
 # Performance
 
+> **2 GiB resource contract — 2026-09-01.** Il gate comune del processo è
+> `peak_rss_bytes < 2.147.483.648 B` e non coincide con i riferimenti esterni
+> `solver_memory_bytes`. Il probe GTO+ TST ha peak `2.061.889.536 B`; il nuovo
+> cap rende RAM-feasible K8/K16/K32 ma non supera i loro gate di throughput.
+> Nessun candidato è promosso e production resta DCFR `1.5/0/2`. Protocollo:
+> [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
 > **Sync-PCFR postflop trajectory gate — 2026-09-01.** La famiglia è chiusa:
 > AHK @80 ha minimum pursuit phase `1` in tutte le iterazioni, sia alternating
 > sia simultaneous, quindi la sincronizzazione non elimina traversal. Pure CFR
@@ -76,7 +83,8 @@
 > `168,036868 s` ideal-producer e `89,624835 s` joint ideal. Poiché nessun
 > punto realizzabile passa precisione, cap desktop e traversal
 > `<=96,208089 s`, la famiglia è chiusa come strada primaria e non autorizza
-> altri codec o full target-driven. Il confronto peak-RSS-vs-GTO+ non cambia.
+> altri codec o full target-driven. La decisione resta invariata anche sotto il
+> nuovo cap `<2 GiB`; il vecchio confronto peak-RSS-vs-GTO+ è superseded.
 > Protocollo, frontier e ledger:
 > [`../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
 
@@ -117,8 +125,8 @@
 > `128,988889 s`: AHK/TH time PASS, TST time FAIL di `79,122883 s`
 > (`1,613409x`, `+61,3409%`). TST traversal/certification sono
 > `174,926380 / 32,780800 s`. Tutte e tre passano dEV, Root,
-> `solver_state_bytes` e cap desktop 2 GB; il distinto `memory_gate`
-> peak-RSS-vs-GTO+ fallisce per AHK/TH e passa per TST. La fonte completa è
+> `solver_state_bytes` e cap desktop `<2 GiB`; il `memory_gate` di processo
+> passa per AHK, TH e TST. La fonte storica completa è
 > [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](../OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
 > **Correzione root-analysis 2026-08-30.** Il Root FAIL AHKHQH della baseline

@@ -1,5 +1,14 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **2 GiB resource contract 2026-09-01:** il gate operativo è ora
+> `peak_rss_bytes < 2.147.483.648 B`, distinto dai riferimenti esterni di
+> `solver_state_bytes`. Il probe GTO+ TST misura peak working set
+> `2.061.889.536 B` e passa con `85.594.112 B` di margine; pot `16` conferma
+> `0,146 / 16 = 0,9125%`, visualizzato `0,91%`. La nuova frontier rende RAM
+> ammissibili K8/K16/K32, ma i loro shadow sono più lenti; nessuna esclusione è
+> promossa e production non cambia. Report:
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
 > **Sync-PCFR trajectory decision 2026-09-01:** **FAMILY CLOSED.** Il probe
 > signed-uint16 Pure-CFR è disponibile soltanto con
 > `GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE=ON`. AHK @80 misura `0/80` fasi
@@ -107,8 +116,8 @@
 > @202 in `208,111772 s` contro `128,988889 s`, time FAIL di `79,122883 s`
 > (`+61,3409%`). Tutte passano dEV, Root, payoff-sum, layout, convergence e
 > `solver_state_bytes`. Peak RSS resta distinto: tutte rientrano nel cap desktop
-> 2 GB, ma il `memory_gate` peak-RSS-vs-GTO+ fallisce per AHK e TH. Full CTest
-> finale 21/21 PASS. La matrice e gli artifact sono in
+> `<2 GiB`; dal contratto 2026-09-01 il `memory_gate` di processo passa per
+> AHK, TH e TST. Full CTest finale storico 21/21 PASS. La matrice e gli artifact sono in
 > `OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`.
 
 > **Audit RBP 2026-08-30:** implementata soltanto telemetria read-only ai

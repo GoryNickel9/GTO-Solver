@@ -4,6 +4,15 @@ Aggiornato: 2026-09-01
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
+> **2 GiB resource contract 2026-09-01.** Il cap di processo comune è
+> `peak_rss_bytes < 2.147.483.648 B`; `solver_memory_bytes` resta un riferimento
+> esterno/stato e non un limite RSS. Il probe GTO+ TST passa il nuovo cap a
+> `2.061.889.536 B`; pot iniziale `16` conferma la normalizzazione dEV
+> `0,146 -> 0,9125% -> 0,91%`. K8/K16/K32 cambiano da RAM FAIL a RAM PASS, ma
+> restano chiusi perché regressivi nel throughput. Il gate complessivo resta
+> bloccato dal tempo TST. Evidenza:
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
 > **Sync-PCFR postflop trajectory gate 2026-09-01.** **SYNC-PCFR POSTFLOP
 > FAMILY CLOSED UNDER THE STRICT CONTRACT.** Il river oracle passa, ma AHK @80
 > produce minimum phase globale `1` in `80/80` iterazioni sia alternating sia
@@ -135,10 +144,11 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > TST traversal è `174,926380 s` e certification `32,780800 s`. Il gap finale
 > è `79,122883 s`, rapporto `1,613409x`, `+61,3409%`. Il precedente
 > `252,534707 s` era pre-ottimizzazione certification e non rappresenta più il
-> final HEAD. Tutte le fixture rientrano nel cap desktop 2 GB e nello
-> `solver_state_bytes` fixture; il distinto `memory_gate` peak-RSS-vs-GTO+
-> resta FAIL per AHK e TH, PASS per TST. Non usare quindi `RAM PASS` senza
-> nominare il gate. Full CTest 21/21 PASS; five-process ancora congelata.
+> final HEAD. Tutte le fixture rientrano nel cap desktop `<2 GiB` e nello
+> `solver_state_bytes` fixture. Il precedente confronto peak-RSS-vs-GTO+ è
+> superseded dal contratto del 2026-09-01: il `memory_gate` di processo passa
+> su AHK, TH e TST. Full CTest 21/21 PASS; five-process ancora congelata per il
+> distinto time FAIL TST.
 > Evidenza dettagliata:
 > [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 

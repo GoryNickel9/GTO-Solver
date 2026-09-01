@@ -3,6 +3,15 @@
 Stato: **Accettato; compilatore layout-only implementato, traversal non ancora migrato**
 Data: 2026-08-27
 
+> **Emendamento 2026-09-01.** Il cap operativo del processo è definito in
+> unità binarie: `peak_rss_bytes < 2 GiB = 2.147.483.648 B`. I valori GTO+
+> `8.000.000 / 399.000.000 / 2.000.000.000 B` restano riferimenti esterni e
+> limiti di `solver_state_bytes`, non limiti del working set. Il target interno
+> `1.800.000.000 B` resta prudenziale. Un probe GTO+ TST ha misurato peak
+> working set `2.061.889.536 B`, quindi passa il nuovo cap con `85.594.112 B`
+> di margine. Vedere
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
 ## Contesto
 
 `GTP-TSTC9D-101` contiene 2.791.872 nodi pubblici fisici, 231.129.064
@@ -146,8 +155,8 @@ workspace proporzionale a tutte le action entry.
 ## Budget di memoria
 
 Il preflight usa peak RSS stimato e il benchmark usa peak RSS misurato. Il
-target ingegneristico è 1.800.000.000 byte, lasciando 200 MB di margine prima
-del limite GTO+ di 2.000.000.000 byte.
+target ingegneristico è 1.800.000.000 byte, lasciando 347.483.648 byte di
+margine prima del cap operativo di 2 GiB.
 
 | Componente al picco | Budget TSTC9D |
 |---|---:|
@@ -158,7 +167,7 @@ del limite GTO+ di 2.000.000.000 byte.
 | Runtime, allocator e librerie | 120.000.000 B |
 | Riserva interna | 100.000.000 B |
 | **Target totale** | **1.800.000.000 B** |
-| **Gate assoluto** | **2.000.000.000 B** |
+| **Gate assoluto** | **2.147.483.648 B, confronto stretto `<`** |
 
 Il compilatore layout-only misura per TSTC9D **366.890.152 action entry**, pari
 a **1.100.670.456 byte** con il codec congiunto da 3 byte/action. La differenza
@@ -166,7 +175,7 @@ di 670.456 byte dal budget tondo iniziale di 1,1 GB è assorbita senza cambiare
 il target complessivo: il modello completo resta tra 1.516.279.888 e
 1.545.640.016 byte per 1-8 worker. Il profilo `i16 regret + u16 strategy`
 richiede invece 1.888.214.808-1.917.574.936 byte: passa il gate assoluto di
-2 GB, ma non il target ingegneristico di 1,8 GB.
+2 GiB, ma non il target ingegneristico di 1,8 GB decimali.
 
 Questi sono conteggi esatti del layout e una previsione ingegneristica del
 picco, non una misura RSS del solver migrato. Il gate definitivo resta il peak
@@ -225,7 +234,7 @@ bit-identico al traversal monolitico senza prova.
 6. **Parallelismo owner-computes.** Abilitare soltanto partizioni con action
    interval disgiunti e verificare equivalenza 1/N thread.
 7. **TSTC9D singolo.** Richiedere dEV ≤ 1%, root EV entro 0,05 ante, peak RSS
-   ≤ 2.000.000.000 byte e tempo ≤ 120,6 s nello stesso run.
+   < 2.147.483.648 byte e tempo ≤ 120,6 s nello stesso run.
 8. **Certificazione finale.** Cinque processi indipendenti, con mediana, p95,
    deviazione standard e min/max; i gate restano separati.
 
@@ -243,7 +252,7 @@ trasformazioni di reach e counterfactual value.
 - Checkpoint vecchi non sono reinterpretati; serve migrazione esplicita o nuovo
   solve.
 - Analytics e GUI interrogano mapping canonico→fisico e non duplicano lo stato.
-- Il limite di 2 GB viene verificato sul processo completo tramite peak RSS.
+- Il limite `<2 GiB` viene verificato sul processo completo tramite peak RSS.
 - Preflop e configurazioni più grandi usano il livello CFR-D o vengono
   rifiutati dal preflight; non causano allocazioni ottimistiche.
 

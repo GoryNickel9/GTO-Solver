@@ -214,10 +214,13 @@ limit by `79.122883 s` (`1.613409x`, `+61.3409%`). Its user-confirmed raw GTO+
 reference remains `116.09 s` at the first strict sub-1% point.
 
 Solver-state limits remain `8.000.000 B`, `399.000.000 B` and
-`2.000.000.000 B`, and all three pass. Peak RSS is a separate metric: all three
-fit the desktop 2 GB cap, but the runner's stricter peak-RSS-vs-GTO+
-`memory_gate` still fails for AHKHQH and TH7D6S. A five-process certification
-is intentionally deferred: the two memory-parity gates and TST time are red.
+`2.000.000.000 B`, and all three pass. Peak RSS is a separate metric with the
+common strict desktop cap `< 2 GiB` (`2.147.483.648 B`): all three final-head
+runs pass, including TST at `1.969.922.048 B`. The runner no longer compares
+process RSS against the heterogeneous GTO+ state-memory references, which had
+produced false AHK/TH failures. TST time remains red, so five-process timing
+certification is still deferred. Contract and frontier recheck:
+`docs/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`.
 
 The three-fixture suite also contains `GTP-TH7D6S-101` and
 `GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected
