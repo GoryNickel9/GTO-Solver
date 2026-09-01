@@ -47,9 +47,15 @@ I gate prestazionali della suite sono:
 - correttezza, tempo e memoria separati sullo stesso checkpoint; cinque
   processi indipendenti soltanto per la promozione temporale finale.
 
-Il checkpoint 2026-08-14 passa dEV, root EV e memoria su 3/3 e fallisce il
-tempo su 3/3. I tempi singoli sono 4,970917 / 37,810434 / 690,307523 s; gli
-stati sono 2.503.908 / 249.955.776 / 1.747.903.656 B. Peak RSS resta distinto.
+Il final-head production 2026-09-01 usa cinque processi indipendenti, ciascuno
+con tutti e tre i benchmark. Passa dEV, root EV, layout, exact outcomes,
+`solver_state_bytes` e cap desktop su `15/15` solve. Iterazioni e dEV
+deterministici AHK/TH/TST sono `80/0,951423%`, `80/0,807956%` e
+`160/0,904505%`; mediane/p95 solver `0,758705/0,790918 s`,
+`19,948228/24,192260 s`, `184,095930/197,865030 s`. TH e TST falliscono il
+tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; peak RSS massimo
+TST `1.969.860.608 B`. Il distinto `memory_gate`
+peak-RSS-vs-GTO+ resta FAIL per AHK/TH e PASS per TST.
 
 Gli EV BTN dopo check/bet restano diagnostici nel percorso non vincolato perché
 GTO+ e GTOSD producono posteriori CO differenti. F10.4 è stata implementata e
@@ -72,8 +78,8 @@ modalità target-driven del solver core e richiede `Target dEV < 1%` con
 confronto stretto. L'intervallo di certificazione determina soltanto quando
 viene calcolata la exact best response dopo che l'averaging ha almeno un
 campione; prima di `averaging_delay + 1` le sole certificazioni ammesse sono
-quelle forzate da termine finito, pausa o cancellazione. Nel run TSTC9D
-corrente il solver continua senza iteration cap e termina a 200 con 0,983565%;
+quelle forzate da termine finito, pausa o cancellazione. Nel final-head TSTC9D
+corrente il solver continua senza iteration cap e termina a 160 con 0,904505%;
 valori intermedi sopra 1% non possono arrestarlo.
 
 ## Evidenza richiesta
@@ -82,11 +88,11 @@ Un gate scientifico registra commit pulito, compiler/flags, hardware, thread,
 fixture hash, precisione, algoritmo, averaging, target, valore finale, tempi
 individuali, mediana/p95, memoria solver/transient/RSS separati e suite Release.
 
-La precisione packed `Float13RegretFloat11Strategy` è validata su tutti e tre
+La precisione production `ScaledUint16RegretStrategy` è validata su tutti e tre
 gli scenari mediante exact BR target-driven e root EV esterno. Il formato è
-anche coperto da finiteness check, resume in-memory e round-trip storage
-byte-for-byte. Il suo `solver_state_bytes` è esattamente `3 * actions`; RSS e
-buffer transienti restano metriche distinte.
+coperto da finiteness check, resume in-memory byte-equivalent, scale goldens e
+round-trip storage byte-for-byte. RSS, stato persistente e buffer transienti
+restano metriche distinte.
 
 I riferimenti esterni devono conservare export o trascrizione, versione del
 solver, azioni legali, unità e arrotondamenti. Se un dato non è disponibile, il

@@ -1,8 +1,8 @@
 # Specifiche canoniche GTOSD
 
-> **Verifica documentale:** 2026-08-14, worktree non ancora committata. I
-> documenti con stato corrente sono stati incrociati con i tre report Release e
-> con il riferimento GTO+ eseguito nella stessa chiusura.
+> **Verifica documentale:** 2026-09-01. I documenti con stato corrente sono
+> stati incrociati con cinque processi final-head AHK/TH/TST, preflight
+> persistiti, contratto fixture eseguibile e suite Release `26/26 PASS`.
 
 Questa cartella contiene i contratti tecnici correnti del progetto. I documenti
 qui presenti descrivono il comportamento richiesto e lo stato realmente

@@ -10,10 +10,14 @@ finite.
 
 ## Limiti di parità
 
-- dEV, root EV e `solver_state_bytes` passano sui tre benchmark correnti; i tre
-  gate velocità falliscono.
-- I tempi singoli correnti sono AHK 4,970917 s, TH 37,810434 s e TST
-  690,307523 s contro limiti 1,900000 / 19,622222 / 120,600000 s.
+- dEV, root EV, layout, exact outcomes, `solver_state_bytes` e cap desktop
+  passano sui tre benchmark correnti; soltanto il gate velocità TST fallisce.
+- Cinque processi final-head producono mediane/p95 AHK
+  0,758705/0,790918 s, TH 19,948228/24,192260 s e TST
+  184,095930/197,865030 s contro limiti 1,900000 / 19,622222 / 128,988889 s.
+  TH e TST falliscono sia mediana sia p95; la mediana TH supera il limite del
+  `1,661%`, quella TST del `42,722%`. Il `memory_gate` peak-RSS-vs-GTO+ resta
+  separatamente FAIL per AHK/TH.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
 - F10.4 controlled-posterior è implementata esclusivamente come diagnostica
@@ -48,9 +52,11 @@ La presenza di tipi, placeholder o chunk riservati non costituisce supporto.
 - GUI desktop e packaging certificati sono attualmente Windows/Qt 6.
 - Il public tree ha un build limit configurabile e può superare RAM per alberi
   grandi.
-- Il benchmark usa stato packed `float13` regret + `float11` strategy con
-  compute `float64`; ogni nuovo formato richiede exact BR e confronto di root
-  EV, non soltanto finitezza.
+- Il benchmark production usa regret e strategy uint16 action-major con scale
+  float32 per decision node (`ScaledUint16RegretStrategy`) e hot-path float32
+  dichiarato nel report; la best response enumera tutti gli outcome sullo stato
+  decodificato. Ogni nuovo formato richiede BR, dEV e confronto di root EV, non
+  soltanto finitezza.
 - Con range asimmetrici e simmetrie di seme non banali il core usa ancora il
   layout fisico: la condivisione canonica richiede reach e molteplicità
   player-local non ancora implementate correttamente.

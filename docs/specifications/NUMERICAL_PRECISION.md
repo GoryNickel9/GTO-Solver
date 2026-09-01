@@ -8,11 +8,14 @@ confini di input.
 EV, equity, reach, regret, strategy sum e metriche di convergenza sono calcolati
 in floating point.
 
-La modalità di massima accuratezza conserva regret e strategy sum in
-`double`. La modalità a memoria ridotta `Float32` conserva lo stato cumulativo
-in `float`, ma conversioni, normalizzazione e certificazione usano accumulatori
-in precisione adeguata. Le due modalità devono essere nominate nei report: non
-si può attribuire a `Float32` l'identità numerica di `Float64`.
+La modalità di massima accuratezza conserva regret e strategy sum in `double`.
+Esistono modalità `Float32` e packed distinte. Il benchmark production usa
+`ScaledUint16RegretStrategy`: codici uint16 action-major e scale float32 per
+decision node; il report la nomina
+`action_major_scaled_uint16_regret_strategy_float32_compute`. Conversione,
+normalizzazione e best response usano il percorso dichiarato dal report. Le
+modalità devono essere nominate: nessun formato ridotto ha identità numerica
+implicita con `Float64`.
 
 ## Invarianti
 
@@ -71,8 +74,9 @@ un errore rilevante.
 
 ## Compressione
 
-La quantizzazione `uint16` delle probabilità è sperimentale e non è il formato
-exact predefinito. Una soluzione quantizzata deve avere un feature bit distinto,
-misurare errore di strategia/EV/convergenza e non essere descritta come lossless.
-La compressione Zstandard del payload è lossless e non cambia la precisione
-matematica.
+Il codec production uint16 e' esplicito e versionato, non “lossless”: i report
+devono pubblicare precisione, scale, stato, dEV e root EV. La sua qualificazione
+non rende i codici equivalenti a `Float64`; dimostra i gate osservati sui tre
+benchmark. I formati packed legacy restano varianti distinte e non sono la
+production corrente. La compressione Zstandard del payload è lossless rispetto
+ai byte già codificati e non recupera precisione matematica.

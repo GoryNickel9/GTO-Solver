@@ -64,6 +64,10 @@ GTO+ v1.6.9), risolve il gioco vincolato e riporta convergenza del gioco
 vincolato, exploitability del gioco originale ed EV dei nodi di riferimento
 con delta rispetto a GTO+.
 
+Nel campo `gtosd_run.algorithm` della specifica v2, `production_dcfr` seleziona
+il contratto comune qualificato `1.5/0/3` con reset `1,2,5,17,65`. `dcfr`
+rimane la variante parametrica/comparator e non e' un alias della production.
+
 ## Storage
 
 ```text
