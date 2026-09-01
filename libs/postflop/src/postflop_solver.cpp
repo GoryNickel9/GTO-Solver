@@ -2598,6 +2598,15 @@ private:
 };
 #endif
 
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+struct PureCfrPursuitTelemetry {
+  std::uint64_t minimum_phase{1U};
+  std::uint64_t finite_pursuits{0U};
+  std::uint64_t unit_pursuits{0U};
+  double scan_seconds{0.0};
+};
+#endif
+
 template <std::size_t Capacity, bool PlayerIndexed = false,
           typename ComputeScalar = TraversalScalar<Capacity>>
 class DenseTraversal {
@@ -2812,6 +2821,41 @@ public:
       parallel_thread_.join();
     }
   }
+
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  void begin_pure_cfr_trajectory(const std::uint64_t phase_cap) noexcept {
+    pure_cfr_trajectory_ = true;
+    pure_cfr_phase_cap_ = std::max<std::uint64_t>(1U, phase_cap);
+    pure_cfr_minimum_phase_ = pure_cfr_phase_cap_;
+    pure_cfr_finite_pursuits_ = 0U;
+    pure_cfr_unit_pursuits_ = 0U;
+    pure_cfr_scan_seconds_ = 0.0;
+    for (auto &worker : parallel_workers_) {
+      worker->begin_pure_cfr_trajectory(pure_cfr_phase_cap_);
+    }
+    if (parallel_worker_ != nullptr) {
+      parallel_worker_->begin_pure_cfr_trajectory(pure_cfr_phase_cap_);
+    }
+  }
+
+  [[nodiscard]] PureCfrPursuitTelemetry pure_cfr_pursuit_telemetry() const noexcept {
+    PureCfrPursuitTelemetry telemetry{pure_cfr_minimum_phase_, pure_cfr_finite_pursuits_,
+                                      pure_cfr_unit_pursuits_, pure_cfr_scan_seconds_};
+    const auto merge = [&telemetry](const PureCfrPursuitTelemetry &source) {
+      telemetry.minimum_phase = std::min(telemetry.minimum_phase, source.minimum_phase);
+      telemetry.finite_pursuits += source.finite_pursuits;
+      telemetry.unit_pursuits += source.unit_pursuits;
+      telemetry.scan_seconds += source.scan_seconds;
+    };
+    if (parallel_worker_ != nullptr) {
+      merge(parallel_worker_->pure_cfr_pursuit_telemetry());
+    }
+    for (const auto &worker : parallel_workers_) {
+      merge(worker->pure_cfr_pursuit_telemetry());
+    }
+    return telemetry;
+  }
+#endif
 
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
   void set_replay_iteration(const std::uint64_t iteration) noexcept {
@@ -4485,6 +4529,111 @@ private:
       if (average_scratch == nullptr || average_reach == nullptr) {
         return;
       }
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+      if (pure_cfr_trajectory_) {
+        const auto scan_started = std::chrono::steady_clock::now();
+        auto &average_values = *average_scratch;
+        const double old_average_scale =
+            static_cast<double>(buffers_.strategy_node_scale[scale_index]);
+        double maximum_magnitude = 0.0;
+        double maximum_average = 0.0;
+        for (std::size_t local = 0U; local < combos.size(); ++local) {
+          const auto slot = BoardLocal ? local : value_slot(combos[local], player);
+          std::size_t selected = 0U;
+          const auto *const first_source =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, local, 0U);
+          auto selected_code = static_cast<std::int16_t>(*first_source);
+          for (std::size_t action = 1U; action < action_count; ++action) {
+            const auto *const source =
+                buffers_.scaled_regret + canonical_action_major_index(canonical, local, action);
+            const auto code = static_cast<std::int16_t>(*source);
+            if (code > selected_code) {
+              selected = action;
+              selected_code = code;
+            }
+          }
+          const double selected_q = static_cast<double>(selected_code) * old_scale;
+          const double selected_slope = static_cast<double>(action_values[selected][slot]);
+          values[slot] = static_cast<Scalar>(selected_slope);
+          for (std::size_t action = 0U; action < action_count; ++action) {
+            const auto index = canonical_action_major_index(canonical, local, action);
+            const auto old_code = static_cast<std::int16_t>(buffers_.scaled_regret[index]);
+            const double old_q = static_cast<double>(old_code) * old_scale;
+            const double slope = static_cast<double>(action_values[action][slot]);
+            if (action != selected) {
+              const double pursuit_speed = slope - selected_slope;
+              if (pursuit_speed > 0.0 && std::isfinite(pursuit_speed)) {
+                ++pure_cfr_finite_pursuits_;
+                const double gap = std::max(0.0, selected_q - old_q);
+                std::uint64_t phase = 1U;
+                if (gap > 0.0) {
+                  const double ratio = gap / pursuit_speed;
+                  if (!std::isfinite(ratio) || ratio >= static_cast<double>(pure_cfr_phase_cap_)) {
+                    phase = pure_cfr_phase_cap_;
+                  } else {
+                    const double first_change =
+                        action < selected ? std::ceil(ratio) : std::floor(ratio) + 1.0;
+                    phase = static_cast<std::uint64_t>(std::max(1.0, first_change));
+                  }
+                }
+                phase = std::min(phase, pure_cfr_phase_cap_);
+                pure_cfr_minimum_phase_ = std::min(pure_cfr_minimum_phase_, phase);
+                if (phase == 1U) {
+                  ++pure_cfr_unit_pursuits_;
+                }
+              }
+            }
+            const double updated_q = old_q + regret_update_weight_ * slope;
+            const double old_average =
+                static_cast<double>(buffers_.scaled_strategy[index]) * old_average_scale;
+            const double updated_average =
+                old_average + strategy_weight_ *
+                                  static_cast<double>((*(*average_reach)[player])[slot]) *
+                                  (action == selected ? 1.0 : 0.0);
+            scratch[action][local] = static_cast<Scalar>(updated_q);
+            average_values[action][local] = static_cast<Scalar>(updated_average);
+            maximum_magnitude = std::max(maximum_magnitude, std::abs(updated_q));
+            maximum_average = std::max(maximum_average, updated_average);
+          }
+        }
+        pure_cfr_scan_seconds_ +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - scan_started).count();
+
+        const float encoded_scale =
+            maximum_magnitude > 0.0 ? static_cast<float>(maximum_magnitude / 32767.0) : 0.0F;
+        const float average_scale =
+            maximum_average > 0.0 ? static_cast<float>(maximum_average / 65535.0) : 0.0F;
+        buffers_.regret_node_scale[scale_index] = encoded_scale;
+        buffers_.strategy_node_scale[scale_index] = average_scale;
+        const double regret_inverse =
+            encoded_scale > 0.0F ? 1.0 / static_cast<double>(encoded_scale) : 0.0;
+        const double average_inverse =
+            average_scale > 0.0F ? 1.0 / static_cast<double>(average_scale) : 0.0;
+        for (std::size_t action = 0U; action < action_count; ++action) {
+          auto *const regret_destination =
+              buffers_.scaled_regret + canonical_action_major_index(canonical, 0U, action);
+          auto *const average_destination =
+              buffers_.scaled_strategy + canonical_action_major_index(canonical, 0U, action);
+          for (std::size_t local = 0U; local < combos.size(); ++local) {
+            const double q_code = encoded_scale > 0.0F
+                                      ? std::nearbyint(static_cast<double>(scratch[action][local]) *
+                                                       regret_inverse)
+                                      : 0.0;
+            const auto signed_code = static_cast<std::int16_t>(
+                std::clamp(q_code, -32767.0, 32767.0));
+            regret_destination[local] = static_cast<std::uint16_t>(signed_code);
+            const double average_code =
+                average_scale > 0.0F
+                    ? std::nearbyint(static_cast<double>(average_values[action][local]) *
+                                     average_inverse)
+                    : 0.0;
+            average_destination[local] = static_cast<std::uint16_t>(
+                std::clamp(average_code, 0.0, 65535.0));
+          }
+        }
+        return;
+      }
+#endif
       const bool profile_scaled = hotpath_profiling_enabled();
       const auto scaled_calculate_started = profile_scaled
                                                 ? std::chrono::steady_clock::now()
@@ -5664,6 +5813,28 @@ private:
       const auto &combos = board.player_combos[decision.player];
       const auto *const state_source =
           average_strategy ? buffers_.scaled_strategy : buffers_.scaled_regret;
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+      if (pure_cfr_trajectory_ && buffers_.signed_scaled_regret && !average_strategy) {
+        for (std::size_t local = 0U; local < combos.size(); ++local) {
+          std::size_t selected = 0U;
+          auto selected_code = static_cast<std::int16_t>(
+              state_source[canonical_action_major_index(canonical, local, 0U)]);
+          for (std::size_t action = 1U; action < action_count; ++action) {
+            const auto code = static_cast<std::int16_t>(
+                state_source[canonical_action_major_index(canonical, local, action)]);
+            if (code > selected_code) {
+              selected = action;
+              selected_code = code;
+            }
+          }
+          const auto slot = local_indexed ? local : value_slot(combos[local], value_player);
+          for (std::size_t action = 0U; action < action_count; ++action) {
+            strategies[action][slot] = action == selected ? Scalar{1} : Scalar{0};
+          }
+        }
+        return;
+      }
+#endif
       if constexpr (std::is_same_v<Scalar, float>) {
         if (local_indexed && buffers_.signed_scaled_regret && !average_strategy) {
           std::array<const std::uint16_t *, maximum_action_count> sources{};
@@ -7993,6 +8164,9 @@ private:
     // Decode regret matching directly in the fused value/regret/average
     // kernel instead of materializing and rereading strategy scratch.
     const bool decode_strategy_at_update =
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+        !pure_cfr_trajectory_ &&
+#endif
         decision.player == updating_player && !locked_root &&
         (decision.descendant_player_mask & static_cast<std::uint8_t>(1U << updating_player)) == 0U;
     if (!decode_strategy_at_update) {
@@ -13631,6 +13805,14 @@ private:
   double strategy_weight_{0.0};
   double positive_regret_discount_{1.0};
   double negative_regret_discount_{1.0};
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  bool pure_cfr_trajectory_{false};
+  std::uint64_t pure_cfr_phase_cap_{1U};
+  std::uint64_t pure_cfr_minimum_phase_{1U};
+  std::uint64_t pure_cfr_finite_pursuits_{0U};
+  std::uint64_t pure_cfr_unit_pursuits_{0U};
+  double pure_cfr_scan_seconds_{0.0};
+#endif
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
   std::shared_ptr<RealNodeReplayCollector> replay_collector_;
   std::uint64_t replay_iteration_{0U};
@@ -13676,6 +13858,10 @@ public:
   cfr_simultaneous(double strategy_weight, double regret_update_weight,
                    double positive_regret_discount, double negative_regret_discount) = 0;
   [[nodiscard]] virtual Result<bool, PostflopSolverError> apply_deferred_regrets() = 0;
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  virtual void begin_pure_cfr_trajectory(std::uint64_t phase_cap) noexcept = 0;
+  [[nodiscard]] virtual PureCfrPursuitTelemetry pure_cfr_pursuit_telemetry() const noexcept = 0;
+#endif
   [[nodiscard]] virtual Result<PostflopArchitecturalShadowSample, PostflopSolverError>
   architectural_shadow(const std::vector<PostflopRiverWorkUnit> &units,
                        std::uint8_t updating_player, std::uint64_t repetitions,
@@ -13754,6 +13940,14 @@ public:
   Result<bool, PostflopSolverError> apply_deferred_regrets() override {
     return traversal_.apply_deferred_regrets();
   }
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  void begin_pure_cfr_trajectory(const std::uint64_t phase_cap) noexcept override {
+    traversal_.begin_pure_cfr_trajectory(phase_cap);
+  }
+  [[nodiscard]] PureCfrPursuitTelemetry pure_cfr_pursuit_telemetry() const noexcept override {
+    return traversal_.pure_cfr_pursuit_telemetry();
+  }
+#endif
   Result<PostflopArchitecturalShadowSample, PostflopSolverError>
   architectural_shadow(const std::vector<PostflopRiverWorkUnit> &units,
                        const std::uint8_t updating_player, const std::uint64_t repetitions,
@@ -15413,6 +15607,12 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   const auto &config = prepared.implementation_->config;
   const auto &ranges = prepared.implementation_->ranges;
   const bool target_driven_without_iteration_limit = options.iterations == 0U;
+#if !defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  if (options.diagnostic_pure_cfr_trajectory) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+#endif
   if (options.certification_interval == 0U ||
       (target_driven_without_iteration_limit && !options.target_normalized_nash_conv &&
        !options.target_normalized_max_deviation) ||
@@ -15430,7 +15630,14 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         options.algorithm == PostflopAlgorithm::HsDcfr30) &&
        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
       (options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy &&
-       !options.enable_canonical_public_dag)) {
+       !options.enable_canonical_public_dag) ||
+      (options.diagnostic_pure_cfr_trajectory &&
+       (target_driven_without_iteration_limit || resume_from != nullptr ||
+        options.algorithm != PostflopAlgorithm::Dcfr ||
+        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+        options.averaging_delay != 0U || options.diagnostic_pure_cfr_phase_cap == 0U ||
+        options.diagnostic_root_lock != nullptr ||
+        options.diagnostic_real_node_replay != nullptr))) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
@@ -15879,6 +16086,11 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
           PostflopSolverError::NumericalFailure);
     }
     ++iteration;
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+    if (options.diagnostic_pure_cfr_trajectory) {
+      traversal->begin_pure_cfr_trajectory(options.diagnostic_pure_cfr_phase_cap);
+    }
+#endif
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
     traversal->set_replay_iteration(iteration);
 #endif
@@ -15948,6 +16160,16 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       buffers.scale_strategy(hs_average_discount);
       strategy_weight = effective_iteration == 0.0 ? 0.0 : 1.0;
     }
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+    if (options.diagnostic_pure_cfr_trajectory) {
+      // The signed state is cumulative Q, not discounted regret. Average
+      // reach is linear in logical Pure-CFR iterations.
+      strategy_weight = 1.0;
+      regret_update_weight = 1.0;
+      positive_regret_discount = 1.0;
+      negative_regret_discount = 1.0;
+    }
+#endif
     if (!std::isfinite(strategy_weight) || !std::isfinite(regret_update_weight) ||
         !std::isfinite(positive_regret_discount) || !std::isfinite(negative_regret_discount)) {
       return Result<PostflopSolveResult, PostflopSolverError>::failure(
@@ -15990,6 +16212,14 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     result.timings.traversal_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - traversal_started).count();
     checkpoint.completed_iterations = iteration;
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+    if (options.diagnostic_pure_cfr_trajectory) {
+      const auto telemetry = traversal->pure_cfr_pursuit_telemetry();
+      result.diagnostic_pure_cfr_trajectory.push_back(
+          {iteration, telemetry.minimum_phase, telemetry.finite_pursuits,
+           telemetry.unit_pursuits, telemetry.scan_seconds});
+    }
+#endif
     if (iteration <= 5U || iteration % 20U == 0U) {
       std::fprintf(
           stderr,

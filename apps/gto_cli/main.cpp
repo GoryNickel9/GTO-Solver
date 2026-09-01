@@ -1064,6 +1064,17 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   options.parallel_action_depth = spec.parallel_action_depth;
   options.enable_lossless_isomorphism = spec.enable_lossless_isomorphism;
   options.enable_canonical_public_dag = spec.enable_canonical_public_dag;
+  const bool pure_cfr_trajectory_enabled =
+      environment_value("GTOSD_DIAGNOSTIC_PURE_CFR_TRAJECTORY").has_value();
+  options.diagnostic_pure_cfr_trajectory = pure_cfr_trajectory_enabled;
+  if (const auto phase_cap = environment_value("GTOSD_DIAGNOSTIC_PURE_CFR_PHASE_CAP")) {
+    const auto parsed = parse_u64(*phase_cap);
+    if (!parsed || *parsed == 0U) {
+      std::cerr << "postflop Pure-CFR trajectory failed: invalid_phase_cap\n";
+      return 2;
+    }
+    options.diagnostic_pure_cfr_phase_cap = *parsed;
+  }
   const auto replay_output_path = environment_value("GTOSD_REAL_NODE_REPLAY_OUTPUT");
   if (replay_output_path) {
     replay_capture.iterations = spec.diagnostic_iteration_limit == 0U
@@ -1619,6 +1630,20 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
            {"regret_update_entries", point.work_counters.regret_update_entries},
            {"strategy_update_entries", point.work_counters.strategy_update_entries}}}});
   }
+  nlohmann::json pure_cfr_trajectory = nlohmann::json::array();
+  for (const auto &point : result.diagnostic_pure_cfr_trajectory) {
+    pure_cfr_trajectory.push_back(
+        {{"iteration", point.iteration},
+         {"minimum_phase", point.minimum_phase},
+         {"finite_pursuits", point.finite_pursuits},
+         {"unit_pursuits", point.unit_pursuits},
+         {"unit_pursuit_ratio",
+          point.finite_pursuits == 0U
+              ? 0.0
+              : static_cast<double>(point.unit_pursuits) /
+                    static_cast<double>(point.finite_pursuits)},
+         {"pursuit_scan_seconds", point.pursuit_scan_seconds}});
+  }
 
   // GTO+ reports the memory consumed by the complete solve, not only the
   // persistent regret/strategy payload. Keep solver_state_bytes as a separate
@@ -1714,7 +1739,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"compiler", compiler_identity()},
         {"api_version", std::string(gtosd::api_version_string)}}},
       {"algorithm",
-       spec.algorithm == gtosd::PostflopAlgorithm::HsDcfr30 ? "exact_hs_dcfr_30"
+       pure_cfr_trajectory_enabled ? "diagnostic_pure_cfr_trajectory"
+       : spec.algorithm == gtosd::PostflopAlgorithm::HsDcfr30 ? "exact_hs_dcfr_30"
        : spec.algorithm == gtosd::PostflopAlgorithm::Dcfr
            ? "exact_dcfr"
            : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus ? "exact_dcfr_plus"
@@ -1723,7 +1749,11 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        {{"alpha", spec.dcfr_positive_regret_exponent},
         {"beta", 0.0},
         {"gamma", spec.dcfr_average_exponent}}},
-      {"update_mode", diagnostic_simultaneous ? "simultaneous" : "alternating"},
+      {"update_mode",
+       pure_cfr_trajectory_enabled
+           ? (diagnostic_simultaneous ? "simultaneous_pure_cfr_trajectory"
+                                      : "alternating_pure_cfr_trajectory")
+           : (diagnostic_simultaneous ? "simultaneous" : "alternating")},
       {"precision",
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
            ? "action_major_scaled_uint16_regret_strategy_float32_compute"
@@ -1835,6 +1865,11 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       {"final_gto_plus_dev_percent", final_deviation.value() * 100.0},
       {"final_normalized_nash_conv", final.normalized_nash_conv},
       {"convergence", std::move(convergence)}};
+  report["pure_cfr_trajectory"] =
+      {{"enabled", pure_cfr_trajectory_enabled},
+       {"phase_compression_applied", false},
+       {"phase_cap", options.diagnostic_pure_cfr_phase_cap},
+       {"points", std::move(pure_cfr_trajectory)}};
   report["rbp_read_only_audit"] = {{"enabled", rbp_read_only_enabled},
                                    {"mutates_solver_state", false},
                                    {"changes_traversal_control_flow", false},

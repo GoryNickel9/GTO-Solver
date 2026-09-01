@@ -202,6 +202,16 @@ void test_invalid_solver_options_are_rejected() {
   require(!ambiguous_target &&
               ambiguous_target.error() == gtosd::PostflopSolverError::InvalidConfiguration,
           "NashConv and GTO+ dEV stopping targets cannot be mixed");
+
+#if !defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+  options.target_normalized_max_deviation.reset();
+  options.target_normalized_nash_conv.reset();
+  options.diagnostic_pure_cfr_trajectory = true;
+  const auto unavailable_probe = gtosd::solve_postflop_exact(config.value(), options);
+  require(!unavailable_probe &&
+              unavailable_probe.error() == gtosd::PostflopSolverError::InvalidConfiguration,
+          "the production-default build rejects the Pure-CFR trajectory probe");
+#endif
 }
 
 void test_exact_check_only_solve_and_resume() {
@@ -702,6 +712,88 @@ void test_rbp_read_only_telemetry() {
           "RBP audit leaves deterministic serial and parallel state invariant");
 }
 
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+void test_pure_cfr_postflop_trajectory_probe() {
+  const std::string fixture_path =
+      std::string(GTOSD_SOURCE_DIR) + "/tests/fixtures/postflop_river_bet.json";
+  std::ifstream fixture(fixture_path, std::ios::binary);
+  const std::string json((std::istreambuf_iterator<char>(fixture)),
+                         std::istreambuf_iterator<char>());
+  const auto parsed = gtosd::parse_tree_config_json(json);
+  require(static_cast<bool>(fixture) && parsed.has_value(),
+          "Pure-CFR trajectory fixture parses");
+
+  auto config = parsed.value();
+  config.turn = gtosd::parse_card("8s").value();
+  config.river = gtosd::parse_card("9h").value();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 1U;
+  options.certification_interval = 1U;
+  options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
+  options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.parallel_action_depth = 0U;
+  options.diagnostic_pure_cfr_trajectory = true;
+  options.diagnostic_pure_cfr_phase_cap = 100'000U;
+
+  const auto first = gtosd::solve_postflop_exact(config, ranges, options);
+  require(first.has_value() && first.value().convergence.size() == 1U &&
+              first.value().diagnostic_pure_cfr_trajectory.size() == 1U,
+          "one-iteration Pure-CFR trajectory certifies");
+  require(std::isfinite(first.value().convergence.front().normalized_nash_conv) &&
+              first.value().diagnostic_pure_cfr_trajectory.front().finite_pursuits > 0U &&
+              first.value().diagnostic_pure_cfr_trajectory.front().minimum_phase == 1U,
+          "initial Pure-CFR pursuit and exact NashConv are observable");
+
+  const auto tree = gtosd::build_public_tree(config);
+  require(tree.has_value(), "Pure-CFR trajectory tree builds");
+  const auto root_strategy = gtosd::query_postflop_strategies(
+      config, ranges, first.value().checkpoint, tree.value().root);
+  require(root_strategy.has_value() && !root_strategy.value().empty() &&
+              root_strategy.value().front().probabilities.front() > 0.999,
+          "first Pure-CFR average exposes the deterministic tie-break action");
+
+  options.iterations = 20U;
+  options.certification_interval = 20U;
+  const auto trajectory = gtosd::solve_postflop_exact(config, ranges, options);
+  require(trajectory.has_value() &&
+              trajectory.value().diagnostic_pure_cfr_trajectory.size() == 20U &&
+              trajectory.value().convergence.size() == 1U,
+          "bounded Pure-CFR postflop trajectory completes");
+  const auto &points = trajectory.value().diagnostic_pure_cfr_trajectory;
+  require(std::ranges::all_of(points, [](const auto &point) {
+            return point.minimum_phase >= 1U && point.finite_pursuits > 0U &&
+                   point.unit_pursuits <= point.finite_pursuits &&
+                   std::isfinite(point.pursuit_scan_seconds);
+          }),
+          "every Pure-CFR trajectory point has valid pursuit telemetry");
+  require(std::ranges::any_of(points, [](const auto &point) {
+            return point.minimum_phase > 1U;
+          }),
+          "river trajectory exercises a compressible Sync-PCFR phase");
+  require(trajectory.value().convergence.back().normalized_nash_conv <
+              first.value().convergence.front().normalized_nash_conv,
+          "bounded Pure-CFR trajectory lowers exact normalized NashConv");
+  require(std::ranges::any_of(
+              trajectory.value().checkpoint.cumulative_regret_uint16,
+              [](const std::uint16_t code) { return static_cast<std::int16_t>(code) < 0; }),
+          "Pure-CFR cumulative Q preserves signed negative values");
+
+  const auto repeated = gtosd::solve_postflop_exact(config, ranges, options);
+  require(repeated.has_value() &&
+              repeated.value().checkpoint.cumulative_regret_uint16 ==
+                  trajectory.value().checkpoint.cumulative_regret_uint16 &&
+              repeated.value().checkpoint.cumulative_strategy_uint16 ==
+                  trajectory.value().checkpoint.cumulative_strategy_uint16 &&
+              repeated.value().checkpoint.regret_node_scale ==
+                  trajectory.value().checkpoint.regret_node_scale &&
+              repeated.value().checkpoint.strategy_node_scale ==
+                  trajectory.value().checkpoint.strategy_node_scale,
+          "Pure-CFR trajectory state is deterministic");
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -714,6 +806,9 @@ int main() {
     test_nontrivial_zero_sum_certification();
     test_simultaneous_dcfr_semantics();
     test_rbp_read_only_telemetry();
+#if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
+    test_pure_cfr_postflop_trajectory_probe();
+#endif
     std::cout << "F7_POSTFLOP_PRODUCTION_TESTS=PASS\n"
               << "assertions=" << assertions << '\n';
     return 0;
