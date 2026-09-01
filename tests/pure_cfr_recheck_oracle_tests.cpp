@@ -228,8 +228,34 @@ void apply_delta(PureState &state, const PureDelta &delta, const std::uint64_t p
   }
 }
 
+void quantize_like_scaled_uint16(PureState &state) {
+  for (auto &[key, buffer] : state) {
+    static_cast<void>(key);
+    double q_maximum = 0.0;
+    double average_maximum = 0.0;
+    for (const double value : buffer.cumulative_q) {
+      q_maximum = std::max(q_maximum, std::abs(value));
+    }
+    for (const double value : buffer.cumulative_average) {
+      average_maximum = std::max(average_maximum, value);
+    }
+    const float q_scale =
+        q_maximum > 0.0 ? static_cast<float>(q_maximum / 32767.0) : 0.0F;
+    const float average_scale =
+        average_maximum > 0.0 ? static_cast<float>(average_maximum / 65535.0) : 0.0F;
+    for (double &value : buffer.cumulative_q) {
+      const double code = q_scale > 0.0F ? std::nearbyint(value / q_scale) : 0.0;
+      value = std::clamp(code, -32767.0, 32767.0) * q_scale;
+    }
+    for (double &value : buffer.cumulative_average) {
+      const double code = average_scale > 0.0F ? std::nearbyint(value / average_scale) : 0.0;
+      value = std::clamp(code, 0.0, 65535.0) * average_scale;
+    }
+  }
+}
+
 PureSolve solve_pure(const gtosd::FiniteGame &game, const std::uint64_t logical_iterations,
-                     const bool sync) {
+                     const bool sync, const bool quantized = false) {
   PureSolve result;
   result.state = make_state(game);
   while (result.logical_iterations < logical_iterations) {
@@ -237,6 +263,9 @@ PureSolve solve_pure(const gtosd::FiniteGame &game, const std::uint64_t logical_
     const auto remaining = logical_iterations - result.logical_iterations;
     const auto phase = sync ? phase_until_policy_change(result.state, delta, remaining) : 1U;
     apply_delta(result.state, delta, phase);
+    if (quantized) {
+      quantize_like_scaled_uint16(result.state);
+    }
     result.logical_iterations += phase;
     ++result.outer_iterations;
     result.traversed_nodes += delta.traversed_nodes;
@@ -361,15 +390,30 @@ void test_pure_cfr_convergence_and_structural_reduction() {
   const auto matching_solved = solve_pure(matching, 100'000U, false);
   const auto matching_metrics =
       gtosd::calculate_nash_conv(matching, matching_solved.average_strategy);
-  require(matching_metrics.has_value(), "matching Sync PCFR certifies");
+  require(matching_metrics.has_value(), "matching Pure CFR certifies");
   require(matching_metrics.value().nash_conv < 0.015,
-          "matching Sync PCFR average approaches Nash");
+          "matching Pure CFR average approaches Nash");
 
   const auto kuhn = gtosd::make_kuhn_poker_game();
   const auto kuhn_pure_20k = solve_pure(kuhn, 20'000U, false);
   const auto kuhn_pure_20k_metrics =
       gtosd::calculate_nash_conv(kuhn, kuhn_pure_20k.average_strategy);
   require(kuhn_pure_20k_metrics.has_value(), "Kuhn Pure CFR 20k certifies");
+
+  const auto kuhn_sync_20k = solve_pure(kuhn, 20'000U, true);
+  const auto kuhn_sync_20k_metrics =
+      gtosd::calculate_nash_conv(kuhn, kuhn_sync_20k.average_strategy);
+  require(kuhn_sync_20k_metrics.has_value(), "Kuhn Sync PCFR 20k certifies");
+  require(kuhn_sync_20k.outer_iterations * 10U < kuhn_sync_20k.logical_iterations,
+          "Sync PCFR removes at least 90 percent of Kuhn outer traversals");
+
+  const auto kuhn_sync_quantized_20k = solve_pure(kuhn, 20'000U, true, true);
+  const auto kuhn_sync_quantized_20k_metrics =
+      gtosd::calculate_nash_conv(kuhn, kuhn_sync_quantized_20k.average_strategy);
+  require(kuhn_sync_quantized_20k_metrics.has_value(),
+          "quantized Kuhn Sync PCFR 20k certifies");
+  require(kuhn_sync_quantized_20k_metrics.value().nash_conv < 0.02,
+          "quantized Kuhn Sync PCFR remains convergent at the oracle horizon");
 
   gtosd::SolverConfig dcfr_config;
   dcfr_config.algorithm = gtosd::SolverAlgorithm::Dcfr;
@@ -382,10 +426,10 @@ void test_pure_cfr_convergence_and_structural_reduction() {
 
   const auto kuhn_solved = solve_pure(kuhn, 250'000U, false);
   const auto kuhn_metrics = gtosd::calculate_nash_conv(kuhn, kuhn_solved.average_strategy);
-  require(kuhn_metrics.has_value(), "Kuhn Sync PCFR certifies");
-  require(kuhn_metrics.value().nash_conv < 0.02, "Kuhn Sync PCFR lowers NashConv");
+  require(kuhn_metrics.has_value(), "Kuhn Pure CFR certifies");
+  require(kuhn_metrics.value().nash_conv < 0.02, "Kuhn Pure CFR lowers NashConv");
   require_near(kuhn_metrics.value().profile_value[0], -1.0 / 18.0, 2.0e-3,
-               "Kuhn Sync PCFR approaches analytic EV");
+               "Kuhn Pure CFR approaches analytic EV");
 
   const auto binary = make_binary_alternating_game(12U);
   const auto binary_validation = gtosd::validate_finite_game(binary);
@@ -399,6 +443,14 @@ void test_pure_cfr_convergence_and_structural_reduction() {
             << "pure_cfr_kuhn_profile_ev=" << kuhn_metrics.value().profile_value[0] << '\n'
             << "pure_cfr_kuhn_nash_conv_20k="
             << kuhn_pure_20k_metrics.value().nash_conv << '\n'
+            << "sync_pcfr_kuhn_nash_conv_20k="
+            << kuhn_sync_20k_metrics.value().nash_conv << '\n'
+            << "sync_pcfr_kuhn_outer_20k=" << kuhn_sync_20k.outer_iterations << '\n'
+            << "sync_pcfr_kuhn_nodes_20k=" << kuhn_sync_20k.traversed_nodes << '\n'
+            << "sync_pcfr_quantized_kuhn_nash_conv_20k="
+            << kuhn_sync_quantized_20k_metrics.value().nash_conv << '\n'
+            << "sync_pcfr_quantized_kuhn_outer_20k="
+            << kuhn_sync_quantized_20k.outer_iterations << '\n'
             << "dcfr_kuhn_nash_conv_20k=" << kuhn_dcfr_20k_metrics.value().nash_conv << '\n'
             << "pure_cfr_kuhn_nodes=" << kuhn_solved.traversed_nodes << '\n'
             << "pure_cfr_binary_nodes=" << binary_step.traversed_nodes << '\n'
