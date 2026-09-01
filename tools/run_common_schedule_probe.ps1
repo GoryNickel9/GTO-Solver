@@ -3,7 +3,7 @@ param(
     [ValidatePattern('^[a-zA-Z0-9_.-]+$')]
     [string]$CandidateId,
 
-    [ValidateSet('dcfr', 'dcfr_plus', 'hs_dcfr_30')]
+    [ValidateSet('dcfr', 'production_dcfr', 'dcfr_plus', 'hs_dcfr_30')]
     [string]$Algorithm = 'dcfr',
 
     [double]$Alpha = 1.5,
