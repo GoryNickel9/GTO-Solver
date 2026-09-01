@@ -1705,6 +1705,20 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
          {"metadata_bytes_per_action", snapshot.metadata_bytes_per_action},
          {"metadata_bytes_per_decision", snapshot.metadata_bytes_per_decision}});
   }
+  const auto report_algorithm_name = [&]() -> std::string_view {
+    switch (spec.algorithm) {
+    case gtosd::PostflopAlgorithm::HsDcfr30:
+      return "exact_hs_dcfr_30";
+    case gtosd::PostflopAlgorithm::ProductionDcfr:
+      return "exact_production_dcfr";
+    case gtosd::PostflopAlgorithm::Dcfr:
+      return "exact_dcfr";
+    case gtosd::PostflopAlgorithm::DcfrPlus:
+      return "exact_dcfr_plus";
+    default:
+      return "exact_cfr_plus";
+    }
+  }();
   nlohmann::json report = {
       {"schema", "gtosd.gto_plus_convergence_run.v1"},
       {"benchmark_id", spec.benchmark_id},
@@ -1713,16 +1727,13 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        {{"configuration", build_configuration_name()},
         {"compiler", compiler_identity()},
         {"api_version", std::string(gtosd::api_version_string)}}},
-      {"algorithm",
-       spec.algorithm == gtosd::PostflopAlgorithm::HsDcfr30 ? "exact_hs_dcfr_30"
-       : spec.algorithm == gtosd::PostflopAlgorithm::Dcfr
-           ? "exact_dcfr"
-           : (spec.algorithm == gtosd::PostflopAlgorithm::DcfrPlus ? "exact_dcfr_plus"
-                                                                   : "exact_cfr_plus")},
+      {"algorithm", report_algorithm_name},
       {"dcfr_parameters",
        {{"alpha", spec.dcfr_positive_regret_exponent},
         {"beta", 0.0},
-        {"gamma", spec.dcfr_average_exponent}}},
+        {"gamma", gtosd::is_production_dcfr_algorithm(spec.algorithm)
+                      ? 3.0
+                      : spec.dcfr_average_exponent}}},
       {"update_mode", diagnostic_simultaneous ? "simultaneous" : "alternating"},
       {"precision",
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
@@ -2066,6 +2077,8 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
     spec.algorithm = gtosd::PostflopAlgorithm::Dcfr;
   } else if (algorithm == "hs_dcfr_30") {
     spec.algorithm = gtosd::PostflopAlgorithm::HsDcfr30;
+  } else if (algorithm == "production_dcfr") {
+    spec.algorithm = gtosd::PostflopAlgorithm::ProductionDcfr;
   } else if (algorithm != "cfr_plus") {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_algorithm\n";
     return 2;

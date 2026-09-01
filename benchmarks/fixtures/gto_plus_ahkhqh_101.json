@@ -23,7 +23,7 @@
     "rake_percent": 0
   },
   "gtosd_run": {
-    "algorithm": "dcfr",
+    "algorithm": "production_dcfr",
     "dcfr_positive_regret_exponent": 1.5,
     "dcfr_average_exponent": 3.0,
     "certification_interval": 20,

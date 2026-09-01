@@ -52,7 +52,43 @@ enum class PostflopStatePrecision : std::uint8_t {
   ScaledUint16RegretStrategy,
   ActionMajorFloat13RegretFloat11Strategy
 };
-enum class PostflopAlgorithm : std::uint8_t { CfrPlus, DcfrPlus, Dcfr, HsDcfr30 };
+enum class PostflopAlgorithm : std::uint8_t {
+  CfrPlus = 0,
+  DcfrPlus = 1,
+  Dcfr = 2,
+  HsDcfr30 = 3,
+  // Value 11 preserves checkpoint compatibility with the qualified research
+  // candidate that became the common production schedule.
+  ProductionDcfr = 11
+};
+
+[[nodiscard]] constexpr bool
+is_production_dcfr_algorithm(const PostflopAlgorithm algorithm) noexcept {
+  return algorithm == PostflopAlgorithm::ProductionDcfr;
+}
+
+[[nodiscard]] constexpr bool
+is_signed_scaled_dcfr_algorithm(const PostflopAlgorithm algorithm) noexcept {
+  return algorithm == PostflopAlgorithm::Dcfr ||
+         algorithm == PostflopAlgorithm::HsDcfr30 ||
+         is_production_dcfr_algorithm(algorithm);
+}
+
+// Qualified common production schedule. The average strategy resets at
+// one-based iterations 1, 2, 5, 17 and 65, then retains the final epoch.
+// Cubic additive weights are exactly equivalent up to common scale to the
+// recursive gamma=3 average discount. Signed DCFR uses alpha=1.5, beta=0;
+// its clock switches to the upstream one-step lag after iteration 65.
+struct ProductionDcfrSchedulePoint {
+  std::uint64_t epoch_start_iteration{0};
+  std::uint64_t epoch_index{0};
+  std::uint64_t regret_discount_iteration{0};
+  double average_strategy_weight{1.0};
+  bool reset_average_strategy{true};
+};
+
+[[nodiscard]] ProductionDcfrSchedulePoint
+production_dcfr_schedule(std::uint64_t iteration) noexcept;
 
 // Training-free Hyperparameter Schedule from Zhang, McAleer and Sandholm,
 // "Faster Game Solving via Hyperparameter Schedules". The production
@@ -240,10 +276,11 @@ struct PostflopSolveOptions {
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
   PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};
-  // DCFR+ keeps CFR+'s non-negative regret projection. DCFR stores signed
-  // regrets and applies fixed Brown-Sandholm discounts. HsDcfr30 uses the
-  // published dynamic alpha/beta/gamma schedule and ignores these two fixed
-  // exponents. The parameters are also ignored by CfrPlus.
+  // DCFR+ keeps CFR+'s non-negative regret projection. DCFR and ProductionDcfr
+  // store signed regrets. ProductionDcfr uses the fixed qualified schedule;
+  // dcfr_average_exponent is ignored.
+  // HsDcfr30 uses the published dynamic alpha/beta/gamma schedule and ignores
+  // both fixed exponents. The parameters are also ignored by CfrPlus.
   double dcfr_positive_regret_exponent{1.5};
   double dcfr_average_exponent{2.0};
   bool enable_lossless_isomorphism{true};
