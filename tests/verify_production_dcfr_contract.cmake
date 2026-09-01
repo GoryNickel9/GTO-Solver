@@ -8,6 +8,7 @@ set(fixtures
   gto_plus_tstc9d_101.json)
 set(reference_times 1.71 17.66 116.09)
 set(reference_memory 8000000 399000000 2000000000)
+set(peak_rss_cap_bytes 2147483648)
 
 foreach(index RANGE 0 2)
   list(GET fixtures ${index} fixture)
@@ -22,6 +23,9 @@ foreach(index RANGE 0 2)
   string(JSON precision GET "${document}" gtosd_run state_precision)
   string(JSON parallel_depth GET "${document}" gtosd_run parallel_action_depth)
   string(JSON maximum_threads GET "${document}" gtosd_run maximum_solver_threads)
+  string(JSON actual_peak_rss_cap GET "${document}" gtosd_run peak_rss_cap_bytes)
+  string(JSON peak_rss_cap_unit GET "${document}" gtosd_run peak_rss_cap_unit)
+  string(JSON peak_rss_gate GET "${document}" gtosd_run peak_rss_gate)
   string(JSON decision_scales GET "${document}" expected_layout decision_node_scales)
   string(JSON actual_reference_time GET "${document}" gto_plus_reference elapsed_seconds)
   string(JSON actual_reference_memory GET "${document}" gto_plus_reference solver_memory_bytes)
@@ -33,7 +37,10 @@ foreach(index RANGE 0 2)
      NOT delay EQUAL 0 OR
      NOT precision STREQUAL "scaled_uint16_regret_strategy" OR
      NOT parallel_depth EQUAL 7 OR
-     NOT maximum_threads EQUAL 8)
+     NOT maximum_threads EQUAL 8 OR
+     NOT actual_peak_rss_cap EQUAL peak_rss_cap_bytes OR
+     NOT peak_rss_cap_unit STREQUAL "GiB" OR
+     NOT peak_rss_gate STREQUAL "strict_less_than")
     message(FATAL_ERROR "${fixture}: qualified production DCFR contract drifted")
   endif()
   if(decision_scales LESS 1)
@@ -43,6 +50,20 @@ foreach(index RANGE 0 2)
      NOT actual_reference_memory EQUAL reference_bytes OR
      NOT target EQUAL 1)
     message(FATAL_ERROR "${fixture}: immutable GTO+ reference drifted")
+  endif()
+
+  if(index EQUAL 2)
+    string(JSON initial_pot GET "${document}" fixture initial_pot_antes)
+    string(JSON crossing_dev_antes GET "${document}"
+      gto_plus_reference first_strictly_below_target dev_antes)
+    string(JSON crossing_dev_percent GET "${document}"
+      gto_plus_reference first_strictly_below_target dev_percent)
+    if(NOT initial_pot EQUAL 16 OR
+       NOT crossing_dev_antes EQUAL 0.146 OR
+       NOT crossing_dev_percent EQUAL 0.91)
+      message(FATAL_ERROR
+        "${fixture}: TST dEV normalization contract drifted (0.146 / 16 = 0.9125%)")
+    endif()
   endif()
 endforeach()
 

@@ -91,15 +91,31 @@ if (-not ($allRelease -and $consistentFingerprint -and $consistentStateBytes)) {
 
 $referenceSeconds = [double]$specificationData.gto_plus_reference.elapsed_seconds
 $referenceMemory = [double]$specificationData.gto_plus_reference.solver_memory_bytes
+$peakRssCapBytes = if ($null -ne $specificationData.gtosd_run.peak_rss_cap_bytes) {
+  [double]$specificationData.gtosd_run.peak_rss_cap_bytes
+} else {
+  [double]2147483648
+}
+$peakRssCapUnit = if ($null -ne $specificationData.gtosd_run.peak_rss_cap_unit) {
+  [string]$specificationData.gtosd_run.peak_rss_cap_unit
+} else {
+  "GiB"
+}
+$peakRssGate = if ($null -ne $specificationData.gtosd_run.peak_rss_gate) {
+  [string]$specificationData.gtosd_run.peak_rss_gate
+} else {
+  "strict_less_than"
+}
 $solverStateBytes = [double]$runReports[0].solver_state_bytes
 $peakRssBytes = [double](($runReports | ForEach-Object { [uint64]$_.peak_rss_bytes } |
     Measure-Object -Maximum).Maximum)
 $speedScore = 100.0 * $referenceSeconds / $median
 $memoryScore = 100.0 * $referenceMemory / $peakRssBytes
+$peakRssCapUtilization = 100.0 * $peakRssBytes / $peakRssCapBytes
 $speedGateSeconds = $referenceSeconds / 0.90
-$memoryGateBytes = $referenceMemory
+$memoryGateBytes = $peakRssCapBytes
 $speedGatePassed = $median -le $speedGateSeconds
-$memoryGatePassed = $peakRssBytes -le $memoryGateBytes
+$memoryGatePassed = $peakRssBytes -lt $memoryGateBytes
 $referenceMetadataComplete = [bool]$specificationData.gto_plus_reference.metadata_complete
 # correctness_passed gates on the reference node EV selected by the
 # specification (gate_node, default the tree root). The all-node EV and
@@ -148,7 +164,7 @@ $scientificComparisonReady = $measurementValid -and $worktreeClean -and
                              $referenceMetadataComplete -and $hardwareMetadataComplete
 
 $summary = [ordered]@{
-  schema = "gtosd.gto_plus_convergence_summary.v1"
+  schema = "gtosd.gto_plus_convergence_summary.v2"
   benchmark_id = $specificationData.benchmark_id
   generated_at_utc = [DateTime]::UtcNow.ToString("o")
   repository = [ordered]@{
@@ -171,6 +187,9 @@ $summary = [ordered]@{
     target_metric = "maximum unilateral best-response gain / initial pot"
     target_dev_percent = [double]$specificationData.gto_plus_reference.target_dev_percent
     timer_scope = $specificationData.gtosd_run.timer_scope
+    peak_rss_cap_bytes = [uint64]$peakRssCapBytes
+    peak_rss_cap_unit = $peakRssCapUnit
+    peak_rss_gate = $peakRssGate
   }
   reference = $specificationData.gto_plus_reference
   runs = $runReports
@@ -182,6 +201,9 @@ $summary = [ordered]@{
     peak_rss_bytes = [uint64]$peakRssBytes
     speed_score_percent = $speedScore
     memory_score_percent = $memoryScore
+    memory_score_basis = "gto_plus_solver_memory_reference_over_peak_rss"
+    peak_rss_cap_utilization_percent = $peakRssCapUtilization
+    peak_rss_headroom_bytes = [int64]($peakRssCapBytes - $peakRssBytes)
     gto_plus_ev_checks = $runReports[0].gto_plus_ev_checks
     gto_plus_action_frequency_checks = $runReports[0].gto_plus_action_frequency_checks
   }
@@ -197,6 +219,7 @@ $summary = [ordered]@{
     speed_threshold_seconds = $speedGateSeconds
     speed_passed = $speedGatePassed
     memory_threshold_bytes = $memoryGateBytes
+    memory_comparison = "strict_less_than"
     memory_passed = $memoryGatePassed
     parity_gate_passed = $scientificComparisonReady -and $speedGatePassed -and $memoryGatePassed
   }
