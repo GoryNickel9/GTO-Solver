@@ -9,6 +9,7 @@ $requiredScripts = @(
     'probe_gto_plus_projects.ps1',
     'probe_gto_plus_uia.ps1',
     'run_gto_plus_black_box.ps1',
+    'observe_gto_plus_manual_run.ps1',
     'evaluate_gto_plus_black_box.ps1'
 )
 
@@ -77,13 +78,30 @@ try {
         $manifest = [ordered]@{
             run_id = "run-{0:D2}" -f $index
             benchmark_id = 'GTP-TSTC9D-101'
+            executable = [ordered]@{
+                sha256 = 'SYNTHETIC-EXECUTABLE-SHA256'
+                product_version = '1.6.9.0'
+            }
+            project_original = [ordered]@{ sha256 = 'SYNTHETIC-PROJECT-SHA256' }
+            project_copy = [ordered]@{ sha256 = 'SYNTHETIC-PROJECT-SHA256' }
         }
         $validity = [ordered]@{
-            valid = $true
-            manual_start = $false
+            valid = $false
+            manual_start = $true
             first_below_target = [ordered]@{ elapsed_seconds = 110.0 + $index }
-            solution_consultable = [ordered]@{ elapsed_seconds = 112.0 + $index }
             memory_metric_mapping = 'unresolved'
+        }
+        $adjudication = [ordered]@{
+            valid = $true
+            manual_action = 'Synthetic manual marker.'
+            timing = [ordered]@{
+                observer_generation_to_first_below_target_seconds = 110.0 + $index
+                official_seconds = 112.0 + $index
+            }
+            memory = [ordered]@{
+                peak_working_set_bytes = 1900000000 + $index
+                peak_private_bytes = 1800000000 + $index
+            }
         }
         $telemetry = [ordered]@{
             peak_working_set_bytes = 1900000000 + $index
@@ -92,13 +110,29 @@ try {
         }
         [System.IO.File]::WriteAllText((Join-Path $run 'manifest.json'), ($manifest | ConvertTo-Json), $encoding)
         [System.IO.File]::WriteAllText((Join-Path $run 'validity.json'), ($validity | ConvertTo-Json -Depth 8), $encoding)
+        [System.IO.File]::WriteAllText((Join-Path $run 'adjudication.json'), ($adjudication | ConvertTo-Json -Depth 8), $encoding)
         [System.IO.File]::WriteAllText((Join-Path $run 'telemetry.jsonl'), ($telemetry | ConvertTo-Json -Compress), $encoding)
     }
+    $invalidRun = Join-Path $runsRoot 'run-invalid'
+    [void](New-Item -ItemType Directory -Path $invalidRun)
+    $invalidAdjudication = [ordered]@{
+        valid = $false
+        reason = 'synthetic_late_arm'
+        replacement_run_id = 'run-03'
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $invalidRun 'adjudication.json'),
+        ($invalidAdjudication | ConvertTo-Json -Depth 8),
+        $encoding)
     $summaryPath = Join-Path $testRoot 'summary.json'
     & (Join-Path $tools 'evaluate_gto_plus_black_box.ps1') -RunsRoot $runsRoot -SummaryPath $summaryPath | Out-Null
     $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
     if (-not $summary.characterization_valid -or $summary.valid_run_count -ne 5) {
         throw 'Synthetic five-run aggregation did not become valid.'
+    }
+    if ($summary.invalid_run_count -ne 1 -or $summary.replacement_run_count -ne 1 -or
+        -not $summary.final_outcome.StartsWith('C. PARTIALLY AUTOMATABLE')) {
+        throw 'Synthetic adjudication or manual-marker classification is incorrect.'
     }
     if ($summary.time_to_target_statistics.median -ne 113.0 -or
         $summary.time_to_target_statistics.p95_nearest_rank -ne 115.0) {
