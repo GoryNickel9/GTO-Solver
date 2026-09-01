@@ -58,6 +58,9 @@
     "enable_canonical_public_dag": true,
     "parallel_action_depth": 7,
     "maximum_solver_threads": 8,
+    "peak_rss_cap_bytes": 2147483648,
+    "peak_rss_cap_unit": "GiB",
+    "peak_rss_gate": "strict_less_than",
     "independent_processes": 5,
     "timer_scope": "run_solver"
   },

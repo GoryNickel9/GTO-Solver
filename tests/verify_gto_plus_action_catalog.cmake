@@ -13,6 +13,32 @@ if(NOT benchmark_result EQUAL 0 AND NOT benchmark_result EQUAL 4)
 endif()
 
 file(READ "${GTOSD_REPORT}" report_json)
+string(JSON report_schema GET "${report_json}" schema)
+string(JSON state_metric GET "${report_json}" solver_state_gate metric)
+string(JSON state_reference GET "${report_json}" solver_state_gate reference_bytes)
+string(JSON state_pass GET "${report_json}" solver_state_gate passed)
+string(JSON external_reference GET "${report_json}"
+  gto_plus_reference_memory reference_bytes)
+string(JSON memory_metric GET "${report_json}" memory_gate metric)
+string(JSON peak_rss GET "${report_json}" memory_gate measured_bytes)
+string(JSON memory_cap GET "${report_json}" memory_gate cap_bytes)
+string(JSON memory_unit GET "${report_json}" memory_gate cap_unit)
+string(JSON memory_comparison GET "${report_json}" memory_gate comparison)
+string(JSON memory_pass GET "${report_json}" memory_gate passed)
+if(NOT report_schema STREQUAL "gtosd.gto_plus_convergence_run.v2" OR
+   NOT state_metric STREQUAL "solver_state_bytes" OR
+   NOT state_reference EQUAL 8000000 OR
+   NOT state_pass OR
+   NOT external_reference EQUAL 8000000 OR
+   NOT memory_metric STREQUAL "peak_rss_bytes" OR
+   NOT peak_rss LESS 2147483648 OR
+   NOT memory_cap EQUAL 2147483648 OR
+   NOT memory_unit STREQUAL "GiB" OR
+   NOT memory_comparison STREQUAL "strict_less_than" OR
+   NOT memory_pass)
+  message(FATAL_ERROR "state/reference/peak-RSS resource contract drifted")
+endif()
+
 string(JSON catalog_type TYPE "${report_json}" initial_street_action_catalog)
 if(NOT catalog_type STREQUAL "ARRAY")
   message(FATAL_ERROR "initial_street_action_catalog is not an array")

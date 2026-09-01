@@ -907,12 +907,18 @@ struct ConvergenceReferenceNode {
   std::map<std::string, double> actions;
 };
 
+constexpr std::uint64_t desktop_peak_rss_cap_bytes =
+    std::uint64_t{2} * 1024U * 1024U * 1024U;
+constexpr std::string_view desktop_peak_rss_cap_unit{"GiB"};
+constexpr std::string_view desktop_peak_rss_gate{"strict_less_than"};
+
 struct ConvergenceBenchmarkSpec {
   std::string benchmark_id;
   std::string gate_node_id;
   double target_percent{0.0};
   double reference_seconds{0.0};
   std::uint64_t reference_memory_bytes{0};
+  std::uint64_t peak_rss_cap_bytes{desktop_peak_rss_cap_bytes};
   std::string target_definition;
   double ev_tolerance{0.0};
   double frequency_tolerance{0.0};
@@ -1731,7 +1737,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
          {"metadata_bytes_per_decision", snapshot.metadata_bytes_per_decision}});
   }
   nlohmann::json report = {
-      {"schema", "gtosd.gto_plus_convergence_run.v1"},
+      {"schema", "gtosd.gto_plus_convergence_run.v2"},
       {"benchmark_id", spec.benchmark_id},
       {"game_fingerprint", result.checkpoint.game_fingerprint},
       {"build",
@@ -1851,11 +1857,15 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"measured_bytes", solver_state_bytes},
         {"reference_bytes", spec.reference_memory_bytes},
         {"passed", solver_state_bytes <= spec.reference_memory_bytes}}},
+      {"gto_plus_reference_memory",
+       {{"metric", "solver_memory_bytes"}, {"reference_bytes", spec.reference_memory_bytes}}},
       {"memory_gate",
        {{"metric", "peak_rss_bytes"},
         {"measured_bytes", peak_rss_bytes},
-        {"reference_bytes", spec.reference_memory_bytes},
-        {"passed", peak_rss_bytes <= spec.reference_memory_bytes}}},
+        {"cap_bytes", spec.peak_rss_cap_bytes},
+        {"cap_unit", std::string(desktop_peak_rss_cap_unit)},
+        {"comparison", std::string(desktop_peak_rss_gate)},
+        {"passed", peak_rss_bytes < spec.peak_rss_cap_bytes}}},
       {"transient_regret_delta_bytes",
        result.actions * sizeof(double) *
            static_cast<std::uint64_t>(spec.parallel_action_depth + 1U)},
@@ -1895,7 +1905,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     std::cerr << "postflop benchmark-gto-plus failed: io_failure\n";
     return 1;
   }
-  std::cout << "GTOSD_GTO_PLUS_CONVERGENCE_RUN_1\n"
+  std::cout << "GTOSD_GTO_PLUS_CONVERGENCE_RUN_2\n"
             << "benchmark_id=" << spec.benchmark_id
             << " iteration=" << result.checkpoint.completed_iterations
             << " target_dev_percent=" << spec.target_percent
@@ -1993,6 +2003,7 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
   spec.target_percent = target_percent;
   spec.reference_seconds = reference_seconds;
   spec.reference_memory_bytes = reference_memory_bytes;
+  spec.peak_rss_cap_bytes = desktop_peak_rss_cap_bytes;
   spec.target_definition = reference.value("target_definition", std::string{});
   spec.ev_tolerance = ev_tolerance;
   spec.frequency_tolerance = reference_frequencies.value("absolute_tolerance_fraction", -1.0);
@@ -2055,6 +2066,8 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   spec.target_percent = reference.value("target_dev_percent", -1.0);
   spec.reference_seconds = reference.value("elapsed_seconds", -1.0);
   spec.reference_memory_bytes = reference.value("solver_memory_bytes", std::uint64_t{0});
+  spec.peak_rss_cap_bytes =
+      run.value("peak_rss_cap_bytes", desktop_peak_rss_cap_bytes);
   spec.target_definition = reference.value("target_definition", std::string{});
   spec.ev_tolerance = reference.value("ev_absolute_tolerance_antes", -1.0);
   spec.frequency_tolerance = reference.value("action_frequency_absolute_tolerance_fraction", -1.0);
@@ -2193,7 +2206,12 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
           static_cast<std::uint16_t>(spec.maximum_solver_threads) ||
       !std::isfinite(spec.target_percent) || std::abs(spec.target_percent - 1.0) > 1.0e-12 ||
       !std::isfinite(spec.reference_seconds) || spec.reference_seconds <= 0.0 ||
-      spec.reference_memory_bytes == 0 || spec.target_definition.empty() ||
+      spec.reference_memory_bytes == 0 || spec.peak_rss_cap_bytes != desktop_peak_rss_cap_bytes ||
+      run.value("peak_rss_cap_unit", std::string(desktop_peak_rss_cap_unit)) !=
+          desktop_peak_rss_cap_unit ||
+      run.value("peak_rss_gate", std::string(desktop_peak_rss_gate)) !=
+          desktop_peak_rss_gate ||
+      spec.target_definition.empty() ||
       !std::isfinite(spec.ev_tolerance) || spec.ev_tolerance <= 0.0 ||
       !std::isfinite(spec.frequency_tolerance) || spec.frequency_tolerance <= 0.0 ||
       !std::isfinite(spec.display_precision_percent) || spec.display_precision_percent <= 0.0) {
