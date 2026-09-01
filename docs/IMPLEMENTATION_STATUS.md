@@ -1,5 +1,14 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Exact-algorithm recheck 2026-09-01:** outcome **B. SYNC-PCFR REQUIRES AN
+> ISOLATED POSTFLOP TRAJECTORY GATE**. Pure/Sync-PCFR passa il pre-gate state
+> con gli stessi `1.472.605.376 B` TST. Pure-only è temporalmente insufficiente;
+> Sync comprime 20.000 iterazioni Kuhn in `405` traversate, ma il pursuit proxy
+> TST resta globalmente unitario nei campioni @1/@40/@80. Sono presenti solo
+> oracle e analyzer di ricerca; nessun enum, dispatch o checkpoint production.
+> Report:
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md).
+
 > **FD-FTRL/OMD decision 2026-08-31:** **FD-FTRL/OMD LOCAL-COST BLOCKER.**
 > Il reuse byte-level `payload A = R'/Q'`, `payload B = linear average` passa
 > il RAM pre-gate senza un terzo state; l'oracolo CFR/RM e CFR+/RM+ passa

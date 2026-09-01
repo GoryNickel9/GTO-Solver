@@ -1,5 +1,15 @@
 # Performance
 
+> **Strict exact-algorithm recheck — 2026-09-01.** Le famiglie precedentemente
+> escluse restano tali dopo un audit indipendente. Pure CFR è memory-neutral ma
+> la occupancy non-iniziale TST `0,832335` limita lo speedup ideale a
+> `1,201439x`. Sync-PCFR resta l'unico provisional survivor: Kuhn @20k passa
+> con `405` traversate e NashConv `0,00385844`; il pre-gate quantizzato passa a
+> `0,00273173`. Il pursuit proxy TST, tuttavia, trova fase globale 1 nei tre
+> snapshot. Nessun target run finché un isolated postflop trajectory probe non
+> dimostra economia sufficiente. Protocollo:
+> [`../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md).
+
 > **FD-FTRL/OMD feasibility — 2026-08-31.** Le practical `R` variants possono
 > riusare esattamente i due payload action correnti, ma sono chiuse come
 > **FD-FTRL/OMD LOCAL-COST BLOCKER**. Sul mix TST, direct small-N è migliore

@@ -1,8 +1,18 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-08-31
+Aggiornato: 2026-09-01
 Benchmark ID: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **Strict exact-algorithm recheck 2026-09-01.** Tutte le esclusioni
+> precedenti sono state rivalutate e restano chiuse. Pure CFR riusa i due
+> payload correnti ma fallisce il limite temporale postflop; Sync-PCFR resta
+> invece un provisional survivor: Kuhn @20k richiede `405` traversate esterne,
+> NashConv `0,00385844`, oppure `0,00273173` con ricodifica `uint16`, senza
+> aumentare lo state TST. Il pursuit proxy reale TST ha però minimo globale 1
+> @1/@40/@80, quindi serve un trajectory probe PCFR postflop prima di un target
+> run. Zero production change. Evidenza:
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md).
 
 > **Memory-neutral FD-FTRL/OMD feasibility 2026-08-31.**
 > **FD-FTRL/OMD LOCAL-COST BLOCKER.** Le practical `R` variants sono
