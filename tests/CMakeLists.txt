@@ -176,6 +176,20 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
+  add_executable(gtosd_range_orbit_oracle_tests range_orbit_oracle_tests.cpp)
+  target_link_libraries(gtosd_range_orbit_oracle_tests
+    PRIVATE gtosd_postflop_range_orbit_oracle)
+  gtosd_set_warnings(gtosd_range_orbit_oracle_tests)
+  add_test(NAME gtosd_range_orbit_oracle_tests COMMAND gtosd_range_orbit_oracle_tests)
+  set_tests_properties(gtosd_range_orbit_oracle_tests
+    PROPERTIES LABELS "postflop;ranges;isomorphism;oracle;counterexample")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_range_orbit_oracle_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
 add_executable(gtosd_canonical_layout_tests canonical_layout_tests.cpp)
 target_link_libraries(gtosd_canonical_layout_tests PRIVATE gtosd::postflop)
 gtosd_set_warnings(gtosd_canonical_layout_tests)

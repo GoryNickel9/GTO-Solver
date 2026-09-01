@@ -14,6 +14,8 @@ option(GTOSD_BUILD_GUI_PROTOTYPES "Build the Phase 9 Qt and Dear ImGui prototype
 option(GTOSD_BUILD_DESKTOP_GUI "Build the Phase 10 Qt desktop application" OFF)
 option(GTOSD_WARNINGS_AS_ERRORS "Treat first-party warnings as errors" ON)
 option(GTOSD_ENABLE_CLANG_TIDY "Run clang-tidy while compiling first-party targets" OFF)
+option(GTOSD_BUILD_RANGE_ORBIT_ORACLE
+  "Build the diagnostic asymmetric-range physical-orbit counterexample" OFF)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
