@@ -9,11 +9,19 @@
 > dEV `0,951423%/0,807956%/0,904505%` e mediana/p95 solver
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, sotto il
-> cap stretto `2.000.000.000 B`; full CTest Release `26/26 PASS`. Il precedente
+> cap stretto `<2 GiB` (`2.147.483.648 B`); full CTest Release `26/26 PASS`. Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
 > [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
+
+> **2 GiB resource contract — 2026-09-01.** Il gate comune del processo è
+> `peak_rss_bytes < 2.147.483.648 B` e non coincide con i riferimenti esterni
+> `solver_memory_bytes`. Il probe GTO+ TST ha peak `2.061.889.536 B`; il nuovo
+> cap rende RAM-feasible K8/K16/K32 ma non supera i loro gate di throughput.
+> Nessun candidato è promosso e production resta `production_dcfr 1.5/0/3`.
+> Protocollo:
+> [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Precedenza storica.** I checkpoint e feasibility block datati 2026-08-31 o
 > precedenti sotto questa nota restano evidenza storica. Le loro diciture

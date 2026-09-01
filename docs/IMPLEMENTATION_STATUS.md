@@ -5,7 +5,8 @@
 > `1.5/0/3`, reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di
 > una iterazione, delay zero, `ScaledUint16RegretStrategy`, CPU-only e massimo
 > otto thread. Cinque processi final-head auditabili (`r2-r6`) passano `15/15`
-> solve con dEV `<1%`, correctness/layout/exact outcomes e peak TST sotto 2 GB.
+> solve con dEV `<1%`, correctness/layout/exact outcomes e peak TST sotto il
+> cap stretto `<2 GiB` (`2.147.483.648 B`).
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release `26/26 PASS`.
@@ -13,6 +14,15 @@
 > GTO+ resta non superato per i tempi TH e TST: mediane rispettivamente
 > `1,661%` e `42,722%` sopra i limiti. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
+
+> **2 GiB resource contract 2026-09-01:** il gate operativo è
+> `peak_rss_bytes < 2.147.483.648 B`, distinto dai riferimenti esterni di
+> `solver_state_bytes`. Il probe GTO+ TST misura peak working set
+> `2.061.889.536 B` e passa con `85.594.112 B` di margine; pot `16` conferma
+> `0,146 / 16 = 0,9125%`, visualizzato `0,91%`. K8/K16/K32 diventano
+> RAM-feasible ma restano respinti per throughput. Production resta
+> `production_dcfr 1.5/0/3`. Report:
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Precedenza storica.** Gli aggiornamenti datati 2026-08-31 e precedenti
 > sotto questa sezione restano ledger storico. Ogni loro frase che presenta

@@ -44,6 +44,8 @@ I gate prestazionali della suite sono:
   128,988889 s; per TSTC9D il riferimento grezzo è il primo punto GTO+
   strettamente sotto soglia, `116,09 s` a `0,91%` (`0,146 ante`);
 - stato solver non superiore a 8.000.000 / 399.000.000 / 2.000.000.000 B;
+- peak RSS del processo strettamente inferiore al cap desktop comune
+  `2 GiB = 2.147.483.648 B`, separato dal riferimento esterno di stato;
 - correttezza, tempo e memoria separati sullo stesso checkpoint; cinque
   processi indipendenti soltanto per la promozione temporale finale.
 

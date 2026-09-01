@@ -20,7 +20,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `184,095930/197,865030 s`. Root EV deterministici:
 > `19,118977716/8,226793157/8,495660681`. Tutti i `15/15` solve passano
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
-> `1.969.860.608 B < 2.000.000.000 B`; state TST `1.472.605.376 B`.
+> `1.969.860.608 B < 2.147.483.648 B`; state TST `1.472.605.376 B`.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
 > Full CTest Release `26/26 PASS`.
 >
@@ -31,6 +31,16 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > complessivo resta quindi bloccante su TH e TST. Evidenza e protocollo:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
 > `out/production-final-head-20260901/`.
+
+> **2 GiB resource contract 2026-09-01.** Il cap di processo comune è
+> `peak_rss_bytes < 2.147.483.648 B`; `solver_memory_bytes` resta un riferimento
+> esterno/stato e non un limite RSS. Il probe GTO+ TST passa il nuovo cap a
+> `2.061.889.536 B`; pot iniziale `16` conferma la normalizzazione dEV
+> `0,146 -> 0,9125% -> 0,91%`. K8/K16/K32 diventano RAM-feasible ma restano
+> chiusi perché regressivi nel throughput. Production resta
+> `production_dcfr 1.5/0/3`; il gate complessivo resta bloccato dai tempi TH e
+> TST. Evidenza:
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Precedenza storica.** Tutti i blocchi datati 2026-08-31 o precedenti sotto
 > questa sezione conservano decisioni e misure valide nel loro contesto, ma le
