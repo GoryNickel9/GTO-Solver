@@ -11,7 +11,13 @@
 #include <iterator>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
+
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -88,6 +94,37 @@ void remove_file(const std::filesystem::path &path) {
   std::filesystem::remove(path, error);
 }
 
+class ScopedTestDirectory {
+public:
+  ScopedTestDirectory() {
+    const auto suffix = gtosd::storage_key_to_hex(gtosd::generate_storage_key()).substr(0U, 16U);
+    path_ = std::filesystem::temp_directory_path() / ("gtosd_phase8_" + suffix);
+    std::error_code error;
+    std::filesystem::create_directories(path_, error);
+    if (error) {
+      throw std::runtime_error("phase8 temporary directory creates");
+    }
+  }
+
+  ~ScopedTestDirectory() {
+    std::error_code error;
+    std::filesystem::remove_all(path_, error);
+  }
+
+  ScopedTestDirectory(const ScopedTestDirectory &) = delete;
+  ScopedTestDirectory &operator=(const ScopedTestDirectory &) = delete;
+
+  [[nodiscard]] const std::filesystem::path &path() const noexcept { return path_; }
+
+private:
+  std::filesystem::path path_;
+};
+
+const std::filesystem::path &test_directory() {
+  static const ScopedTestDirectory directory;
+  return directory.path();
+}
+
 void test_round_trip_random_access_and_metrics() {
   const auto config = load_config();
   const auto checkpoint = make_checkpoint();
@@ -103,7 +140,7 @@ void test_round_trip_random_access_and_metrics() {
           "storage key hex round-trip is exact");
   require(!gtosd::storage_key_from_hex("bad"), "malformed storage key is rejected");
 
-  const auto path = std::filesystem::current_path() / "phase8_round_trip.gtsd";
+  const auto path = test_directory() / "phase8_round_trip.gtsd";
   remove_file(path);
   const auto saved = gtosd::save_solution(path, archive.value(), key);
   require(saved.has_value(), "solution saves atomically");
@@ -154,7 +191,7 @@ void test_mixed_precision_round_trip() {
       gtosd::make_postflop_solution(load_config(), checkpoint, certification);
   require(archive.has_value(), "mixed-precision solution archive builds");
   const auto key = gtosd::generate_storage_key();
-  const auto path = std::filesystem::current_path() / "phase8_mixed_round_trip.gtsd";
+  const auto path = test_directory() / "phase8_mixed_round_trip.gtsd";
   remove_file(path);
   require(gtosd::save_solution(path, archive.value(), key).has_value(),
           "mixed-precision solution saves atomically");
@@ -181,7 +218,7 @@ void test_compact_precision_round_trip() {
       gtosd::make_postflop_solution(load_config(), checkpoint, make_certification());
   require(archive.has_value(), "compact-precision solution archive builds");
   const auto key = gtosd::generate_storage_key();
-  const auto path = std::filesystem::current_path() / "phase8_compact_round_trip.gtsd";
+  const auto path = test_directory() / "phase8_compact_round_trip.gtsd";
   remove_file(path);
   require(gtosd::save_solution(path, archive.value(), key).has_value(),
           "compact-precision solution saves atomically");
@@ -202,7 +239,7 @@ void test_corruption_truncation_and_versions() {
   const auto archive =
       gtosd::make_postflop_solution(load_config(), make_checkpoint(), make_certification());
   const auto key = gtosd::generate_storage_key();
-  const auto path = std::filesystem::current_path() / "phase8_corruption.gtsd";
+  const auto path = test_directory() / "phase8_corruption.gtsd";
   remove_file(path);
   require(gtosd::save_solution(path, archive.value(), key).has_value(), "corruption fixture saves");
   const auto reader = gtosd::open_solution(path, key);
@@ -252,9 +289,9 @@ void test_atomic_preservation_migration_and_catalog() {
   const auto archive =
       gtosd::make_postflop_solution(load_config(), make_checkpoint(), make_certification());
   const auto key = gtosd::generate_storage_key();
-  const auto path = std::filesystem::current_path() / "phase8_atomic.gtsd";
-  const auto migrated_path = std::filesystem::current_path() / "phase8_migrated.gtsd";
-  const auto catalog_path = std::filesystem::current_path() / "phase8_catalog.gtsddb";
+  const auto path = test_directory() / "phase8_atomic.gtsd";
+  const auto migrated_path = test_directory() / "phase8_migrated.gtsd";
+  const auto catalog_path = test_directory() / "phase8_catalog.gtsddb";
   remove_file(path);
   remove_file(migrated_path);
   remove_file(catalog_path);
@@ -334,7 +371,7 @@ void test_quantization_and_dictionary_training() {
   require(archive.has_value(), "dictionary integration archive builds");
   archive.value().chunks.push_back({gtosd::SolutionChunkType::Dictionary, dictionary.value()});
   const auto key = gtosd::generate_storage_key();
-  const auto path = std::filesystem::current_path() / "phase8_dictionary.gtsd";
+  const auto path = test_directory() / "phase8_dictionary.gtsd";
   remove_file(path);
   require(gtosd::save_solution(path, archive.value(), key).has_value(),
           "trained dictionary is integrated into save");
@@ -362,8 +399,8 @@ void test_authenticated_mutation_corpus() {
   const auto archive =
       gtosd::make_postflop_solution(load_config(), make_checkpoint(), make_certification());
   const auto key = gtosd::generate_storage_key();
-  const auto source = std::filesystem::current_path() / "phase8_mutation_source.gtsd";
-  const auto mutated = std::filesystem::current_path() / "phase8_mutation_case.gtsd";
+  const auto source = test_directory() / "phase8_mutation_source.gtsd";
+  const auto mutated = test_directory() / "phase8_mutation_case.gtsd";
   remove_file(source);
   remove_file(mutated);
   require(gtosd::save_solution(source, archive.value(), key).has_value(),
@@ -403,6 +440,32 @@ void test_authenticated_mutation_corpus() {
   remove_file(mutated);
 }
 
+void test_transient_windows_replace_retry() {
+#ifdef _WIN32
+  const auto archive =
+      gtosd::make_postflop_solution(load_config(), make_checkpoint(), make_certification());
+  require(archive.has_value(), "Windows replace-retry archive builds");
+  const auto key = gtosd::generate_storage_key();
+  const auto path = test_directory() / "phase8_windows_replace_retry.gtsd";
+  remove_file(path);
+  require(gtosd::save_solution(path, archive.value(), key).has_value(),
+          "Windows replace-retry baseline saves");
+
+  const HANDLE held = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+  require(held != INVALID_HANDLE_VALUE, "Windows replace-retry fixture locks");
+  std::thread release_lock([held] {
+    Sleep(100U);
+    CloseHandle(held);
+  });
+  const auto replaced = gtosd::save_solution(path, archive.value(), key);
+  release_lock.join();
+  require(replaced.has_value(), "Windows transient replace failure retries");
+  require(gtosd::verify_solution(path, key).has_value(), "Windows replace-retry result verifies");
+  remove_file(path);
+#endif
+}
+
 } // namespace
 
 int main() {
@@ -414,6 +477,7 @@ int main() {
     test_atomic_preservation_migration_and_catalog();
     test_quantization_and_dictionary_training();
     test_authenticated_mutation_corpus();
+    test_transient_windows_replace_retry();
     std::cout << "F8_STORAGE_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

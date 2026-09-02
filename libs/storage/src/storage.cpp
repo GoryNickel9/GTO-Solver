@@ -299,17 +299,32 @@ bool durable_flush_file(const std::filesystem::path &path) {
 bool atomic_replace(const std::filesystem::path &temporary,
                     const std::filesystem::path &destination) {
 #ifdef _WIN32
-  std::error_code exists_error;
-  const bool destination_exists = std::filesystem::exists(destination, exists_error);
-  if (exists_error) {
-    return false;
+  constexpr std::array<DWORD, 8> retry_delays_ms{0U, 1U, 2U, 4U, 8U, 16U, 32U, 64U};
+  for (const auto delay_ms : retry_delays_ms) {
+    if (delay_ms != 0U) {
+      Sleep(delay_ms);
+    }
+    std::error_code exists_error;
+    const bool destination_exists = std::filesystem::exists(destination, exists_error);
+    if (exists_error) {
+      return false;
+    }
+    const bool replaced =
+        destination_exists
+            ? ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr,
+                           REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) != 0
+            : MoveFileExW(temporary.c_str(), destination.c_str(),
+                          MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING) != 0;
+    if (replaced) {
+      return true;
+    }
+    const auto error = GetLastError();
+    if (error != ERROR_ACCESS_DENIED && error != ERROR_SHARING_VIOLATION &&
+        error != ERROR_LOCK_VIOLATION) {
+      return false;
+    }
   }
-  if (destination_exists) {
-    return ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr, REPLACEFILE_WRITE_THROUGH,
-                        nullptr, nullptr) != 0;
-  }
-  return MoveFileExW(temporary.c_str(), destination.c_str(),
-                     MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING) != 0;
+  return false;
 #else
   std::error_code error;
   std::filesystem::rename(temporary, destination, error);
