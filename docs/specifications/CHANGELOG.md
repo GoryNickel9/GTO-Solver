@@ -3,6 +3,23 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-09-02
+
+### Aggiornato
+
+- Separato il cap desktop comune `< 2 GiB` dai riferimenti peak-RSS GTO+ per
+  fixture: il primo passa su AHK/TH/TST, i secondi restano diagnostici.
+- Consolidati su `main` tooling e report S6, strict-cap, Pure/Sync-PCFR,
+  range-aware physical-orbit e black-box GTO+ senza promuovere percorsi
+  respinti o default-off.
+- Resa robusta la sostituzione atomica Windows contro errori transitori e
+  isolati i file temporanei dei test storage.
+
+### Verificato
+
+- Build Release completa e CTest `27/27 PASS` in `218,43 s`.
+- Test storage aggiornato `10/10 PASS`, incluso il lock Windows deterministico.
+
 ## 2026-09-01
 
 ### Aggiornato

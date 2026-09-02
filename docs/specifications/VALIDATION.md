@@ -56,8 +56,9 @@ deterministici AHK/TH/TST sono `80/0,951423%`, `80/0,807956%` e
 `160/0,904505%`; mediane/p95 solver `0,758705/0,790918 s`,
 `19,948228/24,192260 s`, `184,095930/197,865030 s`. TH e TST falliscono il
 tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; peak RSS massimo
-TST `1.969.860.608 B`. Il distinto `memory_gate`
-peak-RSS-vs-GTO+ resta FAIL per AHK/TH e PASS per TST.
+TST `1.969.860.608 B`. Il cap desktop comune `< 2 GiB` passa su tutti e tre;
+i riferimenti peak-RSS di GTO+ per singola fixture restano confronti diagnostici
+separati e non sono gate di accettazione.
 
 Gli EV BTN dopo check/bet restano diagnostici nel percorso non vincolato perché
 GTO+ e GTOSD producono posteriori CO differenti. F10.4 è stata implementata e

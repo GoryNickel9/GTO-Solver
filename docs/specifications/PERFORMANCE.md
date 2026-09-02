@@ -9,7 +9,8 @@
 > dEV `0,951423%/0,807956%/0,904505%` e mediana/p95 solver
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, sotto il
-> cap stretto `<2 GiB` (`2.147.483.648 B`); full CTest Release `26/26 PASS`. Il precedente
+> cap stretto `<2 GiB` (`2.147.483.648 B`); full CTest Release corrente
+> `27/27 PASS` (`218,43 s`, 2026-09-02). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -22,6 +23,20 @@
 > Nessun candidato è promosso e production resta `production_dcfr 1.5/0/3`.
 > Protocollo:
 > [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
+> **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
+> range-aware physical-orbit remain rejected for production. Their runners,
+> probes and counterexample oracles are retained for reproducibility; the two
+> algorithmic paths are compile-time gated and default `OFF`, while strict-cap
+> profiling is opt-in. GTO+ black-box observation remains only partially
+> automatable and requires a manual marker. These paths do not change
+> `production_dcfr 1.5/0/3`. Evidence:
+> [`../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
+> [`../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
+> [`../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) and
+> [`../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
 
 > **Precedenza storica.** I checkpoint e feasibility block datati 2026-08-31 o
 > precedenti sotto questa nota restano evidenza storica. Le loro diciture

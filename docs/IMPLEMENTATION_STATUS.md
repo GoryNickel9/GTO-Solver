@@ -9,7 +9,8 @@
 > cap stretto `<2 GiB` (`2.147.483.648 B`).
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
-> `0,790918/24,192260/197,865030 s`. Full CTest Release `26/26 PASS`.
+> `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
+> `27/27 PASS` (`218,43 s`, 2026-09-02).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato per i tempi TH e TST: mediane rispettivamente
 > `1,661%` e `42,722%` sopra i limiti. Report:
@@ -23,6 +24,20 @@
 > RAM-feasible ma restano respinti per throughput. Production resta
 > `production_dcfr 1.5/0/3`. Report:
 > [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
+> **Consolidamento ricerca 2026-09-02:** tooling e prove dei branch isolati
+> sono ora versionati su `main`, senza modificare i default production. S6
+> resta respinto. Pure/Sync-PCFR e range-aware physical-orbit sono oracle
+> compile-time gated e default `OFF`; il profiling strict-cap è opt-in. Il
+> controesempio range-aware impedisce la promozione della famiglia
+> physical-orbit con range asimmetrici. Il workflow black-box GTO+ è
+> `PARTIALLY AUTOMATABLE` e richiede un marker manuale. Report:
+> [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
+> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
+> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
+> [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
 
 > **Precedenza storica.** Gli aggiornamenti datati 2026-08-31 e precedenti
 > sotto questa sezione restano ledger storico. Ogni loro frase che presenta
@@ -176,7 +191,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes e cap desktop PASS; Full CTest 26/26 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+ |
+| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes e cap desktop PASS; Full CTest corrente 27/27 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+ |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 

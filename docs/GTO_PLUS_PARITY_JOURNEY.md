@@ -1,6 +1,6 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-09-01
+Aggiornato: 2026-09-02
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
@@ -22,7 +22,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
 > `1.969.860.608 B < 2.147.483.648 B`; state TST `1.472.605.376 B`.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
-> Full CTest Release `26/26 PASS`.
+> Full CTest Release corrente `27/27 PASS` (`218,43 s`, 2026-09-02).
 >
 > La promozione migliora la Release comune precedente ed elimina il suo FAIL
 > di correttezza AHK, ma **non** chiude la parita' temporale GTO+. La mediana TH
@@ -41,6 +41,22 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `production_dcfr 1.5/0/3`; il gate complessivo resta bloccato dai tempi TH e
 > TST. Evidenza:
 > [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+
+> **Research evidence consolidation 2026-09-02.** I branch isolati sono stati
+> importati senza promuovere i candidati respinti. S6 resta REJECT; il runner e
+> il rapporto sono conservati per riproducibilità. Pure/Sync-PCFR e
+> range-aware physical-orbit sono oracle compile-time gated, default `OFF`:
+> Sync-PCFR non trova fasi comprimibili sul gate AHK e physical-orbit riproduce
+> il controesempio con range asimmetrici. Il strict-cap profiling è opt-in e
+> non cambia il traversal normale. La caratterizzazione black-box GTO+ ha
+> outcome `C. PARTIALLY AUTOMATABLE` e richiede un marker manuale; non avvia
+> autonomamente il solver. Evidenza:
+> [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
+> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
+> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
+> [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
 
 > **Precedenza storica.** Tutti i blocchi datati 2026-08-31 o precedenti sotto
 > questa sezione conservano decisioni e misure valide nel loro contesto, ma le

@@ -223,6 +223,20 @@ keep the overall parity gate and F11+ frozen. TH median exceeds its limit by
 `0.326006 s` (`1.661%`). Contract and frontier recheck:
 `docs/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`.
 
+The repository also preserves the rejected research families and their
+reproduction tools without enabling them in production. S6 remains rejected;
+Pure/Sync-PCFR and range-aware physical-orbit paths are compile-time-gated
+diagnostic oracles and default to OFF. The strict-cap and exact-algorithm
+reports record why those families were closed. GTO+ black-box observation is
+classified as partially automatable and still requires a manual run marker;
+it does not automate solver clicks or alter the production engine. See
+`docs/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`,
+`docs/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`,
+`docs/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`,
+`docs/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`,
+`docs/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md` and
+`docs/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`.
+
 The three-fixture suite also contains `GTP-TH7D6S-101` and
 `GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected
 generally: percentage pushes use stack above the call divided by the pot after
@@ -240,6 +254,7 @@ iterations `1,2,5,17,65` and a one-iteration-lagged regret clock after 65.
 Current five-process Release runs pass dEV, root EV, layout, exact outcomes,
 solver-state and the strict desktop cap on all three fixtures. Final dEV/root
 EV values are AHKHQH `0.951423% / 19.118978`, TH7D6S
-`0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TST execution time
-and the separate AHK/TH peak-RSS-vs-GTO+ comparisons remain red; none is hidden
-under a generic RAM label.
+`0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TH and TST execution
+time remain red. The common strict desktop cap passes all three fixtures;
+fixture-specific GTO+ RSS references remain separate diagnostic comparisons,
+not acceptance gates hidden under a generic RAM label.
