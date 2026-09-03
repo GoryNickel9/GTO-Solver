@@ -11,6 +11,17 @@ target_link_libraries(gto_cli
     gtosd::postflop
     gtosd::storage
     nlohmann_json::nlohmann_json)
+
+# The CLI also hosts compute-only commands which do not touch persistence.
+# Avoid charging those paths for loading the storage DLLs at process startup;
+# Windows resolves them transparently on the first storage call instead.
+if(MSVC)
+  target_link_libraries(gto_cli PRIVATE delayimp)
+  target_link_options(gto_cli PRIVATE
+    /DELAYLOAD:libsodium.dll
+    /DELAYLOAD:sqlite3.dll
+    /DELAYLOAD:zstd.dll)
+endif()
 gtosd_set_warnings(gto_cli)
 
 add_test(NAME gtosd_gto_plus_action_catalog_smoke

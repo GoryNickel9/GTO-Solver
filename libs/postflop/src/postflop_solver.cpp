@@ -591,14 +591,15 @@ struct RangeAutomorphism {
 };
 
 struct DecisionLayout {
-  // Physical-isomorphism layouts address the canonical-infoset indirection,
-  // while direct/node-owned layouts address their action block.  The modes
-  // are mutually exclusive for a decision, so retaining both offsets made
-  // every physical and canonical node pay for an unreachable value.
-  union {
-    std::uint64_t action_base{0};
-    std::uint64_t physical_infoset_base;
-  };
+  // Direct state offsets are bounded by the desktop memory contract, while a
+  // canonical graph cannot contain more than 2^24 decision nodes without its
+  // scale arrays alone exceeding that contract. Pack both coordinates into
+  // the previous 64-bit offset slot. Physical layouts use action_base for the
+  // canonical-infoset indirection offset and leave state_scale_index unused.
+  static constexpr std::uint64_t maximum_action_base = (std::uint64_t{1} << 40U) - 1U;
+  static constexpr std::uint32_t invalid_state_scale_index = (std::uint32_t{1} << 24U) - 1U;
+  std::uint64_t action_base : 40 {0};
+  std::uint64_t state_scale_index : 24 {invalid_state_scale_index};
   std::uint32_t board_index{0};
   std::uint32_t action_count : 4 {0};
   std::uint32_t player : 1 {0};
@@ -900,16 +901,35 @@ private:
 };
 
 struct CanonicalPublicEdge {
-  const Action *action{nullptr};
   CanonicalOutcomeList outcomes;
+
+  // Decision edges always have exactly one physical outcome with unit
+  // multiplicity. Reuse that otherwise redundant 32-bit word for the interned
+  // action index; chance edges retain the physical multiplicity unchanged.
+  [[nodiscard]] bool set_decision_action_index(const std::uint32_t value) noexcept {
+    if (outcomes.size() != 1U || value == std::numeric_limits<std::uint32_t>::max()) {
+      return false;
+    }
+    outcomes.front().physical_outcome_count = value + 1U;
+    return true;
+  }
+
+  [[nodiscard]] std::uint32_t decision_action_index() const noexcept {
+    return outcomes.size() == 1U && outcomes.front().physical_outcome_count != 0U
+               ? outcomes.front().physical_outcome_count - 1U
+               : std::numeric_limits<std::uint32_t>::max();
+  }
 };
-static_assert(sizeof(CanonicalPublicEdge) == 24U);
+static_assert(sizeof(CanonicalPublicEdge) == 12U);
 
 struct CanonicalEdgeRange {
   const CanonicalPublicEdge *data{nullptr};
   std::uint32_t offset{0U};
   std::uint16_t count{0U};
-  std::uint16_t reserved{0U};
+  std::uint16_t kind : 2 {static_cast<std::uint16_t>(PublicNodeKind::Decision)};
+  std::uint16_t subtree_player_mask : 2 {0U};
+  std::uint16_t descendant_player_mask : 2 {0U};
+  std::uint16_t local_hand_count : 10 {0U};
 
   [[nodiscard]] const CanonicalPublicEdge *begin_ptr() const noexcept { return data; }
   [[nodiscard]] const CanonicalPublicEdge *end_ptr() const noexcept {
@@ -977,12 +997,6 @@ struct CanonicalPublicNode {
     ChanceLayout chance;
   };
   CanonicalEdgeRange edges;
-  std::uint32_t state_scale_index{std::numeric_limits<std::uint32_t>::max()};
-  std::uint16_t local_action_count{0};
-  PublicNodeKind kind : 2 {PublicNodeKind::Decision};
-  std::uint8_t subtree_player_mask : 2 {0};
-  std::uint8_t descendant_player_mask : 2 {0};
-  std::uint8_t reserved_flags : 2 {0};
 
   CanonicalPublicNode() : decision{} {}
   // Terminal payoffs already live in DenseLayout::terminal_payoffs.  Keeping
@@ -990,23 +1004,45 @@ struct CanonicalPublicNode {
   // chance nodes as well; the backing vector is complete before these stable
   // non-owning pointers are installed and its storage never grows afterward.
   [[nodiscard]] std::uint32_t board_index() const noexcept {
-    if (kind == PublicNodeKind::Decision) {
+    if (node_kind() == PublicNodeKind::Decision) {
       return decision.board_index;
     }
-    if (kind == PublicNodeKind::Chance) {
+    if (node_kind() == PublicNodeKind::Chance) {
       return chance.board_index;
     }
     return terminal.board_index;
   }
 
   void set_board_index(const std::uint32_t value) noexcept {
-    if (kind == PublicNodeKind::Decision) {
+    if (node_kind() == PublicNodeKind::Decision) {
       decision.board_index = value;
-    } else if (kind == PublicNodeKind::Chance) {
+    } else if (node_kind() == PublicNodeKind::Chance) {
       chance.board_index = value;
     } else {
       terminal.board_index = value;
     }
+  }
+
+  [[nodiscard]] PublicNodeKind node_kind() const noexcept {
+    return static_cast<PublicNodeKind>(edges.kind);
+  }
+  void set_node_kind(const PublicNodeKind value) noexcept {
+    edges.kind = static_cast<std::uint16_t>(value);
+  }
+  [[nodiscard]] std::uint8_t subtree_mask() const noexcept {
+    return static_cast<std::uint8_t>(edges.subtree_player_mask);
+  }
+  void set_subtree_mask(const std::uint8_t value) noexcept {
+    edges.subtree_player_mask = value;
+  }
+  [[nodiscard]] std::uint8_t descendant_mask() const noexcept {
+    return static_cast<std::uint8_t>(edges.descendant_player_mask);
+  }
+  void set_descendant_mask(const std::uint8_t value) noexcept {
+    edges.descendant_player_mask = value;
+  }
+  [[nodiscard]] std::uint16_t local_action_count() const noexcept {
+    return static_cast<std::uint16_t>(edges.local_hand_count * decision.action_count);
   }
 
   [[nodiscard]] std::uint32_t total_legal_outcome_count() const noexcept {
@@ -1022,7 +1058,7 @@ struct CanonicalPublicNode {
     return terminal.payoff->value_antes[player];
   }
 };
-static_assert(sizeof(CanonicalPublicNode) == 40U);
+static_assert(sizeof(CanonicalPublicNode) == 32U);
 
 struct CanonicalPublicAssignment {
   std::uint32_t node{0};
@@ -1033,7 +1069,7 @@ struct CanonicalPublicGraph {
   std::uint32_t root{0};
   std::vector<CanonicalPublicNode> nodes;
   std::vector<CanonicalPublicEdge> edges;
-  std::deque<Action> actions;
+  std::vector<Action> actions;
   // Empty for the direct canonical compiler, where representative node id is
   // exactly the canonical node id. Legacy canonical graphs retain the
   // exceptional mapping out-of-line rather than charging every production
@@ -1057,14 +1093,24 @@ canonical_representative_node(const CanonicalPublicGraph &graph,
                                              : graph.representative_nodes[id];
 }
 
-[[nodiscard]] const Action *intern_canonical_action(CanonicalPublicGraph &graph,
-                                                    const Action &action) {
+[[nodiscard]] std::optional<std::uint32_t>
+intern_canonical_action(CanonicalPublicGraph &graph, const Action &action) {
   const auto found = std::ranges::find(graph.actions, action);
   if (found != graph.actions.end()) {
-    return std::addressof(*found);
+    return static_cast<std::uint32_t>(std::distance(graph.actions.begin(), found));
   }
+  if (graph.actions.size() >= std::numeric_limits<std::uint32_t>::max()) {
+    return std::nullopt;
+  }
+  const auto index = static_cast<std::uint32_t>(graph.actions.size());
   graph.actions.push_back(action);
-  return std::addressof(graph.actions.back());
+  return index;
+}
+
+[[nodiscard]] const Action *canonical_action(const CanonicalPublicGraph &graph,
+                                             const CanonicalPublicEdge &edge) noexcept {
+  const auto action_index = edge.decision_action_index();
+  return action_index < graph.actions.size() ? &graph.actions[action_index] : nullptr;
 }
 
 [[nodiscard]] std::span<CanonicalPublicEdge>
@@ -1407,7 +1453,7 @@ void report_dense_layout_memory(const char *const label, const DenseLayout &layo
   std::uint64_t canonical_edge_count = 0U;
   std::uint64_t canonical_outcomes = 0U;
   for (const auto &node : layout.canonical_public_graph.nodes) {
-    ++canonical_kinds[static_cast<std::size_t>(node.kind)];
+    ++canonical_kinds[static_cast<std::size_t>(node.node_kind())];
     const auto edges = canonical_edges(layout.canonical_public_graph, node);
     canonical_edge_count += edges.size();
     for (const auto &edge : edges) {
@@ -1787,7 +1833,7 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
     const auto node_id = static_cast<std::uint32_t>(graph.nodes.size());
     graph.nodes.emplace_back();
     graph.representative_nodes.push_back(static_cast<std::uint32_t>(physical_id));
-    graph.nodes[node_id].kind = physical.kind;
+    graph.nodes[node_id].set_node_kind(physical.kind);
 
     if (physical.kind == PublicNodeKind::Decision) {
       std::vector<CanonicalPublicEdge> edges;
@@ -1802,9 +1848,17 @@ build_canonical_public_graph(const PublicTree &tree, const std::vector<NodeHisto
           return child;
         }
         CanonicalPublicEdge canonical_edge;
-        canonical_edge.action = intern_canonical_action(graph, edge.action);
+        const auto action_index = intern_canonical_action(graph, edge.action);
+        if (!action_index) {
+          return Result<std::uint32_t, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
         canonical_edge.outcomes.push_back(
             {child.value(), 1U, CardId{}, static_cast<std::uint8_t>(identity)});
+        if (!canonical_edge.set_decision_action_index(*action_index)) {
+          return Result<std::uint32_t, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
         edges.push_back(std::move(canonical_edge));
       }
       if (!assign_canonical_edges(graph, graph.nodes[node_id], std::move(edges))) {
@@ -2003,17 +2057,26 @@ build_direct_canonical_public_graph(const PublicTree &tree,
           PostflopSolverError::InvalidConfiguration);
     }
     auto &target = graph.nodes[static_cast<std::size_t>(source.id)];
-    target.kind = source.kind;
+    target.set_node_kind(source.kind);
     std::vector<CanonicalPublicEdge> edges;
     edges.reserve(source.edges.size());
     for (const auto &source_edge : source.edges) {
       CanonicalPublicEdge edge;
+      std::optional<std::uint32_t> action_index;
       if (source_edge.kind == PublicEdgeKind::Action) {
-        edge.action = intern_canonical_action(graph, source_edge.action);
+        action_index = intern_canonical_action(graph, source_edge.action);
+        if (!action_index) {
+          return Result<CanonicalPublicGraph, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
       }
       if (source_edge.kind == PublicEdgeKind::Action) {
         edge.outcomes.push_back({static_cast<std::uint32_t>(source_edge.child), 1U, CardId{},
                                  static_cast<std::uint8_t>(identity)});
+        if (!edge.set_decision_action_index(*action_index)) {
+          return Result<CanonicalPublicGraph, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
       } else {
         if (source_edge.chance_outcome_count == 0U ||
             source_edge.chance_outcome_count > source_edge.chance_outcomes.size()) {
@@ -2049,14 +2112,14 @@ std::uint64_t decision_action_base(const DenseLayout &layout, const DecisionLayo
   if (!layout.uses_isomorphic_infosets) {
     return decision.action_base + static_cast<std::uint64_t>(local_combo) * decision.action_count;
   }
-  const auto infoset_id = layout.physical_infoset_ids[decision.physical_infoset_base +
-                                                      static_cast<std::uint64_t>(local_combo)];
+  const auto infoset_id = layout.physical_infoset_ids[decision.action_base +
+                                                       static_cast<std::uint64_t>(local_combo)];
   return layout.canonical_action_bases[infoset_id];
 }
 
 std::uint32_t decision_infoset_id(const DenseLayout &layout, const DecisionLayout &decision,
                                   const std::int16_t local_combo) {
-  return layout.physical_infoset_ids[decision.physical_infoset_base +
+  return layout.physical_infoset_ids[decision.action_base +
                                      static_cast<std::uint64_t>(local_combo)];
 }
 
@@ -2069,8 +2132,7 @@ std::uint64_t canonical_action_base(const CanonicalPublicNode &canonical,
 [[nodiscard]] std::size_t canonical_action_major_index(const CanonicalPublicNode &canonical,
                                                        const std::size_t local_combo,
                                                        const std::size_t action) noexcept {
-  const auto action_count = static_cast<std::size_t>(canonical.decision.action_count);
-  const auto local_count = static_cast<std::size_t>(canonical.local_action_count) / action_count;
+  const auto local_count = static_cast<std::size_t>(canonical.edges.local_hand_count);
   return static_cast<std::size_t>(canonical.decision.action_base) + action * local_count +
          local_combo;
 }
@@ -2359,7 +2421,7 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
           return fail(PostflopSolverError::MemoryFailure);
         }
         CanonicalPublicNode node;
-        node.kind = kind;
+        node.set_node_kind(kind);
         if (kind == PublicNodeKind::Decision) {
           node.decision = {};
           node.decision.board_index = *board_index;
@@ -2428,18 +2490,26 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
             return fail(PostflopSolverError::InvalidConfiguration);
           }
           CanonicalPublicEdge edge;
+          std::optional<std::uint32_t> action_index;
           if (source_edge.kind == PublicEdgeKind::Action) {
-            edge.action =
+            action_index =
                 intern_canonical_action(layout.canonical_public_graph, source_edge.action);
+            if (!action_index) {
+              return fail(PostflopSolverError::InvalidConfiguration);
+            }
           }
           if (source_edge.kind == PublicEdgeKind::Action) {
-            if (target.kind != PublicNodeKind::Decision) {
+            if (target.node_kind() != PublicNodeKind::Decision) {
               return fail(PostflopSolverError::InvalidConfiguration);
             }
             edge.outcomes.push_back(
                 {static_cast<std::uint32_t>(source_edge.child), 1U, CardId{}, identity_index});
+            if (!edge.set_decision_action_index(*action_index)) {
+              return fail(PostflopSolverError::InvalidConfiguration);
+            }
           } else {
-            if (target.kind != PublicNodeKind::Chance || source_edge.chance_outcome_count == 0U ||
+            if (target.node_kind() != PublicNodeKind::Chance ||
+                source_edge.chance_outcome_count == 0U ||
                 source_edge.chance_outcome_count > source_edge.chance_outcomes.size()) {
               return fail(PostflopSolverError::InvalidConfiguration);
             }
@@ -2459,7 +2529,7 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
         if (!assign_canonical_edges(layout.canonical_public_graph, target, std::move(edges))) {
           return fail(PostflopSolverError::MemoryFailure);
         }
-        if (report_private_orbits && target.kind == PublicNodeKind::Decision) {
+        if (report_private_orbits && target.node_kind() == PublicNodeKind::Decision) {
           if (id >= stabilizer_mask_by_node.size()) {
             return fail(PostflopSolverError::InvalidConfiguration);
           }
@@ -2571,8 +2641,8 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
 
   for (std::size_t index = 0U; index < layout.canonical_public_graph.nodes.size(); ++index) {
     auto &node = layout.canonical_public_graph.nodes[index];
-    if (node.kind == PublicNodeKind::TerminalFold ||
-        node.kind == PublicNodeKind::TerminalShowdown) {
+    if (node.node_kind() == PublicNodeKind::TerminalFold ||
+        node.node_kind() == PublicNodeKind::TerminalShowdown) {
       const auto payoff_index = terminal_payoff_by_node[index];
       if (payoff_index >= layout.terminal_payoffs.size()) {
         return Result<DenseLayout, PostflopSolverError>::failure(
@@ -2581,7 +2651,7 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
       node.terminal.payoff = &layout.terminal_payoffs[payoff_index];
       continue;
     }
-    if (node.kind != PublicNodeKind::Decision) {
+    if (node.node_kind() != PublicNodeKind::Decision) {
       continue;
     }
     const auto edges = canonical_edges(layout.canonical_public_graph, node);
@@ -2603,7 +2673,7 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      const auto child_kind = layout.canonical_public_graph.nodes[child].kind;
+      const auto child_kind = layout.canonical_public_graph.nodes[child].node_kind();
       if (child_kind == PublicNodeKind::TerminalFold ||
           child_kind == PublicNodeKind::TerminalShowdown) {
         node.decision.terminal_child_mask |= static_cast<std::uint8_t>(1U << action);
@@ -2627,11 +2697,20 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
       return Result<DenseLayout, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
+    const auto node_action_count = legal_count * action_count;
+    if (layout.actions > DecisionLayout::maximum_action_base ||
+        node_action_count > DecisionLayout::maximum_action_base + 1U - layout.actions ||
+        legal_count > 630U ||
+        layout.canonical_decision_nodes >= DecisionLayout::invalid_state_scale_index) {
+      return Result<DenseLayout, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
     node.decision.action_base = layout.actions;
-    node.local_action_count = static_cast<std::uint16_t>(legal_count * action_count);
-    node.state_scale_index = static_cast<std::uint32_t>(layout.canonical_decision_nodes++);
+    node.edges.local_hand_count = static_cast<std::uint16_t>(legal_count);
+    node.decision.state_scale_index =
+        static_cast<std::uint32_t>(layout.canonical_decision_nodes++);
     layout.information_sets += legal_count;
-    layout.actions += legal_count * action_count;
+    layout.actions += node_action_count;
   }
   terminal_payoff_by_node.clear();
   terminal_payoff_by_node.shrink_to_fit();
@@ -2645,17 +2724,17 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
           return Result<DenseLayout, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
         }
-        descendant_mask |= layout.canonical_public_graph.nodes[outcome.child].subtree_player_mask;
+        descendant_mask |= layout.canonical_public_graph.nodes[outcome.child].subtree_mask();
       }
     }
-    node.descendant_player_mask = descendant_mask;
-    node.subtree_player_mask = static_cast<std::uint8_t>(
-        descendant_mask | (node.kind == PublicNodeKind::Decision
+    node.set_descendant_mask(descendant_mask);
+    node.set_subtree_mask(static_cast<std::uint8_t>(
+        descendant_mask | (node.node_kind() == PublicNodeKind::Decision
                                ? static_cast<std::uint8_t>(1U << node.decision.player)
-                               : 0U));
-    if (node.kind == PublicNodeKind::Decision) {
-      node.decision.descendant_player_mask = node.descendant_player_mask;
-      node.decision.subtree_player_mask = node.subtree_player_mask;
+                               : 0U)));
+    if (node.node_kind() == PublicNodeKind::Decision) {
+      node.decision.descendant_player_mask = node.descendant_mask();
+      node.decision.subtree_player_mask = node.subtree_mask();
     }
   }
   report_layout_process_memory("canonical_graph_complete");
@@ -2932,7 +3011,11 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       continue;
     }
 
-    decision.physical_infoset_base = layout.physical_infoset_ids.size();
+    if (layout.physical_infoset_ids.size() > DecisionLayout::maximum_action_base) {
+      return Result<DenseLayout, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    decision.action_base = layout.physical_infoset_ids.size();
     std::array<std::uint64_t, 24> transformed_board_masks{};
     std::array<std::uint16_t, 24> transformed_chance_histories{};
     for (std::size_t index = 0; index < automorphisms.size(); ++index) {
@@ -3006,11 +3089,11 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       const auto &representative = layout.tree.nodes[static_cast<std::size_t>(representative_node)];
       canonical_node.set_board_index(
           layout.node_board[static_cast<std::size_t>(representative_node)]);
-      if (canonical_node.kind == PublicNodeKind::Chance && !representative.edges.empty()) {
+      if (canonical_node.node_kind() == PublicNodeKind::Chance && !representative.edges.empty()) {
         canonical_node.chance.total_legal_outcome_count =
             representative.edges.front().total_legal_outcome_count;
       }
-      if (canonical_node.kind == PublicNodeKind::TerminalFold) {
+      if (canonical_node.node_kind() == PublicNodeKind::TerminalFold) {
         const auto payoff_index =
             layout.node_terminal_payoff[static_cast<std::size_t>(representative_node)];
         if (payoff_index >= layout.terminal_payoffs.size()) {
@@ -3018,7 +3101,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
               PostflopSolverError::InvalidConfiguration);
         }
         canonical_node.terminal.payoff = &layout.terminal_payoffs[payoff_index];
-      } else if (canonical_node.kind == PublicNodeKind::TerminalShowdown) {
+      } else if (canonical_node.node_kind() == PublicNodeKind::TerminalShowdown) {
         const auto payoff_index =
             layout.node_terminal_payoff[static_cast<std::size_t>(representative_node)];
         if (payoff_index >= layout.terminal_payoffs.size()) {
@@ -3027,7 +3110,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
         }
         canonical_node.terminal.payoff = &layout.terminal_payoffs[payoff_index];
       }
-      if (canonical_node.kind != PublicNodeKind::Decision) {
+      if (canonical_node.node_kind() != PublicNodeKind::Decision) {
         continue;
       }
       const auto &decision = layout.decisions[static_cast<std::size_t>(representative_node)];
@@ -3040,17 +3123,20 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
             PostflopSolverError::InvalidConfiguration);
       }
       const auto node_action_begin = layout.actions;
-      canonical_node.decision.action_base = node_action_begin;
-      canonical_node.local_action_count =
-          static_cast<std::uint16_t>(legal_count * decision.action_count);
-      if (layout.canonical_decision_nodes > std::numeric_limits<std::uint32_t>::max()) {
+      const auto node_action_count = legal_count * decision.action_count;
+      if (node_action_begin > DecisionLayout::maximum_action_base ||
+          node_action_count > DecisionLayout::maximum_action_base + 1U - node_action_begin ||
+          legal_count > 630U ||
+          layout.canonical_decision_nodes >= DecisionLayout::invalid_state_scale_index) {
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      canonical_node.state_scale_index =
+      canonical_node.decision.action_base = node_action_begin;
+      canonical_node.edges.local_hand_count = static_cast<std::uint16_t>(legal_count);
+      canonical_node.decision.state_scale_index =
           static_cast<std::uint32_t>(layout.canonical_decision_nodes++);
       layout.information_sets += legal_count;
-      layout.actions += legal_count * decision.action_count;
+      layout.actions += node_action_count;
     }
     // Canonical nodes are emitted depth-first with every child after its
     // parent.  Record which players can act below each node so CFR can prove
@@ -3066,17 +3152,17 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                 PostflopSolverError::InvalidConfiguration);
           }
           descendant_mask |= static_cast<std::uint8_t>(
-              canonical_graph.value().nodes[outcome.child].subtree_player_mask);
+              canonical_graph.value().nodes[outcome.child].subtree_mask());
         }
       }
-      node.descendant_player_mask = descendant_mask;
-      node.subtree_player_mask = static_cast<std::uint8_t>(
-          descendant_mask | (node.kind == PublicNodeKind::Decision
+      node.set_descendant_mask(descendant_mask);
+      node.set_subtree_mask(static_cast<std::uint8_t>(
+          descendant_mask | (node.node_kind() == PublicNodeKind::Decision
                                  ? static_cast<std::uint8_t>(1U << node.decision.player)
-                                 : 0U));
-      if (node.kind == PublicNodeKind::Decision) {
-        node.decision.descendant_player_mask = node.descendant_player_mask;
-        node.decision.subtree_player_mask = node.subtree_player_mask;
+                                 : 0U)));
+      if (node.node_kind() == PublicNodeKind::Decision) {
+        node.decision.descendant_player_mask = node.descendant_mask();
+        node.decision.subtree_player_mask = node.subtree_mask();
       }
     }
     layout.physical_infoset_ids.clear();
@@ -3317,16 +3403,17 @@ prepare_root_lock(const DiagnosticRootLock &lock, const DenseLayout &layout) {
   bool root_is_decision = false;
   if (layout.uses_canonical_public_dag) {
     const auto &root_node = layout.canonical_public_graph.nodes[layout.canonical_public_graph.root];
-    root_is_decision = root_node.kind == PublicNodeKind::Decision;
+    root_is_decision = root_node.node_kind() == PublicNodeKind::Decision;
     root_player = static_cast<std::uint8_t>(root_node.decision.player);
     root_board_index = root_node.board_index();
     root_action_count = root_node.decision.action_count;
     for (const auto &edge : root_node.edges) {
-      if (edge.action == nullptr) {
+      const auto *const action = canonical_action(layout.canonical_public_graph, edge);
+      if (action == nullptr) {
         return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      root_labels.push_back(root_action_label(*edge.action));
+      root_labels.push_back(root_action_label(*action));
     }
   } else {
     const auto &root_node = layout.tree.nodes[static_cast<std::size_t>(layout.tree.root)];
@@ -4091,25 +4178,27 @@ public:
     const auto &node = layout_.canonical_public_graph.nodes[node_id];
     std::vector<std::uint64_t> descriptor;
     descriptor.reserve(16U + node.edges.size() * 8U);
-    descriptor.push_back(static_cast<std::uint8_t>(node.kind));
+    descriptor.push_back(static_cast<std::uint8_t>(node.node_kind()));
     descriptor.push_back(root_lock_ != nullptr && node_id == layout_.canonical_public_graph.root);
     descriptor.push_back(node.edges.size());
-    if (node.kind == PublicNodeKind::Decision) {
+    if (node.node_kind() == PublicNodeKind::Decision) {
       descriptor.push_back(node.decision.player);
       descriptor.push_back(node.decision.action_count);
       descriptor.push_back(node.decision.terminal_child_mask);
       descriptor.push_back(node.decision.paired_fold_action);
       descriptor.push_back(node.decision.paired_showdown_action);
-      descriptor.push_back(node.subtree_player_mask);
-      descriptor.push_back(node.descendant_player_mask);
+      descriptor.push_back(node.subtree_mask());
+      descriptor.push_back(node.descendant_mask());
     }
     for (const auto &edge : node.edges) {
       // Amounts, payoff, state offsets and physical metadata remain lane-local
       // inputs in a possible batched traversal. They do not alter the control
       // shape and including them here would turn this upper-bound telemetry
       // into a false-negative test for parametrically identical subtrees.
-      descriptor.push_back(static_cast<std::uint8_t>(edge.action.type));
-      descriptor.push_back(static_cast<std::uint8_t>(edge.action.all_in_kind));
+      const auto *const action = canonical_action(layout_.canonical_public_graph, edge);
+      descriptor.push_back(action == nullptr ? 0U : static_cast<std::uint8_t>(action->type));
+      descriptor.push_back(action == nullptr ? 0U
+                                             : static_cast<std::uint8_t>(action->all_in_kind));
       descriptor.push_back(edge.outcomes.size());
       for (const auto &outcome : edge.outcomes) {
         descriptor.push_back(profile_river_topology_class(outcome.child));
@@ -4144,12 +4233,12 @@ public:
     const auto &node = layout_.canonical_public_graph.nodes[node_id];
     const auto &board = layout_.boards[node.board_index()];
     std::uint64_t work = 1U;
-    if (node.kind == PublicNodeKind::TerminalFold) {
+    if (node.node_kind() == PublicNodeKind::TerminalFold) {
       work += board.player_combos[0].size() + board.player_combos[1].size();
-    } else if (node.kind == PublicNodeKind::TerminalShowdown) {
+    } else if (node.node_kind() == PublicNodeKind::TerminalShowdown) {
       work += board.player_combos[0].size() + board.player_combos[1].size() +
               static_cast<std::uint64_t>(board.player_rank_count) * 37U;
-    } else if (node.kind == PublicNodeKind::Decision) {
+    } else if (node.node_kind() == PublicNodeKind::Decision) {
       work += static_cast<std::uint64_t>(board.player_combos[node.decision.player].size()) *
               node.decision.action_count;
     }
@@ -4345,10 +4434,10 @@ public:
           producer = 4U;
         } else {
           const auto &child = layout_.canonical_public_graph.nodes[edge.outcomes.front().child];
-          producer = child.kind == PublicNodeKind::TerminalFold       ? 0U
-                     : child.kind == PublicNodeKind::TerminalShowdown ? 1U
-                     : child.kind == PublicNodeKind::Chance           ? 3U
-                                                                      : 2U;
+          producer = child.node_kind() == PublicNodeKind::TerminalFold       ? 0U
+                     : child.node_kind() == PublicNodeKind::TerminalShowdown ? 1U
+                     : child.node_kind() == PublicNodeKind::Chance           ? 3U
+                                                                             : 2U;
         }
       }
       prof_telemetry_.producer_entries[producer] += hand_count;
@@ -5074,11 +5163,11 @@ public:
         return std::nullopt;
       }
       const auto &board = layout_.boards[node.board_index()];
-      if (std::popcount(board.mask) == 5 || node.kind == PublicNodeKind::TerminalFold ||
-          node.kind == PublicNodeKind::TerminalShowdown) {
+      if (std::popcount(board.mask) == 5 || node.node_kind() == PublicNodeKind::TerminalFold ||
+          node.node_kind() == PublicNodeKind::TerminalShowdown) {
         return std::nullopt;
       }
-      if (node.kind == PublicNodeKind::Chance) {
+      if (node.node_kind() == PublicNodeKind::Chance) {
         for (const auto &edge : node.edges) {
           if (edge.outcomes.empty()) {
             return PostflopSolverError::InvalidConfiguration;
@@ -5091,7 +5180,7 @@ public:
         }
         return std::nullopt;
       }
-      if (node.kind != PublicNodeKind::Decision ||
+      if (node.node_kind() != PublicNodeKind::Decision ||
           node.edges.size() != node.decision.action_count) {
         return PostflopSolverError::InvalidConfiguration;
       }
@@ -5158,13 +5247,13 @@ public:
         return false;
       }
       const auto &node = layout_.canonical_public_graph.nodes[node_id];
-      if (node.kind == PublicNodeKind::Decision) {
-        if (node.state_scale_index >= buffers_.decision_node_count) {
+      if (node.node_kind() == PublicNodeKind::Decision) {
+        if (node.decision.state_scale_index >= buffers_.decision_node_count) {
           return false;
         }
-        if (scale_seen[node.state_scale_index] == 0U) {
-          scale_seen[node.state_scale_index] = 1U;
-          scale_indices.push_back(node.state_scale_index);
+        if (scale_seen[node.decision.state_scale_index] == 0U) {
+          scale_seen[node.decision.state_scale_index] = 1U;
+          scale_indices.push_back(static_cast<std::uint32_t>(node.decision.state_scale_index));
         }
       }
       for (const auto &edge : node.edges) {
@@ -5522,7 +5611,7 @@ private:
     if (strategy_weight == 0.0) {
       return;
     }
-    const auto scale_index = static_cast<std::size_t>(canonical.state_scale_index);
+    const auto scale_index = static_cast<std::size_t>(canonical.decision.state_scale_index);
     const auto action_count = static_cast<std::size_t>(canonical.decision.action_count);
     const auto &combos = board.player_combos[player];
     const double old_scale = static_cast<double>(buffers_.strategy_node_scale[scale_index]);
@@ -5632,7 +5721,7 @@ private:
       std::array<ComboVector, maximum_action_count> *const average_scratch = nullptr,
       const ReachRef *const average_reach = nullptr, const bool compute_values = false,
       const bool decode_current_strategy = false) {
-    const auto scale_index = static_cast<std::size_t>(canonical.state_scale_index);
+    const auto scale_index = static_cast<std::size_t>(canonical.decision.state_scale_index);
     const std::size_t action_count =
         FixedActionCount != 0U ? FixedActionCount
                                : static_cast<std::size_t>(canonical.decision.action_count);
@@ -5808,7 +5897,7 @@ private:
               captured.producers[action] = PostflopReplayProducer::TransformedChanceOrSubtree;
             } else {
               const auto kind =
-                  layout_.canonical_public_graph.nodes[edge.outcomes.front().child].kind;
+                  layout_.canonical_public_graph.nodes[edge.outcomes.front().child].node_kind();
               captured.producers[action] =
                   kind == PublicNodeKind::TerminalFold       ? PostflopReplayProducer::Fold
                   : kind == PublicNodeKind::TerminalShowdown ? PostflopReplayProducer::Showdown
@@ -7704,7 +7793,7 @@ private:
   cfr_canonical_parallel_entry(const std::uint32_t node_id, const std::uint8_t updating_player,
                                const ReachRef &reach, const double strategy_weight) {
     if (parallel_worker_ != nullptr &&
-        layout_.canonical_public_graph.nodes[node_id].kind == PublicNodeKind::Decision) {
+        layout_.canonical_public_graph.nodes[node_id].node_kind() == PublicNodeKind::Decision) {
       return cfr_canonical_parallel_decision(node_id, updating_player, reach, strategy_weight);
     }
     return cfr_canonical(node_id, updating_player, reach, strategy_weight);
@@ -7715,7 +7804,7 @@ private:
                                   const ReachRef &reach, const double strategy_weight) {
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     const auto action_count = canonical.edges.size();
-    if (canonical.kind != PublicNodeKind::Decision || action_count < 2U ||
+    if (canonical.node_kind() != PublicNodeKind::Decision || action_count < 2U ||
         action_count > maximum_parallel_action_count ||
         std::ranges::any_of(canonical.edges,
                             [](const auto &edge) { return edge.outcomes.size() != 1U; })) {
@@ -8483,6 +8572,20 @@ public:
     }
     return total;
   }
+
+  // CFR recursion arenas are reusable within a pass but do not carry solver
+  // state. Release them before exact certification so the solve and policy
+  // traversals do not keep two independent scratch sets resident at once.
+  void release_transient_scratch() {
+    decision_scratch_.clear();
+    decision_scratch_.shrink_to_fit();
+    if (parallel_worker_ != nullptr) {
+      parallel_worker_->release_transient_scratch();
+    }
+    for (auto &worker : parallel_workers_) {
+      worker->release_transient_scratch();
+    }
+  }
   [[nodiscard]] double maximum_normalization_error() const noexcept {
     double maximum = maximum_normalization_error_;
     if (parallel_worker_ != nullptr) {
@@ -8741,17 +8844,17 @@ private:
                                     const ReachRef &reach, const double strategy_weight) {
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       for (const auto &edge : canonical.edges) {
         chance_outcomes += edge.outcomes.size();
       }
     }
-    count_work_node(canonical.kind, chance_outcomes);
-    if (canonical.kind == PublicNodeKind::TerminalFold ||
-        canonical.kind == PublicNodeKind::TerminalShowdown) {
+    count_work_node(canonical.node_kind(), chance_outcomes);
+    if (canonical.node_kind() == PublicNodeKind::TerminalFold ||
+        canonical.node_kind() == PublicNodeKind::TerminalShowdown) {
       return std::nullopt;
     }
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       if (canonical.total_legal_outcome_count() <= 4U) {
         return PostflopSolverError::InvalidConfiguration;
       }
@@ -8770,7 +8873,7 @@ private:
       }
       return std::nullopt;
     }
-    if (canonical.kind != PublicNodeKind::Decision) {
+    if (canonical.node_kind() != PublicNodeKind::Decision) {
       return PostflopSolverError::InvalidConfiguration;
     }
     const auto &decision = canonical.decision;
@@ -8854,10 +8957,10 @@ private:
       std::array<ComboVector, 2> &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
-    if (canonical.kind == PublicNodeKind::TerminalFold ||
-        canonical.kind == PublicNodeKind::TerminalShowdown) {
+    if (canonical.node_kind() == PublicNodeKind::TerminalFold ||
+        canonical.node_kind() == PublicNodeKind::TerminalShowdown) {
       for (std::uint8_t player = 0U; player < 2U; ++player) {
-        const auto result = canonical.kind == PublicNodeKind::TerminalFold
+        const auto result = canonical.node_kind() == PublicNodeKind::TerminalFold
                                 ? fold_values_with_payoff(
                                       canonical.board_index(), canonical.fold_payoff(player),
                                       player, *reach[1U - player])
@@ -8874,7 +8977,7 @@ private:
       }
       return std::nullopt;
     }
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       if (canonical.total_legal_outcome_count() <= 4U) {
         return PostflopSolverError::InvalidConfiguration;
       }
@@ -8924,7 +9027,7 @@ private:
       }
       return std::nullopt;
     }
-    if (canonical.kind != PublicNodeKind::Decision) {
+    if (canonical.node_kind() != PublicNodeKind::Decision) {
       return PostflopSolverError::InvalidConfiguration;
     }
 
@@ -9015,26 +9118,26 @@ private:
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       for (const auto &edge : canonical.edges) {
         chance_outcomes += edge.outcomes.size();
       }
     }
-    count_work_node(canonical.kind, chance_outcomes);
-    if (canonical.kind == PublicNodeKind::TerminalFold ||
-        canonical.kind == PublicNodeKind::TerminalShowdown) {
+    count_work_node(canonical.node_kind(), chance_outcomes);
+    if (canonical.node_kind() == PublicNodeKind::TerminalFold ||
+        canonical.node_kind() == PublicNodeKind::TerminalShowdown) {
       // A simultaneous public traversal visits this terminal once but still
       // invokes one payoff kernel per player. Keep the two forms of work
       // visible separately in the telemetry.
       ++work_counters_.terminal_evaluations;
-      if (canonical.kind == PublicNodeKind::TerminalFold) {
+      if (canonical.node_kind() == PublicNodeKind::TerminalFold) {
         ++work_counters_.fold_terminal_evaluations;
       } else {
         ++work_counters_.showdown_terminal_evaluations;
       }
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         const auto error =
-            canonical.kind == PublicNodeKind::TerminalFold
+            canonical.node_kind() == PublicNodeKind::TerminalFold
                 ? fold_values_with_payoff_into(canonical.board_index(),
                                                canonical.fold_payoff(player), player,
                                                *reach[1U - player], values_out[player])
@@ -9048,7 +9151,7 @@ private:
       }
       return std::nullopt;
     }
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       if (canonical.total_legal_outcome_count() <= 4U) {
         return PostflopSolverError::InvalidConfiguration;
       }
@@ -9138,7 +9241,7 @@ private:
       }
       return std::nullopt;
     }
-    if (canonical.kind != PublicNodeKind::Decision) {
+    if (canonical.node_kind() != PublicNodeKind::Decision) {
       return PostflopSolverError::InvalidConfiguration;
     }
     const auto &decision = canonical.decision;
@@ -9336,14 +9439,14 @@ private:
     const auto evaluate_direct_child =
         [&](const CanonicalPublicNode &child, const ReachRef &child_reach,
             ComboVector &child_values) -> std::optional<PostflopSolverError> {
-      if (child.kind == PublicNodeKind::TerminalFold) {
+      if (child.node_kind() == PublicNodeKind::TerminalFold) {
         ++traversed_nodes_;
         count_work_node(PublicNodeKind::TerminalFold, 0U);
         return fold_values_with_payoff_into<true>(
             child.board_index(), child.fold_payoff(updating_player), updating_player,
             *child_reach[1U - updating_player], child_values);
       }
-      if (child.kind == PublicNodeKind::TerminalShowdown) {
+      if (child.node_kind() == PublicNodeKind::TerminalShowdown) {
         ++traversed_nodes_;
         count_work_node(PublicNodeKind::TerminalShowdown, 0U);
         const auto &payoff = child.showdown_payoff(updating_player);
@@ -9351,7 +9454,7 @@ private:
             child.board_index(), payoff[0], payoff[1], payoff[2], updating_player,
             *child_reach[1U - updating_player], child_values, 0.0, nullptr);
       }
-      if (child.kind == PublicNodeKind::Decision) {
+      if (child.node_kind() == PublicNodeKind::Decision) {
         ++traversed_nodes_;
         count_work_node(PublicNodeKind::Decision, 0U);
         return cfr_canonical_river_decision_into(child, updating_player, child_reach,
@@ -9365,8 +9468,8 @@ private:
       }
       const auto &outcome = canonical.edges[action].outcomes.front();
       const auto &child = layout_.canonical_public_graph.nodes[outcome.child];
-      const bool terminal = child.kind == PublicNodeKind::TerminalFold ||
-                            child.kind == PublicNodeKind::TerminalShowdown;
+      const bool terminal = child.node_kind() == PublicNodeKind::TerminalFold ||
+                            child.node_kind() == PublicNodeKind::TerminalShowdown;
       const bool actor_needed = decision.player != updating_player ||
                                 (!decode_strategy_at_update && !terminal && strategy_weight != 0.0);
       const bool actor_nonzero = actor_needed ? materialize_actor_reach(action, actor_reach) : true;
@@ -9377,8 +9480,8 @@ private:
       if (action == paired_showdown_action && paired_fold_action < action_count) {
         const auto &fold_outcome = canonical.edges[paired_fold_action].outcomes.front();
         const auto &fold = layout_.canonical_public_graph.nodes[fold_outcome.child];
-        if (child.kind != PublicNodeKind::TerminalShowdown ||
-            fold.kind != PublicNodeKind::TerminalFold ||
+        if (child.node_kind() != PublicNodeKind::TerminalShowdown ||
+            fold.node_kind() != PublicNodeKind::TerminalFold ||
             child.board_index() != fold.board_index()) {
           return PostflopSolverError::InvalidConfiguration;
         }
@@ -9438,7 +9541,7 @@ private:
       bool all_children_terminal = true;
       for (std::size_t action = 0U; action < action_count; ++action) {
         const auto &outcome = canonical.edges[action].outcomes.front();
-        const auto kind = layout_.canonical_public_graph.nodes[outcome.child].kind;
+        const auto kind = layout_.canonical_public_graph.nodes[outcome.child].node_kind();
         all_children_terminal = all_children_terminal && (kind == PublicNodeKind::TerminalFold ||
                                                           kind == PublicNodeKind::TerminalShowdown);
       }
@@ -9528,8 +9631,8 @@ private:
                                                               ComboVector &values_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
-    count_work_node(canonical.kind, 0U);
-    switch (canonical.kind) {
+    count_work_node(canonical.node_kind(), 0U);
+    switch (canonical.node_kind()) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff_into<true>(
           canonical.board_index(), canonical.fold_payoff(updating_player), updating_player,
@@ -9594,13 +9697,13 @@ private:
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
     std::uint64_t chance_outcomes = 0U;
-    if (canonical.kind == PublicNodeKind::Chance) {
+    if (canonical.node_kind() == PublicNodeKind::Chance) {
       for (const auto &edge : canonical.edges) {
         chance_outcomes += edge.outcomes.size();
       }
     }
-    count_work_node(canonical.kind, chance_outcomes);
-    switch (canonical.kind) {
+    count_work_node(canonical.node_kind(), chance_outcomes);
+    switch (canonical.node_kind()) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff_into(canonical.board_index(),
                                           canonical.fold_payoff(updating_player), updating_player,
@@ -9639,7 +9742,7 @@ private:
                                         ComboVector &profile_out, ComboVector &response_out) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
-    switch (canonical.kind) {
+    switch (canonical.node_kind()) {
     case PublicNodeKind::TerminalFold: {
       zero_values_into(updating_player, profile_out);
       if (const auto error = fold_values_with_payoff_into(
@@ -9678,7 +9781,7 @@ private:
                                                             const bool best_response) {
     ++traversed_nodes_;
     const auto &canonical = layout_.canonical_public_graph.nodes[node_id];
-    switch (canonical.kind) {
+    switch (canonical.node_kind()) {
     case PublicNodeKind::TerminalFold:
       return fold_values_with_payoff(canonical.board_index(),
                                      canonical.fold_payoff(updating_player), updating_player,
@@ -10055,8 +10158,8 @@ private:
           profile ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
       const auto child_node_id = outcome.child;
       const auto &child_node = layout_.canonical_public_graph.nodes[child_node_id];
-      const bool terminal_child = child_node.kind == PublicNodeKind::TerminalFold ||
-                                  child_node.kind == PublicNodeKind::TerminalShowdown;
+      const bool terminal_child = child_node.node_kind() == PublicNodeKind::TerminalFold ||
+                                  child_node.node_kind() == PublicNodeKind::TerminalShowdown;
       const bool actor_needed =
           decision.player != updating_player || (!terminal_child && strategy_weight != 0.0);
       const bool actor_reach_nonzero =
@@ -10072,8 +10175,8 @@ private:
       if (action == paired_showdown_action && paired_fold_action < action_count) {
         const auto &fold_outcome = canonical.edges[paired_fold_action].outcomes.front();
         const auto &fold_node = layout_.canonical_public_graph.nodes[fold_outcome.child];
-        if (child_node.kind != PublicNodeKind::TerminalShowdown ||
-            fold_node.kind != PublicNodeKind::TerminalFold ||
+        if (child_node.node_kind() != PublicNodeKind::TerminalShowdown ||
+            fold_node.node_kind() != PublicNodeKind::TerminalFold ||
             child_node.board_index() != fold_node.board_index()) {
           return PostflopSolverError::InvalidConfiguration;
         }
@@ -14981,6 +15084,7 @@ public:
   [[nodiscard]] virtual std::uint64_t traversed_nodes() const noexcept = 0;
   [[nodiscard]] virtual PostflopWorkCounters work_counters() const noexcept = 0;
   [[nodiscard]] virtual double maximum_normalization_error() const noexcept = 0;
+  virtual void release_transient_scratch() = 0;
 };
 
 template <std::size_t Capacity, bool PlayerIndexed,
@@ -15080,6 +15184,7 @@ public:
   [[nodiscard]] double maximum_normalization_error() const noexcept override {
     return traversal_.maximum_normalization_error();
   }
+  void release_transient_scratch() override { traversal_.release_transient_scratch(); }
 
 private:
   DenseTraversal<Capacity, PlayerIndexed, ComputeScalar> traversal_;
@@ -15527,6 +15632,9 @@ Result<PostflopCertification, PostflopSolverError> certify(DenseLayout &layout,
   if (layout.uses_canonical_public_dag) {
     const auto maximum_player_combos =
         std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
+    if (maximum_player_combos <= compact_combo_capacity) {
+      return certify_typed<compact_combo_capacity, true>(layout, buffers, iteration, root_lock);
+    }
     if (maximum_player_combos <= medium_combo_capacity) {
       return certify_typed<medium_combo_capacity, true>(layout, buffers, iteration, root_lock);
     }
@@ -15595,6 +15703,9 @@ profile_root_values(DenseLayout &layout, const ActionBuffers buffers) {
   if (layout.uses_canonical_public_dag) {
     const auto maximum_player_combos =
         std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
+    if (maximum_player_combos <= compact_combo_capacity) {
+      return profile_root_values_typed<compact_combo_capacity, true>(layout, buffers);
+    }
     if (maximum_player_combos <= medium_combo_capacity) {
       return profile_root_values_typed<medium_combo_capacity, true>(layout, buffers);
     }
@@ -15707,10 +15818,18 @@ query_strategy_from_layout(const DenseLayout &layout, const ActionBuffers buffer
   query.probabilities.resize(decision.action_count);
   double sum = 0.0;
   for (std::size_t action = 0; action < decision.action_count; ++action) {
-    query.actions.push_back(
-        canonical != nullptr
-            ? *canonical->edges[action].action
-            : layout.tree.nodes[static_cast<std::size_t>(public_node)].edges[action].action);
+    if (canonical != nullptr) {
+      const auto *const stored_action =
+          canonical_action(layout.canonical_public_graph, canonical->edges[action]);
+      if (stored_action == nullptr) {
+        return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      query.actions.push_back(*stored_action);
+    } else {
+      query.actions.push_back(
+          layout.tree.nodes[static_cast<std::size_t>(public_node)].edges[action].action);
+    }
     const auto state_index =
         canonical != nullptr && (buffers.scaled_strategy != nullptr || buffers.action_major_compact)
             ? canonical_action_major_index(*canonical, static_cast<std::size_t>(local), action)
@@ -15964,7 +16083,7 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
     auto &node_bounds = bounds[index];
     auto &work = subtree_work[index];
     work.public_nodes = 1U;
-    if (node.kind == PublicNodeKind::TerminalFold) {
+    if (node.node_kind() == PublicNodeKind::TerminalFold) {
       ++work.fold_terminals;
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         node_bounds.minimum[player] = node.fold_payoff(player);
@@ -15972,7 +16091,7 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
       }
       continue;
     }
-    if (node.kind == PublicNodeKind::TerminalShowdown) {
+    if (node.node_kind() == PublicNodeKind::TerminalShowdown) {
       ++work.showdown_terminals;
       for (std::uint8_t player = 0U; player < 2U; ++player) {
         node_bounds.minimum[player] = *std::min_element(node.showdown_payoff(player).begin(),
@@ -15982,10 +16101,10 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
       }
       continue;
     }
-    if (node.kind == PublicNodeKind::Decision) {
+    if (node.node_kind() == PublicNodeKind::Decision) {
       ++work.decision_nodes;
-      work.regret_entries = node.local_action_count;
-      work.strategy_entries = node.local_action_count;
+      work.regret_entries = node.local_action_count();
+      work.strategy_entries = node.local_action_count();
     } else {
       ++work.chance_nodes;
     }
@@ -15995,9 +16114,12 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
           return Result<RbpReadOnlySnapshot, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
         }
-        const auto multiplicity = static_cast<std::uint64_t>(outcome.physical_outcome_count);
+        const auto multiplicity =
+            node.node_kind() == PublicNodeKind::Chance
+                ? static_cast<std::uint64_t>(outcome.physical_outcome_count)
+                : 1U;
         rbp_add_work(work, subtree_work[outcome.child], multiplicity);
-        if (node.kind == PublicNodeKind::Chance) {
+        if (node.node_kind() == PublicNodeKind::Chance) {
           work.chance_outcomes = rbp_saturating_add(work.chance_outcomes, multiplicity);
         }
         for (std::uint8_t player = 0U; player < 2U; ++player) {
@@ -16018,16 +16140,16 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
   std::array<std::uint64_t, 2> bounded_negative_count{};
   std::array<bool, 2> has_candidate{};
   for (const auto &node : graph.nodes) {
-    if (node.kind != PublicNodeKind::Decision) {
+    if (node.node_kind() != PublicNodeKind::Decision) {
       continue;
     }
     const auto player = node.decision.player;
     auto &metrics = snapshot.players[player];
     const auto action_count = static_cast<std::size_t>(node.decision.action_count);
-    const auto local_count = action_count == 0U ? 0U : node.local_action_count / action_count;
+    const auto local_count = static_cast<std::size_t>(node.edges.local_hand_count);
     metrics.decisions += local_count;
-    metrics.actions += node.local_action_count;
-    const auto scale_index = static_cast<std::size_t>(node.state_scale_index);
+    metrics.actions += node.local_action_count();
+    const auto scale_index = static_cast<std::size_t>(node.decision.state_scale_index);
     const double scale = checkpoint.regret_node_scale[scale_index];
     const auto street = static_cast<std::size_t>(
         std::clamp(std::popcount(layout.boards[node.board_index()].mask) - 3, 0, 2));
@@ -16037,8 +16159,7 @@ RbpReadOnlyTelemetry::observe(const PostflopPreparedTree &prepared,
       double action_maximum = -std::numeric_limits<double>::infinity();
       for (const auto &outcome : node.edges[action].outcomes) {
         action_maximum = std::max(action_maximum, bounds[outcome.child].maximum[player]);
-        rbp_add_work(action_work[action], subtree_work[outcome.child],
-                     outcome.physical_outcome_count);
+        rbp_add_work(action_work[action], subtree_work[outcome.child]);
       }
       payoff_bounds[action] = action_maximum - bounds[&node - graph.nodes.data()].minimum[player];
     }
@@ -16209,7 +16330,7 @@ prepared_postflop_action_edges(const PostflopPreparedTree &prepared, const NodeI
         PostflopSolverError::InvalidConfiguration);
   }
   const auto &source = layout.canonical_public_graph.nodes[static_cast<std::size_t>(node)];
-  if (source.kind != PublicNodeKind::Decision) {
+  if (source.node_kind() != PublicNodeKind::Decision) {
     return Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
@@ -16220,11 +16341,12 @@ prepared_postflop_action_edges(const PostflopPreparedTree &prepared, const NodeI
       return Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
-    if (edge.action == nullptr) {
+    const auto *const action = canonical_action(layout.canonical_public_graph, edge);
+    if (action == nullptr) {
       return Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>::failure(
           PostflopSolverError::InvalidConfiguration);
     }
-    result.push_back({*edge.action, edge.outcomes.front().child});
+    result.push_back({*action, edge.outcomes.front().child});
   }
   return Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>::success(
       std::move(result));
@@ -16297,7 +16419,7 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
   std::vector<std::uint32_t> control_roots;
   std::uint64_t root_count = 0U;
   for (const auto &node : graph.nodes) {
-    if (node.kind == PublicNodeKind::Chance && node.board_index() < layout.boards.size() &&
+    if (node.node_kind() == PublicNodeKind::Chance && node.board_index() < layout.boards.size() &&
         std::popcount(layout.boards[node.board_index()].mask) == 4) {
       root_count += node.edges.size();
     }
@@ -16323,20 +16445,20 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
       return summary;
     }
     const auto &board = layout.boards[node.board_index()];
-    control_plan.push_back({static_cast<std::uint32_t>(node.kind), node.board_index(),
+    control_plan.push_back({static_cast<std::uint32_t>(node.node_kind()), node.board_index(),
                             static_cast<std::uint32_t>(node.edges.size()),
-                            node.kind == PublicNodeKind::Decision
+                            node.node_kind() == PublicNodeKind::Decision
                                 ? static_cast<std::uint32_t>(node.decision.action_base ^
                                                              (node.decision.action_count << 24U))
                                 : 0U});
     summary.public_nodes = 1U;
-    mix(summary.structural, static_cast<std::uint8_t>(node.kind));
-    mix(summary.relaxed, static_cast<std::uint8_t>(node.kind));
+    mix(summary.structural, static_cast<std::uint8_t>(node.node_kind()));
+    mix(summary.relaxed, static_cast<std::uint8_t>(node.node_kind()));
     mix(summary.structural, board.player_combos[update_player].size());
     mix(summary.structural, board.player_combos[1U - update_player].size());
     mix(summary.structural, board.player_rank_count);
 
-    if (node.kind == PublicNodeKind::TerminalFold) {
+    if (node.node_kind() == PublicNodeKind::TerminalFold) {
       mix(summary.payoff, std::bit_cast<std::uint64_t>(node.fold_payoff(update_player)));
       const auto hero = static_cast<std::uint64_t>(board.player_combos[update_player].size());
       const auto opponent =
@@ -16344,7 +16466,7 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
       summary.terminal_bytes = opponent * sizeof(float) + hero * sizeof(float);
       return summary;
     }
-    if (node.kind == PublicNodeKind::TerminalShowdown) {
+    if (node.node_kind() == PublicNodeKind::TerminalShowdown) {
       summary.showdown_terminals = 1U;
       const auto hero = static_cast<std::uint64_t>(board.player_combos[update_player].size());
       const auto opponent =
@@ -16361,7 +16483,7 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
       }
       return summary;
     }
-    if (node.kind == PublicNodeKind::Decision) {
+    if (node.node_kind() == PublicNodeKind::Decision) {
       ++summary.decision_nodes;
       const auto actor = node.decision.player;
       const auto action_count = static_cast<std::uint64_t>(node.decision.action_count);
@@ -16385,22 +16507,22 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
         add(summary.state_bytes, actor_entries * (sizeof(std::uint16_t) * 3U) + sizeof(float) * 4U);
       }
       const auto begin = node.decision.action_base;
-      const auto end = begin + node.local_action_count;
+      const auto end = begin + node.local_action_count();
       summary.state_begin = begin;
       summary.state_end = end;
-      summary.state_interval_present = node.local_action_count != 0U;
+      summary.state_interval_present = node.local_action_count() != 0U;
       mix(summary.structural, actor);
       mix(summary.structural, action_count);
       mix(summary.structural, node.decision.terminal_child_mask);
       mix(summary.structural, actor_combos);
-      mix(summary.structural, node.local_action_count);
+      mix(summary.structural, node.local_action_count());
       mix(summary.relaxed, actor);
       mix(summary.relaxed, action_count);
       mix(summary.relaxed, node.decision.terminal_child_mask);
       mix(summary.state_shape, actor);
       mix(summary.state_shape, action_count);
-      mix(summary.state_shape, node.local_action_count);
-    } else if (node.kind == PublicNodeKind::Chance) {
+      mix(summary.state_shape, node.local_action_count());
+    } else if (node.node_kind() == PublicNodeKind::Chance) {
       ++summary.chance_descendants;
     }
 
@@ -16408,7 +16530,8 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
     mix(summary.relaxed, node.edges.size());
     for (const auto &edge : node.edges) {
       const Action empty_action{};
-      const auto &action = edge.action != nullptr ? *edge.action : empty_action;
+      const auto *const stored_action = canonical_action(layout.canonical_public_graph, edge);
+      const auto &action = stored_action != nullptr ? *stored_action : empty_action;
       mix(summary.structural, static_cast<std::uint8_t>(action.type));
       mix(summary.structural, static_cast<std::uint8_t>(action.all_in_kind));
       mix(summary.relaxed, static_cast<std::uint8_t>(action.type));
@@ -16465,7 +16588,8 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
 
   for (std::uint32_t source_id = 0U; source_id < graph.nodes.size(); ++source_id) {
     const auto &source = graph.nodes[source_id];
-    if (source.kind != PublicNodeKind::Chance || source.board_index() >= layout.boards.size() ||
+    if (source.node_kind() != PublicNodeKind::Chance ||
+        source.board_index() >= layout.boards.size() ||
         std::popcount(layout.boards[source.board_index()].mask) != 4) {
       continue;
     }
@@ -16521,15 +16645,15 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
             static_cast<std::uint16_t>(river_board.player_combos[1U - update_player].size());
         unit.rank_count = river_board.player_rank_count;
         unit.source_sibling_count = sibling_count;
-        unit.actor = root.kind == PublicNodeKind::Decision
+        unit.actor = root.node_kind() == PublicNodeKind::Decision
                          ? static_cast<std::uint8_t>(root.decision.player)
                          : std::uint8_t{0};
         unit.update_player = update_player;
-        unit.action_count = root.kind == PublicNodeKind::Decision
+        unit.action_count = root.node_kind() == PublicNodeKind::Decision
                                 ? static_cast<std::uint8_t>(root.decision.action_count)
                                 : 0U;
         unit.terminal_child_pattern =
-            root.kind == PublicNodeKind::Decision
+            root.node_kind() == PublicNodeKind::Decision
                 ? static_cast<std::uint8_t>(root.decision.terminal_child_mask)
                 : 0U;
         unit.state_interval_present = summary.state_interval_present;
@@ -16548,9 +16672,9 @@ inspect_postflop_architectural_topology(const PostflopPreparedTree &prepared) {
   std::function<void(std::uint32_t, std::uint64_t &)> visit_control;
   visit_control = [&](const std::uint32_t node_id, std::uint64_t &hash) {
     const auto &node = graph.nodes[node_id];
-    const ControlOp op{static_cast<std::uint32_t>(node.kind), node.board_index(),
+    const ControlOp op{static_cast<std::uint32_t>(node.node_kind()), node.board_index(),
                        static_cast<std::uint32_t>(node.edges.size()),
-                       node.kind == PublicNodeKind::Decision
+                       node.node_kind() == PublicNodeKind::Decision
                            ? static_cast<std::uint32_t>(node.decision.action_base ^
                                                         (node.decision.action_count << 24U))
                            : 0U};
@@ -16864,19 +16988,19 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     std::array<std::uint64_t, maximum_action_count + 1U> state_entries_by_actions{};
     std::array<std::uint64_t, state_tile_sizes.size()> state_tiles{};
     for (const auto &node : layout.value().canonical_public_graph.nodes) {
-      if (node.kind != PublicNodeKind::Decision) {
+      if (node.node_kind() != PublicNodeKind::Decision) {
         continue;
       }
       const auto action_count = static_cast<std::size_t>(node.decision.action_count);
       if (action_count <= maximum_action_count) {
         ++decision_nodes_by_actions[action_count];
-        state_entries_by_actions[action_count] += node.local_action_count;
+        state_entries_by_actions[action_count] += node.local_action_count();
       }
-      if (action_count == 0U || node.local_action_count % action_count != 0U) {
+      if (action_count == 0U || node.local_action_count() % action_count != 0U) {
         return Result<PostflopSolveResult, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      const auto hand_count = static_cast<std::uint64_t>(node.local_action_count / action_count);
+      const auto hand_count = static_cast<std::uint64_t>(node.edges.local_hand_count);
       for (std::size_t tile_index = 0U; tile_index < state_tile_sizes.size(); ++tile_index) {
         const auto tile_size = static_cast<std::uint64_t>(state_tile_sizes[tile_index]);
         state_tiles[tile_index] += (hand_count + tile_size - 1U) / tile_size;
@@ -17202,6 +17326,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   if (!target_driven_without_iteration_limit &&
       checkpoint.completed_iterations == options.iterations) {
     const auto certification_started = std::chrono::steady_clock::now();
+    traversal->release_transient_scratch();
     report_layout_process_memory("certification_start");
     const auto certification =
         certify(layout.value(), buffers, checkpoint.completed_iterations, prepared_root_lock.get());
@@ -17447,6 +17572,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     if (periodic_certification_due || adaptive_certification_due ||
         (!target_driven_without_iteration_limit && iteration == options.iterations) || stopping) {
       const auto certification_started = std::chrono::steady_clock::now();
+      traversal->release_transient_scratch();
       report_layout_process_memory("certification_start");
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
                                          prepared_root_lock.get());
@@ -17770,6 +17896,33 @@ estimate_postflop_layout(const PostflopTreeConfig &config, const PostflopRanges 
   return Result<PostflopLayoutEstimate, PostflopSolverError>::success(estimate);
 }
 
+Result<std::array<double, 2>, PostflopSolverError>
+profile_node_values(DenseLayout &layout, const ActionBuffers buffers, const NodeId public_node,
+                    const std::array<DenseComboVector, 2> &dense_reach, const BoardData &board,
+                    const double public_reach_probability) {
+  std::array<TraversalComboVector<combo_count>, 2> reach{};
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    std::ranges::copy(dense_reach[player], reach[player].begin());
+  }
+
+  DenseTraversal<combo_count> traversal(layout, buffers);
+  const std::array<const TraversalComboVector<combo_count> *, 2> reach_ref{&reach[0], &reach[1]};
+  std::array<double, 2> result{};
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    const auto values =
+        traversal.policy_from_physical_node(public_node, player, reach_ref);
+    if (!values) {
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(values.error());
+    }
+    double weighted_value = 0.0;
+    for (const ComboId combo : board.legal_combos) {
+      weighted_value += values.value()[combo] * dense_reach[player][combo];
+    }
+    result[player] = weighted_value / public_reach_probability;
+  }
+  return Result<std::array<double, 2>, PostflopSolverError>::success(result);
+}
+
 static Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &checkpoint,
                                   const NodeId public_node) {
@@ -17786,8 +17939,8 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
           : nullptr;
   const auto *physical_target =
       direct_canonical_target ? nullptr : &dense.tree.nodes[static_cast<std::size_t>(public_node)];
-  const auto target_kind =
-      canonical_target != nullptr ? canonical_target->kind : physical_target->kind;
+  const auto target_kind = canonical_target != nullptr ? canonical_target->node_kind()
+                                                        : physical_target->kind;
   const auto target_player_to_act = canonical_target != nullptr
                                         ? canonical_target->decision.player
                                         : physical_target->state.player_to_act;
@@ -17865,7 +18018,7 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
         }
       }
       if (step.parent == std::numeric_limits<NodeId>::max() ||
-          dense.canonical_public_graph.nodes[static_cast<std::size_t>(step.parent)].kind !=
+          dense.canonical_public_graph.nodes[static_cast<std::size_t>(step.parent)].node_kind() !=
               PublicNodeKind::Decision) {
         // A canonical child reached through chance has multiple physical-card
         // histories.  It requires a card-conditioned handle, not a bare node
@@ -17902,7 +18055,7 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
     if (direct_canonical_target) {
       const auto &parent =
           dense.canonical_public_graph.nodes[static_cast<std::size_t>(step.parent)];
-      if (parent.kind != PublicNodeKind::Decision || step.edge >= parent.edges.size()) {
+      if (parent.node_kind() != PublicNodeKind::Decision || step.edge >= parent.edges.size()) {
         return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
@@ -18091,24 +18244,23 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
     return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
         PostflopSolverError::NumericalFailure);
   }
+  std::optional<std::array<double, 2>> node_profile_values;
+  if (!root_profile_values) {
+    auto profiled =
+        profile_node_values(dense, buffers, public_node, reach, board, public_reach_probability);
+    if (!profiled) {
+      std::fprintf(stderr, "node_analysis_failure phase=policy node=%llu error=%s\n",
+                   static_cast<unsigned long long>(public_node),
+                   postflop_solver_error_name(profiled.error()));
+      return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(profiled.error());
+    }
+    node_profile_values = profiled.value();
+  }
   for (std::uint8_t player = 0; player < 2U; ++player) {
     if (root_profile_values) {
       analysis.profile_value_antes[player] = (*root_profile_values)[player];
     } else {
-      DenseTraversal<combo_count> traversal(dense, buffers);
-      const auto values =
-          traversal.policy_from_physical_node(public_node, player, {&reach[0], &reach[1]});
-      if (!values) {
-        std::fprintf(stderr, "node_analysis_failure phase=policy node=%llu player=%u error=%s\n",
-                     static_cast<unsigned long long>(public_node),
-                     static_cast<unsigned int>(player), postflop_solver_error_name(values.error()));
-        return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(values.error());
-      }
-      double weighted_value = 0.0;
-      for (const ComboId combo : board.legal_combos) {
-        weighted_value += values.value()[combo] * reach[player][combo];
-      }
-      analysis.profile_value_antes[player] = weighted_value / public_reach_probability;
+      analysis.profile_value_antes[player] = (*node_profile_values)[player];
     }
     analysis.gto_plus_ev_antes[player] =
         analysis.profile_value_antes[player] +
@@ -18124,11 +18276,12 @@ analyze_postflop_node_with_layout(DenseLayout &dense, const PostflopCheckpoint &
   }
   if (canonical_target != nullptr) {
     for (const auto &edge : canonical_target->edges) {
-      if (edge.action == nullptr) {
+      const auto *const action = canonical_action(dense.canonical_public_graph, edge);
+      if (action == nullptr) {
         return Result<PostflopNodeAnalysis, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
-      analysis.actions.push_back(*edge.action);
+      analysis.actions.push_back(*action);
     }
   } else {
     for (const auto &edge : physical_target->edges) {
