@@ -1,5 +1,10 @@
 # Production optimization revalidation and next phases - 2026-08-30
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Correttezza e misure
+> temporali restano evidenza; i PASS Peak RSS/memoria basati sui riferimenti
+> GTO+ allora interpretati come cap sono ritirati. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. HEAD iniziale
 
 La revalidation e' partita da `main` a

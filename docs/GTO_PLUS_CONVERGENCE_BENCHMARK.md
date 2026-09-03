@@ -1,10 +1,14 @@
 # Benchmark end-to-end di convergenza GTO+
 
-> **CONTRATTO RISORSE V3 — 2026-09-02.** Ogni fixture dichiara
-> `gto_plus_reference.peak_rss_bytes`. Il `memory_gate` ufficiale confronta il
-> massimo `peak_rss_bytes` del processo con quel riferimento usando `<=`.
-> `solver_state_gate` e `desktop_memory_gate` (`<2 GiB`) restano separati e il
-> secondo non decide la parità. I report run/summary correnti sono v3.
+> **ERRATA CORRIGE MEMORIA — 2026-09-04.** Il campo v3
+> `gto_plus_reference.peak_rss_bytes` contiene in realtà il valore UI GTO+
+> “Memory needed for solving”. Non è Peak RSS e non è mai esistito un cap
+> desktop indipendente `<2 GiB`. La composizione interna del valore GTO+ resta
+> irrisolta; il confronto memoria corretto è
+> `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I report run/summary v3 e i loro
+> PASS/FAIL memoria sono legacy misclassified. Correttezza e tempo restano
+> valutabili. La migrazione v4 è definita nel
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v3 è
 > parametrico e va usato per nuovi scenari; questo documento conserva il
@@ -16,10 +20,10 @@ Schema: `gtosd.gto_plus_convergence_benchmark.v1`
 > **Checkpoint operativo 2026-09-02.** Il protocollo v3 è applicato alla suite
 > AHKHQH/TH7D6S/TSTC9D senza iteration cap e con arresto stretto a
 > `Target dEV < 1%`. Cinque processi production passano dEV, root, layout,
-> exact outcomes e stato su `15/15` solve. Il fresh audit memoria classifica
-> AHK `166.789.120/8.000.000 B` FAIL, TH `799.059.968/399.000.000 B` FAIL e
-> TST `1.970.229.248/2.000.000.000 B` PASS. Tempo e memoria restano gate
-> indipendenti.
+> exact outcomes e stato su `15/15` solve. Il fresh audit ha misurato Peak RSS
+> AHK/TH/TST pari a `166.789.120/799.059.968/1.970.229.248 B`; le classificazioni
+> FAIL/FAIL/PASS allora pubblicate sono ritirate perché confrontavano metriche
+> diverse. Il tempo resta un gate indipendente; la memoria è non valutata.
 > Valori e report autorevoli sono nel parity journey. Le sezioni v1 e le
 > diagnosi successive restano evidenza storica del protocollo, non il dashboard
 > corrente.
@@ -44,7 +48,8 @@ prestazioni conserva regret e strategy sum in `float32`, esegue payoff,
 traversal e certificazione in `float64` e viene confrontata col percorso
 `float64` nei test differenziali.
 
-La fixture esterna registra `1,71 s`, `8.000.000 byte`, Target dEV `1%` e tre
+La fixture esterna registra `1,71 s`, il display `8,0 MB` di “Memory needed for
+solving”, Target dEV `1%` e tre
 EV flop condizionali GTO+: CO root `19,15`, BTN dopo check CO `21,65`, BTN dopo
 bet 20 CO `17,51`. Gli EV usano la convenzione visuale GTO+: payoff netto
 condizionale più la quota iniziale di 20 ante del giocatore. La fixture registra
@@ -60,8 +65,9 @@ posteriori, per esempio con il root lock diagnostico descritto sotto.
 L'utente ha confermato che GTO+ e GTOSD girano sulla stessa macchina e che gli
 `1,71 s` vanno dal click su `Run Solver`, con albero già preparato, fino alla
 soluzione completa consultabile. La versione osservata è GTO+ v1.6.9 64-bit
-(8 thread). L'unità della memoria dichiarata è confermata (MB decimali: 8 MB =
-8.000.000 byte, confronto diretto con il peak RSS GTOSD in byte).
+(8 thread). La fixture storica normalizza il display secondo la convenzione MB
+decimale (`8,0 MB` -> `8.000.000 B`), ma tale normalizzazione non autorizza un
+confronto diretto con Peak RSS o `solver_state_bytes` GTOSD.
 L'action tree GTO+ è registrato a livello flop — 4 nodi, action set, frequenze
 ed EV combo-per-combo in `docs/specifications/gtoplus_specs.md` — mentre turn
 e river restano da acquisire; la certificazione scientifica definitiva resta
@@ -103,8 +109,9 @@ dalla specifica:
   `final_bet_smoothing`, `rake_percent`;
 - **gtosd_run**: iterazioni, certification interval, averaging delay,
   parallel action depth, thread, processi indipendenti;
-- **gto_plus_reference**: target dEV, tempo e `peak_rss_bytes` GTO+ specifico
-  della fixture, tolleranze EV e
+- **gto_plus_reference**: target dEV, tempo e campo legacy
+  `peak_rss_bytes`, da interpretare esclusivamente come valore normalizzato del
+  display “Memory needed for solving”, tolleranze EV e
   frequenze, `gate_node` (opzionale: id del nodo il cui EV decide
   `correctness_passed`; default il root) e `reference_nodes`: una lista di
   nodi indirizzati con `path` (etichette di azione dal root, es. `[]` per il
@@ -113,10 +120,11 @@ dalla specifica:
   strada (i nodi chance non sono risolvibili da un path di sole azioni);
 - **expected_layout**: fingerprint e conteggi, come in v1.
 
-Il report corrente usa `gtosd.gto_plus_convergence_run.v3`: conserva i campi
-di correttezza e stato, rende `memory_gate` il confronto inclusivo del peak RSS
-con il riferimento GTO+ della fixture e pubblica il cap comune soltanto come
-`desktop_memory_gate` diagnostico.
+Il report implementato usa `gtosd.gto_plus_convergence_run.v3`: conserva i
+campi di correttezza e stato, ma `memory_gate` confronta impropriamente Peak RSS
+con il display GTO+ e `desktop_memory_gate` incorpora un cap inesistente.
+Entrambi devono essere ignorati. La v4 li sostituirà con sezioni distinte per
+memoria di processo, accounting solver-owned e riferimento GTO+.
 Le chiavi applicative restano stabili;
 le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `reference_node_action_frequencies` sono gli `id` dichiarati nella specifica
@@ -124,12 +132,14 @@ le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `flop_btn_after_co_bet_20`; cambia soltanto l'envelope del contratto memoria).
 
 Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta v1, v2 legacy e v3 e
-deriva `benchmark_id` dalla specifica; i gate (tempo/memoria, riproducibilità,
-EV, frequenze) restano quelli del protocollo. `GTP-AHKHQH-101` è la fixture v3
+deriva `benchmark_id` dalla specifica. Fino alla migrazione v4 sono autorevoli
+soltanto tempo, riproducibilità, EV, frequenze, correttezza e layout; il gate
+memoria emesso è invalido. `GTP-AHKHQH-101` è la fixture v3
 di validazione: replica esattamente lo scenario di `003` e deve produrre gli
 stessi valori, ed è il riferimento per aggiungere nuovi benchmark: si copia la
 fixture, si cambia `benchmark_id`, board/range/stack/sizing e i valori GTO+
-osservati (`elapsed_seconds`, `peak_rss_bytes`, `target_dev_percent`,
+osservati (`elapsed_seconds`, il valore UI memoria conservato nel campo legacy
+`peak_rss_bytes`, `target_dev_percent`,
 `reference_nodes`), poi si aggiorna `expected_layout` con fingerprint e
 conteggi del primo run GTOSD (la prima esecuzione con layout errato fallisce
 il gate di layout, non la parità).
@@ -140,9 +150,10 @@ Il protocollo non ammette `maximum_iterations`: il solver core riceve
 arresti alternativi; il numero di iterazioni completate è un risultato, non un
 input del benchmark.
 
-> **Nuovi benchmark**: parte da `benchmarks/fixtures/TEMPLATE.json`
-> (schema-valido, valori noti del 101) e segui la procedura passo-passo in
-> `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md` — non serve toccare il codice C++.
+> **Nuovi benchmark ufficiali sospesi per la memoria:** il template v3 conserva
+> un campo semanticamente errato. È possibile usare una copia per diagnostica
+> di correttezza/tempo, ma non congelare nuovi PASS/FAIL memoria prima dello
+> schema v4. Vedere `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md`.
 
 ## Bug risolto: stack overflow del solver con all-in Go a soglia bassa
 
@@ -175,7 +186,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 Il wrapper produce sempre `summary.json` anche quando dEV o EV sono rossi, per
 non perdere l'evidenza diagnostica dei cinque processi. Build non Release,
 fingerprint o dimensioni divergenti restano errori strutturali. `-EnforceGate`
-restituisce errore quando il gate completo non passa.
+restituisce errore secondo il contratto v3 implementato, che include il falso
+confronto memoria. Fino alla migrazione v4 non deve essere usato per una
+decisione di promozione complessiva; i campi attivi vanno valutati
+separatamente.
 
 Il timer primario continuo include inizializzazione dei buffer, CFR+ alternating,
 averaging, certificazione exact BR finale e finalizzazione della soluzione.
@@ -204,8 +218,9 @@ export:
   EV delta `-0,0077 ante`), converge a 180 iterazioni (dEV 0,1898%), 8 thread.
 
 Entrambe hanno `metadata_complete: false` (restano da registrare turn e river
-dell'action tree GTO+; l'unità della memoria è confermata come MB decimali, e
-per `104` la memoria è assunta uguale al run operativo, stesso albero). Le
+dell'action tree GTO+; il display memoria è conservato con convenzione MB
+decimale, e per `104` era assunto uguale al run operativo, stesso albero). Tale
+assunzione non costituisce un gate memoria. Le
 fixture usano lo stesso `expected_layout` di `003` (stesso albero).
 
 ### Metadati del tree builder (completati 2026-08-05)
@@ -357,7 +372,8 @@ Cinque processi Release indipendenti hanno prodotto:
 | 5 | 80 | 0,674155% | 3,271 s |
 
 Mediana `3,128 s`, p95 `3,271 s`, speed score `54,34%` **FAIL** (gate 1,9 s).
-Lo stato solver è `6.677.088 byte`, memory score `83,46%` **PASS**.
+Lo stato solver è `6.677.088 byte`; il memory score storico `83,46%` è
+ritirato perché confrontava metriche non equivalenti.
 
 | Check EV flop | GTO+ | GTOSD a dEV 0,674% | Delta | Stato |
 |---|---:|---:|---:|---|

@@ -2064,7 +2064,8 @@ equivalente v2 della fixture canonica congelata `GTP-AHKHQH-003`, documentata in
 
 ```text
 Tempo GTOSD fino alla convergenza <= 1,900000 / 19,622222 / 128,988889 s
-Memoria solver GTOSD <= 8.000.000 / 399.000.000 / 2.000.000.000 B
+Riferimento GTO+ “Memory needed for solving” = 8 / 399 / 2.000 MB
+Confronto memoria = NOT_EVALUATED finché lo scope GTO+ non è equivalente
 Target dEV strettamente < 1%, senza limite massimo di iterazioni
 EV del gioco al root nella stessa convenzione e tolleranza versionata
 EV/frequenze condizionali come gate solo con posteriori combo-per-combo uguali
@@ -2073,10 +2074,11 @@ Parità physical/canonical e suite Release PASS
 ```
 
 F11 e tutte le fasi successive restano congelate finché i tre benchmark non
-raggiungono almeno il 90% del riferimento GTO+ e tutti i gate dEV, root EV e
-`solver_state_bytes` non passano. Fixture e runner non possono essere adattati
-per ottenere il risultato: ogni correzione prestazionale deve appartenere al
-core generale.
+raggiungono almeno il 90% del riferimento temporale GTO+ e tutti i gate dEV e
+root EV non passano. Il gate memoria potrà contribuire allo sblocco soltanto
+dopo una definizione comparabile e versionata; nel frattempo non è né PASS né
+FAIL. Fixture e runner non possono essere adattati per ottenere il risultato:
+ogni correzione prestazionale deve appartenere al core generale.
 
 Al 2026-08-14 dEV, root EV e memoria passano su 3/3; il tempo fallisce su 3/3.
 F10.4 è completata come root lock esterno combo-per-combo test-only e non

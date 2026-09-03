@@ -1,5 +1,10 @@
 # Risultati piano di ottimizzazione TSTC9D — 2026-08-29
 
+> **CORREZIONE SEMANTICA 2026-09-04.** Le misure e i reject di velocità restano
+> evidenza; i PASS di stato/Peak RSS rispetto al valore TST da 2.000 MB non sono
+> un confronto GTO+ valido. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Esito
 
 La fase chiude con l'**Esito B — nuovo collo dimostrato**. Nessun candidato

@@ -1,8 +1,11 @@
 # Specifiche canoniche GTOSD
 
-> **Verifica documentale:** 2026-09-02. I documenti con stato corrente sono
-> stati incrociati con cinque processi final-head AHK/TH/TST, preflight
-> persistiti, contratto fixture eseguibile e suite Release `27/27 PASS`.
+> **Verifica documentale:** 2026-09-04. La semantica memoria GTO+ è stata
+> corretta: “Memory needed for solving” non è Peak RSS e non è mai esistito un
+> cap desktop indipendente `<2 GiB`. Finché lo scope interno GTO+ non sarà
+> ricostruito, il confronto memoria resta `NOT_EVALUATED`; i contatori OS sono
+> diagnostici. Il codice e le fixture v3 mantengono temporaneamente i nomi
+> legacy e non costituiscono autorità semantica.
 
 Questa cartella contiene i contratti tecnici correnti del progetto. I documenti
 qui presenti descrivono il comportamento richiesto e lo stato realmente
@@ -52,6 +55,10 @@ validazione e documentazione coerenti.
 - `GTO_PLUS_PARITY_JOURNEY.md` è il registro corrente del gate GTO+ e del freeze
   F11+.
 - `IMPLEMENTATION_STATUS.md` è la dashboard corrente dell'implementazione.
+- `GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md` è
+  l'errata corrige e il piano di migrazione della metrica memoria GTO+.
 - `PHASE_*_COMPLETION_REPORT.md` sono report storici immutabili.
+- `archive/legacy-memory-gate/` conserva i report fondati sul falso gate senza
+  conferirgli autorità corrente.
 - I documenti `*_OPTIMIZATION*`, `cfr_*` e le analisi di memoria sono registri
   di engineering: non sostituiscono le specifiche.

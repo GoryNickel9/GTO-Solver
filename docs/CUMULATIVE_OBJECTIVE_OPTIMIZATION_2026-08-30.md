@@ -1,5 +1,11 @@
 # Cumulative Objective Optimization Loop — 2026-08-30
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Il confronto Peak RSS
+> con “Memory needed for solving” e il cap desktop 2 GB non sono contratti
+> validi. Misure, correttezza e timing restano evidenza; i giudizi memoria sono
+> ritirati. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. Stato iniziale e scope
 
 - branch locale: `main`;

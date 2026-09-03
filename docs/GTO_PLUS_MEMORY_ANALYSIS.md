@@ -1,10 +1,18 @@
 # Analisi memoria GTO+ (399MB) vs GTOSD (667MB stato / 868MB picco)
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO / NON NORMATIVO.** I
+> valori GTO+ citati provengono da “Memory needed for solving” e non sono Peak
+> RSS né, senza prova ulteriore, `solver_state_bytes`. I confronti numerici e i
+> PASS/FAIL memoria di questo report non dimostrano parità; breakdown, profili e
+> misure grezze restano evidenza tecnica. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **AGGIORNAMENTO OPERATIVO 2026-08-14.** Il problema `solver_state_bytes` è
 > chiuso sui tre benchmark mediante il formato core packed 13+11 da 3
 > byte/action. TH7D6S usa 249.955.776 B contro 399.000.000 B; AHKHQH usa
 > 2.503.908 B contro 8.000.000 B; TSTC9D usa 1.747.903.656 B contro
-> 2.000.000.000 B. Tutti conservano dEV <1% e root correctness. I tempi
+> 2.000.000.000 B. Questi confronti sono ora classificati non comparabili. Tutti
+> conservano dEV <1% e root correctness. I tempi
 > 4,970917 / 37,810434 / 690,307523 s falliscono i rispettivi limiti e non sono
 > compensati dalla RAM. Peak RSS e transient workspace restano metriche
 > separate. L'analisi float32 seguente resta storica.

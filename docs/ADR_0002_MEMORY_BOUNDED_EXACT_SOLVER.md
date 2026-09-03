@@ -1,24 +1,27 @@
 # ADR 0002 — Motore exact memory-bounded
 
-Stato: **Accettato; compilatore layout-only implementato, traversal non ancora migrato**
+Stato: **Parzialmente superseded; architettura exact memory-bounded conservata,
+contratto e soglie memoria ritirati**
 Data: 2026-08-27
 
-> **Emendamento 2026-09-02 (supersedes 2026-09-01).** Ogni fixture dichiara
-> `gto_plus_reference.peak_rss_bytes`; il gate ufficiale confronta il peak RSS
-> dell'intero processo con quel riferimento usando `<=`. Il limite desktop
-> comune `<2 GiB` resta un controllo operativo separato e non decide la parità.
-> `solver_state_bytes` resta visibile per attribuzione, ma non sostituisce il
-> peak RSS. Il precedente contratto comune è conservato come evidenza storica
-> in [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> **Emendamento 2026-09-04 (supersedes 2026-09-01/02).** “Memory needed for
+> solving” non è Peak RSS e non è mai esistito un cap desktop indipendente
+> `<2 GiB`. Tutte le soglie, acceptance criteria e conclusioni di questo ADR che
+> dipendono da tali confronti sono storiche e non normative. Restano valide la
+> motivazione per ridurre memoria e la decisione architetturale lossless; il
+> nuovo confronto richiede accounting solver-owned ed equivalenza dimostrata.
+> Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md)
+> e il [`contratto 2 GiB archiviato`](archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 ## Contesto
 
 `GTP-TSTC9D-101` contiene 2.791.872 nodi pubblici fisici, 231.129.064
 information set e 582.634.552 action entry. Lo stato packed corrente usa
-1.747.903.656 byte, esattamente 3 byte/action. Il riferimento GTO+ usa
-2.000.000.000 byte per l'intero solve, non per il solo stato persistente: al
-processo GTOSD restano quindi appena 252.096.344 byte per topologia, indici,
-reach, valori, best response, allocator e parallelismo.
+1.747.903.656 byte, esattamente 3 byte/action. Il ragionamento originale
+trattava il display GTO+ da 2.000 MB come limite dell'intero processo e deduceva
+252.096.344 byte residui. Questa deduzione è ritirata; il conteggio dello stato
+resta valido come misura parziale.
 
 Il percorso fisico corrente non rispetta questo contratto. Due report completi
 precedenti hanno misurato peak RSS di 3.166.359.552 e 3.173.212.160 byte. Il
@@ -151,11 +154,12 @@ La best response è read-only sullo stato medio e attraversa lo stesso chance tr
 streaming. Non materializza una seconda strategia completa e non mantiene un
 workspace proporzionale a tutte le action entry.
 
-## Budget di memoria
+## Budget di memoria storico — ritirato
 
-Il preflight usa peak RSS stimato e il benchmark usa peak RSS misurato. Il
-target ingegneristico è 1.800.000.000 byte, lasciando 347.483.648 byte di
-margine prima del cap operativo di 2 GiB.
+Il testo seguente conserva il budget usato per progettare l'architettura, ma non
+definisce più un gate. Il preflight e il benchmark non possono confrontare Peak
+RSS con “Memory needed for solving”; `1.800.000.000 B` e 2 GiB sono soltanto
+soglie storiche di questo ADR.
 
 | Componente al picco | Budget TSTC9D |
 |---|---:|
@@ -232,8 +236,8 @@ bit-identico al traversal monolitico senza prova.
    reintrodurre il pool.
 6. **Parallelismo owner-computes.** Abilitare soltanto partizioni con action
    interval disgiunti e verificare equivalenza 1/N thread.
-7. **TSTC9D singolo.** Richiedere dEV ≤ 1%, root EV entro 0,05 ante, peak RSS
-   < 2.147.483.648 byte e tempo ≤ 120,6 s nello stesso run.
+7. **TSTC9D singolo.** Richiedere dEV ≤ 1%, root EV entro 0,05 ante e tempo
+   ≤ 120,6 s nello stesso run; pubblicare Peak RSS solo come diagnostica.
 8. **Certificazione finale.** Cinque processi indipendenti, con mediana, p95,
    deviazione standard e min/max; i gate restano separati.
 
@@ -251,7 +255,8 @@ trasformazioni di reach e counterfactual value.
 - Checkpoint vecchi non sono reinterpretati; serve migrazione esplicita o nuovo
   solve.
 - Analytics e GUI interrogano mapping canonico→fisico e non duplicano lo stato.
-- Il limite `<2 GiB` viene verificato sul processo completo tramite peak RSS.
+- La memoria richiede un ledger solver-owned; Peak RSS resta diagnostico finché
+  non esiste un requisito autonomo esplicito.
 - Preflop e configurazioni più grandi usano il livello CFR-D o vengono
   rifiutati dal preflight; non causano allocazioni ottimistiche.
 

@@ -213,18 +213,17 @@ deterministic iteration counts are `80/80/160`; solver median/p95 times are
 `55.107041 s` (`42.722%`) above the `128.988889 s` limit. Its user-confirmed
 raw GTO+ reference remains `116.09 s` at the first strict sub-1% point.
 
-The current v3 resource contract gives every fixture its own
-`gto_plus_reference.peak_rss_bytes`: `8.000.000 B`, `399.000.000 B` and
-`2.000.000.000 B`. The official memory gate compares the maximum process peak
-RSS directly with that fixture reference using `<=`; `solver_state_bytes` and
-the common desktop safety check `< 2 GiB` are published separately. The
-2026-09-03 single-process architectural recheck measures `23.216.128 B`,
-`391.462.912 B` and `1.647.755.264 B`: TH7D6S passes by `7.537.088 B`
-and the fixed-iteration TSTC9D memory regression passes, while AHKHQH remains
-above its 8 MB reference. This supersedes the older RSS values for
-implementation status, but not the required multi-process qualification. The
-overall parity gate remains blocked. See
-`docs/PEAK_RSS_AUDIT_2026-09-03.md`.
+The GTO+ values `8 MB`, `399 MB` and `2,000 MB` come from the UI label
+“Memory needed for solving”. They are internal pre-solve solver-memory
+estimates, not process Peak RSS references and not a general desktop limit.
+Their exact component scope is still unresolved, so the GTO+ memory comparison
+is currently `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Process Peak RSS,
+private bytes and `solver_state_bytes` remain useful but separate diagnostics;
+none can be substituted for the GTO+ field without an equivalence proof. The
+v3 fixtures and reports still use the legacy name `peak_rss_bytes`, and their
+memory PASS/FAIL fields must be treated as semantically invalid until the v4
+migration is implemented. Correctness and timing results are unaffected. See
+`docs/GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`.
 
 The repository also preserves the rejected research families and their
 reproduction tools without enabling them in production. S6 remains rejected;
@@ -234,8 +233,8 @@ reports record why those families were closed. GTO+ black-box observation is
 classified as partially automatable and still requires a manual run marker;
 it does not automate solver clicks or alter the production engine. See
 `docs/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`,
-`docs/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`,
-`docs/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`,
+`docs/archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`,
+`docs/archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`,
 `docs/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`,
 `docs/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md` and
 `docs/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`.

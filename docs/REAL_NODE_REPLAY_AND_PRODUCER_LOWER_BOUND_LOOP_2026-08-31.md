@@ -1,5 +1,11 @@
 # Real-Node Replay + Joint Precision/Producer Lower-Bound Loop — 2026-08-31
 
+> **CORREZIONE SEMANTICA 2026-09-04 — MEMORY KILL GATE RITIRATO.** Replay,
+> stabilità numerica e costi restano validi; le esclusioni basate sul presunto
+> cap desktop 2 GB devono essere rivalutate con l'accounting solver-owned.
+> Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Analisi
 
 ### Obiettivo e contratto

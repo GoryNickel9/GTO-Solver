@@ -1,5 +1,11 @@
 # New Production State Representation Loop — 2026-08-31
 
+> **CORREZIONE SEMANTICA 2026-09-04 — RAM GATE RITIRATO.** I byte model, gli
+> oracle e i risultati numerici restano evidenza. Le classificazioni rispetto al
+> cap TST/desktop 2 GB non sono più normative e le famiglie escluse soltanto per
+> memoria richiedono un nuovo pre-gate solver-owned. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. Decisione
 
 **REPRESENTATION SPACE EXHAUSTED per le famiglie richieste e studiate.**

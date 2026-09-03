@@ -1,5 +1,11 @@
 # Exact Predictive-CFR Feasibility + Common Convergence Objective Loop
 
+> **CORREZIONE SEMANTICA 2026-09-04 — RAM BLOCKER RITIRATO.** I requisiti di
+> stato derivati restano evidenza, ma il cap 2 GB usato per respingere la
+> famiglia era inesistente. L'esito memory-based non è più corrente; servono un
+> ledger solver-owned e un nuovo pre-gate. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 Data: 2026-08-31
 Decisione: **PREDICTIVE FAMILY EXHAUSTED UNDER THE FROZEN RAM/STATE CONTRACT — nessuna promozione production**
 

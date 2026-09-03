@@ -1,22 +1,22 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-09-03
+Aggiornato: 2026-09-04
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
 
-> **Peak-RSS closure 2026-09-03 — stato corrente.** Il gate memoria
-> per-fixture è ora `3/3 PASS`: AHKHQH max cinque processi
-> `7.790.592/8.000.000 B`, TH7D6S max cinque processi
-> `363.569.152/399.000.000 B`, TSTC9D full-convergence
-> `1.534.152.704/2.000.000.000 B`. Il core usa record canonici `16/8/8` byte e
-> seleziona lo stato scaled-uint16 OS-page-backed soltanto da un target di
-> working set esplicito e dal modello `RSS corrente + stato logico`; nessun id,
-> board o fingerprint di fixture partecipa. AHK usa quel backend, TH e TST
-> restano residenti. Il report dichiara residenza e materializzazione; i bytes
-> logici del checkpoint non cambiano. Correttezza e dEV passano 3/3; Release
-> CTest `28/28 PASS`. La parità complessiva resta bloccata esclusivamente dai
-> distinti gate tempo TH e TST. Evidenza:
-> [`PEAK_RSS_AUDIT_2026-09-03.md`](PEAK_RSS_AUDIT_2026-09-03.md).
+> **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
+> `8/399/2.000 MB` provengono dal campo UI “Memory needed for solving”. Gli
+> esperimenti black-box escludono che sia Peak RSS, working set totale, private
+> bytes totali o un semplice delta di processo; la formula interna resta non
+> identificata. Non è mai esistito un cap desktop indipendente `<2 GiB`.
+> Pertanto il gate memoria è
+> `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`: tutti i PASS/FAIL memoria riportati
+> nei blocchi datati precedenti sono storici e semanticamente invalidi, mentre
+> i byte misurati restano telemetria. Il backend page-backed usato da AHK era
+> collegato al riferimento errato e non dimostra parità. Correttezza, dEV,
+> root/layout, exact outcomes, timing e test conservano la propria validità
+> indipendente. Autorità e piano:
+> [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Production DCFR integration final-head 2026-09-01 — stato corrente.**
 > Il candidato comune `bounded65-upstream-after65` e' integrato come
@@ -34,29 +34,26 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `184,095930/197,865030 s`. Root EV deterministici:
 > `19,118977716/8,226793157/8,495660681`. Tutti i `15/15` solve passano
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
-> `1.969.860.608 B < 2.147.483.648 B`; state TST `1.472.605.376 B`.
+> `1.969.860.608 B` e state TST `1.472.605.376 B` sono dati diagnostici.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
 > Full CTest Release corrente `27/27 PASS` (`218,43 s`, 2026-09-02).
-> Il contratto memoria v3 riclassifica il massimo peak RSS contro il riferimento
-> della singola fixture: AHK `166.789.120/8.000.000 B` FAIL, TH
-> `799.059.968/399.000.000 B` FAIL, TST
-> `1.970.229.248/2.000.000.000 B` PASS. Il check `<2 GiB` resta diagnostico.
+> Il contratto memoria v3 confrontava impropriamente Peak RSS e display GTO+;
+> i risultati AHK/TH/TST restano misure grezze ma non classificazioni memoria.
 >
 > La promozione migliora la Release comune precedente ed elimina il suo FAIL
 > di correttezza AHK, ma **non** chiude la parita' temporale GTO+. La mediana TH
 > `19,948228 s` supera `19,622222 s` di `0,326006 s` (`1,661%`); la mediana TST
 > `184,095930 s` supera `128,988889 s` del `42,722%`. Il parity gate
 > complessivo resta bloccante: la run final-head storica fallisce i tempi TH e
-> TST, mentre il fresh audit v3 fallisce la memoria AHK e TH. Evidenza e protocollo:
+> TST, mentre la memoria non è valutabile. Evidenza e protocollo:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
 > `out/production-final-head-20260901/`.
 
-> **Contratto memoria per-fixture v3 2026-09-02.** Il gate ufficiale è
-> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`; stato solver e cap
-> desktop sono diagnostiche separate. Il precedente contratto 2 GiB resta
-> evidenza storica, superseded. Production resta genericamente
+> **Contratto memoria v3 2026-09-02 — legacy misclassified.** Il confronto
+> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes` e il presunto cap
+> desktop sono entrambi superseded. Production resta genericamente
 > `production_dcfr 1.5/0/3`; nessun parametro dipende dalla fixture. Evidenza:
-> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research evidence consolidation 2026-09-02.** I branch isolati sono stati
 > importati senza promuovere i candidati respinti. S6 resta REJECT; il runner e
@@ -68,8 +65,8 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > outcome `C. PARTIALLY AUTOMATABLE` e richiede un marker manuale; non avvia
 > autonomamente il solver. Evidenza:
 > [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
-> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
-> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
 > [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
 > [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
 > [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
@@ -91,23 +88,24 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > BASELINE. Evidenza:
 > [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Lazy-CFR feasibility 2026-08-31.** **LAZY FAMILY RAM BLOCKER.** La
+> **Lazy-CFR feasibility 2026-08-31 — memory blocker ritirato.** La
 > segmentazione exact pubblicata richiede almeno un residuo di reach
 > indipendente per infoset e l'implementazione efficiente mantiene inoltre
 > `alpha`, `alpha_hat` e `beta` sulle histories/history-actions. Anche il
 > lower bound deliberatamente favorevole di un solo `float32/infoset` aggiunge
-> `582.096.608 B` su TST e proietta `2.552.018.656 B` peak RSS, oltre il cap
-> di `552.018.656 B`. Trace, oracle e solve sono quindi rimasti a zero. Non
+> `582.096.608 B` su TST e proiettava `2.552.018.656 B` Peak RSS contro il cap
+> allora assunto. Quel kill gate è ritirato; trace, oracle e solve erano rimasti
+> a zero. Non
 > esiste una derivazione pubblicata Lazy-DCFR/S6; production resta common
 > `1.5/0/2` e S6 `1.5/0/5` resta STRONG RESEARCH BASELINE. Evidenza:
 > [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Predictive-CFR feasibility 2026-08-31.** **PREDICTIVE FAMILY EXHAUSTED
-> UNDER THE FROZEN RAM/STATE CONTRACT.** PCFR+ e PDCFR+ richiedono una current
+> **Predictive-CFR feasibility 2026-08-31 — memory blocker ritirato.** PCFR+ e
+> PDCFR+ richiedono una current
 > predictive policy distinta da cumulative regret e cumulative average. Anche
 > il lower bound `uint16` su `actions-infosets` aggiunge `442.732.000 B` su
-> TST e proietta peak RSS `2.412.654.048 B`, oltre il cap 2 GB. Il RAM kill
-> gate ha quindi impedito solver probe e target-driven; l'oracle separato passa
+> TST e proiettava Peak RSS `2.412.654.048 B` contro il cap allora assunto. Quel
+> RAM kill gate è ritirato; aveva impedito solver probe e target-driven. L'oracle separato passa
 > 169 asserzioni. Production resta common signed DCFR `1.5/0/2`; `1.5/0/5`
 > resta STRONG RESEARCH BASELINE, non production. Prossima famiglia soltanto
 > dopo pre-gate RAM: Lazy-CFR. Evidenza:
@@ -191,10 +189,9 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > TST traversal è `174,926380 s` e certification `32,780800 s`. Il gap finale
 > è `79,122883 s`, rapporto `1,613409x`, `+61,3409%`. Il precedente
 > `252,534707 s` era pre-ottimizzazione certification e non rappresenta più il
-> final HEAD. Tutte le fixture rientrano nel cap desktop 2 GB e nello
-> `solver_state_bytes` fixture; il distinto `memory_gate` peak-RSS-vs-GTO+
-> resta FAIL per AHK e TH, PASS per TST. Non usare quindi `RAM PASS` senza
-> nominare il gate. Full CTest 21/21 PASS; five-process ancora congelata.
+> final HEAD. Stato e Peak RSS sono misure diagnostiche; le classificazioni
+> memoria pubblicate allora sono ritirate. Full CTest 21/21 PASS; five-process
+> ancora congelata.
 > Evidenza dettagliata:
 > [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
@@ -239,7 +236,8 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > **130,3729854 s**, certificazione **5,4393643 s**, elapsed solver
 > **136,2380205 s**, dEV **1,0784262679%**, root EV **8,4906667401 ante**
 > (delta `-0,0109832599`), `solver_state_bytes` **1.472.605.376 B**, peak RSS
-> **1.968.742.400 B** e 245.146.564 nodi visitati. Root e memoria passano;
+> **1.968.742.400 B** e 245.146.564 nodi visitati. Root passa; stato e Peak RSS
+> sono diagnostici;
 > dEV e tempo grezzo GTO+ `116,09 s` falliscono. È un singolo run, non una
 > mediana promossa.
 >
@@ -304,18 +302,18 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > Il core supporta uno stato packed generale di 3 byte/action: regret CFR+
 > unsigned float13 `E8M5` e strategy sum unsigned float11 `E5M6`, con traversal
 > e payoff in float64. Non esistono branch per benchmark. I tre run Release
-> passano dEV strettamente sotto 1%, root EV e RAM. Sono run singoli di chiusura
-> RAM/correttezza; la certificazione temporale a cinque processi è rinviata.
+> passano dEV strettamente sotto 1% e root EV. Stato e memoria restano
+> diagnostici; la certificazione temporale a cinque processi è rinviata.
 >
 > | Benchmark | Report | Iter / dEV | Root EV GTOSD / GTO+ | Tempo / limite 90% | `solver_state_bytes` / GTO+ | Gate |
 > |---|---|---:|---:|---:|---:|---|
-> | `GTP-AHKHQH-101` | `out/ram_final_ahkhqh.json` | 100 / 0,982960% | 19,123322 / 19,15 | 4,970917 / 1,900000 s | 2.503.908 / 8.000.000 B | dEV/root/RAM PASS; tempo FAIL |
-> | `GTP-TH7D6S-101` | `out/compact_no_average_simd3_th7d6s.json` | 82 / 0,986976% | 8,220073 / 8,22198 | 37,810434 / 19,622222 s | 249.955.776 / 399.000.000 B | dEV/root/RAM PASS; tempo FAIL |
-> | `GTP-TSTC9D-101` | `out/compact_no_average_simd3_tstc9d.json` | 200 / 0,983565% | 8,498226 / 8,50165 | 690,307523 / 120,600000 s | 1.747.903.656 / 2.000.000.000 B | dEV/root/RAM PASS; tempo FAIL |
+> | `GTP-AHKHQH-101` | `out/ram_final_ahkhqh.json` | 100 / 0,982960% | 19,123322 / 19,15 | 4,970917 / 1,900000 s | 2.503.908 / 8.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL |
+> | `GTP-TH7D6S-101` | `out/compact_no_average_simd3_th7d6s.json` | 82 / 0,986976% | 8,220073 / 8,22198 | 37,810434 / 19,622222 s | 249.955.776 / 399.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL |
+> | `GTP-TSTC9D-101` | `out/compact_no_average_simd3_tstc9d.json` | 200 / 0,983565% | 8,498226 / 8,50165 | 690,307523 / 120,600000 s | 1.747.903.656 / 2.000.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL |
 >
 > I riferimenti temporali GTO+ grezzi sono rispettivamente 1,71 s, 17,66 s e
-> 108,54 s; i limiti mostrati concedono il margine concordato del 90%. I limiti
-> RAM sono invece i byte GTO+ diretti, non maggiorati. Peak RSS resta separato
+> 108,54 s; i limiti temporali mostrati concedono il margine concordato del 90%.
+> I valori memoria GTO+ non sono limiti GTOSD. Peak RSS resta separato
 > (`208.031.744 B`, `477.130.752 B`, `3.166.359.552 B`) e non sostituisce lo
 > stato solver. Tutti i time gate restano FAIL: la pressione della macchina non
 > viene usata per giustificarli e il residuo è trattato come problema del core.
@@ -387,9 +385,9 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 >
 > | Benchmark | dEV | Root EV GTOSD / GTO+ | Tempo GTOSD / limite | Stato solver | Gate |
 > |---|---:|---:|---:|---:|---|
-> | `AHKHQH` | 0,981301% | 19,103999 / 19,15 | 2,237744 / 1,900000 s | 6.677.088 B | dEV, root EV, RAM PASS; tempo FAIL |
-> | `TH7D6S` | 0,987345% | 8,220498 / 8,22198 | 27,896048 / 19,622222 s | 416.592.960 B | dEV, root EV, RAM PASS; tempo FAIL |
-> | `TSTC9D` | 0,963255% | 8,576672 / 8,50165 | 114,614952 / 120,600000 s | 752.202.000 B | dEV, RAM e tempo PASS; root EV FAIL |
+> | `AHKHQH` | 0,981301% | 19,103999 / 19,15 | 2,237744 / 1,900000 s | 6.677.088 B | dEV/root PASS; memoria N/E; tempo FAIL |
+> | `TH7D6S` | 0,987345% | 8,220498 / 8,22198 | 27,896048 / 19,622222 s | 416.592.960 B | dEV/root PASS; memoria N/E; tempo FAIL |
+> | `TSTC9D` | 0,963255% | 8,576672 / 8,50165 | 114,614952 / 120,600000 s | 752.202.000 B | dEV/tempo PASS; memoria N/E; root EV FAIL |
 >
 > Il delta root `TSTC9D` è `+0,075022 ante`, quindi eccede la tolleranza
 > assoluta `0,05` di `0,025022 ante`. La fixture è marcata
@@ -420,8 +418,8 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > congelata.
 
 > **Checkpoint storico TH7D6S (2026-08-08; superato dal checkpoint 2026-08-14
-> sopra):** `GTP-TH7D6S-101` usa **416.592.960 B** di stato solver contro il
-> limite **443.333.333 B** (gate RAM 90% PASS). Il miglior full credibile è
+> sopra):** `GTP-TH7D6S-101` usa **416.592.960 B** di stato solver. Il confronto
+> storico con **443.333.333 B** non è semanticamente valido. Il miglior full credibile è
 > `out/loop_policy_half_avx_full.json`: **86,1059943 s**, traversal
 > **79,7679045 s**, certificazione **5,7897606 s**, iterazione 140, dEV
 > **0,9260452878479758%**, root EV **8,219182737421068 ante** e gate
@@ -433,7 +431,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > processi non è ancora stata eseguita e F11+ resta congelata.
 
 > Checkpoint prestazionale parallelo: il benchmark grande `GTP-TH7D6S-101` ha ora
-> memoria solver 416.592.960 B (gate 90% PASS) ma un run completo singolo da
+> memoria solver 416.592.960 B (diagnostica, confronto GTO+ non valutato) ma un run completo singolo da
 > 89,2088938 s contro il limite 19,622222 s (gate tempo FAIL). Correttezza root, layout,
 > dEV 0,9260452878479734% e precisione dichiarata passano. Dettagli e limiti della
 > misura singola sono registrati in `speed_optimization_journey.md` §8.16; questo
@@ -513,8 +511,9 @@ Confermato dall'utente:
 - Target dEV `1%` nel run da `1,71 s`;
 - timer dal click su `Run Solver`, con albero già preparato, fino alla soluzione
   completa consultabile;
-- unità della memoria GTO+: **MB decimali** (8 MB = 8.000.000 byte), quindi il
-  confronto in byte con lo stato solver GTOSD è diretto.
+- display memoria GTO+ in MB, conservato nella fixture con convenzione decimale
+  (`8,0 MB` -> `8.000.000 B`). Questo normalizza l'unità ma non rende la metrica
+  direttamente confrontabile con lo stato solver GTOSD.
 
 Resta da registrare, senza invalidare il target operativo:
 
@@ -525,23 +524,25 @@ Resta da registrare, senza invalidare il target operativo:
 Finché questo campo non è allineato, una misura GTOSD può essere
 diagnostica, ma non può essere dichiarata comparazione scientifica definitiva.
 
-## 4. Definizione del gate 90%
+## 4. Definizione dei gate correnti
 
-Per una metrica in cui un valore inferiore è migliore:
+Per il tempo, in cui un valore inferiore è migliore:
 
 ```text
 score = riferimento_GTO+ / misura_GTOSD × 100
 ```
 
-Ne derivano le soglie:
+Ne deriva la soglia temporale. La memoria non usa questa formula finché il
+perimetro GTO+ non è stato identificato:
 
-| Gate obbligatorio | Formula | Soglia GTOSD |
+| Gate | Formula | Soglia/Stato GTOSD |
 |---|---|---:|
 | Velocità di convergenza | `1,71 / tempo_GTOSD ≥ 0,90` | **≤ 1,900000 s** |
-| Memoria solver | `8 / memoria_GTOSD ≥ 0,90` | **≤ 8,888889 MB** |
+| Memoria solver | nessuna formula comparabile dimostrata | **NOT_EVALUATED** |
 
-Entrambi devono essere superati nello stesso commit. Non è ammessa una media
-che compensi il fallimento di una metrica con l'altra.
+Quando il gate memoria verrà eventualmente riattivato, dovrà essere superato
+nello stesso commit degli altri gate e non potrà compensare un fallimento
+temporale o di correttezza.
 
 ### Gate di correttezza non negoziabili
 
@@ -573,7 +574,7 @@ congelato e benchmark v2 parametrico disponibili.
 |---|---:|---:|---|
 | Tempo `Run Solver` a dEV GTO+ ≤1%, 5 processi | mediana documentata 3,128 s; p95 3,271 s | sotto la soglia `<=1,900000 s` | **FAIL** |
 | Convergenza deterministica | iterazione 80; dEV 0,695544%; NashConv/Pot 1,268598% | — | **PASS** |
-| Regret + average strategy `float32` | 6.677.088 byte | entro `<=8.888.889 byte` | **PASS** |
+| Regret + average strategy `float32` | 6.677.088 byte | dato parziale, non confrontabile con 8 MB GTO+ | Diagnostico |
 | EV flop CO root, probe accurato | 19,163591 vs 19,1581; delta +0,005491 | — | **PASS** |
 | BTN dopo check, posteriori diversi | 22,418551 vs 21,6682; delta +0,750351 | — | Diagnostico |
 | BTN dopo bet 20, posteriori diversi | 15,996175 vs 17,1176; delta -1,121425 | — | Diagnostico |
@@ -598,7 +599,7 @@ parte dopo la preparazione del layout e include inizializzazione, CFR+,
 averaging, certificazione exact BR finale e finalizzazione. I cinque run sono
 processi distinti e pubblicano ogni tempo.
 
-Il gate memoria passa e il gate velocità corrente fallisce. Il probe GTOSD a
+Il gate memoria non è valutato e il gate velocità corrente fallisce. Il probe GTOSD a
 1.000 iterazioni e dEV `0,011334%` produce CO root EV `19,163591`, contro
 `19,1581` del run GTO+ a dEV `0,078 ante`: delta `+0,005491 ante`, pari allo
 `0,0137%` del pot. Il valore del gioco è quindi allineato entro `0,0055 ante` e
@@ -805,8 +806,8 @@ i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
   `fnv1a64:001a19fa48cd8b1e`.
 - Cinque run Release: `2,8812251`, `2,7197086`, `2,8186997`, `2,6386802`,
   `2,6308951 s`; mediana `2,7197086 s`, p95 `2,8812251 s`.
-- Speed score `62,874383%` **FAIL**; stato `4.214.976 byte`, memory score
-  `189,799420%` **PASS**.
+- Speed score `62,874383%` **FAIL**; stato `4.214.976 byte`; il memory score
+  storico `189,799420%` è ritirato.
 - A dEV `0,695544%`: EV `19,121570 / 22,201691 / 16,770667`; i due BTN
   falliscono anche la richiesta ±0,5 ante.
 - Probe a 1.000 iterazioni e dEV `0,011334%`: EV BTN
@@ -849,7 +850,8 @@ i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
   tutti e cinque i report anche quando il gate EV fallisce.
 - Run: `1,9034193`, `1,7017160`, `1,8440822`, `1,8186019`, `1,7689969 s`;
   mediana `1,8186019 s`, p95 `1,9034193 s`.
-- Speed score `94,028275%` PASS; memory score `346,140533%` PASS.
+- Speed score `94,028275%` PASS; il memory score storico `346,140533%` è
+  ritirato.
 - EV CO root `19,128823` PASS; EV BTN dopo check `22,219692` FAIL; EV BTN dopo
   bet 20 `16,196783` FAIL.
 - La GUI espone gli EV condizionali GTO+ per nodo e permette di scegliere il
@@ -858,7 +860,7 @@ i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
   il superamento dei gate prestazionali.
 - Evidenza: `out/gto-plus-convergence/ev-gate-1_71s-8mb/summary.json`.
 
-### 2026-08-01 — Fixture corretta, GUI allineata e gate memoria PASS
+### 2026-08-01 — Fixture corretta e GUI allineata; claim memoria ritirato
 
 - Ritirata `GTP-AHKHQH-001`: non conteneva il raise osservato in GTO+.
 - Introdotta `GTP-AHKHQH-002`: bet/raise 50%, massimo un raise e policy
@@ -877,7 +879,8 @@ i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
   `2,9743763 s`; mediana `2,6085426 s`, p95 `3,4393542 s`.
 - Tutti i run: iterazione 80, dEV `0,904789%`, NashConv/Pot `1,588940%`;
   stato solver `2.311.200 byte`.
-- Speed score `31,435178%` **FAIL**; memory score `112,495673%` **PASS**.
+- Speed score `31,435178%` **FAIL**; il memory score storico `112,495673%` è
+  ritirato.
 - Correttezza benchmark, differential physical/canonical, build Release, GUI
   E2E e suite completa 22/22 PASS. Gate complessivo ancora **FAIL**.
 - Evidenza: `out/gto-plus-convergence/final-rebuilt-candidate/summary.json`.
@@ -900,8 +903,7 @@ i delta BTN sono `+0,0348` / `+0,0366` (entro `±0,05 ante`).
 - Cinque run finali: `0,8648449`, `0,8912323`, `0,9653215`, `0,7757150`,
   `0,8542203 s`; mediana `0,8648449 s`, p95 `0,9653215 s`.
 - Tutti i run: iterazione 40, dEV `0,982194%`, NashConv/Pot `1,724106%`.
-- Speed score `94,814689%`, memory score `129,634948%`: entrambi i gate
-  prestazionali PASS.
+- Speed score `94,814689%`; il memory score storico `129,634948%` è ritirato.
 - Build Release completa PASS, build GUI Release PASS e suite `15/15` PASS.
 - Stato storico: **RITIRATO**. Il PASS non è valido per il gate perché mancava
   l'azione raise/all-in presente nel riferimento GTO+.
@@ -956,9 +958,9 @@ Configurazione hardware:
 Run tempo [1..5]:
 Mediana / p95:
 Convergenza finale:
-Memoria solver / transient / peak RSS:
+Memoria solver-owned / stato / transient / mapping / Peak RSS / private bytes:
 Score velocità:
-Score memoria:
+Stato comparabilità memoria:
 Decisione: ACCEPT / REJECT / INCONCLUSIVE
 Prossimo esperimento singolo:
 ```
@@ -970,7 +972,7 @@ dimostra contemporaneamente:
 
 ```text
 speed_score >= 90%
-memory_score >= 90%
+memory_comparison = ESTABLISHED_AND_PASS oppure decisione esplicita NO_COMPARABLE_GATE
 correctness_gates = PASS
 release_suite = PASS
 reproducibility = PASS

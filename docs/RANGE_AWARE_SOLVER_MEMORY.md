@@ -1,5 +1,11 @@
 # Range-aware solver memory
 
+> **CORREZIONE SEMANTICA 2026-09-04.** Il display GTO+ “Memory needed for
+> solving” non è stato dimostrato equivalente né a `solver_state_bytes` né a
+> Peak RSS. Le riduzioni range-aware e i loro byte restano valide; il precedente
+> PASS comparativo contro 8 MB è ritirato. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **STATO: ANALISI STORICA.** I dati iniziali usano `GTP-AHKHQH-001`, fixture
 > ritirata. Per il gate corrente usare `GTP-AHKHQH-003` e il parity journey.
 
@@ -120,14 +126,14 @@ range-aware è:
 | Layout/board index fisico | almeno 2.543.764 |
 | Scratch conservativo | 1.426.616 |
 
-La dicitura GTO+ è quindi più vicina al solo stato persistente del solving che
-al peak RSS dell'intero processo (l'utente ha confermato che GTO+ usa **MB
-decimali**: 8 MB = 8.000.000 byte, confronto diretto in byte con lo stato
-solver GTOSD). Il percorso accuratezza resta `float64`
-(`4,01 MB`); il benchmark GTO+ seleziona esplicitamente stato `float32` con
-calcolo `float64` (`2,005632 MB`) e supera il gate memoria. Delta regret,
-indici, tree e peak RSS restano pubblicati separatamente e non vengono nascosti
-nel confronto. Il checkpoint `float32` è consultabile e ricertificabile; la sua
+I dati indicano soltanto che la dicitura GTO+ non coincide con il Peak RSS
+dell'intero processo. Non è dimostrato che coincida con il solo stato
+persistente. La convenzione `8,0 MB` -> `8.000.000 B` preserva il display ma non
+stabilisce equivalenza. Il percorso accuratezza resta `float64` (`4,01 MB`); il
+benchmark GTO+ seleziona esplicitamente stato `float32` con calcolo `float64`
+(`2,005632 MB`), ma tale valore è diagnostico e non un PASS memoria. Delta
+regret, indici, tree e Peak RSS restano pubblicati separatamente. Il checkpoint
+`float32` è consultabile e ricertificabile; la sua
 persistenza versionata resta lavoro successivo e non sostituisce il formato
 `float64` predefinito.
 

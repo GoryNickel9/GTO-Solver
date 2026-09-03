@@ -1,5 +1,11 @@
 # Memory-neutral exact FD-FTRL / FD-OMD feasibility loop
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Il blocker di costo
+> locale resta supportato dalle misure; il precedente “RAM gate” non è invece
+> normativo, perché il riferimento GTO+ non è Peak RSS e non esiste un cap
+> desktop generale. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 Data: 2026-08-31
 
 Fixture: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`

@@ -1,5 +1,11 @@
 # Analisi prestazionale del motore generale — 2026-08-29
 
+> **Correzione semantica memoria 2026-09-04.** I valori RAM GTO+ della tabella
+> sono display “Memory needed for solving”, non Peak RSS o stato persistente.
+> I byte GTOSD restano misure; i giudizi comparativi memoria sono ritirati.
+> Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **Stato storico/superseded.** Questa analisi precede il freeze production
 > comune. Le tre fixture qui misurate non condividevano ancora tutti i parametri
 > matematici. Per la baseline confrontabile DCFR `1.5/0/2`, delay zero e otto
@@ -554,11 +560,11 @@ cache/latency/compute con forte traffico**, non “memory-bound” dimostrato.
 
 ## Confronto osservabile con GTO+
 
-| Benchmark | GTO+ tempo / RAM | GTOSD corrente | Stato / peak RSS | Esito comparabile |
+| Benchmark | GTO+ tempo / display memoria | GTOSD corrente | Stato / Peak RSS | Esito comparabile |
 |---|---:|---:|---:|---|
 | AHKHQH | 1,71 s / 8 MB | 1,561 s @80, 0,775% | 3,865 MB / 166,4 MB | timing/state favorevoli, ma golden layout fixture stale e correctness aggregata false |
 | TH7D6S | 17,66 s / 399 MB | 45,036 s @120, average 11,484% | 250,0 MB / 710,5 MB | non raggiunge target; current unsigned ~1,5–1,7%, average è il collo |
-| TSTC9D | 116,09 s / 2,0 GB | 153,176 s @170, 0,986% | 1,473 GB / 1,969 GB | dEV/state/RSS pass, tempo 1,32× GTO+ |
+| TSTC9D | 116,09 s / 2,0 GB | 153,176 s @170, 0,986% | 1,473 GB / 1,969 GB | dEV pass; memoria non valutata; tempo 1,32× GTO+ |
 
 Per TSTC9D il dato 153,176 s usa una sola certificazione finale; il run a
 certificazione ogni 20 impiega 204,622 s e serve solo alla curva. AHKHQH e

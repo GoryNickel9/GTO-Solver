@@ -1,5 +1,11 @@
 # Diario di ottimizzazione velocità — benchmark GTO+ th7d6s
 
+> **CORREZIONE SEMANTICA 2026-09-04 — LEDGER STORICO.** I tempi, i profili e i
+> byte misurati restano evidenza. Tutti i PASS/FAIL che confrontano
+> `solver_state_bytes` o Peak RSS con “Memory needed for solving”, e ogni cap
+> desktop 2 GB implicito, sono ritirati. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **STATO: REGISTRO ENGINEERING / NON SPECIFICA NORMATIVA.** Le sezioni
 > cronologiche conservano misure e decisioni storiche; riaprire un'ottimizzazione
 > richiede profiling e gate sul commit corrente.
@@ -826,8 +832,8 @@ Run completo singolo Release (artefatto locale
 **0,9260452878479734%**, root EV **8,219182737421068 ante**, fingerprint
 `fnv1a64:db01987c7570ec46`, `correctness_passed=true`, layout PASS. Peak RSS osservato:
 619.970.560 B, separato dalla memoria solver. Rispetto a GTO+ 17,66 s: speed score
-**16,1032%**, quindi il gate tempo `<=19,622222 s` resta **FAIL**; memory score
-**95,7769%**, gate memoria **PASS**.
+**16,1032%**, quindi il gate tempo `<=19,622222 s` resta **FAIL**; il memory
+score storico **95,7769%** è ritirato.
 
 Validazione focalizzata: `F8_STORAGE_TESTS=PASS` (314 assertion),
 `GTO_PLUS_REFERENCE_TEST=PASS` (24 assertion), parità DAG massima `7,10543e-15` e

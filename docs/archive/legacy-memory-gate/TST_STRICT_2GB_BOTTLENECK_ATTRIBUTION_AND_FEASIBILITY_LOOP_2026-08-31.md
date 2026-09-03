@@ -1,5 +1,11 @@
 # TST Strict-2GB Bottleneck Attribution and Production-Feasibility Loop — 2026-08-31
 
+> **ARCHIVIATO 2026-09-04 — CONTRATTO MEMORIA RITIRATO.** Il profiling e le
+> misure di costo restano evidenza tecnica. Il hard kill Peak RSS a 2 miliardi
+> di byte derivava però da un'interpretazione errata del display GTO+ e non è un
+> gate corrente. Vedere il
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Analisi
 
 ### Stato repository e authority map

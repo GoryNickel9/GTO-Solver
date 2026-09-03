@@ -43,29 +43,31 @@ I gate prestazionali della suite sono:
 - tempo GTOSD a dEV comparabile non superiore a 1,900000 / 19,622222 /
   128,988889 s; per TSTC9D il riferimento grezzo è il primo punto GTO+
   strettamente sotto soglia, `116,09 s` a `0,91%` (`0,146 ante`);
-- peak RSS massimo del processo non superiore al riferimento specifico della
-  fixture: 8.000.000 / 399.000.000 / 2.000.000.000 B;
-- `solver_state_bytes` e cap desktop `<2 GiB` pubblicati separatamente; nessuno
-  dei due sostituisce il gate peak-RSS-vs-GTO+;
-- correttezza, tempo e memoria separati sullo stesso checkpoint; cinque
-  processi indipendenti soltanto per la promozione temporale finale.
+- correttezza e tempo valutati separatamente sullo stesso checkpoint;
+- memoria GTO+ in stato `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`: `8 MB`,
+  `399 MB` e `2.000 MB` sono i valori visualizzati da “Memory needed for
+  solving”, non soglie Peak RSS;
+- `solver_state_bytes`, Peak RSS e private bytes pubblicati separatamente come
+  diagnostica, senza un cap desktop implicito;
+- cinque processi indipendenti per la promozione temporale finale e, in futuro,
+  per una promozione memoria soltanto dopo equivalenza semantica dimostrata.
 
 Il final-head production 2026-09-01 usa cinque processi indipendenti, ciascuno
 con tutti e tre i benchmark. Passa dEV, root EV, layout, exact outcomes,
-`solver_state_bytes` e cap desktop su `15/15` solve. Iterazioni e dEV
+e i controlli strutturali su `15/15` solve. Iterazioni e dEV
 deterministici AHK/TH/TST sono `80/0,951423%`, `80/0,807956%` e
 `160/0,904505%`; mediane/p95 solver `0,758705/0,790918 s`,
 `19,948228/24,192260 s`, `184,095930/197,865030 s`. TH e TST falliscono il
-tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; quel checkpoint
-storico aveva AHK e TH in FAIL sul gate Peak RSS per-fixture.
+tempo rispettivamente del `1,661%` e `42,722%` sulla mediana. Le precedenti
+classificazioni memoria di quel checkpoint sono ritirate.
 
 Il recheck Release del 2026-09-03 conserva iterazioni, dEV e correttezza e
-chiude la memoria: AHKHQH max cinque processi `7.790.592 B`, TH7D6S max cinque
-processi `363.569.152 B`, TSTC9D full convergence `1.534.152.704 B`. AHK usa
-il backend OS-page-backed selezionato dall'esplicito target 8 MB; TH e TST
-restano residenti. Il report non confonde la residenza con
-`solver_state_bytes` e dichiara quando la persistenza richiede
-materializzazione. Peak RSS passa 3/3; i gate tempo TH/TST restano rossi.
+misura Peak RSS AHKHQH max cinque processi `7.790.592 B`, TH7D6S max cinque
+processi `363.569.152 B`, TSTC9D full convergence `1.534.152.704 B`. Questi
+sono contatori OS diagnostici e non dimostrano parità con il campo GTO+.
+L'uso page-backed di AHK era selezionato dal riferimento da 8 MB erroneamente
+trattato come working-set target; la classificazione `3/3 PASS` è quindi
+invalida. I gate tempo TH/TST restano rossi.
 
 Gli EV BTN dopo check/bet restano diagnostici nel percorso non vincolato perché
 GTO+ e GTOSD producono posteriori CO differenti. F10.4 è stata implementata e
@@ -96,7 +98,9 @@ valori intermedi sopra 1% non possono arrestarlo.
 
 Un gate scientifico registra commit pulito, compiler/flags, hardware, thread,
 fixture hash, precisione, algoritmo, averaging, target, valore finale, tempi
-individuali, mediana/p95, memoria solver/transient/RSS separati e suite Release.
+individuali, mediana/p95, memoria solver-owned/transient/processo separata e
+suite Release. Per la memoria esterna registra anche label UI, unità, precisione
+e stato di comparabilità.
 
 La precisione production `ScaledUint16RegretStrategy` è validata su tutti e tre
 gli scenari mediante exact BR target-driven e root EV esterno. Il formato è
@@ -104,11 +108,12 @@ coperto da finiteness check, resume in-memory byte-equivalent, scale goldens e
 round-trip storage byte-for-byte. RSS, stato persistente e buffer transienti
 restano metriche distinte.
 
-Il backend a residenza budgeted deve essere confrontato con quello residente
+Il backend a residenza budgeted, se conservato come funzione esplicita di
+prodotto, deve essere confrontato con quello residente
 sugli stessi codici e scale, certificazione exact e payload materializzato.
 Può usare paging locale del sistema operativo, ma non GPU o acceleratori; il
 report deve pubblicare questa scelta e non presentarla come compressione dello
-stato logico.
+stato logico o come parità con “Memory needed for solving”.
 
 I riferimenti esterni devono conservare export o trascrizione, versione del
 solver, azioni legali, unità e arrotondamenti. Se un dato non è disponibile, il

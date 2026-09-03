@@ -27,6 +27,10 @@
 3. Solved in: 1.71s
 4. 8 threads
 
+> Nota semantica 2026-09-04: `8.0MB` è una trascrizione fedele del campo UI.
+> Non identifica Peak RSS, working set o stato persistente e non deve essere
+> usato come soglia GTOSD finché la composizione della metrica non è dimostrata.
+
 ### TREE
 ## CO FI FLOP
 Hand		Equity		Combos (total)	Bet 20	Check		Percentage	Bet 20	Check		EV (total)	Bet 20	Check	

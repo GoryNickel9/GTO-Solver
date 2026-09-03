@@ -1,5 +1,12 @@
 # GTO+ autonomous black-box discovery and characterization — final 2026-09-01
 
+> **Aggiornamento semantico 2026-09-04.** Gli esperimenti successivi AHK/TH/TST
+> confermano che “Memory needed for solving” non è un contatore di processo e
+> non autorizza un gate Peak RSS; la formula interna resta irrisolta. I campioni
+> black-box e la classificazione di automazione di questo report restano validi.
+> Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Analisi
 
 ### Esito
@@ -29,7 +36,7 @@ telemetria, crossing, integrità e aggregazione sono automatizzati.
 |---|---|
 | `benchmarks/fixtures/gto_plus_tstc9d_101.json` | contratto machine-readable TST |
 | `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md` | reference GTO+ e timing scope |
-| `docs/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md` | baseline GTOSD fresca strict-2GB |
+| `docs/archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md` | baseline GTOSD fresca del contratto strict-2GB ora ritirato |
 | artifact `final-20260901/summary.json` | aggregazione black-box corrente |
 | questo report | decisione e limiti finali del loop |
 

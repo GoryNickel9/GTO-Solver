@@ -1,5 +1,11 @@
 # Constraint governance gate — 2026-08-31
 
+> **CORREZIONE SEMANTICA 2026-09-04 — FRONTIER MEMORIA RITIRATA.** I costi e il
+> deficit temporale restano evidenza, ma le alternative RAM e la Pareto frontier
+> dipendevano da un cap desktop inesistente. Non sono requisiti correnti e
+> dovranno essere ricalcolati dopo il ledger solver-owned. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Analisi
 
 ### Obiettivo e stop condition

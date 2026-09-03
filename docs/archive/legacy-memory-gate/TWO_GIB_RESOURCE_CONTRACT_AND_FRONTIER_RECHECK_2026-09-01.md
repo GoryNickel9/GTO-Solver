@@ -1,5 +1,11 @@
 # Contratto risorse 2 GiB e rivalutazione della frontier — 2026-09-01
 
+> **ARCHIVIATO 2026-09-04 — DECISIONE RITIRATA.** Il cap desktop `<2 GiB`
+> adottato qui non è mai stato un requisito originario. Anche il successivo
+> confronto Peak RSS per fixture era semanticamente errato. La telemetria
+> black-box resta utile, ma contratto e frontier memoria non sono normativi.
+> Vedere il [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **SUPERSEDED 2026-09-02.** Questo documento conserva la decisione e le prove
 > del 2026-09-01. Il contratto corrente usa il riferimento peak RSS specifico
 > della fixture (`8.000.000 / 399.000.000 / 2.000.000.000 B`, confronto `<=`)

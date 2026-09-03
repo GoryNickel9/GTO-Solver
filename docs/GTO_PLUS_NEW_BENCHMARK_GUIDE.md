@@ -1,10 +1,12 @@
 # Guida: come introdurre un nuovo benchmark di convergenza GTO+
 
-Il benchmark v3 è **100% guidato dalla specifica JSON**: non serve toccare il codice C++ (la
-validazione è programmatica nel CLI, gli schema in `schemas/` sono solo documentazione e sono
-stati rimossi). Si parte da una copia di `benchmarks/fixtures/TEMPLATE.json` (già schema-valido,
-basato sui valori noti del `GTP-AHKHQH-101`) e si sostituiscono i valori con quelli di
-riferimento GTO+ del nuovo scenario.
+Il benchmark v3 è guidato dalla specifica JSON, ma la creazione di nuovi
+benchmark ufficiali è **sospesa fino alla migrazione v4 della memoria**. Il
+campo v3 `peak_rss_bytes` è semanticamente errato: contiene “Memory needed for
+solving”, non Peak RSS. Una copia del template può essere usata per prove di
+correttezza e tempo, ma non per pubblicare un PASS/FAIL memoria. La struttura v4
+prevista è descritta nel
+[`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > I valori del template **non vanno lasciati così**: `benchmark_id`, flop, range, pot/stack,
 > size, EV/frequenze dei nodi e `expected_layout` vanno adattati allo scenario.
@@ -60,8 +62,8 @@ riferimento GTO+ del nuovo scenario.
 | `elapsed_seconds` | Tempo GTO+ per il target (1.71). Usato come base del gate speed. |
 | `convergence_trace` | Se disponibile, sequenza temporale osservata `elapsed_seconds`, `dev_percent`, `dev_antes`; preserva i valori mostrati da GTO+ senza interpolazione. |
 | `first_strictly_below_target` | Primo punto osservato con `dev_percent < target_dev_percent`; deve coincidere con `elapsed_seconds`. |
-| `peak_rss_bytes` | Riferimento GTO+ del peak RSS per questa fixture, in byte (**MB decimali**: 8 MB = 8 000 000). È il limite diretto del `memory_gate`. |
-| `memory_unit` | `"decimal_mb"` (confermato dall'utente per GTO+ v1.6.9). |
+| `peak_rss_bytes` | **Legacy v3, nome errato.** Conserva il valore normalizzato del display GTO+ “Memory needed for solving”; non è Peak RSS e non deve decidere un gate. |
+| `memory_unit` | **Legacy v3.** Registra la convenzione di normalizzazione del display, non prova la semantica della metrica. |
 | `target_dev_percent` | dEV target GTO+ in %; per questa suite deve essere `1.0` e il confronto è strettamente `<`. |
 | `target_definition` | Definizione del dEV (stringa, va lasciata/adeguata). |
 | `target_provenance` | Da dove arriva il riferimento (versione GTO+, macchina, run). |
@@ -72,6 +74,12 @@ riferimento GTO+ del nuovo scenario.
 | `action_frequency_absolute_tolerance_fraction` | Tolleranza frequenze (0.01). |
 | `display_precision_percent` | Precisione di visualizzazione (0.1). |
 | `reference_nodes[]` | I nodi di confronto. Ogni nodo: `id` (**etichetta arbitraria**, regex `^[a-z0-9_]+$`, il template usa nomi generici tipo `flop_btn_after_co_bet` — è il `path` a identificare il nodo, non l'id), `path` (etichette azioni dal root, es. `[]`, `["check"]`, `["bet_20"]`, `["check","bet_20"]`), `player` (0=CO, 1=BTN), `ev_antes` (EV condizionale GTO+), `actions` (frequenze opzionali key=etichetta azione). |
+
+Per una nuova acquisizione conservare separatamente, anche prima che la v4 sia
+implementata: label esatta, valore visualizzato, unità, numero di decimali,
+versione GTO+ e screenshot/provenienza. Non inferire byte esatti oltre la
+precisione del display e non copiare il valore da un progetto con albero solo
+apparentemente simile.
 
 Etichette azioni (convenzione report): `check`, `bet_20`, `fold`, `call_20`, `raise_60` —
 tipo di azione + importo in ante se presente. Devono combaciare con quelle dell'action tree
@@ -127,8 +135,9 @@ Il gate layout è **binario** sulla fingerprint (l'albero deve essere bit-identi
 tolleranza, è un vincolo esatto — il fixture certifica che il solver sta risolvendo esattamente
 la partita dichiarata.
 
-**Passo C — benchmark ufficiale a 5 run** (gate completi: correctness, memoria, speed,
-EV/frequenze diagnostici):
+**Passo C — benchmark a 5 run** (gate attivi: correctness e speed;
+EV/frequenze e memoria diagnostici finché la v4 non stabilisce la
+comparabilità):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File tools/run_gto_plus_convergence_benchmark.ps1 `
@@ -138,15 +147,18 @@ powershell -ExecutionPolicy Bypass -File tools/run_gto_plus_convergence_benchmar
 
 (`benchmark_id` viene letto dal fixture; lo script accetta anche `-Runs` e `-EnforceGate`.)
 
-Risultato: `out/gtp_<nnn>_five_runs/summary.json` con i gate (mediana/p95, 5 processi
-indipendenti, nessuna cache condivisa) più `run-01.json`…`run-05.json` (report grezzi:
-`correctness_passed`, `converged`, `elapsed_seconds`, `solver_state_bytes`).
+Risultato: `out/gtp_<nnn>_five_runs/summary.json` con mediana/p95, cinque
+processi indipendenti e nessuna cache condivisa, più `run-01.json`…`run-05.json`.
+I campi v3 `memory_gate` e `desktop_memory_gate` devono essere ignorati; i
+valori grezzi restano evidenza diagnostica.
 
 ## 6. Regole fisse (PERFORMANCE.md, non modificabili)
 
 - Speed ≤ `elapsed_seconds / 0.90` (1.71/0.90 = 1.9 s).
-- Memoria: massimo `peak_rss_bytes` dei processi GTOSD ≤ `gto_plus_reference.peak_rss_bytes`, senza margine del 90%.
-- Il cap desktop `<2 GiB` è diagnostico e non può sostituire il riferimento della fixture.
+- Memoria: `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; nessun confronto tra Peak
+  RSS, `solver_state_bytes` e display GTO+ è ammesso.
+- Non esiste un cap desktop `<2 GiB` implicito. Un eventuale budget di prodotto
+  futuro dovrà essere esplicito e indipendente dal benchmark GTO+.
 - Correttezza = convergenza + layout/fingerprint + EV di `gate_node` (root) entro 0.05 ante
   **+ EV incondizionata dell'avversario al root entro 0.05 ante** (criterio EV, §4.1).
 - EV BTN condizionali e frequenze: **diagnostici**, non decidono il gate.

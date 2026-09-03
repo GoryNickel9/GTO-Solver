@@ -1,5 +1,11 @@
 # Exact State Representation Feasibility Loop — 2026-08-30
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Le prove di identità,
+> byte traffic e costo locale restano valide. Ogni conclusione che assume il
+> vecchio gate memoria GTO+ o un cap desktop 2 GB è ritirata e va rivalutata
+> sulla metrica solver-owned. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. Conclusione
 
 **EXACT REPRESENTATION BLOCKER PROVEN.** Con

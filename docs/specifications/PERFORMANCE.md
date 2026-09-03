@@ -1,16 +1,15 @@
 # Performance
 
-> **Peak-RSS gate closure — 2026-09-03.** The canonical production graph now
-> uses `16/8/8`-byte node/edge/outcome records. An explicit working-set target
-> selects an exact OS-page-backed scaled-uint16 state only when the logical
-> state plus current residency cannot fit; zero keeps resident vectors. No
-> fixture key selects either path. Five-process maxima are AHKHQH
-> `7.790.592/8.000.000 B` PASS and TH7D6S
-> `363.569.152/399.000.000 B` PASS. A full TSTC9D convergence run is
-> `1.534.152.704/2.000.000.000 B` PASS. All three retain their exact dEV and
-> correctness results; TH and TST time parity remains separately red. The
-> report declares state residency and materialization requirements. Evidence:
-> [`../PEAK_RSS_AUDIT_2026-09-03.md`](../PEAK_RSS_AUDIT_2026-09-03.md).
+> **Correzione semantica memoria GTO+ — 2026-09-04.** I riferimenti
+> `8/399/2.000 MB` sono il campo UI “Memory needed for solving”, non Peak RSS e
+> non un limite desktop generale. La composizione interna GTO+ non è ancora
+> identificata; il confronto memoria è
+> `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I Peak RSS misurati nel recheck
+> 2026-09-03 (`7.790.592/363.569.152/1.534.152.704 B`) restano telemetria OS,
+> ma il claim storico `3/3 PASS` è ritirato. Il codice v3 continua
+> temporaneamente a emettere campi e selezioni page-backed derivati dal
+> contratto errato: non devono essere usati come autorità. Piano:
+> [`../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Production final-head — 2026-09-01, stato corrente.** La schedule comune
 > qualificata e' `production_dcfr`: exact alternating signed DCFR `1.5/0/3`,
@@ -20,33 +19,31 @@
 > `certification_interval=20` riproducono AHK/TH/TST a `80/80/160` iterazioni,
 > dEV `0,951423%/0,807956%/0,904505%` e mediana/p95 solver
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
-> `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, sotto il
-> cap stretto `<2 GiB` (`2.147.483.648 B`); full CTest Release corrente
+> `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
+> diagnostico senza cap normativo; full CTest Release corrente
 > `27/27 PASS` (`218,43 s`, 2026-09-02). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
 > [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **Contratto memoria per-fixture v3 — 2026-09-02.** Il gate ufficiale è
-> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`, con riferimenti
-> `8.000.000 / 399.000.000 / 2.000.000.000 B`. Il cap comune `<2 GiB` e
-> `solver_state_bytes` restano diagnostiche separate. La baseline five-process
-> qui registrata aveva AHK e TH in FAIL; il recheck architetturale successivo
-> sopra porta tutte e tre le fixture sotto la propria soglia. Il precedente contratto
-> 2 GiB è superseded:
-> [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> **Schema memoria v3 — legacy misclassified.** `peak_rss_bytes`,
+> `memory_gate` e `desktop_memory_gate` descrivono il comportamento ancora
+> implementato, ma i loro PASS/FAIL memoria sono semanticamente invalidi. La
+> migrazione v4 separerà riferimento GTO+, accounting solver-owned e memoria di
+> processo. Il precedente contratto 2 GiB è archiviato come evidenza:
+> [`../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,
 > probes and counterexample oracles are retained for reproducibility; the two
-> algorithmic paths are compile-time gated and default `OFF`, while strict-cap
+> algorithmic paths are compile-time gated and default `OFF`, while legacy strict-cap
 > profiling is opt-in. GTO+ black-box observation remains only partially
 > automatable and requires a manual marker. These paths do not change
 > `production_dcfr 1.5/0/3`. Evidence:
 > [`../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
-> [`../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
-> [`../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](../archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
 > [`../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
 > [`../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) and
 > [`../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
@@ -67,24 +64,29 @@
 > resta `1.5/0/2`; S6 resta STRONG RESEARCH BASELINE. Protocollo e misure:
 > [`../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Lazy-CFR feasibility — 2026-08-31.** La famiglia pubblicata è chiusa sotto
-> il contratto corrente come **LAZY FAMILY RAM BLOCKER**. Un solo accumulatore
+> **Lazy-CFR feasibility — 2026-08-31; blocker memoria ritirato.** La famiglia
+> era stata chiusa come **LAZY FAMILY RAM BLOCKER**. Un solo accumulatore
 > `float32` per i `145.524.152` infoset TST aggiungerebbe `582.096.608 B` e
-> porterebbe il peak ottimistico a `2.552.018.656 B`; le vere DS
+> portava il Peak RSS proiettato a `2.552.018.656 B`; le vere DS
 > `alpha/alpha_hat/beta` per history/history-action sono maggiori. Il bitset
 > nominalmente allocabile non rappresenta il residuo continuo del trigger.
-> Nessun trace, oracle, solve o target-driven è stato eseguito. Production
+> Nessun trace, oracle, solve o target-driven è stato eseguito. La dimensione
+> addizionale resta evidenza utile, ma non può più essere confrontata con un cap
+> desktop inesistente; la famiglia richiede una nuova valutazione dopo il ledger
+> solver-owned. Production
 > resta common `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH BASELINE.
 > Protocollo e lower bound:
 > [`../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Predictive-CFR feasibility — 2026-08-31.** PCFR+ e PDCFR+ sono chiusi
-> sotto il contratto corrente come **PREDICTIVE FAMILY EXHAUSTED UNDER THE
+> **Predictive-CFR feasibility — 2026-08-31; blocker memoria ritirato.** PCFR+
+> e PDCFR+ erano stati chiusi come **PREDICTIVE FAMILY EXHAUSTED UNDER THE
 > FROZEN RAM/STATE CONTRACT**. La policy predittiva non è ricostruibile dal
 > cumulative regret che deve sopravvivere all'update; la cumulative average è
 > anch'essa necessaria. Il lower bound TST `uint16(actions-infosets)` porta il
-> peak proiettato a `2.412.654.048 B` contro 2 GB. Nessun solve o target-driven
-> è stato autorizzato. Production resta common `1.5/0/2`; S6 `1.5/0/5` resta
+> Peak RSS proiettato a `2.412.654.048 B` contro il cap allora assunto. Quel
+> confronto non è più valido; il costo di stato resta misurato ma la famiglia
+> richiede un nuovo pre-gate memoria. Nessun solve o target-driven era stato
+> autorizzato. Production resta common `1.5/0/2`; S6 `1.5/0/5` resta
 > STRONG RESEARCH BASELINE. Protocollo e state proof:
 > [`../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
@@ -95,24 +97,22 @@
 > `1.5/0/2` rimane authority. Evidenza:
 > [`../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
 
-> **Constraint governance gate — 2026-08-31.** L'optimization research è
-> sospesa in attesa di una decisione esplicita. Il minimum resource-only
-> boundary è `>=1,615339x` effective speedup su traversal+exact BR; RAM-only
-> resta insufficiente, mentre la pair 8 B/action richiede cap raw
-> `>=3.432.437.888 B` e exact final certification `<=8,604297 s`. Questi sono
-> boundary E1/E2, non una promozione production né una modifica del benchmark.
-> Matrice, dominance e decisione richiesta:
+> **Constraint governance gate — 2026-08-31; frontier memoria ritirata.** Il
+> boundary temporale `>=1,615339x` resta una proiezione storica. Le alternative
+> RAM e la pair da `3.432.437.888 B` dipendevano dal falso cap e non sono più
+> requisiti correnti. Matrice e dominance storiche:
 > [`../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
 
 > **Real-node joint lower bound — 2026-08-31.** Il corpus production bounded
 > AHK/TH/TST è replay-fedele su code, scale e parent output. La precision
-> frontier elimina regret 16–24 bit per drift multi-step e float32 direct per
-> RAM (`6–8 B/action`); il producer materialization streaming vale soltanto
+> frontier elimina regret 16–24 bit per drift multi-step; il precedente scarto
+> RAM di float32 direct (`6–8 B/action`) è da rivalutare. Il producer
+> materialization streaming vale soltanto
 > ~`1,041x`. Le proiezioni TST sono `93,299454 s` ideal-state,
 > `168,036868 s` ideal-producer e `89,624835 s` joint ideal. Poiché nessun
-> punto realizzabile passa precisione, cap desktop e traversal
-> `<=96,208089 s`, la famiglia è chiusa come strada primaria e non autorizza
-> altri codec o full target-driven. Il confronto peak-RSS-vs-GTO+ non cambia.
+> nessun punto studiato passava insieme precisione e traversal
+> `<=96,208089 s`; le conclusioni esclusivamente temporali restano storiche,
+> mentre il memory kill gate è ritirato.
 > Protocollo, frontier e ledger:
 > [`../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
 
@@ -152,9 +152,9 @@
 > `208,111772 s`. I limiti sono rispettivamente `1,900000 s`, `19,622222 s` e
 > `128,988889 s`: AHK/TH time PASS, TST time FAIL di `79,122883 s`
 > (`1,613409x`, `+61,3409%`). TST traversal/certification sono
-> `174,926380 / 32,780800 s`. Tutte e tre passano dEV, Root,
-> `solver_state_bytes` e cap desktop 2 GB; il distinto `memory_gate`
-> peak-RSS-vs-GTO+ fallisce per AHK/TH e passa per TST. La fonte completa è
+> `174,926380 / 32,780800 s`. Tutte e tre passano dEV e Root; stato e Peak RSS
+> sono misure diagnostiche. Le classificazioni memoria storiche sono ritirate.
+> La fonte completa è
 > [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](../OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
 > **Correzione root-analysis 2026-08-30.** Il Root FAIL AHKHQH della baseline
@@ -193,11 +193,15 @@ Il solver pubblica almeno:
 - physical/canonical nodes, infoset e actions;
 - normalized NashConv o maximum deviation;
 - byte di regret e strategy sum;
-- transient workspace e peak RSS come metriche separate.
+- memoria solver-owned prevista e osservata, quando il ledger sarà disponibile;
+- transient workspace, mapping logico, Peak RSS e private bytes come metriche
+  separate.
 
-Il contratto v3 tratta il valore di memoria GTO+ come riferimento peak RSS
-per-fixture. Cache, layout, scratch, allocator e certificazione fanno quindi
-parte della misura GTOSD. `solver_state_bytes` resta un dato di attribuzione.
+Il valore GTO+ “Memory needed for solving” è conservato con label, unità e
+precisione visualizzata. Finché non è identificato il suo perimetro, nessuna
+metrica GTOSD decide un PASS/FAIL memoria. Il contratto v3 che lo tratta come
+Peak RSS è legacy e sarà sostituito; `solver_state_bytes` resta un dato parziale
+di attribuzione.
 
 ## Fixture di parità
 
@@ -210,21 +214,21 @@ indipendenti e produce report versionati. Il confronto primario usa la mediana
 di cinque run e pubblica anche p95 e ogni campione.
 
 La specifica generica v3 (`gtosd.gto_plus_convergence_benchmark.v3`) permette
-di registrare nuovi benchmark di convergenza senza modifiche al codice: board,
+di registrare benchmark diagnostici di convergenza senza modifiche al codice: board,
 range, stack-to-pot, sizing, raise depth e nodi di riferimento EV/frequenze
 sono letti dalla fixture (`benchmarks/fixtures/gto_plus_ahkhqh_101.json` è la
-validazione v3 dello scenario 003). Ogni nuovo benchmark mantiene il proprio
-riferimento GTO+ e i propri gate.
+validazione v3 dello scenario 003). Nuovi benchmark ufficiali memoria restano
+sospesi fino allo schema v4.
 
 Baseline storica AHKHQH documentata (re-baseline 2026-08-05, regola all-in
 naturale):
 
 - GTO+ operativo: 1,71 s a dEV 0,98%, memoria solver 8 MB;
 - GTOSD: mediana 3,128 s, p95 3,271 s (cinque run, albero 165.774 nodi);
-- GTOSD state `Float32`: 6.677.088 byte (più vicino agli 8 MB GTO+ del
-  precedente 4.214.976 byte);
+- GTOSD state `Float32`: 6.677.088 byte, misura parziale non confrontabile con
+  il display GTO+ da 8 MB;
 - gate tempo `<=1,900000 s`: FAIL;
-- gate memoria `<=8.888.889 byte`: PASS;
+- confronto memoria: `NOT_EVALUATED`;
 - gate correttezza (`correctness_gate`, EV del nodo root): PASS dal 2026-08-02;
   gli EV BTN condizionali e le frequenze restano diagnostica (con il root lock
   F10.4 i delta BTN scendono a +0,0348 / +0,0366 ante,
@@ -235,7 +239,7 @@ riferimento operativo senza ridefinire l'intero protocollo.
 
 ## Checkpoint storico della suite — 2026-08-14
 
-Stato di chiusura RAM: i tre scenari sono stati rieseguiti separatamente sul
+Checkpoint storico dello stato persistente: i tre scenari sono stati rieseguiti separatamente sul
 build Release `out/build/windows-release-current` con il formato core packed
 `Float13RegretFloat11Strategy` (3 byte/action, compute float64). La fixture v2
 AHKHQH-101 è la validazione eseguibile dello scenario canonico 003; il vecchio
@@ -244,18 +248,17 @@ ricompilato `gto_cli` e il riferimento GTO+ e ha eseguito quest'ultimo con esito
 PASS; il 16/16 CTest del 2026-08-13 è evidenza precedente e non viene presentato
 come nuova esecuzione sul checkpoint odierno.
 
-| Benchmark | dEV GTOSD | Root EV GTOSD / GTO+ | Tempo / limite 90% | Solver state / GTO+ | Stato |
+| Benchmark | dEV GTOSD | Root EV GTOSD / GTO+ | Tempo / limite 90% | Solver state / display GTO+ non comparabile | Stato |
 |---|---:|---:|---:|---:|---|
-| `GTP-AHKHQH-101` (scenario 003) | 0,982960% @ 100 | 19,123322 / 19,15 | 4,970917 s / 1,900000 s | 2.503.908 B / 8.000.000 B | dEV/root/RAM PASS; tempo FAIL |
-| `GTP-TH7D6S-101` | 0,986976% @ 82 | 8,220073 / 8,22198 | 37,810434 s / 19,622222 s | 249.955.776 B / 399.000.000 B | dEV/root/RAM PASS; tempo FAIL |
-| `GTP-TSTC9D-101` | 0,983565% @ 200 | 8,498226 / 8,50165 | 690,307523 s / 120,600000 s | 1.747.903.656 B / 2.000.000.000 B | dEV/root/RAM PASS; tempo FAIL; metadata incompleti |
+| `GTP-AHKHQH-101` (scenario 003) | 0,982960% @ 100 | 19,123322 / 19,15 | 4,970917 s / 1,900000 s | 2.503.908 B / 8.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL |
+| `GTP-TH7D6S-101` | 0,986976% @ 82 | 8,220073 / 8,22198 | 37,810434 s / 19,622222 s | 249.955.776 B / 399.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL |
+| `GTP-TSTC9D-101` | 0,983565% @ 200 | 8,498226 / 8,50165 | 690,307523 s / 120,600000 s | 1.747.903.656 B / 2.000.000.000 B | dEV/root PASS; memoria N/E; tempo FAIL; metadata incompleti |
 
-Questi sono singoli run storici, non mediane temporali. La colonna RAM misura
-soltanto `solver_state_bytes` e non dimostra più il gate memoria: l'utente ha
-chiarito che il valore GTO+ copre l'intero solve. Il contratto corrente usa
-quindi `peak_rss_bytes` per `memory_gate` e pubblica separatamente lo stato. I
-due report TSTC9D citati misuravano peak RSS di 3.166.359.552 e 3.173.212.160
-byte e devono essere letti come RAM FAIL. La sostituzione architetturale è
+Questi sono singoli run storici, non mediane temporali. La colonna memoria
+accosta due metriche non equivalenti soltanto per preservare il dato originario;
+non dimostra un gate. I due report TSTC9D citati misuravano Peak RSS di
+3.166.359.552 e 3.173.212.160 byte: sono osservazioni del processo, non FAIL
+rispetto al display GTO+. La sostituzione architetturale è
 definita in
 [`ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md`](../ADR_0002_MEMORY_BOUNDED_EXACT_SOLVER.md).
 
@@ -345,8 +348,8 @@ riferimento di chiusura della sessione:
 | Preparazione tree fuori timer | 26,546558 s | — |
 | Wall con preparazione | 179,722909 s | — |
 
-dEV `0,9857595%`, root EV `8,4925400` (delta `-0,0091100`), peak RSS
-`1.968.537.600 B` e stato `1.472.605.376 B` passano. Il tempo fallisce sia il
+dEV `0,9857595%` e root EV `8,4925400` (delta `-0,0091100`) passano; Peak RSS
+`1.968.537.600 B` e stato `1.472.605.376 B` sono diagnostici. Il tempo fallisce sia il
 riferimento grezzo `116,09 s` (`+37,086351 s`, `+31,95%`) sia il limite con
 margine `128,988889 s` (`+24,187462 s`, `+18,75%`). Report:
 `out/tstc9d_session_final_alpha1_9_gamma3_iter170.json`.
@@ -417,8 +420,8 @@ Il preflight layout-only del 2026-08-27 non è un benchmark di solving ma
 fornisce un conteggio strutturale verificato per TSTC9D: 1.758.624 nodi
 canonici, 145.524.152 infoset e 366.890.152 action entry. Il modello da 3
 byte/action stima 1,516-1,546 GB complessivi per 1-8 worker; quello `i16/u16`
-da 4 byte stima 1,888-1,918 GB. Entrambi restano sotto 2 GB, ma solo il primo
-rispetta il target interno di 1,8 GB. Il report è
+da 4 byte stima 1,888-1,918 GB. Questi valori restano stime architetturali; i
+precedenti giudizi rispetto a 1,8/2 GB non sono gate correnti. Il report è
 `out/tstc9d_canonical_layout.json`; le cifre non sostituiscono il peak RSS del
 solve completo.
 
@@ -476,14 +479,15 @@ benchmark non superano i rispettivi gate.
 I numeri seguenti documentano una tappa precedente e sono superati dal
 checkpoint di suite del 2026-08-09 riportato sopra.
 
-Il secondo gate comparativo corrente è `GTP-TH7D6S-101`. I riferimenti GTO+
-sono 17,66 s e 399 MB; per raggiungere almeno il 90% servono quindi tempo
-`<=19,622222 s` e stato solver `<=443.333.333 B`.
+Il secondo benchmark comparativo è `GTP-TH7D6S-101`. I riferimenti GTO+ sono
+17,66 s e il display “Memory needed for solving” da 399 MB; il gate tempo al
+90% è `<=19,622222 s`, mentre non esiste ancora una soglia memoria GTOSD
+comparabile.
 
 - stato mixed lossless: regret float24, average strategy binary16, calcolo e
   certificazione float64;
-- stato solver: **416.592.960 B**, quindi gate RAM PASS; peak RSS è pubblicato
-  separatamente e non sostituisce questa metrica;
+- stato solver: **416.592.960 B**, dato parziale di attribuzione; Peak RSS è
+  pubblicato separatamente e nessuno dei due decide il confronto GTO+;
 - miglior full comparabile corrente: **86,1059943 s**, traversal
   **79,7679045 s**, certificazione **5,7897606 s**, iterazione 140;
 - dEV **0,9260452878479758%**, root EV **8,219182737421068 ante**,

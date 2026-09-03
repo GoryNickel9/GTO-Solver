@@ -1,52 +1,50 @@
 # Stato implementazione roadmap HU Short Deck
 
-> **Peak-RSS closure 2026-09-03 — stato corrente.** Il gate per-fixture passa
-> 3/3 senza dispatch per benchmark: AHKHQH max cinque processi
-> `7.790.592/8.000.000 B`, TH7D6S max cinque processi
-> `363.569.152/399.000.000 B`, TSTC9D full-convergence
-> `1.534.152.704/2.000.000.000 B`. AHK seleziona genericamente lo stato exact
-> OS-page-backed perché `RSS corrente + stato logico` supera il suo target; TH
-> e TST conservano vettori residenti. Stato, dEV, root/layout e exact outcomes
-> restano invariati. Release CTest `28/28 PASS` in `198,25 s`; Phase 10
-> `10.660` assert e riferimento GTO+ `24/24 PASS`. I gate tempo TH/TST restano
-> rossi, quindi la parità complessiva non è ancora chiusa. Questo blocco
-> supersede le sole classificazioni memoria nei checkpoint precedenti. Report:
-> [`PEAK_RSS_AUDIT_2026-09-03.md`](PEAK_RSS_AUDIT_2026-09-03.md).
+> **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
+> `8/399/2.000 MB` sono il campo UI “Memory needed for solving”, non Peak RSS e
+> non un cap desktop generale. La loro composizione interna non è ancora
+> identificata; il confronto memoria è quindi
+> `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I Peak RSS GTOSD osservati nel
+> recheck 2026-09-03 (`7.790.592 B`, `363.569.152 B`, `1.534.152.704 B`) restano
+> telemetria OS valida, ma il precedente claim `3/3 PASS` è ritirato. Anche il
+> backend page-backed selezionato dal riferimento della fixture è una
+> conseguenza del contratto errato e non costituisce parità memoria. Stato,
+> dEV, root/layout, exact outcomes e test restano invariati. Piano e autorità:
+> [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Production DCFR integration 2026-09-01 — stato corrente.** Il contratto
 > comune AHK/TH/TST e' ora `production_dcfr`: exact alternating signed DCFR
 > `1.5/0/3`, reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di
 > una iterazione, delay zero, `ScaledUint16RegretStrategy`, CPU-only e massimo
 > otto thread. Cinque processi final-head auditabili (`r2-r6`) passano `15/15`
-> solve con dEV `<1%`, correctness/layout/exact outcomes e peak TST sotto il
-> cap stretto `<2 GiB` (`2.147.483.648 B`).
+> solve con dEV `<1%`, correctness/layout/exact outcomes; il Peak RSS TST
+> registrato resta diagnostico e non è sottoposto a un cap normativo.
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
 > `27/27 PASS` (`218,43 s`, 2026-09-02).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
-> il fresh audit v3 fallisce la memoria AHK/TH. Report:
+> la memoria non è valutabile finché la metrica non è equivalente. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **Contratto memoria per-fixture v3 — 2026-09-02:** il gate GTO+ ufficiale è
-> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`, rispettivamente
-> `8.000.000 / 399.000.000 / 2.000.000.000 B`. `solver_state_bytes` e il check
-> desktop comune `<2 GiB` restano metriche separate; quest'ultimo non decide la
-> parità. Sul fresh five-process audit i peak sono
-> `166.789.120 / 799.059.968 / 1.970.229.248 B`: AHK e TH FAIL, TST PASS.
-> Il documento sul contratto 2 GiB resta evidenza storica, ora superseded.
+> **Schema memoria v3 — legacy misclassified dal 2026-09-04.** Il codice
+> corrente conserva ancora `gto_plus_reference.peak_rss_bytes`, `memory_gate` e
+> `desktop_memory_gate`, ma tali nomi e i relativi PASS/FAIL non sono più
+> autorità semantica. I valori devono essere letti come riferimenti al campo UI
+> GTO+; i Peak RSS misurati sono diagnostici. La migrazione v4 rimuoverà il falso
+> confronto e non introdurrà un nuovo cap implicito.
 
 > **Consolidamento ricerca 2026-09-02:** tooling e prove dei branch isolati
 > sono ora versionati su `main`, senza modificare i default production. S6
 > resta respinto. Pure/Sync-PCFR e range-aware physical-orbit sono oracle
-> compile-time gated e default `OFF`; il profiling strict-cap è opt-in. Il
+> compile-time gated e default `OFF`; il profiling legacy strict-cap è opt-in. Il
 > controesempio range-aware impedisce la promozione della famiglia
 > physical-orbit con range asimmetrici. Il workflow black-box GTO+ è
 > `PARTIALLY AUTOMATABLE` e richiede un marker manuale. Report:
 > [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
-> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
-> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
 > [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
 > [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
 > [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
@@ -67,22 +65,24 @@
 > BASELINE. Report:
 > [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Lazy-CFR decision 2026-08-31:** **LAZY FAMILY RAM BLOCKER.** La regola
+> **Lazy-CFR decision 2026-08-31 — memory blocker ritirato.** La regola
 > exact `m(I)>=B` richiede un accumulatore di reach pending distinto per
 > infoset; il path pubblicato è ancora più grande perché usa state
-> history/history-action. Il lower bound `float32/infoset` porta TST da
-> `1.969.922.048 B` a `2.552.018.656 B`, quindi nessun trace, oracle o solver
-> candidate è stato autorizzato. Una composizione Lazy-DCFR/S6 non ha una
+> history/history-action. Il lower bound `float32/infoset` portava il Peak RSS
+> TST da `1.969.922.048 B` a `2.552.018.656 B`; nessun trace, oracle o solver
+> candidate era stato autorizzato. Il confronto con il falso cap è ritirato e
+> richiede un nuovo pre-gate. Una composizione Lazy-DCFR/S6 non ha una
 > derivazione primaria sound. Production resta `1.5/0/2`; S6 `1.5/0/5` resta
 > STRONG RESEARCH BASELINE. Report:
 > [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
-> **Predictive-CFR decision 2026-08-31:** **PREDICTIVE FAMILY EXHAUSTED UNDER
-> THE FROZEN RAM/STATE CONTRACT.** Il predictor PCFR+/PDCFR+ separa policy
+> **Predictive-CFR decision 2026-08-31 — memory blocker ritirato.** Il predictor
+> PCFR+/PDCFR+ separa policy
 > corrente predetta e cumulative regret; cumulative average occupa già il
-> secondo payload production. Il lower bound TST aggiunge `442.732.000 B` e
-> proietta `2.412.654.048 B` peak, quindi nessun solver candidate è stato
-> autorizzato. Oracle formula 169/169 PASS; nessun enum/dispatch production.
+> secondo payload production. Il lower bound TST aggiungeva `442.732.000 B` e
+> proiettava `2.412.654.048 B` Peak RSS contro il cap allora assunto. Quel kill
+> gate è ritirato; nessun solver candidate era stato autorizzato. Oracle formula
+> 169/169 PASS; nessun enum/dispatch production.
 > Production resta `1.5/0/2`, S6 `1.5/0/5` resta STRONG RESEARCH BASELINE.
 > Report: [`EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
@@ -92,19 +92,17 @@
 > contratto globale resta signed DCFR `1.5/0/2`. Dettagli:
 > [`COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
 
-> **Constraint governance 2026-08-31:** optimization research in pausa. Il
-> gate quantitativo conclude che RAM-only e certification-only non chiudono
-> TST. La minima single relaxation plausibile è hardware S1 con speedup
-> effettivo traversal+BR `>=1,615339x`; la prima pair è RAM raw
-> `>=3.432.437.888 B` più exact final BR `<=8,604297 s`. Sono requisiti di
-> governance, non nuovi contratti production. Dettagli e Pareto frontier in
+> **Constraint governance 2026-08-31 — memoria superseded.** Il tempo e i costi
+> misurati restano evidenza storica, ma la frontier che assumeva un cap RAM
+> desktop non è più una decisione corrente e deve essere ricalcolata dopo la
+> definizione della metrica solver-owned. Dettagli storici in
 > [`CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
 
 > **Real-node replay decision 2026-08-31:** **JOINT STATE/PRODUCER
-> LOWER-BOUND BLOCKER** sotto contratto e cap correnti. Il corpus bounded AHK,
+> LOWER-BOUND BLOCKER** nel contratto storico. Il corpus bounded AHK,
 > TH e TST ha replay autorevole byte/bit-identico. Precisioni regret 16–24 bit
 > mostrano drift/outlier multi-step; float32 regret è stabile ma le varianti
-> direct `6–8 B/action` falliscono il cap desktop TST. Il producer streaming
+> direct `6–8 B/action` fallivano il cap allora assunto. Il producer streaming
 > isolato ha ceiling misurato ~`1,041x` e proietta `168,036868 s`; nessun
 > candidate supera insieme numerical, RAM e time gates. Non sono stati
 > eseguiti solver probe candidate né target-driven. Il prossimo passo è un gate
@@ -145,8 +143,8 @@
 > `0,670928 s`, TH7D6S @80 in `17,645055 s`, entrambi time PASS; TSTC9D chiude
 > @202 in `208,111772 s` contro `128,988889 s`, time FAIL di `79,122883 s`
 > (`+61,3409%`). Tutte passano dEV, Root, payoff-sum, layout, convergence e
-> `solver_state_bytes`. Peak RSS resta distinto: tutte rientrano nel cap desktop
-> 2 GB, ma il `memory_gate` peak-RSS-vs-GTO+ fallisce per AHK e TH. Full CTest
+> `solver_state_bytes`. Peak RSS resta un dato distinto; le classificazioni
+> memoria allora pubblicate sono ora semanticamente invalide. Full CTest
 > finale 21/21 PASS. La matrice e gli artifact sono in
 > `OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`.
 

@@ -1,5 +1,11 @@
 # Peak RSS audit — 2026-09-03
 
+> **ARCHIVIATO 2026-09-04 — CONCLUSIONE MEMORIA INVALIDA.** Questo report
+> confrontava Peak RSS con “Memory needed for solving”, che è una stima interna
+> GTO+ di composizione non identificata. Il claim `3/3 PASS` è ritirato; misure
+> OS e modifiche generiche restano evidenza. Non esiste un cap desktop `<2 GiB`.
+> Vedere il [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Scope and invariants
 
 This audit targets the per-fixture GTO+ `peak_rss_bytes` gates without changing

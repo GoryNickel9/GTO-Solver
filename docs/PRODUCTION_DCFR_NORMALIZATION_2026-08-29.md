@@ -1,5 +1,10 @@
 # Normalizzazione del contratto production DCFR — 2026-08-29/30
 
+> **CORREZIONE SEMANTICA 2026-09-04.** Il contratto matematico, dEV, EV e tempi
+> restano evidenza storica. La colonna Peak RSS/riferimento e i relativi
+> PASS/FAIL confrontavano metriche diverse e sono ritirati. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **Correzione successiva 2026-08-30.** Il Root FAIL AHKHQH documentato in
 > questo report era prodotto dall'analisi prepared del root sul browser fisico,
 > non da un floor signed/packed. Certification e direct canonical analysis erano

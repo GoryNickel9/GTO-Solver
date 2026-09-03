@@ -1,5 +1,11 @@
 # Objective-Driven Gate Closure — 2026-08-30
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** I termini Peak RSS
+> della funzione obiettivo, il cap desktop e i PASS/FAIL contro il display GTO+
+> non sono comparabili e sono ritirati. Correttezza, dEV, root, timing e misure
+> OS grezze restano evidenza. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. Provenienza e stato iniziale
 
 - branch: `main`;

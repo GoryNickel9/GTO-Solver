@@ -1,5 +1,11 @@
 # Strict 2 GB exact-algorithm recheck
 
+> **ARCHIVIATO 2026-09-04 — CONTRATTO MEMORIA RITIRATO.** Il cap Peak RSS
+> `<2.000.000.000 B` non era un requisito desktop: era il display GTO+ TSTC9D
+> “Memory needed for solving”. Le prove algoritmiche e temporali restano
+> evidenza; gli scarti memory-based richiedono rivalutazione. Vedere il
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 Data: 2026-09-01
 
 Fixture: `GTP-AHKHQH-003`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`

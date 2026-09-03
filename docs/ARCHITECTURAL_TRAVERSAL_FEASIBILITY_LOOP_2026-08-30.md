@@ -1,5 +1,12 @@
 # Architectural Traversal/Dataflow Feasibility Loop — 2026-08-30
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Il cap desktop 2 GB
+> usato in questo studio non è mai stato un requisito indipendente. Le misure e
+> i ceiling temporali restano evidenza; classificazioni e scarti che dipendono
+> dal cap memoria devono essere rivalutati con la futura metrica solver-owned.
+> Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## 1. Stato iniziale
 
 - branch: `main`;

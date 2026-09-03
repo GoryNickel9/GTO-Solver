@@ -1,5 +1,11 @@
 # DCFR epoch-reset gamma=3 feasibility — 2026-09-01
 
+> **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Schedule, dEV e tempi
+> restano evidenza. Il vincolo Peak RSS `<2.000.000.000 B` e i relativi PASS
+> erano basati sul display TSTC9D “Memory needed for solving” e non sono
+> normativi. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Analisi
 
 Obiettivo: verificare se la schedule usata da `b-inary/postflop-solver` può

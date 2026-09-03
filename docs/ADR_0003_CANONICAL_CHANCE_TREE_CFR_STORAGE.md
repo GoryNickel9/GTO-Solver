@@ -3,13 +3,19 @@
 Status: **accepted; node-owned traversal implemented, production benchmark pending**
 Date: 2026-08-27
 
+> **Memory-metric amendment 2026-09-04.** The architecture remains accepted,
+> but “Memory needed for solving” is not a process Peak RSS cap. Any memory-gate
+> wording below is historical; topology and state-size evidence remains valid.
+> See
+> [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 ## Context
 
 The TSTC9D physical-tree solve exceeded 12 GB and did not complete within the
 600-second benchmark window. The lossless layout compiler subsequently counted
 2,791,872 physical public nodes, 1,758,624 canonical public nodes,
 145,524,152 information sets and 366,890,152 action entries. This shows that
-the target state fits near the GTO+ memory class only if the solver does not
+the target state has a materially lower footprint if the solver does not
 materialize independent double-precision regret and strategy arrays for the
 physical tree.
 
@@ -141,6 +147,6 @@ schemas remain reusable.
 
 The traversal and ownership model are now implemented, but the runtime builder
 still creates the physical public tree before compiling the canonical tree.
-Therefore the steady-state architecture is validated while the TSTC9D peak-RSS
-gate is not: the next implementation slice is a direct streaming canonical
+Therefore the steady-state architecture is validated while process Peak RSS
+remains diagnostic: the next implementation slice is a direct streaming canonical
 compiler that never materializes the full physical tree.

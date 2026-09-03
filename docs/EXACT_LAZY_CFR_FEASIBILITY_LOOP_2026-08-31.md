@@ -1,5 +1,12 @@
 # Exact Lazy-CFR / Lazy-CFR+ Feasibility + Work-Reduction Objective Loop
 
+> **CORREZIONE SEMANTICA 2026-09-04 — RAM BLOCKER RITIRATO.** Il lower bound
+> addizionale resta utile, ma il cap contro cui fu confrontato non è mai stato
+> un requisito desktop indipendente. L'esito `LAZY FAMILY RAM BLOCKER` non è più
+> una decisione corrente; la famiglia richiede un nuovo pre-gate dopo
+> l'accounting solver-owned. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 Data: 2026-08-31
 Decisione: **LAZY FAMILY RAM BLOCKER — nessuna implementazione solver, nessuna promozione production**
 

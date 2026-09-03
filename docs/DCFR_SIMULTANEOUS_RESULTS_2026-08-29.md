@@ -1,5 +1,10 @@
 # DCFR alternating vs simultaneous - risultati 2026-08-29
 
+> **CORREZIONE SEMANTICA 2026-09-04.** Il REJECT prestazionale del percorso
+> simultaneous resta valido; le classificazioni RAM rispetto a 2.000.000.000 B
+> sono storiche e non normative. Vedere il
+> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+
 > **Esperimento storico/superseded per la baseline production.** I risultati
 > sotto usano i profili precedenti alla normalizzazione comune. La decisione
 > alternating vs simultaneous resta valida per l'esperimento, ma tempi e curve

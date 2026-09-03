@@ -10,16 +10,17 @@ finite.
 
 ## Limiti di parità
 
-- dEV, root EV, layout, exact outcomes, `solver_state_bytes`, cap desktop e
-  Peak RSS per-fixture passano sui tre benchmark correnti; i gate velocità TH
-  e TST falliscono.
+- dEV, root EV, layout ed exact outcomes passano sui tre benchmark correnti; i
+  gate velocità TH e TST falliscono.
 - Cinque processi final-head producono mediane/p95 AHK
   0,758705/0,790918 s, TH 19,948228/24,192260 s e TST
   184,095930/197,865030 s contro limiti 1,900000 / 19,622222 / 128,988889 s.
   TH e TST falliscono sia mediana sia p95; la mediana TH supera il limite del
-  `1,661%`, quella TST del `42,722%`. Il recheck memoria 2026-09-03 misura
-  massimi AHK/TH `7.790.592/363.569.152 B` e TST full-convergence
-  `1.534.152.704 B`, tutti sotto i rispettivi riferimenti GTO+.
+  `1,661%`, quella TST del `42,722%`.
+- La parità memoria non è attualmente valutabile. I valori GTO+ `8/399/2.000
+  MB` provengono da “Memory needed for solving”, la cui composizione interna è
+  ignota; i Peak RSS GTOSD `7.790.592/363.569.152/1.534.152.704 B` sono soltanto
+  telemetria OS. Non esiste un cap desktop `<2 GiB` indipendente.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
 - F10.4 controlled-posterior è implementata esclusivamente come diagnostica
@@ -36,9 +37,11 @@ architettura. Sono esclusi backend CUDA, ROCm, OpenCL, Vulkan Compute,
 DirectCompute e tecnologie equivalenti. La GPU può essere usata esclusivamente
 dal sistema grafico per renderizzare la GUI, senza partecipare ai calcoli.
 Il target di working set opzionale può affidare la residenza delle pagine al
-sistema operativo e quindi causare paging locale. Questo non è un backend di
-calcolo esterno, ma non garantisce che ogni byte resti fisicamente residente in
-RAM; chi richiede tale garanzia deve usare il target zero e i vettori residenti.
+sistema operativo e quindi causare paging locale. Il wiring benchmark corrente
+lo deriva impropriamente dal riferimento GTO+ e deve essere rimosso. Se il
+backend resterà disponibile come funzione di prodotto, richiederà un budget
+utente esplicito; in ogni caso il backing logico completo deve essere
+contabilizzato e non può ridurre la metrica comparabile.
 
 ## Funzioni non ancora supportate
 

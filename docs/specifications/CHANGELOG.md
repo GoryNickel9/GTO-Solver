@@ -3,6 +3,30 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-09-04
+
+### Corretto
+
+- Riclassificati `8 MB`, `399 MB` e `2.000 MB` come valori del campo GTO+
+  “Memory needed for solving”, non come Peak RSS del processo.
+- Eliminata dalla documentazione normativa l'esistenza di un cap desktop
+  indipendente `<2 GiB`: il valore `2.000 MB` appartiene esclusivamente alla
+  fixture TSTC9D.
+- Sospeso il confronto memoria GTO+ con stato
+  `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; Peak RSS, private bytes e stato
+  persistente restano telemetrie separate senza PASS/FAIL comparativo.
+- Marcati come semanticamente invalidi i PASS/FAIL memoria prodotti dagli
+  schema v3 ancora implementati; correttezza, convergenza e tempo conservano la
+  propria validità indipendente.
+- Archiviati, senza cancellarne i dati, i report il cui oggetto principale era
+  il falso gate Peak RSS/2 GB; i report misti conservano le evidenze con una
+  errata corrige in apertura.
+
+### Pianificato, non ancora implementato
+
+- Fixture/report v4, ledger solver-owned e rimozione del wiring page-backed dal
+  riferimento GTO+ restano interventi di codice successivi.
+
 ## 2026-09-03
 
 ### Aggiornato
@@ -11,8 +35,9 @@ sostituisce la cronologia Git né i report di fase.
   production, senza materializzare il secondo albero fisico durante il solve.
 - Sovrapposti gli offset mutuamente esclusivi del decision layout e rimossi gli
   accumulatori showdown del tipo scalare non usato da ogni traversal.
-- Aggiornato lo stato Peak RSS per-fixture: i run intermedi portavano TH7D6S e
-  il probe TSTC9D in PASS; il gate finale passa 3/3.
+- Storicamente aggiornato lo stato Peak RSS per-fixture; la successiva
+  correzione del 2026-09-04 invalida la classificazione comparativa 3/3 ma non
+  le misure OS grezze.
 - Compattati i record canonici node/edge/outcome a `16/8/8` byte e rimossi
   indici temporanei e hash table non necessari dal compilatore streaming.
 - Aggiunto un backend exact OS-page-backed selezionato soltanto da un target di
@@ -26,9 +51,10 @@ sostituisce la cronologia Git né i report di fase.
 - Build Release completa e CTest `28/28 PASS` in `198,25 s`.
 - Phase 10 `10.660` assert, riferimento GTO+ `24/24` e controesempio orbit
   asimmetrico `11/11` PASS.
-- Peak RSS finale: AHKHQH max cinque processi `7.790.592 B`, TH7D6S max cinque
-  processi `363.569.152 B`, TSTC9D full-convergence `1.534.152.704 B`; gate
-  memoria 3/3 e correttezza 3/3 PASS, nessun dispatch per fixture.
+- Peak RSS finale osservato: AHKHQH max cinque processi `7.790.592 B`, TH7D6S
+  max cinque processi `363.569.152 B`, TSTC9D full-convergence
+  `1.534.152.704 B`. Sono dati diagnostici; il claim storico “gate memoria 3/3”
+  è superseded dalla correzione del 2026-09-04. Correttezza 3/3 resta PASS.
 
 ## 2026-09-02
 
