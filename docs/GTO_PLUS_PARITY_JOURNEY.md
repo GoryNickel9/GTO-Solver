@@ -23,23 +23,25 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `1.969.860.608 B < 2.147.483.648 B`; state TST `1.472.605.376 B`.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
 > Full CTest Release corrente `27/27 PASS` (`218,43 s`, 2026-09-02).
+> Il contratto memoria v3 riclassifica il massimo peak RSS contro il riferimento
+> della singola fixture: AHK `166.789.120/8.000.000 B` FAIL, TH
+> `799.059.968/399.000.000 B` FAIL, TST
+> `1.970.229.248/2.000.000.000 B` PASS. Il check `<2 GiB` resta diagnostico.
 >
 > La promozione migliora la Release comune precedente ed elimina il suo FAIL
 > di correttezza AHK, ma **non** chiude la parita' temporale GTO+. La mediana TH
 > `19,948228 s` supera `19,622222 s` di `0,326006 s` (`1,661%`); la mediana TST
 > `184,095930 s` supera `128,988889 s` del `42,722%`. Il parity gate
-> complessivo resta quindi bloccante su TH e TST. Evidenza e protocollo:
+> complessivo resta bloccante: la run final-head storica fallisce i tempi TH e
+> TST, mentre il fresh audit v3 fallisce la memoria AHK e TH. Evidenza e protocollo:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
 > `out/production-final-head-20260901/`.
 
-> **2 GiB resource contract 2026-09-01.** Il cap di processo comune è
-> `peak_rss_bytes < 2.147.483.648 B`; `solver_memory_bytes` resta un riferimento
-> esterno/stato e non un limite RSS. Il probe GTO+ TST passa il nuovo cap a
-> `2.061.889.536 B`; pot iniziale `16` conferma la normalizzazione dEV
-> `0,146 -> 0,9125% -> 0,91%`. K8/K16/K32 diventano RAM-feasible ma restano
-> chiusi perché regressivi nel throughput. Production resta
-> `production_dcfr 1.5/0/3`; il gate complessivo resta bloccato dai tempi TH e
-> TST. Evidenza:
+> **Contratto memoria per-fixture v3 2026-09-02.** Il gate ufficiale è
+> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`; stato solver e cap
+> desktop sono diagnostiche separate. Il precedente contratto 2 GiB resta
+> evidenza storica, superseded. Production resta genericamente
+> `production_dcfr 1.5/0/3`; nessun parametro dipende dalla fixture. Evidenza:
 > [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research evidence consolidation 2026-09-02.** I branch isolati sono stati

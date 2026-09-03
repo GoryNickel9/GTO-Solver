@@ -1,5 +1,5 @@
 {
-  "schema": "gtosd.gto_plus_convergence_benchmark.v2",
+  "schema": "gtosd.gto_plus_convergence_benchmark.v3",
   "benchmark_id": "GTP-TH7D6S-991",
   "source": "GTO+",
   "fixture": {
@@ -32,7 +32,7 @@
   },
   "gto_plus_reference": {
     "elapsed_seconds": 17.66,
-    "solver_memory_bytes": 399000000,
+    "peak_rss_bytes": 399000000,
     "memory_unit": "decimal_mb",
     "target_dev_percent": 1.0,
     "target_definition": "maximum unilateral best-response gain divided by the initial pot",

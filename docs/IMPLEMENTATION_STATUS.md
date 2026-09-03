@@ -12,18 +12,17 @@
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
 > `27/27 PASS` (`218,43 s`, 2026-09-02).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
-> GTO+ resta non superato per i tempi TH e TST: mediane rispettivamente
-> `1,661%` e `42,722%` sopra i limiti. Report:
+> GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
+> il fresh audit v3 fallisce la memoria AHK/TH. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **2 GiB resource contract 2026-09-01:** il gate operativo è
-> `peak_rss_bytes < 2.147.483.648 B`, distinto dai riferimenti esterni di
-> `solver_state_bytes`. Il probe GTO+ TST misura peak working set
-> `2.061.889.536 B` e passa con `85.594.112 B` di margine; pot `16` conferma
-> `0,146 / 16 = 0,9125%`, visualizzato `0,91%`. K8/K16/K32 diventano
-> RAM-feasible ma restano respinti per throughput. Production resta
-> `production_dcfr 1.5/0/3`. Report:
-> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> **Contratto memoria per-fixture v3 — 2026-09-02:** il gate GTO+ ufficiale è
+> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`, rispettivamente
+> `8.000.000 / 399.000.000 / 2.000.000.000 B`. `solver_state_bytes` e il check
+> desktop comune `<2 GiB` restano metriche separate; quest'ultimo non decide la
+> parità. Sul fresh five-process audit i peak sono
+> `166.789.120 / 799.059.968 / 1.970.229.248 B`: AHK e TH FAIL, TST PASS.
+> Il documento sul contratto 2 GiB resta evidenza storica, ora superseded.
 
 > **Consolidamento ricerca 2026-09-02:** tooling e prove dei branch isolati
 > sono ora versionati su `main`, senza modificare i default production. S6

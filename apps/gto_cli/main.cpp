@@ -911,14 +911,22 @@ constexpr std::uint64_t desktop_peak_rss_cap_bytes =
     std::uint64_t{2} * 1024U * 1024U * 1024U;
 constexpr std::string_view desktop_peak_rss_cap_unit{"GiB"};
 constexpr std::string_view desktop_peak_rss_gate{"strict_less_than"};
+constexpr std::string_view gto_plus_peak_rss_gate{"less_than_or_equal"};
+
+constexpr bool passes_inclusive_byte_gate(const std::uint64_t measured_bytes,
+                                           const std::uint64_t reference_bytes) noexcept {
+  return measured_bytes <= reference_bytes;
+}
+
+static_assert(passes_inclusive_byte_gate(8'000'000U, 8'000'000U));
+static_assert(!passes_inclusive_byte_gate(8'000'001U, 8'000'000U));
 
 struct ConvergenceBenchmarkSpec {
   std::string benchmark_id;
   std::string gate_node_id;
   double target_percent{0.0};
   double reference_seconds{0.0};
-  std::uint64_t reference_memory_bytes{0};
-  std::uint64_t peak_rss_cap_bytes{desktop_peak_rss_cap_bytes};
+  std::uint64_t gto_plus_peak_rss_bytes{0};
   std::string target_definition;
   double ev_tolerance{0.0};
   double frequency_tolerance{0.0};
@@ -1751,7 +1759,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     }
   }();
   nlohmann::json report = {
-      {"schema", "gtosd.gto_plus_convergence_run.v2"},
+      {"schema", "gtosd.gto_plus_convergence_run.v3"},
       {"benchmark_id", spec.benchmark_id},
       {"game_fingerprint", result.checkpoint.game_fingerprint},
       {"build",
@@ -1867,17 +1875,29 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       {"solver_state_gate",
        {{"metric", "solver_state_bytes"},
         {"measured_bytes", solver_state_bytes},
-        {"reference_bytes", spec.reference_memory_bytes},
-        {"passed", solver_state_bytes <= spec.reference_memory_bytes}}},
+        {"reference_bytes", spec.gto_plus_peak_rss_bytes},
+        {"reference_basis", "gto_plus_peak_rss_bytes"},
+        {"passed",
+         passes_inclusive_byte_gate(solver_state_bytes, spec.gto_plus_peak_rss_bytes)}}},
       {"gto_plus_reference_memory",
-       {{"metric", "solver_memory_bytes"}, {"reference_bytes", spec.reference_memory_bytes}}},
+       {{"metric", "peak_rss_bytes"},
+        {"reference_bytes", spec.gto_plus_peak_rss_bytes},
+        {"reference_unit", "bytes"}}},
       {"memory_gate",
        {{"metric", "peak_rss_bytes"},
         {"measured_bytes", peak_rss_bytes},
-        {"cap_bytes", spec.peak_rss_cap_bytes},
+        {"reference_bytes", spec.gto_plus_peak_rss_bytes},
+        {"reference_unit", "bytes"},
+        {"comparison", std::string(gto_plus_peak_rss_gate)},
+        {"passed",
+         passes_inclusive_byte_gate(peak_rss_bytes, spec.gto_plus_peak_rss_bytes)}}},
+      {"desktop_memory_gate",
+       {{"metric", "peak_rss_bytes"},
+        {"measured_bytes", peak_rss_bytes},
+        {"cap_bytes", desktop_peak_rss_cap_bytes},
         {"cap_unit", std::string(desktop_peak_rss_cap_unit)},
         {"comparison", std::string(desktop_peak_rss_gate)},
-        {"passed", peak_rss_bytes < spec.peak_rss_cap_bytes}}},
+        {"passed", peak_rss_bytes < desktop_peak_rss_cap_bytes}}},
       {"transient_regret_delta_bytes",
        result.actions * sizeof(double) *
            static_cast<std::uint64_t>(spec.parallel_action_depth + 1U)},
@@ -1917,7 +1937,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     std::cerr << "postflop benchmark-gto-plus failed: io_failure\n";
     return 1;
   }
-  std::cout << "GTOSD_GTO_PLUS_CONVERGENCE_RUN_2\n"
+  std::cout << "GTOSD_GTO_PLUS_CONVERGENCE_RUN_3\n"
             << "benchmark_id=" << spec.benchmark_id
             << " iteration=" << result.checkpoint.completed_iterations
             << " target_dev_percent=" << spec.target_percent
@@ -2014,8 +2034,7 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
   spec.gate_node_id = "flop_co_root";
   spec.target_percent = target_percent;
   spec.reference_seconds = reference_seconds;
-  spec.reference_memory_bytes = reference_memory_bytes;
-  spec.peak_rss_cap_bytes = desktop_peak_rss_cap_bytes;
+  spec.gto_plus_peak_rss_bytes = reference_memory_bytes;
   spec.target_definition = reference.value("target_definition", std::string{});
   spec.ev_tolerance = ev_tolerance;
   spec.frequency_tolerance = reference_frequencies.value("absolute_tolerance_fraction", -1.0);
@@ -2043,14 +2062,16 @@ int run_gto_plus_convergence_benchmark_v1(const char *const specification_path,
   return run_convergence_benchmark_core(spec, report_path);
 }
 
-int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
-                                          const char *const report_path) {
+int run_gto_plus_convergence_benchmark_v2_or_v3(const char *const specification_path,
+                                                const char *const report_path) {
   nlohmann::json specification;
   try {
     std::ifstream input(specification_path, std::ios::binary);
     input >> specification;
-    if (!input || !specification.is_object() ||
-        specification.value("schema", std::string{}) != "gtosd.gto_plus_convergence_benchmark.v2" ||
+    const auto schema = specification.value("schema", std::string{});
+    const bool supported_schema = schema == "gtosd.gto_plus_convergence_benchmark.v2" ||
+                                  schema == "gtosd.gto_plus_convergence_benchmark.v3";
+    if (!input || !specification.is_object() || !supported_schema ||
         specification.value("source", std::string{}) != "GTO+" ||
         !specification.contains("benchmark_id") || !specification["benchmark_id"].is_string() ||
         !matches_benchmark_id_pattern(
@@ -2072,14 +2093,23 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
   const auto &reference = specification["gto_plus_reference"];
   const auto &run = specification["gtosd_run"];
   const auto &expected = specification["expected_layout"];
+  const bool specification_v3 =
+      specification.value("schema", std::string{}) == "gtosd.gto_plus_convergence_benchmark.v3";
+
+  if (specification_v3 &&
+      (!reference.contains("peak_rss_bytes") || !reference["peak_rss_bytes"].is_number_unsigned() ||
+       reference.contains("solver_memory_bytes"))) {
+    std::cerr << "postflop benchmark-gto-plus failed: invalid_memory_reference\n";
+    return 2;
+  }
 
   ConvergenceBenchmarkSpec spec;
   spec.benchmark_id = specification["benchmark_id"].get<std::string>();
   spec.target_percent = reference.value("target_dev_percent", -1.0);
   spec.reference_seconds = reference.value("elapsed_seconds", -1.0);
-  spec.reference_memory_bytes = reference.value("solver_memory_bytes", std::uint64_t{0});
-  spec.peak_rss_cap_bytes =
-      run.value("peak_rss_cap_bytes", desktop_peak_rss_cap_bytes);
+  spec.gto_plus_peak_rss_bytes =
+      specification_v3 ? reference.value("peak_rss_bytes", std::uint64_t{0})
+                       : reference.value("solver_memory_bytes", std::uint64_t{0});
   spec.target_definition = reference.value("target_definition", std::string{});
   spec.ev_tolerance = reference.value("ev_absolute_tolerance_antes", -1.0);
   spec.frequency_tolerance = reference.value("action_frequency_absolute_tolerance_fraction", -1.0);
@@ -2220,11 +2250,10 @@ int run_gto_plus_convergence_benchmark_v2(const char *const specification_path,
           static_cast<std::uint16_t>(spec.maximum_solver_threads) ||
       !std::isfinite(spec.target_percent) || std::abs(spec.target_percent - 1.0) > 1.0e-12 ||
       !std::isfinite(spec.reference_seconds) || spec.reference_seconds <= 0.0 ||
-      spec.reference_memory_bytes == 0 || spec.peak_rss_cap_bytes != desktop_peak_rss_cap_bytes ||
-      run.value("peak_rss_cap_unit", std::string(desktop_peak_rss_cap_unit)) !=
-          desktop_peak_rss_cap_unit ||
-      run.value("peak_rss_gate", std::string(desktop_peak_rss_gate)) !=
-          desktop_peak_rss_gate ||
+      spec.gto_plus_peak_rss_bytes == 0 ||
+      (specification_v3 && (run.contains("peak_rss_cap_bytes") ||
+                            run.contains("peak_rss_cap_unit") ||
+                            run.contains("peak_rss_gate"))) ||
       spec.target_definition.empty() ||
       !std::isfinite(spec.ev_tolerance) || spec.ev_tolerance <= 0.0 ||
       !std::isfinite(spec.frequency_tolerance) || spec.frequency_tolerance <= 0.0 ||
@@ -2422,8 +2451,9 @@ int run_gto_plus_convergence_benchmark(const char *const specification_path,
   if (schema == "gtosd.gto_plus_convergence_benchmark.v1") {
     return run_gto_plus_convergence_benchmark_v1(specification_path, report_path);
   }
-  if (schema == "gtosd.gto_plus_convergence_benchmark.v2") {
-    return run_gto_plus_convergence_benchmark_v2(specification_path, report_path);
+  if (schema == "gtosd.gto_plus_convergence_benchmark.v2" ||
+      schema == "gtosd.gto_plus_convergence_benchmark.v3") {
+    return run_gto_plus_convergence_benchmark_v2_or_v3(specification_path, report_path);
   }
   std::cerr << "postflop benchmark-gto-plus failed: specification_mismatch\n";
   return 2;
@@ -2435,8 +2465,10 @@ int run_gto_plus_layout_preflight(const char *const specification_path,
   try {
     std::ifstream input(specification_path, std::ios::binary);
     input >> specification;
+    const auto schema = specification.value("schema", std::string{});
     if (!input || !specification.is_object() ||
-        specification.value("schema", std::string{}) != "gtosd.gto_plus_convergence_benchmark.v2" ||
+        (schema != "gtosd.gto_plus_convergence_benchmark.v2" &&
+         schema != "gtosd.gto_plus_convergence_benchmark.v3") ||
         !specification.contains("fixture") || !specification["fixture"].is_object()) {
       std::cerr << "postflop layout-gto-plus failed: specification_mismatch\n";
       return 2;
@@ -2583,8 +2615,10 @@ int run_gto_plus_architecture_topology(const char *const specification_path,
   try {
     std::ifstream input(specification_path, std::ios::binary);
     input >> specification;
+    const auto schema = specification.value("schema", std::string{});
     if (!input || !specification.is_object() ||
-        specification.value("schema", std::string{}) != "gtosd.gto_plus_convergence_benchmark.v2" ||
+        (schema != "gtosd.gto_plus_convergence_benchmark.v2" &&
+         schema != "gtosd.gto_plus_convergence_benchmark.v3") ||
         !specification.contains("fixture") || !specification["fixture"].is_object() ||
         !specification.contains("gtosd_run") || !specification["gtosd_run"].is_object()) {
       std::cerr << "postflop architecture-gto-plus failed: specification_mismatch\n";

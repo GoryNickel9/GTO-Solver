@@ -1,5 +1,10 @@
 # Contratto risorse 2 GiB e rivalutazione della frontier — 2026-09-01
 
+> **SUPERSEDED 2026-09-02.** Questo documento conserva la decisione e le prove
+> del 2026-09-01. Il contratto corrente usa il riferimento peak RSS specifico
+> della fixture (`8.000.000 / 399.000.000 / 2.000.000.000 B`, confronto `<=`)
+> come gate GTO+. Il cap comune `<2 GiB` è soltanto diagnostico.
+
 ## Outcome
 
 **B. CONTRATTO 2 GiB ADOTTATO; NESSUNA FAMIGLIA ESCLUSA DIVENTA

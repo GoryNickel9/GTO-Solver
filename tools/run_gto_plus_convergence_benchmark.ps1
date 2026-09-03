@@ -34,7 +34,8 @@ New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 
 $specificationData = Get-Content -LiteralPath $resolvedSpecification -Raw | ConvertFrom-Json
 if (($specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v1" -and
-     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v2") -or
+     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v2" -and
+     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v3") -or
     $specificationData.benchmark_id -notmatch "^GTP-[A-Z0-9]{2,}-[0-9]{3}$") {
   throw "Unexpected benchmark specification."
 }
@@ -82,40 +83,35 @@ $allActionFrequenciesCorrect =
   @($runReports | Where-Object { -not $_.action_frequency_correctness_passed }).Count -eq 0
 $allConverged = @($runReports | Where-Object { -not $_.converged }).Count -eq 0
 $allRelease = @($runReports | Where-Object { $_.build.configuration -ne "Release" }).Count -eq 0
+$allRunReportsV3 =
+  @($runReports | Where-Object { $_.schema -ne "gtosd.gto_plus_convergence_run.v3" }).Count -eq 0
 $consistentFingerprint = $fingerprints.Count -eq 1
 $consistentStateBytes =
   @($runReports | ForEach-Object { [uint64]$_.solver_state_bytes } | Sort-Object -Unique).Count -eq 1
-if (-not ($allRelease -and $consistentFingerprint -and $consistentStateBytes)) {
+if (-not ($allRelease -and $allRunReportsV3 -and $consistentFingerprint -and
+          $consistentStateBytes)) {
   throw "One or more build or reproducibility checks failed."
 }
 
 $referenceSeconds = [double]$specificationData.gto_plus_reference.elapsed_seconds
-$referenceMemory = [double]$specificationData.gto_plus_reference.solver_memory_bytes
-$peakRssCapBytes = if ($null -ne $specificationData.gtosd_run.peak_rss_cap_bytes) {
-  [double]$specificationData.gtosd_run.peak_rss_cap_bytes
+$referencePeakRssBytes = if ($null -ne $specificationData.gto_plus_reference.peak_rss_bytes) {
+  [double]$specificationData.gto_plus_reference.peak_rss_bytes
 } else {
-  [double]2147483648
+  [double]$specificationData.gto_plus_reference.solver_memory_bytes
 }
-$peakRssCapUnit = if ($null -ne $specificationData.gtosd_run.peak_rss_cap_unit) {
-  [string]$specificationData.gtosd_run.peak_rss_cap_unit
-} else {
-  "GiB"
-}
-$peakRssGate = if ($null -ne $specificationData.gtosd_run.peak_rss_gate) {
-  [string]$specificationData.gtosd_run.peak_rss_gate
-} else {
-  "strict_less_than"
-}
+$desktopPeakRssCapBytes = [double]2147483648
 $solverStateBytes = [double]$runReports[0].solver_state_bytes
 $peakRssBytes = [double](($runReports | ForEach-Object { [uint64]$_.peak_rss_bytes } |
     Measure-Object -Maximum).Maximum)
 $speedScore = 100.0 * $referenceSeconds / $median
-$memoryScore = 100.0 * $referenceMemory / $peakRssBytes
-$peakRssCapUtilization = 100.0 * $peakRssBytes / $peakRssCapBytes
+$memoryScore = 100.0 * $referencePeakRssBytes / $peakRssBytes
+$gtoPlusPeakRssUtilization = 100.0 * $peakRssBytes / $referencePeakRssBytes
+$desktopPeakRssCapUtilization = 100.0 * $peakRssBytes / $desktopPeakRssCapBytes
 $speedGateSeconds = $referenceSeconds / 0.90
-$memoryGateBytes = $peakRssCapBytes
+$memoryGateBytes = $referencePeakRssBytes
 $speedGatePassed = $median -le $speedGateSeconds
-$memoryGatePassed = $peakRssBytes -lt $memoryGateBytes
+$memoryGatePassed = $peakRssBytes -le $memoryGateBytes
+$desktopMemoryGatePassed = $peakRssBytes -lt $desktopPeakRssCapBytes
 $referenceMetadataComplete = [bool]$specificationData.gto_plus_reference.metadata_complete
 # correctness_passed gates on the reference node EV selected by the
 # specification (gate_node, default the tree root). The all-node EV and
@@ -164,7 +160,7 @@ $scientificComparisonReady = $measurementValid -and $worktreeClean -and
                              $referenceMetadataComplete -and $hardwareMetadataComplete
 
 $summary = [ordered]@{
-  schema = "gtosd.gto_plus_convergence_summary.v2"
+  schema = "gtosd.gto_plus_convergence_summary.v3"
   benchmark_id = $specificationData.benchmark_id
   generated_at_utc = [DateTime]::UtcNow.ToString("o")
   repository = [ordered]@{
@@ -187,9 +183,11 @@ $summary = [ordered]@{
     target_metric = "maximum unilateral best-response gain / initial pot"
     target_dev_percent = [double]$specificationData.gto_plus_reference.target_dev_percent
     timer_scope = $specificationData.gtosd_run.timer_scope
-    peak_rss_cap_bytes = [uint64]$peakRssCapBytes
-    peak_rss_cap_unit = $peakRssCapUnit
-    peak_rss_gate = $peakRssGate
+    gto_plus_peak_rss_reference_bytes = [uint64]$referencePeakRssBytes
+    gto_plus_peak_rss_gate = "less_than_or_equal"
+    desktop_peak_rss_cap_bytes = [uint64]$desktopPeakRssCapBytes
+    desktop_peak_rss_cap_unit = "GiB"
+    desktop_peak_rss_gate = "strict_less_than"
   }
   reference = $specificationData.gto_plus_reference
   runs = $runReports
@@ -201,9 +199,11 @@ $summary = [ordered]@{
     peak_rss_bytes = [uint64]$peakRssBytes
     speed_score_percent = $speedScore
     memory_score_percent = $memoryScore
-    memory_score_basis = "gto_plus_solver_memory_reference_over_peak_rss"
-    peak_rss_cap_utilization_percent = $peakRssCapUtilization
-    peak_rss_headroom_bytes = [int64]($peakRssCapBytes - $peakRssBytes)
+    memory_score_basis = "gto_plus_peak_rss_reference_over_peak_rss"
+    gto_plus_peak_rss_utilization_percent = $gtoPlusPeakRssUtilization
+    gto_plus_peak_rss_headroom_bytes = [int64]($referencePeakRssBytes - $peakRssBytes)
+    desktop_peak_rss_cap_utilization_percent = $desktopPeakRssCapUtilization
+    desktop_peak_rss_headroom_bytes = [int64]($desktopPeakRssCapBytes - $peakRssBytes)
     gto_plus_ev_checks = $runReports[0].gto_plus_ev_checks
     gto_plus_action_frequency_checks = $runReports[0].gto_plus_action_frequency_checks
   }
@@ -219,8 +219,11 @@ $summary = [ordered]@{
     speed_threshold_seconds = $speedGateSeconds
     speed_passed = $speedGatePassed
     memory_threshold_bytes = $memoryGateBytes
-    memory_comparison = "strict_less_than"
+    memory_comparison = "less_than_or_equal"
     memory_passed = $memoryGatePassed
+    desktop_memory_threshold_bytes = [uint64]$desktopPeakRssCapBytes
+    desktop_memory_comparison = "strict_less_than"
+    desktop_memory_passed = $desktopMemoryGatePassed
     parity_gate_passed = $scientificComparisonReady -and $speedGatePassed -and $memoryGatePassed
   }
 }

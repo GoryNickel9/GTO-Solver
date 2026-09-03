@@ -1,24 +1,25 @@
 # Benchmark end-to-end di convergenza GTO+
 
-> **CONTRATTO RISORSE 2026-09-01.** I report run/summary correnti sono v2 e
-> separano `solver_state_bytes <= gto_plus_reference.solver_memory_bytes` dal
-> gate operativo comune `peak_rss_bytes < 2 GiB` (`2.147.483.648 B`). I valori
-> esterni storici restano immutati. Per TST, pot `16` e `0,146 ante` implicano
-> `0,9125%`, visualizzato `0,91%`. Decisione e frontier recheck:
-> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> **CONTRATTO RISORSE V3 — 2026-09-02.** Ogni fixture dichiara
+> `gto_plus_reference.peak_rss_bytes`. Il `memory_gate` ufficiale confronta il
+> massimo `peak_rss_bytes` del processo con quel riferimento usando `<=`.
+> `solver_state_gate` e `desktop_memory_gate` (`<2 GiB`) restano separati e il
+> secondo non decide la parità. I report run/summary correnti sono v3.
 
-> **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v2 è
+> **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v3 è
 > parametrico e va usato per nuovi scenari; questo documento conserva il
 > protocollo della fixture `GTP-AHKHQH-003` senza sostituire il parity journey.
 
 Benchmark ID: `GTP-AHKHQH-003`
 Schema: `gtosd.gto_plus_convergence_benchmark.v1`
 
-> **Checkpoint operativo 2026-09-01.** Il protocollo v2 è applicato alla suite
+> **Checkpoint operativo 2026-09-02.** Il protocollo v3 è applicato alla suite
 > AHKHQH/TH7D6S/TSTC9D senza iteration cap e con arresto stretto a
 > `Target dEV < 1%`. Cinque processi production passano dEV, root, layout,
-> exact outcomes, stato e cap desktop su `15/15` solve; AHK passa il tempo,
-> TH e TST falliscono la mediana rispettivamente del `1,661%` e `42,722%`.
+> exact outcomes e stato su `15/15` solve. Il fresh audit memoria classifica
+> AHK `166.789.120/8.000.000 B` FAIL, TH `799.059.968/399.000.000 B` FAIL e
+> TST `1.970.229.248/2.000.000.000 B` PASS. Tempo e memoria restano gate
+> indipendenti.
 > Valori e report autorevoli sono nel parity journey. Le sezioni v1 e le
 > diagnosi successive restano evidenza storica del protocollo, non il dashboard
 > corrente.
@@ -60,7 +61,7 @@ L'utente ha confermato che GTO+ e GTOSD girano sulla stessa macchina e che gli
 `1,71 s` vanno dal click su `Run Solver`, con albero già preparato, fino alla
 soluzione completa consultabile. La versione osservata è GTO+ v1.6.9 64-bit
 (8 thread). L'unità della memoria dichiarata è confermata (MB decimali: 8 MB =
-8.000.000 byte, confronto diretto con lo stato solver GTOSD in byte).
+8.000.000 byte, confronto diretto con il peak RSS GTOSD in byte).
 L'action tree GTO+ è registrato a livello flop — 4 nodi, action set, frequenze
 ed EV combo-per-combo in `docs/specifications/gtoplus_specs.md` — mentre turn
 e river restano da acquisire; la certificazione scientifica definitiva resta
@@ -77,21 +78,21 @@ per il run sorgente da `1,71 s`.
 - `benchmarks/fixtures/gto_plus_ahkhqh_003.json`: contratto versionato, target e
   conteggi golden;
 - `benchmarks/fixtures/gto_plus_ahkhqh_103.json` e `gto_plus_ahkhqh_104.json`:
-  benchmark v2 costruiti dai valori degli export GTO+ documentati nei markdown
+  benchmark v3 costruiti dai valori degli export GTO+ documentati nei markdown
   (vedi sotto);
 - `schemas/gto_plus_convergence_benchmark.schema.json`: schema del contratto;
 - `gto_cli postflop benchmark-gto-plus`: un singolo processo indipendente e un
-  report atomico `gtosd.gto_plus_convergence_run.v2`;
+  report atomico `gtosd.gto_plus_convergence_run.v3`;
 - `tools/run_gto_plus_convergence_benchmark.ps1`: almeno cinque processi,
   mediana, p95 nearest-rank, score e gate separati.
 
-## Specifica v2: benchmark di convergenza generici
+## Specifica v3: benchmark di convergenza generici
 
-Dal 2026-08-02 il comando `benchmark-gto-plus` accetta anche la specifica
-generica `gtosd.gto_plus_convergence_benchmark.v2`
-(`schemas/gto_plus_convergence_benchmark.v2.schema.json`). Il contratto v1
-`GTP-AHKHQH-003` resta congelato: stessa validazione, stesso report, stessi
-valori. La v2 rende ogni parametro leggibile dalla specifica:
+Il comando `benchmark-gto-plus` accetta la specifica generica
+`gtosd.gto_plus_convergence_benchmark.v3`. Il contratto v1
+`GTP-AHKHQH-003` resta congelato nei valori e nella validazione; anche quel
+percorso emette ora l'envelope report v3. La v3 rende ogni parametro leggibile
+dalla specifica:
 
 - **fixture**: board, `range_co`/`range_btn` (liste di classi tipo
   `AA-QQ,AKs-AQs,KQs,AKo-AQo,KQo`), pot e stack in ante, bet/raise size in
@@ -102,7 +103,8 @@ valori. La v2 rende ogni parametro leggibile dalla specifica:
   `final_bet_smoothing`, `rake_percent`;
 - **gtosd_run**: iterazioni, certification interval, averaging delay,
   parallel action depth, thread, processi indipendenti;
-- **gto_plus_reference**: target dEV, tempo e memoria GTO+, tolleranze EV e
+- **gto_plus_reference**: target dEV, tempo e `peak_rss_bytes` GTO+ specifico
+  della fixture, tolleranze EV e
   frequenze, `gate_node` (opzionale: id del nodo il cui EV decide
   `correctness_passed`; default il root) e `reference_nodes`: una lista di
   nodi indirizzati con `path` (etichette di azione dal root, es. `[]` per il
@@ -111,22 +113,23 @@ valori. La v2 rende ogni parametro leggibile dalla specifica:
   strada (i nodi chance non sono risolvibili da un path di sole azioni);
 - **expected_layout**: fingerprint e conteggi, come in v1.
 
-Il report corrente usa `gtosd.gto_plus_convergence_run.v2`: conserva i campi
-di correttezza e stato, aggiunge `gto_plus_reference_memory` e rende
-`memory_gate` esclusivamente il confronto stretto del peak RSS col cap comune.
+Il report corrente usa `gtosd.gto_plus_convergence_run.v3`: conserva i campi
+di correttezza e stato, rende `memory_gate` il confronto inclusivo del peak RSS
+con il riferimento GTO+ della fixture e pubblica il cap comune soltanto come
+`desktop_memory_gate` diagnostico.
 Le chiavi applicative restano stabili;
 le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `reference_node_action_frequencies` sono gli `id` dichiarati nella specifica
 (per `GTP-AHKHQH-003` restano `flop_co_root`, `flop_btn_after_co_check`,
-`flop_btn_after_co_bet_20`, quindi il report v1 non cambia).
+`flop_btn_after_co_bet_20`; cambia soltanto l'envelope del contratto memoria).
 
-Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta sia v1 sia v2 e
+Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta v1, v2 legacy e v3 e
 deriva `benchmark_id` dalla specifica; i gate (tempo/memoria, riproducibilità,
-EV, frequenze) restano quelli del protocollo. `GTP-AHKHQH-101` è la fixture v2
+EV, frequenze) restano quelli del protocollo. `GTP-AHKHQH-101` è la fixture v3
 di validazione: replica esattamente lo scenario di `003` e deve produrre gli
 stessi valori, ed è il riferimento per aggiungere nuovi benchmark: si copia la
 fixture, si cambia `benchmark_id`, board/range/stack/sizing e i valori GTO+
-osservati (`elapsed_seconds`, `solver_memory_bytes`, `target_dev_percent`,
+osservati (`elapsed_seconds`, `peak_rss_bytes`, `target_dev_percent`,
 `reference_nodes`), poi si aggiorna `expected_layout` con fingerprint e
 conteggi del primo run GTOSD (la prima esecuzione con layout errato fallisce
 il gate di layout, non la parità).

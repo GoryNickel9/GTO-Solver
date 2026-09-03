@@ -213,15 +213,14 @@ deterministic iteration counts are `80/80/160`; solver median/p95 times are
 `55.107041 s` (`42.722%`) above the `128.988889 s` limit. Its user-confirmed
 raw GTO+ reference remains `116.09 s` at the first strict sub-1% point.
 
-Solver-state references remain `8.000.000 B`, `399.000.000 B` and
-`2.000.000.000 B`, and all three pass. Peak RSS is a separate metric with the
-common strict desktop cap `< 2 GiB` (`2.147.483.648 B`): all three final-head
-runs pass, including TST at `1.969.860.608 B`. The runner no longer compares
-process RSS against the heterogeneous GTO+ state-memory references. The
-five-process production qualification is complete; the TH and TST time gates
-keep the overall parity gate and F11+ frozen. TH median exceeds its limit by
-`0.326006 s` (`1.661%`). Contract and frontier recheck:
-`docs/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`.
+The current v3 resource contract gives every fixture its own
+`gto_plus_reference.peak_rss_bytes`: `8.000.000 B`, `399.000.000 B` and
+`2.000.000.000 B`. The official memory gate compares the maximum process peak
+RSS directly with that fixture reference using `<=`; `solver_state_bytes` and
+the common desktop safety check `< 2 GiB` are published separately. The fresh
+five-process audit measured `166.789.120 B`, `799.059.968 B` and
+`1.970.229.248 B`: AHKHQH and TH7D6S fail memory, while TSTC9D passes with
+`29.770.752 B` headroom. The overall parity gate remains blocked.
 
 The repository also preserves the rejected research families and their
 reproduction tools without enabling them in production. S6 remains rejected;
@@ -252,9 +251,8 @@ strategy state through `ScaledUint16RegretStrategy`. Its common
 `production_dcfr` contract is `1.5/0/3`, with average resets at one-based
 iterations `1,2,5,17,65` and a one-iteration-lagged regret clock after 65.
 Current five-process Release runs pass dEV, root EV, layout, exact outcomes,
-solver-state and the strict desktop cap on all three fixtures. Final dEV/root
+solver-state and the diagnostic desktop cap on all three fixtures. Final dEV/root
 EV values are AHKHQH `0.951423% / 19.118978`, TH7D6S
 `0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TH and TST execution
-time remain red. The common strict desktop cap passes all three fixtures;
-fixture-specific GTO+ RSS references remain separate diagnostic comparisons,
-not acceptance gates hidden under a generic RAM label.
+time evidence remains reported independently. The fixture-specific GTO+ peak
+RSS references are acceptance gates: AHKHQH and TH7D6S fail; TSTC9D passes.

@@ -3,14 +3,13 @@
 Stato: **Accettato; compilatore layout-only implementato, traversal non ancora migrato**
 Data: 2026-08-27
 
-> **Emendamento 2026-09-01.** Il cap operativo del processo è definito in
-> unità binarie: `peak_rss_bytes < 2 GiB = 2.147.483.648 B`. I valori GTO+
-> `8.000.000 / 399.000.000 / 2.000.000.000 B` restano riferimenti esterni e
-> limiti di `solver_state_bytes`, non limiti del working set. Il target interno
-> `1.800.000.000 B` resta prudenziale. Un probe GTO+ TST ha misurato peak
-> working set `2.061.889.536 B`, quindi passa il nuovo cap con `85.594.112 B`
-> di margine. Vedere
-> [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
+> **Emendamento 2026-09-02 (supersedes 2026-09-01).** Ogni fixture dichiara
+> `gto_plus_reference.peak_rss_bytes`; il gate ufficiale confronta il peak RSS
+> dell'intero processo con quel riferimento usando `<=`. Il limite desktop
+> comune `<2 GiB` resta un controllo operativo separato e non decide la parità.
+> `solver_state_bytes` resta visibile per attribuzione, ma non sostituisce il
+> peak RSS. Il precedente contratto comune è conservato come evidenza storica
+> in [`TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 ## Contesto
 

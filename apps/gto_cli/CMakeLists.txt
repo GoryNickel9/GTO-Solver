@@ -42,6 +42,7 @@ endif()
 add_test(NAME gtosd_production_dcfr_contract
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_FIXTURE_DIR=${PROJECT_SOURCE_DIR}/benchmarks/fixtures
+    -DGTOSD_RUNNER=${PROJECT_SOURCE_DIR}/tools/run_gto_plus_convergence_benchmark.ps1
     -P ${PROJECT_SOURCE_DIR}/tests/verify_production_dcfr_contract.cmake)
 set_tests_properties(gtosd_production_dcfr_contract
   PROPERTIES LABELS "phase10;postflop;gto-plus;contract")

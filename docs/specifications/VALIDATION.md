@@ -32,7 +32,7 @@ in cui ogni livello controlla errori differenti:
 
 ## Gate GTO+
 
-La suite corrente comprende `GTP-AHKHQH-101` (equivalente v2 dello scenario
+La suite corrente comprende `GTP-AHKHQH-101` (equivalente v3 dello scenario
 congelato `003`), `GTP-TH7D6S-101` e `GTP-TSTC9D-101`. AHK usa flop `Ah Kh Qh`, range identici
 `AA-QQ, AKs-AQs, KQs, AKo-AQo, KQo`, 36 combo fisiche per player, pot 40,
 stack 100, bet/raise 50%, un raise per street, all-in `Go` alla soglia corretta,
@@ -43,9 +43,10 @@ I gate prestazionali della suite sono:
 - tempo GTOSD a dEV comparabile non superiore a 1,900000 / 19,622222 /
   128,988889 s; per TSTC9D il riferimento grezzo è il primo punto GTO+
   strettamente sotto soglia, `116,09 s` a `0,91%` (`0,146 ante`);
-- stato solver non superiore a 8.000.000 / 399.000.000 / 2.000.000.000 B;
-- peak RSS del processo strettamente inferiore al cap desktop comune
-  `2 GiB = 2.147.483.648 B`, separato dal riferimento esterno di stato;
+- peak RSS massimo del processo non superiore al riferimento specifico della
+  fixture: 8.000.000 / 399.000.000 / 2.000.000.000 B;
+- `solver_state_bytes` e cap desktop `<2 GiB` pubblicati separatamente; nessuno
+  dei due sostituisce il gate peak-RSS-vs-GTO+;
 - correttezza, tempo e memoria separati sullo stesso checkpoint; cinque
   processi indipendenti soltanto per la promozione temporale finale.
 
@@ -56,9 +57,9 @@ deterministici AHK/TH/TST sono `80/0,951423%`, `80/0,807956%` e
 `160/0,904505%`; mediane/p95 solver `0,758705/0,790918 s`,
 `19,948228/24,192260 s`, `184,095930/197,865030 s`. TH e TST falliscono il
 tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; peak RSS massimo
-TST `1.969.860.608 B`. Il cap desktop comune `< 2 GiB` passa su tutti e tre;
-i riferimenti peak-RSS di GTO+ per singola fixture restano confronti diagnostici
-separati e non sono gate di accettazione.
+TST `1.969.860.608 B`. Con la semantica v3 corretta, AHK e TH falliscono il
+gate memoria per-fixture, mentre TST lo passa; il cap desktop comune passa ma
+resta soltanto diagnostico.
 
 Gli EV BTN dopo check/bet restano diagnostici nel percorso non vincolato perché
 GTO+ e GTOSD producono posteriori CO differenti. F10.4 è stata implementata e

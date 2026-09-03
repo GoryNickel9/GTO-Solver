@@ -1,6 +1,6 @@
 # Guida: come introdurre un nuovo benchmark di convergenza GTO+
 
-Il benchmark v2 è **100% guidato dalla specifica JSON**: non serve toccare il codice C++ (la
+Il benchmark v3 è **100% guidato dalla specifica JSON**: non serve toccare il codice C++ (la
 validazione è programmatica nel CLI, gli schema in `schemas/` sono solo documentazione e sono
 stati rimossi). Si parte da una copia di `benchmarks/fixtures/TEMPLATE.json` (già schema-valido,
 basato sui valori noti del `GTP-AHKHQH-101`) e si sostituiscono i valori con quelli di
@@ -21,7 +21,7 @@ riferimento GTO+ del nuovo scenario.
 `benchmark_id`: `GTP-<BOARD>-<NNN>`
 
 - `<BOARD>` = 2+ caratteri alfanumerici maiuscoli, es. `AHKHQH` (le carte del flop) o il nome dello scenario.
-- `<NNN>` = 3 cifre. `003` = v1 congelata (non toccare). `101+` = v2.
+- `<NNN>` = 3 cifre. `003` = v1 congelata (non toccare). `101+` = v3.
 - Nome file: `benchmarks/fixtures/gto_plus_<board>_<nnn>.json`.
 
 ## 2. Campi da compilare — `fixture`
@@ -60,7 +60,7 @@ riferimento GTO+ del nuovo scenario.
 | `elapsed_seconds` | Tempo GTO+ per il target (1.71). Usato come base del gate speed. |
 | `convergence_trace` | Se disponibile, sequenza temporale osservata `elapsed_seconds`, `dev_percent`, `dev_antes`; preserva i valori mostrati da GTO+ senza interpolazione. |
 | `first_strictly_below_target` | Primo punto osservato con `dev_percent < target_dev_percent`; deve coincidere con `elapsed_seconds`. |
-| `solver_memory_bytes` | Memoria GTO+ in byte (**MB decimali**: 8 MB = 8 000 000). |
+| `peak_rss_bytes` | Riferimento GTO+ del peak RSS per questa fixture, in byte (**MB decimali**: 8 MB = 8 000 000). È il limite diretto del `memory_gate`. |
 | `memory_unit` | `"decimal_mb"` (confermato dall'utente per GTO+ v1.6.9). |
 | `target_dev_percent` | dEV target GTO+ in %; per questa suite deve essere `1.0` e il confronto è strettamente `<`. |
 | `target_definition` | Definizione del dEV (stringa, va lasciata/adeguata). |
@@ -145,7 +145,8 @@ indipendenti, nessuna cache condivisa) più `run-01.json`…`run-05.json` (repor
 ## 6. Regole fisse (PERFORMANCE.md, non modificabili)
 
 - Speed ≤ `elapsed_seconds / 0.90` (1.71/0.90 = 1.9 s).
-- Memoria ≤ `solver_memory_bytes / 0.90` (8 000 000/0.90 = 8 888 889 byte).
+- Memoria: massimo `peak_rss_bytes` dei processi GTOSD ≤ `gto_plus_reference.peak_rss_bytes`, senza margine del 90%.
+- Il cap desktop `<2 GiB` è diagnostico e non può sostituire il riferimento della fixture.
 - Correttezza = convergenza + layout/fingerprint + EV di `gate_node` (root) entro 0.05 ante
   **+ EV incondizionata dell'avversario al root entro 0.05 ante** (criterio EV, §4.1).
 - EV BTN condizionali e frequenze: **diagnostici**, non decidono il gate.

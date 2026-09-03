@@ -16,12 +16,11 @@
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
 > [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **2 GiB resource contract — 2026-09-01.** Il gate comune del processo è
-> `peak_rss_bytes < 2.147.483.648 B` e non coincide con i riferimenti esterni
-> `solver_memory_bytes`. Il probe GTO+ TST ha peak `2.061.889.536 B`; il nuovo
-> cap rende RAM-feasible K8/K16/K32 ma non supera i loro gate di throughput.
-> Nessun candidato è promosso e production resta `production_dcfr 1.5/0/3`.
-> Protocollo:
+> **Contratto memoria per-fixture v3 — 2026-09-02.** Il gate ufficiale è
+> `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`, con riferimenti
+> `8.000.000 / 399.000.000 / 2.000.000.000 B`. Il cap comune `<2 GiB` e
+> `solver_state_bytes` restano diagnostiche separate. AHK e TH falliscono il
+> gate memoria; TST lo passa. Il precedente contratto 2 GiB è superseded:
 > [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
@@ -182,24 +181,25 @@ Il solver pubblica almeno:
 - byte di regret e strategy sum;
 - transient workspace e peak RSS come metriche separate.
 
-Peak RSS non sostituisce la memoria solver dichiarata da GTO+. Cache e layout
-preparato non possono essere inclusi da un lato e esclusi dall'altro.
+Il contratto v3 tratta il valore di memoria GTO+ come riferimento peak RSS
+per-fixture. Cache, layout, scratch, allocator e certificazione fanno quindi
+parte della misura GTOSD. `solver_state_bytes` resta un dato di attribuzione.
 
 ## Fixture di parità
 
 La suite comparativa corrente comprende `GTP-AHKHQH-003`,
 `GTP-TH7D6S-101` e `GTP-TSTC9D-101`. La fixture v1 di AHKHQH resta congelata;
-le fixture generiche v2 permettono di aggiungere scenari senza modificare il
+le fixture generiche v3 permettono di aggiungere scenari senza modificare il
 codice del runner.
 Lo script `tools/run_gto_plus_convergence_benchmark.ps1` avvia processi
 indipendenti e produce report versionati. Il confronto primario usa la mediana
 di cinque run e pubblica anche p95 e ogni campione.
 
-La specifica generica v2 (`gtosd.gto_plus_convergence_benchmark.v2`) permette
+La specifica generica v3 (`gtosd.gto_plus_convergence_benchmark.v3`) permette
 di registrare nuovi benchmark di convergenza senza modifiche al codice: board,
 range, stack-to-pot, sizing, raise depth e nodi di riferimento EV/frequenze
 sono letti dalla fixture (`benchmarks/fixtures/gto_plus_ahkhqh_101.json` è la
-validazione v2 dello scenario 003). Ogni nuovo benchmark mantiene il proprio
+validazione v3 dello scenario 003). Ogni nuovo benchmark mantiene il proprio
 riferimento GTO+ e i propri gate.
 
 Baseline storica AHKHQH documentata (re-baseline 2026-08-05, regola all-in
