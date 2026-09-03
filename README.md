@@ -217,10 +217,14 @@ The current v3 resource contract gives every fixture its own
 `gto_plus_reference.peak_rss_bytes`: `8.000.000 B`, `399.000.000 B` and
 `2.000.000.000 B`. The official memory gate compares the maximum process peak
 RSS directly with that fixture reference using `<=`; `solver_state_bytes` and
-the common desktop safety check `< 2 GiB` are published separately. The fresh
-five-process audit measured `166.789.120 B`, `799.059.968 B` and
-`1.970.229.248 B`: AHKHQH and TH7D6S fail memory, while TSTC9D passes with
-`29.770.752 B` headroom. The overall parity gate remains blocked.
+the common desktop safety check `< 2 GiB` are published separately. The
+2026-09-03 single-process architectural recheck measures `23.216.128 B`,
+`391.462.912 B` and `1.647.755.264 B`: TH7D6S passes by `7.537.088 B`
+and the fixed-iteration TSTC9D memory regression passes, while AHKHQH remains
+above its 8 MB reference. This supersedes the older RSS values for
+implementation status, but not the required multi-process qualification. The
+overall parity gate remains blocked. See
+`docs/PEAK_RSS_AUDIT_2026-09-03.md`.
 
 The repository also preserves the rejected research families and their
 reproduction tools without enabling them in production. S6 remains rejected;
@@ -255,4 +259,6 @@ solver-state and the diagnostic desktop cap on all three fixtures. Final dEV/roo
 EV values are AHKHQH `0.951423% / 19.118978`, TH7D6S
 `0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TH and TST execution
 time evidence remains reported independently. The fixture-specific GTO+ peak
-RSS references are acceptance gates: AHKHQH and TH7D6S fail; TSTC9D passes.
+RSS references are acceptance gates: in the latest single-process recheck
+AHKHQH fails, while TH7D6S and the TSTC9D memory regression pass;
+multi-process promotion remains pending.

@@ -83,8 +83,9 @@ Result<PublicState, TreeError> advance_chance_state(const PublicState &state, co
 
 class TreeBuilder {
 public:
-  TreeBuilder(const PostflopTreeConfig &config, const TreeBuildOptions &options)
-      : options_(options) {
+  TreeBuilder(const PostflopTreeConfig &config, const TreeBuildOptions &options,
+              const PublicTreeStreamConsumer *const stream_consumer = nullptr)
+      : options_(options), stream_consumer_(stream_consumer) {
     tree_.config = config;
   }
 
@@ -93,7 +94,11 @@ public:
         options_.reserve_nodes > std::numeric_limits<std::size_t>::max()) {
       return Result<PublicTree, TreeError>::failure(TreeError::BuildLimitExceeded);
     }
-    tree_.nodes.reserve(static_cast<std::size_t>(options_.reserve_nodes));
+    if (stream_consumer_ == nullptr) {
+      tree_.nodes.reserve(static_cast<std::size_t>(options_.reserve_nodes));
+    } else if (!stream_consumer_->node || !stream_consumer_->edges) {
+      return Result<PublicTree, TreeError>::failure(TreeError::InvalidConfiguration);
+    }
     const auto board = configured_board(tree_.config);
     const auto mask = card_mask(board);
     if (!mask || board.size() < 3U || board.size() > 5U ||
@@ -122,7 +127,9 @@ public:
     tree_.root = root.value();
     tree_.stats.estimated_eager_bytes = tree_.stats.node_count * sizeof(PublicTreeNode) +
                                         tree_.stats.edge_count * sizeof(PublicTreeEdge);
-    tree_.betting_tree_hash = public_tree_hash(tree_);
+    if (stream_consumer_ == nullptr) {
+      tree_.betting_tree_hash = public_tree_hash(tree_);
+    }
     return Result<PublicTree, TreeError>::success(std::move(tree_));
   }
 
@@ -137,14 +144,20 @@ private:
 
   Result<NodeId, TreeError> add_node(const PublicNodeKind kind, const PublicState &state,
                                      const std::uint32_t depth) {
-    if (tree_.nodes.size() >= options_.maximum_nodes) {
+    if (tree_.stats.node_count >= options_.maximum_nodes) {
       return Result<NodeId, TreeError>::failure(TreeError::BuildLimitExceeded);
     }
-    if (tree_.nodes.size() >= std::numeric_limits<NodeId>::max()) {
+    if (tree_.stats.node_count >= std::numeric_limits<NodeId>::max()) {
       return Result<NodeId, TreeError>::failure(TreeError::NodeOverflow);
     }
-    const auto id = static_cast<NodeId>(tree_.nodes.size());
-    tree_.nodes.push_back(PublicTreeNode{id, kind, state, depth, {}});
+    const auto id = static_cast<NodeId>(tree_.stats.node_count);
+    if (stream_consumer_ != nullptr) {
+      if (!stream_consumer_->node(id, kind, state, depth)) {
+        return Result<NodeId, TreeError>::failure(TreeError::StreamConsumerFailure);
+      }
+    } else {
+      tree_.nodes.push_back(PublicTreeNode{id, kind, state, depth, {}});
+    }
     ++tree_.stats.node_count;
     ++tree_.stats.node_count_by_street[static_cast<std::size_t>(state.street) -
                                        static_cast<std::size_t>(Street::Flop)];
@@ -240,7 +253,13 @@ private:
         static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
     tree_.stats.edge_count_by_street[street_index] += edges.size();
     tree_.stats.action_edges_by_street[street_index] += edges.size();
-    tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
+    if (stream_consumer_ != nullptr) {
+      if (!stream_consumer_->edges(node.value(), edges)) {
+        return Result<NodeId, TreeError>::failure(TreeError::StreamConsumerFailure);
+      }
+    } else {
+      tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
+    }
     return node;
   }
 
@@ -335,11 +354,18 @@ private:
         static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
     tree_.stats.edge_count_by_street[street_index] += edges.size();
     tree_.stats.chance_edges_by_street[street_index] += edges.size();
-    tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
+    if (stream_consumer_ != nullptr) {
+      if (!stream_consumer_->edges(node.value(), edges)) {
+        return Result<NodeId, TreeError>::failure(TreeError::StreamConsumerFailure);
+      }
+    } else {
+      tree_.nodes[static_cast<std::size_t>(node.value())].edges = std::move(edges);
+    }
     return node;
   }
 
   TreeBuildOptions options_;
+  const PublicTreeStreamConsumer *stream_consumer_{nullptr};
   PublicTree tree_;
 };
 
@@ -602,6 +628,22 @@ Result<PublicTree, TreeError> build_public_tree(const PostflopTreeConfig &config
   }
 }
 
+Result<PublicTreeStreamResult, TreeError>
+stream_public_tree(const PostflopTreeConfig &config, const PublicTreeStreamConsumer &consumer,
+                   const TreeBuildOptions &options) {
+  const auto valid = validate_tree_config(config);
+  if (!valid) {
+    return Result<PublicTreeStreamResult, TreeError>::failure(TreeError::InvalidConfiguration);
+  }
+  TreeBuilder builder(config, options, &consumer);
+  auto built = builder.build();
+  if (!built) {
+    return Result<PublicTreeStreamResult, TreeError>::failure(built.error());
+  }
+  return Result<PublicTreeStreamResult, TreeError>::success(
+      PublicTreeStreamResult{built.value().root, built.value().stats});
+}
+
 Result<PublicTreeStats, TreeError> estimate_public_tree(const PostflopTreeConfig &config,
                                                         const TreeBuildOptions &options) {
   if (!validate_tree_config(config) || options.maximum_nodes == 0U) {
@@ -739,6 +781,8 @@ const char *tree_error_name(const TreeError error) noexcept {
     return "equity_failure";
   case TreeError::SettlementFailure:
     return "settlement_failure";
+  case TreeError::StreamConsumerFailure:
+    return "stream_consumer_failure";
   }
   return "unknown_tree_error";
 }

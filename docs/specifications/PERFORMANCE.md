@@ -1,5 +1,16 @@
 # Performance
 
+> **Peak-RSS architectural recheck — 2026-09-03.** The canonical production
+> tree is now compiled through a streaming public-tree consumer, decision/node
+> metadata is compacted, and each traversal retains only scratch for its actual
+> scalar type. Single-process Release measurements are AHKHQH `23.216.128 B /
+> 8.000.000 B` FAIL, TH7D6S `391.462.912 B / 399.000.000 B` PASS, and
+> TSTC9D fixed-one-iteration `1.647.755.264 B / 2.000.000.000 B` PASS. TH
+> also passes exact convergence/correctness at `0,807956% @80`; TST is memory
+> regression evidence only. No fixture key selects these paths. Multi-process
+> promotion is pending and AHK remains the active memory blocker. Evidence:
+> [`../PEAK_RSS_AUDIT_2026-09-03.md`](../PEAK_RSS_AUDIT_2026-09-03.md).
+
 > **Production final-head — 2026-09-01, stato corrente.** La schedule comune
 > qualificata e' `production_dcfr`: exact alternating signed DCFR `1.5/0/3`,
 > reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di una
@@ -19,8 +30,10 @@
 > **Contratto memoria per-fixture v3 — 2026-09-02.** Il gate ufficiale è
 > `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes`, con riferimenti
 > `8.000.000 / 399.000.000 / 2.000.000.000 B`. Il cap comune `<2 GiB` e
-> `solver_state_bytes` restano diagnostiche separate. AHK e TH falliscono il
-> gate memoria; TST lo passa. Il precedente contratto 2 GiB è superseded:
+> `solver_state_bytes` restano diagnostiche separate. La baseline five-process
+> qui registrata aveva AHK e TH in FAIL; il recheck architetturale successivo
+> sopra porta TH sotto soglia ma lascia AHK in FAIL. Il precedente contratto
+> 2 GiB è superseded:
 > [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and

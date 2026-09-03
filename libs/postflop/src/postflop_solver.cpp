@@ -4,6 +4,7 @@
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/equity/evaluator.hpp"
 #include "gtosd/isomorphism/isomorphism.hpp"
+#include "gtosd/memory/memory.hpp"
 
 #include <algorithm>
 #include <array>
@@ -590,8 +591,14 @@ struct RangeAutomorphism {
 };
 
 struct DecisionLayout {
-  std::uint64_t action_base{0};
-  std::uint64_t physical_infoset_base{0};
+  // Physical-isomorphism layouts address the canonical-infoset indirection,
+  // while direct/node-owned layouts address their action block.  The modes
+  // are mutually exclusive for a decision, so retaining both offsets made
+  // every physical and canonical node pay for an unreachable value.
+  union {
+    std::uint64_t action_base{0};
+    std::uint64_t physical_infoset_base;
+  };
   std::uint32_t board_index{0};
   std::uint32_t action_count : 4 {0};
   std::uint32_t player : 1 {0};
@@ -603,7 +610,7 @@ struct DecisionLayout {
   std::uint32_t descendant_player_mask : 2 {0};
   std::uint32_t reserved : 6 {0};
 };
-static_assert(sizeof(DecisionLayout) == 24U);
+static_assert(sizeof(DecisionLayout) == 16U);
 
 struct CanonicalPublicOutcome {
   std::uint32_t child{0};
@@ -994,7 +1001,7 @@ struct CanonicalPublicNode {
     return terminal.payoff->value_antes[player];
   }
 };
-static_assert(sizeof(CanonicalPublicNode) == 56U);
+static_assert(sizeof(CanonicalPublicNode) == 48U);
 
 struct CanonicalPublicAssignment {
   std::uint32_t node{0};
@@ -1253,7 +1260,7 @@ dense_layout_memory_breakdown(const DenseLayout &layout) noexcept {
   return result;
 }
 
-void report_dense_layout_memory(const char *const label, const DenseLayout &layout) {
+[[nodiscard]] bool layout_memory_reporting_enabled() noexcept {
 #ifdef _WIN32
   char *environment = nullptr;
   std::size_t environment_size = 0U;
@@ -1261,10 +1268,23 @@ void report_dense_layout_memory(const char *const label, const DenseLayout &layo
       _dupenv_s(&environment, &environment_size, "GTOSD_REPORT_LAYOUT_MEMORY") == 0 &&
       environment != nullptr;
   std::free(environment);
+  return enabled;
 #else
-  const bool enabled = std::getenv("GTOSD_REPORT_LAYOUT_MEMORY") != nullptr;
+  return std::getenv("GTOSD_REPORT_LAYOUT_MEMORY") != nullptr;
 #endif
-  if (!enabled) {
+}
+
+void report_layout_process_memory(const char *const phase) {
+  if (!layout_memory_reporting_enabled()) {
+    return;
+  }
+  std::fprintf(stderr, "LAYOUT_RSS phase=%s current=%llu peak=%llu\n", phase,
+               static_cast<unsigned long long>(process_current_rss_bytes()),
+               static_cast<unsigned long long>(process_peak_rss_bytes()));
+}
+
+void report_dense_layout_memory(const char *const label, const DenseLayout &layout) {
+  if (!layout_memory_reporting_enabled()) {
     return;
   }
   const auto bytes = dense_layout_memory_breakdown(layout);
@@ -1946,10 +1966,484 @@ std::vector<CardId> cards_from_mask(const std::uint64_t mask) {
 }
 
 Result<DenseLayout, PostflopSolverError>
+finalize_layout(DenseLayout &&layout, const PostflopTreeConfig &config,
+                const PostflopRanges &ranges, const bool enable_lossless_isomorphism,
+                const bool direct_canonical_tree, const bool preserve_physical_tree,
+                const PublicTreeStats &physical_tree_stats) {
+  if (layout.actions > std::numeric_limits<std::size_t>::max()) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  // Production never aggregates public suit orbits in the legacy physical
+  // traversal.  A separately compiled, default-OFF oracle target can enable
+  // the rejected path to preserve its asymmetric-range counterexample as a
+  // regression shield; the production gtosd_postflop target compiles this out.
+#if defined(GTOSD_ENABLE_RANGE_ORBIT_ORACLE)
+#ifdef _WIN32
+  char *range_orbit_oracle = nullptr;
+  std::size_t range_orbit_oracle_size = 0U;
+  const auto range_orbit_oracle_error =
+      _dupenv_s(&range_orbit_oracle, &range_orbit_oracle_size, "GTOSD_RANGE_ORBIT_ORACLE");
+  layout.uses_range_aware_physical_orbits = range_orbit_oracle_error == 0 &&
+                                             range_orbit_oracle != nullptr &&
+                                             std::string_view{range_orbit_oracle} == "1";
+  std::free(range_orbit_oracle);
+#else
+  const auto *const range_orbit_oracle = std::getenv("GTOSD_RANGE_ORBIT_ORACLE");
+  layout.uses_range_aware_physical_orbits =
+      range_orbit_oracle != nullptr && std::string_view{range_orbit_oracle} == "1";
+#endif
+#else
+  layout.uses_range_aware_physical_orbits = false;
+#endif
+
+  const auto root_board_index =
+      direct_canonical_tree
+          ? layout.canonical_public_graph.nodes[layout.canonical_public_graph.root].board_index()
+          : layout.node_board[layout.tree.root];
+  const auto &flop_board = layout.boards[root_board_index];
+  layout.active_combos = flop_board.legal_combos;
+  for (std::size_t index = 0; index < layout.active_combos.size(); ++index) {
+    layout.active_combo_index[layout.active_combos[index]] = static_cast<std::int16_t>(index);
+    const auto &combo = layout.combos[layout.active_combos[index]];
+    layout.active_slots_by_card[combo.first.value()].push_back(static_cast<std::uint16_t>(index));
+    layout.active_slots_by_card[combo.second.value()].push_back(static_cast<std::uint16_t>(index));
+    layout.active_combos_by_card[combo.first.value()].push_back(layout.active_combos[index]);
+    layout.active_combos_by_card[combo.second.value()].push_back(layout.active_combos[index]);
+  }
+  layout.active_automorphism_slots.reserve(layout.automorphisms.size());
+  layout.active_automorphism_is_identity.reserve(layout.automorphisms.size());
+  for (const auto &automorphism : layout.automorphisms) {
+    std::vector<std::uint16_t> slots;
+    slots.reserve(layout.active_combos.size());
+    bool is_identity = true;
+    for (const ComboId combo : layout.active_combos) {
+      const auto mapped = layout.active_combo_index[automorphism.combos[combo]];
+      if (mapped < 0) {
+        return Result<DenseLayout, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      slots.push_back(static_cast<std::uint16_t>(mapped));
+      is_identity = is_identity && static_cast<std::size_t>(mapped) + 1U == slots.size();
+    }
+    layout.active_automorphism_slots.push_back(std::move(slots));
+    layout.active_automorphism_is_identity.push_back(static_cast<std::uint8_t>(is_identity));
+  }
+  if (!direct_canonical_tree) {
+    for (auto &board : layout.boards) {
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        auto &slots = board.player_active_slots[player];
+        slots.reserve(board.player_combos[player].size());
+        for (const ComboId combo : board.player_combos[player]) {
+          const auto slot = layout.active_combo_index[combo];
+          if (slot < 0) {
+            return Result<DenseLayout, PostflopSolverError>::failure(
+                PostflopSolverError::InvalidConfiguration);
+          }
+          slots.push_back(static_cast<std::uint16_t>(slot));
+        }
+      }
+    }
+  }
+  for (const ComboId first : flop_board.legal_combos) {
+    layout.initial_reach[0][first] =
+        static_cast<double>(ranges.players[0][first].basis_points()) / 10'000.0;
+    layout.initial_reach[1][first] =
+        static_cast<double>(ranges.players[1][first].basis_points()) / 10'000.0;
+    for (const ComboId second : flop_board.legal_combos) {
+      if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
+        layout.initial_normalization +=
+            layout.initial_reach[0][first] *
+            (static_cast<double>(ranges.players[1][second].basis_points()) / 10'000.0);
+      }
+    }
+  }
+  if (!(layout.initial_normalization > 0.0)) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  for (auto &player_slots : layout.player_flop_slot) {
+    player_slots.fill(-1);
+  }
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    layout.player_flop_combos[player] = flop_board.player_combos[player];
+    layout.player_flop_count[player] = flop_board.player_combos[player].size();
+    for (std::size_t index = 0; index < flop_board.player_combos[player].size(); ++index) {
+      layout.player_flop_slot[player][flop_board.player_combos[player][index]] =
+          static_cast<std::int16_t>(index);
+    }
+  }
+  for (auto &board : layout.boards) {
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      auto &slots = board.player_flop_slots[player];
+      auto &opponent_slots = board.player_opponent_flop_slots[player];
+      slots.reserve(board.player_combos[player].size());
+      opponent_slots.reserve(board.player_combos[player].size());
+      for (const ComboId combo : board.player_combos[player]) {
+        const auto slot = layout.player_flop_slot[player][combo];
+        if (slot < 0) {
+          return Result<DenseLayout, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+        slots.push_back(static_cast<std::uint16_t>(slot));
+        const auto opponent_slot = layout.player_flop_slot[1U - player][combo];
+        opponent_slots.push_back(opponent_slot < 0 ? TerminalComboData::invalid_slot
+                                                   : static_cast<std::uint16_t>(opponent_slot));
+      }
+    }
+  }
+  report_layout_process_memory("board_slots_complete");
+  const auto serialized_config = serialize_tree_config_json(config);
+  std::string fingerprint_source = layout.tree.betting_tree_hash + "|" + serialized_config;
+  if (!uniform_full_ranges(ranges)) {
+    fingerprint_source +=
+        "|ranges-v1|" + serialize_range_fingerprint(ranges) +
+        (layout.uses_isomorphic_infosets ? "|iso-infosets-v1" : "|physical-infosets-v1");
+  }
+  layout.fingerprint = fingerprint_text(fingerprint_source);
+  if (layout.uses_canonical_public_dag) {
+    // The direct solver tree and the physical inspection tree are two lossless
+    // storage representations of the same game. Their checkpoint identity
+    // must therefore be based on the game/ranges and canonical layout version,
+    // never on the representation-specific betting-tree hash.
+    std::string canonical_fingerprint_source = "node-owned-chance-tree-v3|" + serialized_config;
+    if (!uniform_full_ranges(ranges)) {
+      canonical_fingerprint_source += "|ranges-v1|" + serialize_range_fingerprint(ranges);
+    }
+    canonical_fingerprint_source += enable_lossless_isomorphism ? "|iso-on" : "|iso-off";
+    layout.fingerprint = fingerprint_text(canonical_fingerprint_source);
+  }
+  if (direct_canonical_tree) {
+    layout.tree.stats = physical_tree_stats;
+  }
+  if (layout.uses_canonical_public_dag && !preserve_physical_tree) {
+    layout.tree.nodes.clear();
+    layout.tree.nodes.shrink_to_fit();
+    layout.node_board.clear();
+    layout.node_board.shrink_to_fit();
+    layout.node_terminal_payoff.clear();
+    layout.node_terminal_payoff.shrink_to_fit();
+    layout.decisions.clear();
+    layout.decisions.shrink_to_fit();
+  }
+  report_layout_process_memory("build_complete");
+  return Result<DenseLayout, PostflopSolverError>::success(std::move(layout));
+}
+
+Result<DenseLayout, PostflopSolverError>
+build_streamed_canonical_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                                std::vector<RangeAutomorphism> automorphisms,
+                                const TreeBuildOptions &options,
+                                const PublicTreeStats &physical_tree_stats,
+                                const bool enable_lossless_isomorphism,
+                                const bool preserve_physical_tree) {
+  if (automorphisms.empty() || automorphisms.size() > 24U ||
+      options.reserve_nodes > std::numeric_limits<std::uint32_t>::max()) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const SuitPermutation identity_permutation{};
+  const auto identity = std::ranges::find_if(automorphisms, [&](const auto &automorphism) {
+    return automorphism.suits == identity_permutation;
+  });
+  if (identity == automorphisms.end()) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto identity_index = static_cast<std::uint8_t>(std::distance(automorphisms.begin(), identity));
+
+  DenseLayout layout;
+  layout.tree.config = config;
+  layout.tree.stats = physical_tree_stats;
+  layout.combos = all_combos();
+  layout.active_combo_index.fill(-1);
+  for (std::size_t combo = 0U; combo < combo_count; ++combo) {
+    layout.combo_masks[combo] =
+        layout.combos[combo].first.mask() | layout.combos[combo].second.mask();
+  }
+  layout.uses_isomorphic_infosets = enable_lossless_isomorphism && !uniform_full_ranges(ranges);
+  layout.uses_direct_action_bases = true;
+  layout.uses_canonical_public_dag = true;
+  layout.automorphisms = std::move(automorphisms);
+  layout.canonical_public_graph.nodes.reserve(static_cast<std::size_t>(options.reserve_nodes));
+  layout.canonical_public_graph.implicit_identity_assignments = true;
+  layout.canonical_public_graph.identity_automorphism = identity_index;
+
+  constexpr auto invalid_terminal_payoff = std::numeric_limits<std::uint32_t>::max();
+  std::vector<std::uint32_t> terminal_payoff_by_node;
+  terminal_payoff_by_node.reserve(static_cast<std::size_t>(options.reserve_nodes));
+  std::unordered_map<PhysicalTerminalPayoffKey, std::uint32_t, PhysicalTerminalPayoffKeyHash>
+      terminal_payoff_indices;
+  std::unordered_map<std::uint64_t, std::uint32_t> board_lookup;
+  std::optional<PostflopSolverError> consumer_error;
+
+  const auto fail = [&](const PostflopSolverError error) {
+    consumer_error = error;
+    return false;
+  };
+  const auto board_index_for = [&](const std::uint64_t mask) -> std::optional<std::uint32_t> {
+    const auto existing = board_lookup.find(mask);
+    if (existing != board_lookup.end()) {
+      return existing->second;
+    }
+    if (layout.boards.size() >= std::numeric_limits<std::uint32_t>::max()) {
+      return std::nullopt;
+    }
+    BoardData board;
+    board.mask = mask;
+    for (auto &player_local : board.player_local) {
+      player_local.fill(-1);
+    }
+    for (std::size_t combo = 0U; combo < combo_count; ++combo) {
+      const bool live = (layout.combo_masks[combo] & mask) == 0U;
+      const bool present = ranges.players[0][combo].basis_points() != 0U ||
+                           ranges.players[1][combo].basis_points() != 0U;
+      if (live && present) {
+        board.legal_combos.push_back(static_cast<ComboId>(combo));
+      }
+      for (std::size_t player = 0U; player < 2U; ++player) {
+        if (live && ranges.players[player][combo].basis_points() != 0U) {
+          board.player_local[player][combo] =
+              static_cast<std::int16_t>(board.player_combos[player].size());
+          board.player_combos[player].push_back(static_cast<ComboId>(combo));
+        }
+      }
+    }
+    const auto index = static_cast<std::uint32_t>(layout.boards.size());
+    layout.boards.push_back(std::move(board));
+    board_lookup.emplace(mask, index);
+    return index;
+  };
+
+  const PublicTreeStreamConsumer consumer{
+      [&](const NodeId id, const PublicNodeKind kind, const PublicState &state,
+          const std::uint32_t) {
+        if (id != layout.canonical_public_graph.nodes.size() ||
+            id > std::numeric_limits<std::uint32_t>::max()) {
+          return fail(PostflopSolverError::InvalidConfiguration);
+        }
+        const auto board_index = board_index_for(state.board_mask);
+        if (!board_index) {
+          return fail(PostflopSolverError::MemoryFailure);
+        }
+        CanonicalPublicNode node;
+        node.kind = kind;
+        node.representative_node = static_cast<std::uint32_t>(id);
+        if (kind == PublicNodeKind::Decision) {
+          node.decision = {};
+          node.decision.board_index = *board_index;
+          node.decision.player = state.player_to_act;
+          node.decision.present = true;
+        } else if (kind == PublicNodeKind::Chance) {
+          node.chance = {};
+          node.chance.board_index = *board_index;
+        } else {
+          node.terminal = {nullptr, *board_index};
+        }
+        layout.canonical_public_graph.nodes.push_back(std::move(node));
+        terminal_payoff_by_node.push_back(invalid_terminal_payoff);
+        if (id == 0U) {
+          for (std::uint8_t player = 0U; player < 2U; ++player) {
+            layout.initial_pot_contribution_antes[player] =
+                static_cast<double>(state.initial_pot_contributions[player].units()) /
+                units_per_ante;
+          }
+        }
+        if (kind != PublicNodeKind::TerminalFold &&
+            kind != PublicNodeKind::TerminalShowdown) {
+          return true;
+        }
+        PhysicalTerminalPayoff payoff;
+        if (kind == PublicNodeKind::TerminalFold) {
+          const auto settlement = settle_terminal(state, config.rake);
+          if (!settlement) {
+            return fail(PostflopSolverError::SettlementFailure);
+          }
+          for (std::uint8_t player = 0U; player < 2U; ++player) {
+            payoff.value_antes[player][0] =
+                static_cast<double>(settlement.value().payoff_units[player]) / units_per_ante;
+          }
+        } else {
+          const std::array<std::uint8_t, 3> winner_masks{0b01U, 0b11U, 0b10U};
+          for (std::size_t outcome = 0U; outcome < winner_masks.size(); ++outcome) {
+            const auto settlement = settle_terminal(state, config.rake, winner_masks[outcome]);
+            if (!settlement) {
+              return fail(PostflopSolverError::SettlementFailure);
+            }
+            payoff.value_antes[0][outcome] =
+                static_cast<double>(settlement.value().payoff_units[0]) / units_per_ante;
+            payoff.value_antes[1][2U - outcome] =
+                static_cast<double>(settlement.value().payoff_units[1]) / units_per_ante;
+          }
+        }
+        const auto next_index = static_cast<std::uint32_t>(layout.terminal_payoffs.size());
+        const auto [found, inserted] =
+            terminal_payoff_indices.emplace(terminal_payoff_key(payoff), next_index);
+        if (inserted) {
+          layout.terminal_payoffs.push_back(payoff);
+        }
+        terminal_payoff_by_node[static_cast<std::size_t>(id)] = found->second;
+        return true;
+      },
+      [&](const NodeId id, const std::vector<PublicTreeEdge> &source_edges) {
+        if (id >= layout.canonical_public_graph.nodes.size()) {
+          return fail(PostflopSolverError::InvalidConfiguration);
+        }
+        auto &target = layout.canonical_public_graph.nodes[static_cast<std::size_t>(id)];
+        target.edges.reserve(source_edges.size());
+        for (const auto &source_edge : source_edges) {
+          if (source_edge.child >= layout.canonical_public_graph.nodes.size() ||
+              source_edge.child > std::numeric_limits<std::uint32_t>::max()) {
+            return fail(PostflopSolverError::InvalidConfiguration);
+          }
+          CanonicalPublicEdge edge;
+          edge.action = source_edge.action;
+          if (source_edge.kind == PublicEdgeKind::Action) {
+            if (target.kind != PublicNodeKind::Decision) {
+              return fail(PostflopSolverError::InvalidConfiguration);
+            }
+            edge.outcomes.push_back({static_cast<std::uint32_t>(source_edge.child), 1U, CardId{},
+                                     identity_index});
+          } else {
+            if (target.kind != PublicNodeKind::Chance || source_edge.chance_outcome_count == 0U ||
+                source_edge.chance_outcome_count > source_edge.chance_outcomes.size()) {
+              return fail(PostflopSolverError::InvalidConfiguration);
+            }
+            target.chance.total_legal_outcome_count = source_edge.total_legal_outcome_count;
+            for (std::size_t outcome = 0U; outcome < source_edge.chance_outcome_count; ++outcome) {
+              const auto &mapping = source_edge.chance_outcomes[outcome];
+              if (mapping.physical_to_representative_permutation >= layout.automorphisms.size()) {
+                return fail(PostflopSolverError::InvalidConfiguration);
+              }
+              edge.outcomes.push_back(
+                  {static_cast<std::uint32_t>(source_edge.child), 1U, mapping.card,
+                   mapping.physical_to_representative_permutation});
+            }
+          }
+          target.edges.push_back(std::move(edge));
+        }
+        return true;
+      }};
+
+  const auto streamed = stream_public_tree(config, consumer, options);
+  if (!streamed) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        consumer_error.value_or(PostflopSolverError::TreeFailure));
+  }
+  if (streamed.value().root > std::numeric_limits<std::uint32_t>::max() ||
+      streamed.value().stats.node_count != layout.canonical_public_graph.nodes.size()) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  layout.tree.root = streamed.value().root;
+  layout.canonical_public_graph.root = static_cast<std::uint32_t>(streamed.value().root);
+  terminal_payoff_indices.clear();
+  terminal_payoff_indices.rehash(0U);
+  board_lookup.clear();
+  board_lookup.rehash(0U);
+  layout.boards.shrink_to_fit();
+  report_layout_process_memory("streamed_graph_complete");
+
+  for (std::size_t index = 0U; index < layout.canonical_public_graph.nodes.size(); ++index) {
+    auto &node = layout.canonical_public_graph.nodes[index];
+    if (node.kind == PublicNodeKind::TerminalFold ||
+        node.kind == PublicNodeKind::TerminalShowdown) {
+      const auto payoff_index = terminal_payoff_by_node[index];
+      if (payoff_index >= layout.terminal_payoffs.size()) {
+        return Result<DenseLayout, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      node.terminal.payoff = &layout.terminal_payoffs[payoff_index];
+      continue;
+    }
+    if (node.kind != PublicNodeKind::Decision) {
+      continue;
+    }
+    const auto action_count = node.edges.size();
+    if (action_count == 0U || action_count > maximum_action_count) {
+      return Result<DenseLayout, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    node.decision.action_count = static_cast<std::uint16_t>(action_count);
+    std::uint8_t first_fold = static_cast<std::uint8_t>(maximum_action_count);
+    std::uint8_t first_showdown = static_cast<std::uint8_t>(maximum_action_count);
+    for (std::size_t action = 0U; action < action_count; ++action) {
+      if (node.edges[action].outcomes.size() != 1U) {
+        return Result<DenseLayout, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto child = node.edges[action].outcomes.front().child;
+      if (child >= layout.canonical_public_graph.nodes.size()) {
+        return Result<DenseLayout, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto child_kind = layout.canonical_public_graph.nodes[child].kind;
+      if (child_kind == PublicNodeKind::TerminalFold ||
+          child_kind == PublicNodeKind::TerminalShowdown) {
+        node.decision.terminal_child_mask |= static_cast<std::uint8_t>(1U << action);
+      }
+      if (child_kind == PublicNodeKind::TerminalFold && first_fold == maximum_action_count) {
+        first_fold = static_cast<std::uint8_t>(action);
+      } else if (child_kind == PublicNodeKind::TerminalShowdown &&
+                 first_showdown == maximum_action_count) {
+        first_showdown = static_cast<std::uint8_t>(action);
+      }
+    }
+    if (first_fold != maximum_action_count && first_showdown != maximum_action_count) {
+      node.decision.paired_fold_action = first_fold;
+      node.decision.paired_showdown_action = first_showdown;
+    }
+    const auto &board = layout.boards[node.board_index()];
+    const auto legal_count = board.player_combos[node.decision.player].size();
+    if (legal_count > (std::numeric_limits<std::uint64_t>::max() - layout.actions) /
+                          action_count ||
+        legal_count * action_count > std::numeric_limits<std::uint32_t>::max() ||
+        layout.canonical_decision_nodes >= std::numeric_limits<std::uint32_t>::max()) {
+      return Result<DenseLayout, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    node.decision.action_base = layout.actions;
+    node.local_action_count = static_cast<std::uint32_t>(legal_count * action_count);
+    node.state_scale_index = static_cast<std::uint32_t>(layout.canonical_decision_nodes++);
+    layout.information_sets += legal_count;
+    layout.actions += legal_count * action_count;
+  }
+  terminal_payoff_by_node.clear();
+  terminal_payoff_by_node.shrink_to_fit();
+
+  for (std::size_t index = layout.canonical_public_graph.nodes.size(); index-- > 0U;) {
+    auto &node = layout.canonical_public_graph.nodes[index];
+    std::uint8_t descendant_mask = 0U;
+    for (const auto &edge : node.edges) {
+      for (const auto &outcome : edge.outcomes) {
+        if (outcome.child <= index || outcome.child >= layout.canonical_public_graph.nodes.size()) {
+          return Result<DenseLayout, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+        descendant_mask |= layout.canonical_public_graph.nodes[outcome.child].subtree_player_mask;
+      }
+    }
+    node.descendant_player_mask = descendant_mask;
+    node.subtree_player_mask = static_cast<std::uint8_t>(
+        descendant_mask | (node.kind == PublicNodeKind::Decision
+                               ? static_cast<std::uint8_t>(1U << node.decision.player)
+                               : 0U));
+    if (node.kind == PublicNodeKind::Decision) {
+      node.decision.descendant_player_mask = node.descendant_player_mask;
+      node.decision.subtree_player_mask = node.subtree_player_mask;
+    }
+  }
+  report_layout_process_memory("canonical_graph_complete");
+  return finalize_layout(std::move(layout), config, ranges, enable_lossless_isomorphism, true,
+                         preserve_physical_tree, physical_tree_stats);
+}
+
+Result<DenseLayout, PostflopSolverError>
 build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
              const bool enable_lossless_isomorphism = true,
              const bool enable_canonical_public_dag = false,
              const bool preserve_physical_tree = false) {
+  report_layout_process_memory("build_start");
   // Inspection APIs receive public node ids from build_public_tree(). Keep
   // their short-lived analysis layout on the physical tree so those stable
   // ids and paths remain valid. Solving/benchmark layouts use the direct
@@ -2002,10 +2496,16 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
       options.canonical_chance_permutations.push_back(permutation);
     }
   }
+  if (direct_canonical_tree) {
+    return build_streamed_canonical_layout(
+        config, ranges, std::move(direct_automorphisms), options, physical_tree_stats,
+        enable_lossless_isomorphism, preserve_physical_tree);
+  }
   auto tree = build_public_tree(config, options);
   if (!tree) {
     return Result<DenseLayout, PostflopSolverError>::failure(PostflopSolverError::TreeFailure);
   }
+  report_layout_process_memory("public_tree_complete");
 
   DenseLayout layout;
   layout.tree = std::move(tree.value());
@@ -2059,6 +2559,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
   }
   terminal_payoff_indices.clear();
   terminal_payoff_indices.rehash(0U);
+  report_layout_process_memory("terminal_payoffs_complete");
   layout.active_combo_index.fill(-1);
   layout.combos = source_combos;
   for (std::size_t combo = 0; combo < combo_count; ++combo) {
@@ -2101,6 +2602,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
   board_lookup.clear();
   board_lookup.rehash(0U);
   layout.boards.shrink_to_fit();
+  report_layout_process_memory("boards_complete");
 
   layout.uses_isomorphic_infosets = enable_lossless_isomorphism && !uniform_full_ranges(ranges);
   std::vector<NodeHistory> histories;
@@ -2262,6 +2764,7 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
   }
   canonical_infosets.clear();
   canonical_infosets.rehash(0U);
+  report_layout_process_memory("decision_layout_complete");
   if (enable_canonical_public_dag && !automorphisms.empty()) {
     auto canonical_graph = direct_canonical_tree
                                ? build_direct_canonical_public_graph(layout.tree, automorphisms)
@@ -2365,158 +2868,9 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     layout.automorphisms = automorphisms;
     layout.uses_canonical_public_dag = true;
   }
-  if (layout.actions > std::numeric_limits<std::size_t>::max()) {
-    return Result<DenseLayout, PostflopSolverError>::failure(
-        PostflopSolverError::InvalidConfiguration);
-  }
-  // Production never aggregates public suit orbits in the legacy physical
-  // traversal.  A separately compiled, default-OFF oracle target can enable
-  // the rejected path to preserve its asymmetric-range counterexample as a
-  // regression shield; the production gtosd_postflop target compiles this out.
-#if defined(GTOSD_ENABLE_RANGE_ORBIT_ORACLE)
-#ifdef _WIN32
-  char *range_orbit_oracle = nullptr;
-  std::size_t range_orbit_oracle_size = 0U;
-  const auto range_orbit_oracle_error =
-      _dupenv_s(&range_orbit_oracle, &range_orbit_oracle_size, "GTOSD_RANGE_ORBIT_ORACLE");
-  layout.uses_range_aware_physical_orbits = range_orbit_oracle_error == 0 &&
-                                            range_orbit_oracle != nullptr &&
-                                            std::string_view{range_orbit_oracle} == "1";
-  std::free(range_orbit_oracle);
-#else
-  const auto *const range_orbit_oracle = std::getenv("GTOSD_RANGE_ORBIT_ORACLE");
-  layout.uses_range_aware_physical_orbits =
-      range_orbit_oracle != nullptr && std::string_view{range_orbit_oracle} == "1";
-#endif
-#else
-  layout.uses_range_aware_physical_orbits = false;
-#endif
-
-  const auto &flop_board = layout.boards[layout.node_board[layout.tree.root]];
-  layout.active_combos = flop_board.legal_combos;
-  for (std::size_t index = 0; index < layout.active_combos.size(); ++index) {
-    layout.active_combo_index[layout.active_combos[index]] = static_cast<std::int16_t>(index);
-    const auto &combo = layout.combos[layout.active_combos[index]];
-    layout.active_slots_by_card[combo.first.value()].push_back(static_cast<std::uint16_t>(index));
-    layout.active_slots_by_card[combo.second.value()].push_back(static_cast<std::uint16_t>(index));
-    layout.active_combos_by_card[combo.first.value()].push_back(layout.active_combos[index]);
-    layout.active_combos_by_card[combo.second.value()].push_back(layout.active_combos[index]);
-  }
-  layout.active_automorphism_slots.reserve(layout.automorphisms.size());
-  layout.active_automorphism_is_identity.reserve(layout.automorphisms.size());
-  for (const auto &automorphism : layout.automorphisms) {
-    std::vector<std::uint16_t> slots;
-    slots.reserve(layout.active_combos.size());
-    bool is_identity = true;
-    for (const ComboId combo : layout.active_combos) {
-      const auto mapped = layout.active_combo_index[automorphism.combos[combo]];
-      if (mapped < 0) {
-        return Result<DenseLayout, PostflopSolverError>::failure(
-            PostflopSolverError::InvalidConfiguration);
-      }
-      slots.push_back(static_cast<std::uint16_t>(mapped));
-      is_identity = is_identity && static_cast<std::size_t>(mapped) + 1U == slots.size();
-    }
-    layout.active_automorphism_slots.push_back(std::move(slots));
-    layout.active_automorphism_is_identity.push_back(static_cast<std::uint8_t>(is_identity));
-  }
-  if (!direct_canonical_tree) {
-    for (auto &board : layout.boards) {
-      for (std::uint8_t player = 0U; player < 2U; ++player) {
-        auto &slots = board.player_active_slots[player];
-        slots.reserve(board.player_combos[player].size());
-        for (const ComboId combo : board.player_combos[player]) {
-          const auto slot = layout.active_combo_index[combo];
-          if (slot < 0) {
-            return Result<DenseLayout, PostflopSolverError>::failure(
-                PostflopSolverError::InvalidConfiguration);
-          }
-          slots.push_back(static_cast<std::uint16_t>(slot));
-        }
-      }
-    }
-  }
-  for (const ComboId first : flop_board.legal_combos) {
-    layout.initial_reach[0][first] =
-        static_cast<double>(ranges.players[0][first].basis_points()) / 10'000.0;
-    layout.initial_reach[1][first] =
-        static_cast<double>(ranges.players[1][first].basis_points()) / 10'000.0;
-    for (const ComboId second : flop_board.legal_combos) {
-      if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
-        layout.initial_normalization +=
-            layout.initial_reach[0][first] *
-            (static_cast<double>(ranges.players[1][second].basis_points()) / 10'000.0);
-      }
-    }
-  }
-  if (!(layout.initial_normalization > 0.0)) {
-    return Result<DenseLayout, PostflopSolverError>::failure(
-        PostflopSolverError::InvalidConfiguration);
-  }
-  for (auto &player_slots : layout.player_flop_slot) {
-    player_slots.fill(-1);
-  }
-  for (std::uint8_t player = 0; player < 2U; ++player) {
-    layout.player_flop_combos[player] = flop_board.player_combos[player];
-    layout.player_flop_count[player] = flop_board.player_combos[player].size();
-    for (std::size_t index = 0; index < flop_board.player_combos[player].size(); ++index) {
-      layout.player_flop_slot[player][flop_board.player_combos[player][index]] =
-          static_cast<std::int16_t>(index);
-    }
-  }
-  for (auto &board : layout.boards) {
-    for (std::uint8_t player = 0; player < 2U; ++player) {
-      auto &slots = board.player_flop_slots[player];
-      auto &opponent_slots = board.player_opponent_flop_slots[player];
-      slots.reserve(board.player_combos[player].size());
-      opponent_slots.reserve(board.player_combos[player].size());
-      for (const ComboId combo : board.player_combos[player]) {
-        const auto slot = layout.player_flop_slot[player][combo];
-        if (slot < 0) {
-          return Result<DenseLayout, PostflopSolverError>::failure(
-              PostflopSolverError::InvalidConfiguration);
-        }
-        slots.push_back(static_cast<std::uint16_t>(slot));
-        const auto opponent_slot = layout.player_flop_slot[1U - player][combo];
-        opponent_slots.push_back(opponent_slot < 0 ? TerminalComboData::invalid_slot
-                                                   : static_cast<std::uint16_t>(opponent_slot));
-      }
-    }
-  }
-  const auto serialized_config = serialize_tree_config_json(config);
-  std::string fingerprint_source = layout.tree.betting_tree_hash + "|" + serialized_config;
-  if (!uniform_full_ranges(ranges)) {
-    fingerprint_source +=
-        "|ranges-v1|" + serialize_range_fingerprint(ranges) +
-        (layout.uses_isomorphic_infosets ? "|iso-infosets-v1" : "|physical-infosets-v1");
-  }
-  layout.fingerprint = fingerprint_text(fingerprint_source);
-  if (layout.uses_canonical_public_dag) {
-    // The direct solver tree and the physical inspection tree are two lossless
-    // storage representations of the same game. Their checkpoint identity
-    // must therefore be based on the game/ranges and canonical layout version,
-    // never on the representation-specific betting-tree hash.
-    std::string canonical_fingerprint_source = "node-owned-chance-tree-v3|" + serialized_config;
-    if (!uniform_full_ranges(ranges)) {
-      canonical_fingerprint_source += "|ranges-v1|" + serialize_range_fingerprint(ranges);
-    }
-    canonical_fingerprint_source += enable_lossless_isomorphism ? "|iso-on" : "|iso-off";
-    layout.fingerprint = fingerprint_text(canonical_fingerprint_source);
-  }
-  if (direct_canonical_tree) {
-    layout.tree.stats = physical_tree_stats;
-  }
-  if (layout.uses_canonical_public_dag && !preserve_physical_tree) {
-    layout.tree.nodes.clear();
-    layout.tree.nodes.shrink_to_fit();
-    layout.node_board.clear();
-    layout.node_board.shrink_to_fit();
-    layout.node_terminal_payoff.clear();
-    layout.node_terminal_payoff.shrink_to_fit();
-    layout.decisions.clear();
-    layout.decisions.shrink_to_fit();
-  }
-  return Result<DenseLayout, PostflopSolverError>::success(std::move(layout));
+  report_layout_process_memory("canonical_graph_complete");
+  return finalize_layout(std::move(layout), config, ranges, enable_lossless_isomorphism,
+                         direct_canonical_tree, preserve_physical_tree, physical_tree_stats);
 }
 
 Result<bool, PostflopSolverError> prepare_ranks(DenseLayout &layout,
@@ -11560,13 +11914,7 @@ private:
           }
         }
       }
-      auto &rank_base = [&]() -> auto & {
-        if constexpr (std::is_same_v<Accumulator, float>) {
-          return showdown_rank_base_float_;
-        } else {
-          return showdown_rank_base_;
-        }
-      }();
+      auto &rank_base = showdown_rank_base_;
       const Accumulator total_reach = prefix[rank_count];
       for (std::size_t rank = 0; rank < rank_count; ++rank) {
         rank_base[rank] = prefix[rank] * static_cast<Accumulator>(win_payoff) +
@@ -12003,34 +12351,10 @@ private:
     // Reuse the member scratch arrays (sized for the maximum rank space, see
     // the member declarations): no per-node heap allocation (the old code
     // heap-allocated ~5.4 KB per showdown node, ~4.4 M allocations per run).
-    auto &totals = [&]() -> auto & {
-      if constexpr (std::is_same_v<Scalar, float>) {
-        return showdown_totals_float_;
-      } else {
-        return showdown_totals_;
-      }
-    }();
-    auto &by_card = [&]() -> auto & {
-      if constexpr (std::is_same_v<Scalar, float>) {
-        return showdown_by_card_float_;
-      } else {
-        return showdown_by_card_;
-      }
-    }();
-    auto &prefix = [&]() -> auto & {
-      if constexpr (std::is_same_v<Scalar, float>) {
-        return showdown_prefix_float_;
-      } else {
-        return showdown_prefix_;
-      }
-    }();
-    auto &card_prefix = [&]() -> auto & {
-      if constexpr (std::is_same_v<Scalar, float>) {
-        return showdown_card_prefix_float_;
-      } else {
-        return showdown_card_prefix_;
-      }
-    }();
+    auto &totals = showdown_totals_;
+    auto &by_card = showdown_by_card_;
+    auto &prefix = showdown_prefix_;
+    auto &card_prefix = showdown_card_prefix_;
     using ScratchScalar = typename std::remove_reference_t<decltype(totals)>::value_type;
     std::fill_n(totals.begin(), rank_count, ScratchScalar{0});
     // Every prefix entry after the base is overwritten by `calculate`; only
@@ -14327,16 +14651,14 @@ private:
   // the number of distinct hand values among the board's legal combos, always
   // <= combo_count, so these members cover every board without per-node heap
   // allocation (the old code heap-allocated ~5.4 KB per showdown node).
-  std::array<double, combo_count> showdown_totals_{};
-  std::array<double, combo_count> showdown_rank_base_{};
-  std::array<double, 36U * combo_count> showdown_by_card_{};
-  std::array<double, combo_count + 1U> showdown_prefix_{};
-  std::array<double, 36U * (combo_count + 1U)> showdown_card_prefix_{};
-  std::array<float, combo_count> showdown_totals_float_{};
-  std::array<float, combo_count> showdown_rank_base_float_{};
-  std::array<float, 36U * combo_count> showdown_by_card_float_{};
-  std::array<float, combo_count + 1U> showdown_prefix_float_{};
-  std::array<float, 36U * (combo_count + 1U)> showdown_card_prefix_float_{};
+  // The traversal's compute scalar selects the only scratch representation it
+  // can read. Retaining both float and double copies in every worker inflated
+  // the resident pool without providing a conversion path.
+  std::array<Scalar, combo_count> showdown_totals_{};
+  std::array<Scalar, combo_count> showdown_rank_base_{};
+  std::array<Scalar, 36U * combo_count> showdown_by_card_{};
+  std::array<Scalar, combo_count + 1U> showdown_prefix_{};
+  std::array<Scalar, 36U * (combo_count + 1U)> showdown_card_prefix_{};
   std::size_t decision_scratch_depth_{0};
   std::uint64_t traversed_nodes_{0};
   PostflopWorkCounters work_counters_{};
@@ -14662,7 +14984,7 @@ double reach_weighted_sum(const DenseLayout &layout,
 
 template <std::size_t Capacity, bool PlayerIndexed>
 double root_public_reach_probability(const DenseLayout &layout,
-                                     const std::array<TraversalComboVector<Capacity>, 2> &reach) {
+                                      const std::array<TraversalComboVector<Capacity>, 2> &reach) {
   // In DAG mode build_layout clears node_board/tree.nodes, so the root board
   // must come from the canonical graph instead of the physical node mapping.
   const auto root_board_index =
@@ -16548,6 +16870,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                  checkpoint.cumulative_regret.size()};
     }
   }
+  report_layout_process_memory("solver_state_ready");
   PostflopSolveResult result;
   result.public_tree = layout.value().tree.stats;
   result.canonical_public_nodes = layout.value().canonical_public_graph.nodes.size();
@@ -16576,6 +16899,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   auto traversal = make_dense_traversal_runner(
       layout.value(), buffers, deferred_delta_needed ? &deferred_regret_delta : nullptr,
       options.parallel_action_depth, prepared_root_lock.get());
+  report_layout_process_memory("solver_traversal_ready");
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
   std::shared_ptr<RealNodeReplayCollector> replay_collector;
   if (options.diagnostic_real_node_replay != nullptr) {
@@ -16611,8 +16935,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   if (!target_driven_without_iteration_limit &&
       checkpoint.completed_iterations == options.iterations) {
     const auto certification_started = std::chrono::steady_clock::now();
+    report_layout_process_memory("certification_start");
     const auto certification =
         certify(layout.value(), buffers, checkpoint.completed_iterations, prepared_root_lock.get());
+    report_layout_process_memory("certification_complete");
     result.timings.certification_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
             .count();
@@ -16854,8 +17180,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     if (periodic_certification_due || adaptive_certification_due ||
         (!target_driven_without_iteration_limit && iteration == options.iterations) || stopping) {
       const auto certification_started = std::chrono::steady_clock::now();
+      report_layout_process_memory("certification_start");
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
                                          prepared_root_lock.get());
+      report_layout_process_memory("certification_complete");
       result.timings.certification_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
               .count();

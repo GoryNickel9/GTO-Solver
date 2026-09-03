@@ -163,6 +163,80 @@ void test_fixed_turn_and_river_roots() {
   require(!gtosd::validate_tree_config(invalid), "river without turn is rejected");
 }
 
+void test_streamed_tree_matches_materialized_tree() {
+  const auto materialized = gtosd::build_public_tree(check_only_config());
+  require(materialized.has_value(), "materialized stream oracle builds");
+
+  struct StreamedNode {
+    gtosd::PublicNodeKind kind{gtosd::PublicNodeKind::Decision};
+    gtosd::PublicState state{};
+    std::uint32_t depth{0};
+    std::vector<gtosd::PublicTreeEdge> edges;
+  };
+  std::vector<StreamedNode> streamed_nodes;
+  const gtosd::PublicTreeStreamConsumer consumer{
+      [&](const gtosd::NodeId id, const gtosd::PublicNodeKind kind,
+          const gtosd::PublicState &state, const std::uint32_t depth) {
+        if (id != streamed_nodes.size()) {
+          return false;
+        }
+        streamed_nodes.push_back({kind, state, depth, {}});
+        return true;
+      },
+      [&](const gtosd::NodeId id, const std::vector<gtosd::PublicTreeEdge> &edges) {
+        if (id >= streamed_nodes.size()) {
+          return false;
+        }
+        streamed_nodes[static_cast<std::size_t>(id)].edges = edges;
+        return true;
+      }};
+  const auto streamed = gtosd::stream_public_tree(check_only_config(), consumer);
+  require(streamed.has_value(), "streamed public tree builds");
+  require(streamed.value().root == materialized.value().root,
+          "streamed root matches materialized root");
+  require(streamed.value().stats.node_count == materialized.value().stats.node_count &&
+              streamed.value().stats.edge_count == materialized.value().stats.edge_count &&
+              streamed.value().stats.decision_nodes_by_street_player_action ==
+                  materialized.value().stats.decision_nodes_by_street_player_action,
+          "streamed statistics match materialized tree");
+  require(streamed_nodes.size() == materialized.value().nodes.size(),
+          "stream emits every materialized node exactly once");
+  for (std::size_t index = 0U; index < streamed_nodes.size(); ++index) {
+    const auto &streamed_node = streamed_nodes[index];
+    const auto &materialized_node = materialized.value().nodes[index];
+    require(streamed_node.kind == materialized_node.kind &&
+                streamed_node.depth == materialized_node.depth &&
+                gtosd::serialize_public_state(streamed_node.state) ==
+                    gtosd::serialize_public_state(materialized_node.state),
+            "streamed node payload matches materialized payload");
+    require(streamed_node.edges.size() == materialized_node.edges.size(),
+            "streamed edge count matches materialized edge count");
+    for (std::size_t edge_index = 0U; edge_index < streamed_node.edges.size(); ++edge_index) {
+      const auto &streamed_edge = streamed_node.edges[edge_index];
+      const auto &materialized_edge = materialized_node.edges[edge_index];
+      require(streamed_edge.kind == materialized_edge.kind &&
+                  streamed_edge.child == materialized_edge.child &&
+                  streamed_edge.action == materialized_edge.action &&
+                  streamed_edge.chance_card == materialized_edge.chance_card &&
+                  streamed_edge.physical_outcome_count ==
+                      materialized_edge.physical_outcome_count &&
+                  streamed_edge.total_legal_outcome_count ==
+                      materialized_edge.total_legal_outcome_count &&
+                  streamed_edge.chance_outcome_count == materialized_edge.chance_outcome_count,
+              "streamed edge payload matches materialized edge payload");
+      for (std::size_t outcome = 0U; outcome < streamed_edge.chance_outcome_count; ++outcome) {
+        require(streamed_edge.chance_outcomes[outcome].card ==
+                    materialized_edge.chance_outcomes[outcome].card &&
+                    streamed_edge.chance_outcomes[outcome]
+                            .physical_to_representative_permutation ==
+                        materialized_edge.chance_outcomes[outcome]
+                            .physical_to_representative_permutation,
+                "streamed chance mapping matches materialized mapping");
+      }
+    }
+  }
+}
+
 gtosd::PublicTree test_check_only_physical_tree() {
   const auto first = gtosd::build_public_tree(check_only_config());
   require(first.has_value(), "check-only physical tree builds");
@@ -392,6 +466,7 @@ int main() {
   try {
     test_config_schema_contract();
     test_fixed_turn_and_river_roots();
+    test_streamed_tree_matches_materialized_tree();
     const auto tree = test_check_only_physical_tree();
     require(!tree.betting_tree_hash.empty(), "snapshot hash available to inspector");
     test_all_in_runout_and_terminal_resolution();

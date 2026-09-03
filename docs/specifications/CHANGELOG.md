@@ -3,6 +3,25 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-09-03
+
+### Aggiornato
+
+- Aggiunto un compilatore streaming del public tree per il layout canonico
+  production, senza materializzare il secondo albero fisico durante il solve.
+- Sovrapposti gli offset mutuamente esclusivi del decision layout e rimossi gli
+  accumulatori showdown del tipo scalare non usato da ogni traversal.
+- Aggiornato lo stato Peak RSS per-fixture: AHKHQH resta FAIL; TH7D6S e il
+  probe memoria TSTC9D passano nei nuovi run Release a processo singolo.
+
+### Verificato
+
+- Oracle streamed-vs-materialized `24.121` assert PASS e riferimento GTO+
+  `24/24` PASS, inclusi ISO asimmetrico e prepared-root differential.
+- Build Release completa e CTest `28/28 PASS` in `215,82 s`.
+- AHKHQH `23.216.128 B`, TH7D6S `391.462.912 B`, TSTC9D
+  fixed-one-iteration `1.647.755.264 B`; nessun dispatch per fixture.
+
 ## 2026-09-02
 
 ### Aggiornato

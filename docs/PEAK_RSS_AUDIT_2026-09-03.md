@@ -13,16 +13,16 @@ host. A one-iteration fixed diagnostic exercises layout, state allocation, one
 update and exact certification; the TH7D6S row was also confirmed by the full
 80-iteration convergence run.
 
-| Fixture | Previous peak RSS | Current peak RSS | GTO+ reference | Status |
+| Fixture | Pre-stream peak RSS | Current peak RSS | GTO+ reference | Status |
 |---|---:|---:|---:|---|
-| AHKHQH-101 | ~166.8 MB | 33,071,104 B | 8,000,000 B | FAIL |
-| TH7D6S-101 | ~799.1 MB | 398,049,280 B | 399,000,000 B | PASS |
-| TSTC9D-101 | 1,970,229,248 B | 1,666,785,280 B | 2,000,000,000 B | PASS |
+| AHKHQH-101 | 33,071,104 B | 23,216,128 B | 8,000,000 B | FAIL |
+| TH7D6S-101 | 398,049,280 B | 391,462,912 B | 399,000,000 B | PASS |
+| TSTC9D-101 | 1,666,785,280 B | 1,647,755,264 B | 2,000,000,000 B | PASS |
 
 TH7D6S completed 80 iterations at `0.807956%` target dEV and passed the
-correctness gate. Its latest elapsed solver time was 34.4749 s, so the independent
-time-parity problem remains outside this memory-only change. TSTC9D was a
-fixed-iteration memory regression run, not convergence evidence.
+correctness gate. Its latest elapsed solver time was 24.7373 s; temporal parity
+remains a separately certified gate. TSTC9D was a fixed one-iteration memory
+regression run, not convergence evidence.
 
 ## Root causes found
 
@@ -41,6 +41,11 @@ fixed-iteration memory regression run, not convergence evidence.
    water mark without changing edge-order reductions.
 5. Construction retained hash tables and excess vector capacity after their
    final consumer.
+6. The direct canonical path still materialized the complete `PublicTree`
+   before compiling the node-owned graph. On AHKHQH this temporary tree alone
+   raised preparation from a roughly 12 MB resident graph to a 33 MB peak.
+7. Every traversal instance retained both `float` and `double` showdown
+   accumulators even though its scalar type selects exactly one of them.
 
 ## Generic changes
 
@@ -70,6 +75,19 @@ fixed-iteration memory regression run, not convergence evidence.
   pool. Solver updates retain the configured parallelism.
 - Builder-only hash tables are released early and board capacity is compacted
   before solver state allocation.
+- The public-tree builder now also exposes a depth-first streaming consumer.
+  The production canonical compiler consumes states and edges directly, keeps
+  node ids and edge order identical to the materialized builder, and never
+  retains a second `PublicState` tree. Physical inspection/browser layouts are
+  unchanged.
+- `DecisionLayout` overlays the mutually exclusive direct-action and physical-
+  infoset offsets. It occupies 16 instead of 24 bytes, reducing every canonical
+  node from 56 to 48 bytes without changing checkpoint offsets or fingerprints.
+- Traversal showdown scratch is now typed by the traversal scalar, so a worker
+  retains one accumulator family instead of parallel `float` and `double`
+  copies. Exact certification remains `double`; reusing the resident `float`
+  solver traversal was explicitly rejected after violating the `1e-11`
+  zero-sum tolerance.
 
 No fixture identifier, fingerprint, board literal or benchmark threshold is
 used by these paths.
@@ -116,16 +134,18 @@ replacements for the exact in-memory benchmark.
 
 ## Remaining AHKHQH blocker
 
-AHKHQH is still red after removing the duplicate analysis tree. The latest
+AHKHQH is still red after removing the duplicate analysis tree and streaming
+the canonical compiler. The latest
 run measured:
 
-- process startup peak before preparation: 5,758,976 B;
+- process startup peak before preparation: 5,791,744 B;
 - required solver state: 5,300,664 B;
-- ranked resident layout accounting: 5,474,598 B;
-- measured full-process peak: 33,071,104 B;
+- ranked resident layout accounting: 4,850,750 B;
+- preparation peak: 12,206,080 B;
+- measured full-process peak: 23,216,128 B;
 - GTO+ reference: 8,000,000 B.
 
-The required state alone plus the observed process baseline is 11,059,640 B,
+The required state alone plus the observed process baseline is 11,092,408 B,
 before topology, board metadata, traversal scratch or allocator pages. Thus an
 8 MB whole-process RSS PASS is not reachable by allocator trimming alone.
 The gate is intentionally left unchanged and failing.
@@ -140,7 +160,7 @@ asymmetric-range and exact-reference oracles before promotion.
 ## Validation completed
 
 - Release build: PASS.
-- Full Release CTest suite: 28/28 PASS.
+- Full Release CTest suite: 28/28 PASS in 215.82 s.
 - TH7D6S full convergence and correctness: PASS at iteration 80.
 - TH7D6S per-fixture Peak RSS: PASS.
 - TSTC9D fixed-iteration Peak RSS regression: PASS.

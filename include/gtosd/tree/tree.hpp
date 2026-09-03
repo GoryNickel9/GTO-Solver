@@ -6,6 +6,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,8 @@ enum class TreeError : std::uint8_t {
   NotShowdownTerminal,
   InvalidPrivateCards,
   EquityFailure,
-  SettlementFailure
+  SettlementFailure,
+  StreamConsumerFailure
 };
 
 struct PublicTreeEdge {
@@ -99,6 +101,21 @@ struct TreeBuildOptions {
   std::vector<std::array<std::uint8_t, 4>> canonical_chance_permutations;
 };
 
+// A depth-first tree compiler can consume nodes as they are generated instead
+// of retaining PublicState in every PublicTreeNode. Node ids and edge order are
+// identical to build_public_tree(); node callbacks occur in id order, while an
+// edge callback occurs after all of that node's descendants have been emitted.
+// Returning false aborts construction with StreamConsumerFailure.
+struct PublicTreeStreamConsumer {
+  std::function<bool(NodeId, PublicNodeKind, const PublicState &, std::uint32_t)> node;
+  std::function<bool(NodeId, const std::vector<PublicTreeEdge> &)> edges;
+};
+
+struct PublicTreeStreamResult {
+  NodeId root{0};
+  PublicTreeStats stats{};
+};
+
 struct ConditionedChanceEdge {
   NodeId child{0};
   CardId card{};
@@ -113,6 +130,10 @@ struct TerminalResolution {
 
 [[nodiscard]] Result<PublicTree, TreeError> build_public_tree(const PostflopTreeConfig &config,
                                                               const TreeBuildOptions &options = {});
+
+[[nodiscard]] Result<PublicTreeStreamResult, TreeError>
+stream_public_tree(const PostflopTreeConfig &config, const PublicTreeStreamConsumer &consumer,
+                   const TreeBuildOptions &options = {});
 
 [[nodiscard]] Result<PublicTreeStats, TreeError>
 estimate_public_tree(const PostflopTreeConfig &config, const TreeBuildOptions &options = {});
