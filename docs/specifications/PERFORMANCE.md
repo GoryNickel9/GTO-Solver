@@ -1,14 +1,15 @@
 # Performance
 
-> **Peak-RSS architectural recheck — 2026-09-03.** The canonical production
-> tree is now compiled through a streaming public-tree consumer, decision/node
-> metadata is compacted, and each traversal retains only scratch for its actual
-> scalar type. Single-process Release measurements are AHKHQH `23.216.128 B /
-> 8.000.000 B` FAIL, TH7D6S `391.462.912 B / 399.000.000 B` PASS, and
-> TSTC9D fixed-one-iteration `1.647.755.264 B / 2.000.000.000 B` PASS. TH
-> also passes exact convergence/correctness at `0,807956% @80`; TST is memory
-> regression evidence only. No fixture key selects these paths. Multi-process
-> promotion is pending and AHK remains the active memory blocker. Evidence:
+> **Peak-RSS gate closure — 2026-09-03.** The canonical production graph now
+> uses `16/8/8`-byte node/edge/outcome records. An explicit working-set target
+> selects an exact OS-page-backed scaled-uint16 state only when the logical
+> state plus current residency cannot fit; zero keeps resident vectors. No
+> fixture key selects either path. Five-process maxima are AHKHQH
+> `7.790.592/8.000.000 B` PASS and TH7D6S
+> `363.569.152/399.000.000 B` PASS. A full TSTC9D convergence run is
+> `1.534.152.704/2.000.000.000 B` PASS. All three retain their exact dEV and
+> correctness results; TH and TST time parity remains separately red. The
+> report declares state residency and materialization requirements. Evidence:
 > [`../PEAK_RSS_AUDIT_2026-09-03.md`](../PEAK_RSS_AUDIT_2026-09-03.md).
 
 > **Production final-head — 2026-09-01, stato corrente.** La schedule comune
@@ -32,7 +33,7 @@
 > `8.000.000 / 399.000.000 / 2.000.000.000 B`. Il cap comune `<2 GiB` e
 > `solver_state_bytes` restano diagnostiche separate. La baseline five-process
 > qui registrata aveva AHK e TH in FAIL; il recheck architetturale successivo
-> sopra porta TH sotto soglia ma lascia AHK in FAIL. Il precedente contratto
+> sopra porta tutte e tre le fixture sotto la propria soglia. Il precedente contratto
 > 2 GiB è superseded:
 > [`../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 

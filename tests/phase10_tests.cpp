@@ -334,6 +334,55 @@ void test_production_dcfr_schedule_and_resume() {
           "production DCFR preserves the qualified checkpoint identity");
 }
 
+void test_budgeted_page_backing_is_byte_exact() {
+  const auto config = make_small_config();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  gtosd::PostflopSolveOptions resident_options;
+  resident_options.iterations = 4U;
+  resident_options.certification_interval = 4U;
+  resident_options.algorithm = gtosd::PostflopAlgorithm::ProductionDcfr;
+  resident_options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+
+  auto resident_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  const auto resident = gtosd::solve_postflop_exact(*resident_tree, resident_options);
+  require(resident.has_value() && resident.value().checkpoint.runtime_state == nullptr,
+          "unbounded exact state remains resident");
+
+  auto budgeted_options = resident_options;
+  budgeted_options.maximum_peak_rss_bytes = 1U;
+  auto budgeted_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  const auto budgeted = gtosd::solve_postflop_exact(*budgeted_tree, budgeted_options);
+  require(budgeted.has_value() && budgeted.value().checkpoint.runtime_state != nullptr &&
+              budgeted.value().checkpoint.cumulative_regret_uint16.empty() &&
+              budgeted.value().checkpoint.cumulative_strategy_uint16.empty() &&
+              budgeted.value().checkpoint.regret_node_scale.empty() &&
+              budgeted.value().checkpoint.strategy_node_scale.empty(),
+          "tight working-set budget selects only page-backed exact state");
+
+  auto materialized = budgeted.value().checkpoint;
+  require(gtosd::materialize_postflop_checkpoint_state(materialized).has_value() &&
+              materialized.runtime_state == nullptr,
+          "page-backed state materializes explicitly for persistence");
+  require(materialized.cumulative_regret_uint16 ==
+                  resident.value().checkpoint.cumulative_regret_uint16 &&
+              materialized.cumulative_strategy_uint16 ==
+                  resident.value().checkpoint.cumulative_strategy_uint16 &&
+              materialized.regret_node_scale == resident.value().checkpoint.regret_node_scale &&
+              materialized.strategy_node_scale ==
+                  resident.value().checkpoint.strategy_node_scale,
+          "resident and page-backed production DCFR states are byte-identical");
+  const auto archive = gtosd::make_postflop_solution(
+      config, ranges, materialized, budgeted.value().convergence.back());
+  require(archive.has_value(), "materialized page-backed state is persistable");
+  require(budgeted.value().convergence.back().profile_value_antes ==
+                  resident.value().convergence.back().profile_value_antes &&
+              budgeted.value().convergence.back().best_response_value_antes ==
+                  resident.value().convergence.back().best_response_value_antes &&
+              budgeted.value().convergence.back().nash_conv_antes ==
+                  resident.value().convergence.back().nash_conv_antes,
+          "resident and page-backed exact certifications are identical");
+}
+
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
 void test_real_node_replay_capture_is_bounded_and_authoritative() {
   const auto config = make_small_config();
@@ -391,6 +440,7 @@ int main() {
     test_architectural_topology_is_read_only_and_disjoint();
     test_hs_dcfr30_schedule_and_resume();
     test_production_dcfr_schedule_and_resume();
+    test_budgeted_page_backing_is_byte_exact();
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
     test_real_node_replay_capture_is_bounded_and_authoritative();
 #endif

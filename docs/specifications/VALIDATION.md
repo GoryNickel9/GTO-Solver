@@ -56,10 +56,16 @@ con tutti e tre i benchmark. Passa dEV, root EV, layout, exact outcomes,
 deterministici AHK/TH/TST sono `80/0,951423%`, `80/0,807956%` e
 `160/0,904505%`; mediane/p95 solver `0,758705/0,790918 s`,
 `19,948228/24,192260 s`, `184,095930/197,865030 s`. TH e TST falliscono il
-tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; peak RSS massimo
-TST `1.969.860.608 B`. Con la semantica v3 corretta, AHK e TH falliscono il
-gate memoria per-fixture, mentre TST lo passa; il cap desktop comune passa ma
-resta soltanto diagnostico.
+tempo rispettivamente del `1,661%` e `42,722%` sulla mediana; quel checkpoint
+storico aveva AHK e TH in FAIL sul gate Peak RSS per-fixture.
+
+Il recheck Release del 2026-09-03 conserva iterazioni, dEV e correttezza e
+chiude la memoria: AHKHQH max cinque processi `7.790.592 B`, TH7D6S max cinque
+processi `363.569.152 B`, TSTC9D full convergence `1.534.152.704 B`. AHK usa
+il backend OS-page-backed selezionato dall'esplicito target 8 MB; TH e TST
+restano residenti. Il report non confonde la residenza con
+`solver_state_bytes` e dichiara quando la persistenza richiede
+materializzazione. Peak RSS passa 3/3; i gate tempo TH/TST restano rossi.
 
 Gli EV BTN dopo check/bet restano diagnostici nel percorso non vincolato perché
 GTO+ e GTOSD producono posteriori CO differenti. F10.4 è stata implementata e
@@ -97,6 +103,12 @@ gli scenari mediante exact BR target-driven e root EV esterno. Il formato è
 coperto da finiteness check, resume in-memory byte-equivalent, scale goldens e
 round-trip storage byte-for-byte. RSS, stato persistente e buffer transienti
 restano metriche distinte.
+
+Il backend a residenza budgeted deve essere confrontato con quello residente
+sugli stessi codici e scale, certificazione exact e payload materializzato.
+Può usare paging locale del sistema operativo, ma non GPU o acceleratori; il
+report deve pubblicare questa scelta e non presentarla come compressione dello
+stato logico.
 
 I riferimenti esterni devono conservare export o trascrizione, versione del
 solver, azioni legali, unità e arrotondamenti. Se un dato non è disponibile, il

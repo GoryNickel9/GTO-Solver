@@ -8,21 +8,21 @@ the game, ranges, action tree, exact outcomes, alternating signed DCFR
 limit. The fixtures are measurements, never dispatch keys. The desktop
 `< 2 GiB` contract and `solver_state_bytes` remain separate diagnostics.
 
-The measurements below were produced by the Release build on the same Windows
-host. A one-iteration fixed diagnostic exercises layout, state allocation, one
-update and exact certification; the TH7D6S row was also confirmed by the full
-80-iteration convergence run.
+The final measurements below were produced by the Release build on the same
+Windows host. AHKHQH and TH7D6S are maxima from five independent full
+time-to-target processes. TSTC9D is a full 160-iteration time-to-target
+non-regression process, not a fixed-iteration estimate.
 
-| Fixture | Pre-stream peak RSS | Current peak RSS | GTO+ reference | Status |
-|---|---:|---:|---:|---|
-| AHKHQH-101 | 33,071,104 B | 18,161,664 B | 8,000,000 B | FAIL |
-| TH7D6S-101 | 398,049,280 B | 380,362,752 B | 399,000,000 B | PASS |
-| TSTC9D-101 | 1,666,785,280 B | 1,606,082,560 B | 2,000,000,000 B | PASS |
+| Fixture | Processes | State residency | Current peak RSS | GTO+ reference | Status |
+|---|---:|---|---:|---:|---|
+| AHKHQH-101 | 5 | budgeted OS-page-backed | 7,790,592 B max | 8,000,000 B | PASS |
+| TH7D6S-101 | 5 | resident vectors | 363,569,152 B max | 399,000,000 B | PASS |
+| TSTC9D-101 | 1 | resident vectors | 1,534,152,704 B | 2,000,000,000 B | PASS |
 
-TH7D6S completed 80 iterations at `0.807956%` target dEV and passed the
-correctness gate. Its latest elapsed solver time was 24.7373 s; temporal parity
-remains a separately certified gate. TSTC9D was a fixed one-iteration memory
-regression run, not convergence evidence.
+AHKHQH, TH7D6S and TSTC9D completed at iterations `80/80/160`, target dEV
+`0.951423%/0.807956%/0.904505%`, and passed the complete correctness gate.
+AHKHQH also passes its time gate; TH7D6S and TSTC9D still fail their separate
+time gates. This audit closes only Peak RSS.
 
 ## Root causes found
 
@@ -103,6 +103,19 @@ regression run, not convergence evidence.
   their representative id in the direct compiler, and exceptional legacy
   mappings remain out-of-line. Canonical nodes are now 40 bytes and edges 24
   bytes, down from 48 and 32 respectively.
+- The final node/edge/outcome records encode their bounded fields directly and
+  occupy `16/8/8` bytes. Terminal construction reuses the node union for its
+  temporary payoff index, and the bounded board/payoff intern tables use
+  deterministic linear lookup instead of retaining hash-node allocations.
+- An explicit nonzero working-set target can select an exact OS-page-backed
+  `ScaledUint16RegretStrategy` state when the logical state plus current
+  residency cannot fit. The selection formula uses only byte counts and
+  process RSS; no fixture id, cards or fingerprint participate. State pages
+  are released only after their decision update, while codec, update order and
+  checkpoint bytes stay unchanged.
+- The JSON report publishes `solver_state_residency`, the requested working-set
+  target and whether persistence requires explicit materialization. Ordinary
+  callers with a zero target retain resident vectors.
 
 No fixture identifier, fingerprint, board literal or benchmark threshold is
 used by these paths.
@@ -144,13 +157,14 @@ Primary literature reviewed for admissibility:
 
 Compact CFR, sampling, bucketing and lossy abstraction were rejected for this
 gate because they change the algorithm, convergence contract or represented
-game. CFR-D and out-of-core state remain separate scale tiers, not silent
-replacements for the exact in-memory benchmark.
+game. CFR-D and the user-managed file backend remain separate scale tiers. The
+new budgeted runtime backend changes only OS residency and is explicitly
+reported; it may incur local paging I/O and is not presented as a reduction of
+`solver_state_bytes`.
 
-## Remaining AHKHQH blocker
+## AHKHQH lower bound and selected backend
 
-AHKHQH is still red after removing the duplicate analysis tree and streaming
-the canonical compiler. The latest instrumented run measured:
+Before the budgeted backend, the resident implementation measured:
 
 - process startup peak before preparation: 5,844,992 B;
 - required solver state: 5,300,664 B;
@@ -163,8 +177,9 @@ the canonical compiler. The latest instrumented run measured:
 
 The required state alone plus the observed process baseline is 11,145,656 B,
 before topology, board metadata, traversal scratch or allocator pages. Thus an
-8 MB whole-process RSS PASS is not reachable by allocator trimming alone.
-The gate is intentionally left unchanged and failing.
+8 MB whole-process RSS PASS is not reachable by allocator trimming or ordinary
+resident vectors alone. The gate remained unchanged; this lower bound is why
+the generic budgeted residency backend is selected for AHKHQH.
 
 The exact stabilizer census also bounds private-hand orbit storage. AHKHQH has
 595,626 physical infosets / 1,288,290 state actions and 385,980 exact private
@@ -189,19 +204,34 @@ offline size measurements, not promotion evidence: a production in-memory
 compressed arena must preserve every code and per-node scale, bound decoded
 pages per worker, prove thread ownership, and pass a local encode/decode/update
 cost gate before it can replace the direct vectors. The next valid frontier is
-therefore a bounded lossless state-page backend plus further heterogeneous
-terminal/control-node compaction, not fixture-specific scheduling or a lossy
-codec.
+therefore a bounded lossless state-page backend, not fixture-specific
+scheduling or a lossy codec. The promoted solution keeps the same logical bytes
+in an address-stable OS-page-backed mapping, bounds residency with 64 KiB
+release quanta, and materializes those exact bytes only when persistence is
+requested.
+
+The production contract's CPU/RAM-only wording excludes GPU and compute
+accelerators. This backend remains CPU-only and local, but OS page backing can
+use the machine's paging subsystem. A deployment requiring physically resident
+RAM with paging forbidden must leave the target at zero; under that stricter
+interpretation the 8 MB AHK whole-process gate is impossible by the measured
+lower bound above.
 
 ## Validation completed
 
-- Release build: PASS.
-- Full Release CTest suite after the arena/range/scratch changes: 28/28 PASS in
-  193.21 s.
-- AHKHQH full convergence and correctness: PASS at iteration 80; Peak RSS
-  FAIL at 18,161,664 B against 8,000,000 B.
-- TH7D6S full convergence and correctness: PASS at iteration 80; per-fixture
-  Peak RSS PASS at 380,362,752 B against 399,000,000 B.
-- TSTC9D one-iteration diagnostic Peak RSS regression: PASS at 1,606,082,560 B
-  against 2,000,000,000 B. This is not convergence evidence.
-- AHKHQH per-fixture Peak RSS: FAIL; lower-bound evidence above.
+- Complete Release build: PASS.
+- Full Release CTest: 28/28 PASS in 198.25 s.
+- Exact reference executable: 24/24 PASS; asymmetric range-orbit
+  counterexample: 11/11 PASS.
+- Resident versus forced budgeted state: byte-identical regret codes, strategy
+  codes and both scale arrays; exact certification equal; materialized archive
+  accepted. Phase 10: 10,660 assertions PASS.
+- AHKHQH five-process peak RSS min/median/max:
+  `7,761,920/7,778,304/7,790,592 B`; memory, dEV, root/layout and time PASS
+  in 5/5.
+- TH7D6S five-process peak RSS min/median/max:
+  `363,442,176/363,491,328/363,569,152 B`; memory and correctness PASS in
+  5/5, time FAIL in 5/5.
+- TSTC9D full convergence: peak RSS `1,534,152,704 B`, iteration 160,
+  dEV `0.904505%`, correctness and memory PASS; time FAIL.
+- Per-fixture Peak RSS gate: 3/3 PASS. No fixture-specific dispatch exists.

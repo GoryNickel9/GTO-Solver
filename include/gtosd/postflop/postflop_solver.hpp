@@ -16,6 +16,10 @@
 namespace gtosd {
 
 namespace detail {
+class PostflopRuntimeState;
+}
+
+namespace detail {
 
 // Shared signed-regret matching primitives used by the production canonical
 // current-policy loaders and their regression tests. Codes are stored in a
@@ -272,6 +276,12 @@ struct PostflopSolveOptions {
   // Selects the mathematical boundary of the convergence gate. Existing
   // callers retain <=; GTO+ Target dEV benchmarks use strict <.
   bool strict_target{false};
+  // Optional process working-set target. Zero preserves the ordinary resident
+  // backend. A nonzero value explicitly permits a local, OS-page-backed exact
+  // state when the state plus the already-resident layout cannot fit. This
+  // changes residency only: codec, update schedule and checkpoint bytes remain
+  // unchanged. Persisting that runtime state requires explicit materialization.
+  std::uint64_t maximum_peak_rss_bytes{0};
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
   PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};
@@ -344,6 +354,11 @@ struct PostflopCheckpoint {
   std::vector<std::uint16_t> cumulative_strategy_uint16;
   std::vector<float> regret_node_scale;
   std::vector<float> strategy_node_scale;
+  // Runtime-only owner for the exact OS-page-backed representation selected
+  // by an explicit working-set target. It is deliberately absent from the
+  // serialized checkpoint identity; public query/analysis APIs consume it
+  // through the same ActionBuffers view as resident vectors.
+  std::shared_ptr<detail::PostflopRuntimeState> runtime_state;
 };
 
 struct PostflopWorkCounters {
@@ -618,6 +633,12 @@ prepared_postflop_public_tree(const std::shared_ptr<PostflopPreparedTree> &prepa
 [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
+
+// Explicitly copies a runtime OS-page-backed exact state into the ordinary
+// checkpoint vectors. This is intended for persistence/export and may raise
+// the caller's working set by the full logical state size.
+[[nodiscard]] Result<bool, PostflopSolverError>
+materialize_postflop_checkpoint_state(PostflopCheckpoint &checkpoint);
 
 [[nodiscard]] Result<PostflopCertification, PostflopSolverError>
 certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint);

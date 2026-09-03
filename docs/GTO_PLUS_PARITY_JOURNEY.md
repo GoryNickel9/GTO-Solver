@@ -1,8 +1,22 @@
 # GTO+ parity journey — suite postflop
 
-Aggiornato: 2026-09-02
+Aggiornato: 2026-09-03
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **BLOCCANTE — NON SUPERATO**
+
+> **Peak-RSS closure 2026-09-03 — stato corrente.** Il gate memoria
+> per-fixture è ora `3/3 PASS`: AHKHQH max cinque processi
+> `7.790.592/8.000.000 B`, TH7D6S max cinque processi
+> `363.569.152/399.000.000 B`, TSTC9D full-convergence
+> `1.534.152.704/2.000.000.000 B`. Il core usa record canonici `16/8/8` byte e
+> seleziona lo stato scaled-uint16 OS-page-backed soltanto da un target di
+> working set esplicito e dal modello `RSS corrente + stato logico`; nessun id,
+> board o fingerprint di fixture partecipa. AHK usa quel backend, TH e TST
+> restano residenti. Il report dichiara residenza e materializzazione; i bytes
+> logici del checkpoint non cambiano. Correttezza e dEV passano 3/3; Release
+> CTest `28/28 PASS`. La parità complessiva resta bloccata esclusivamente dai
+> distinti gate tempo TH e TST. Evidenza:
+> [`PEAK_RSS_AUDIT_2026-09-03.md`](PEAK_RSS_AUDIT_2026-09-03.md).
 
 > **Production DCFR integration final-head 2026-09-01 — stato corrente.**
 > Il candidato comune `bounded65-upstream-after65` e' integrato come

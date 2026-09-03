@@ -32,6 +32,14 @@ schedule e' coperta da resume continuo/segmentato byte-equivalent. Lo stato non
 contiene una strategia root esterna implicita: F10.4 resta un percorso
 diagnostico esplicito e non può essere riaperto come equilibrio standard.
 
+Un solve con target di working set esplicito può conservare temporaneamente lo
+stesso payload scaled-uint16 in una mapping OS-page-backed. L'owner runtime non
+fa parte dell'identità serializzata e le API di query lo leggono senza cambiare
+codec. Prima di scrivere checkpoint o `.gtsd`, il chiamante deve invocare la
+materializzazione esplicita: i quattro array risultanti devono essere
+byte-identici al backend residente e l'operazione può aumentare il working set
+dell'intera dimensione logica dello stato.
+
 ## Container `.gtsd`
 
 Il layout fisico è:

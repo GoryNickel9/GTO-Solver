@@ -1,5 +1,18 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **Peak-RSS closure 2026-09-03 — stato corrente.** Il gate per-fixture passa
+> 3/3 senza dispatch per benchmark: AHKHQH max cinque processi
+> `7.790.592/8.000.000 B`, TH7D6S max cinque processi
+> `363.569.152/399.000.000 B`, TSTC9D full-convergence
+> `1.534.152.704/2.000.000.000 B`. AHK seleziona genericamente lo stato exact
+> OS-page-backed perché `RSS corrente + stato logico` supera il suo target; TH
+> e TST conservano vettori residenti. Stato, dEV, root/layout e exact outcomes
+> restano invariati. Release CTest `28/28 PASS` in `198,25 s`; Phase 10
+> `10.660` assert e riferimento GTO+ `24/24 PASS`. I gate tempo TH/TST restano
+> rossi, quindi la parità complessiva non è ancora chiusa. Questo blocco
+> supersede le sole classificazioni memoria nei checkpoint precedenti. Report:
+> [`PEAK_RSS_AUDIT_2026-09-03.md`](PEAK_RSS_AUDIT_2026-09-03.md).
+
 > **Production DCFR integration 2026-09-01 — stato corrente.** Il contratto
 > comune AHK/TH/TST e' ora `production_dcfr`: exact alternating signed DCFR
 > `1.5/0/3`, reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di

@@ -58,7 +58,9 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
 
 1. Il config versionato viene parsato e validato.
 2. Range e blocker vengono validati senza rinormalizzazione implicita.
-3. Il public tree fisico viene costruito con azioni legali deterministiche.
+3. Le azioni del public tree sono generate deterministicamente; il solve
+   production le compila in streaming nel grafo canonico, mentre il browser
+   può richiedere la materializzazione fisica completa.
 4. L'isomorfismo lossless riduce infoset duplicati; il target migrato usa un
    canonical chance tree senza unificare history arbitrarie.
 5. `prepare_postflop_tree` crea il layout infoset/action e, se richiesto, gli
@@ -79,6 +81,13 @@ un sostituto implicito dell'algoritmo postflop corrente.
 La preparazione è riutilizzabile: benchmark e GUI possono eseguire più tranche
 senza ricostruire la topologia. L'analytics è opt-in per non gonfiare il path di
 solving quando non serve.
+
+Lo stato scaled-uint16 usa normalmente vettori residenti. Un target di working
+set non nullo autorizza invece una mapping locale OS-page-backed quando il
+modello `RSS corrente + stato logico` supera il target. La decisione è basata
+soltanto sulle risorse, non sulla fixture; la rappresentazione e l'ordine degli
+update restano identici. Persistenza ed export richiedono materializzazione
+esplicita e il report deve rendere visibile la residenza scelta.
 
 ## Confini e invarianti
 

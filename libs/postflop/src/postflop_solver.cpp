@@ -42,6 +42,10 @@
 #ifdef _WIN32
 #define NOMINMAX
 #include <windows.h>
+#include <psapi.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 namespace gtosd {
@@ -129,6 +133,168 @@ bool detail::regret_match_signed_action_major(
   return true;
 }
 
+namespace detail {
+
+class PostflopRuntimeState final {
+public:
+  PostflopRuntimeState(const std::size_t action_count, const std::size_t decision_node_count,
+                       const std::uint64_t release_quantum_bytes) noexcept
+      : action_count_(action_count), decision_node_count_(decision_node_count),
+        release_quantum_bytes_(std::max<std::uint64_t>(release_quantum_bytes, 64U * 1'024U)) {
+    if (action_count_ == 0U || decision_node_count_ == 0U ||
+        decision_node_count_ >
+            std::numeric_limits<std::size_t>::max() / (2U * sizeof(float)) ||
+        action_count_ > (std::numeric_limits<std::size_t>::max() -
+                         decision_node_count_ * 2U * sizeof(float)) /
+                            (2U * sizeof(std::uint16_t))) {
+      return;
+    }
+    const auto code_bytes = action_count_ * sizeof(std::uint16_t);
+    const auto scale_bytes = decision_node_count_ * sizeof(float);
+    mapping_bytes_ = code_bytes * 2U + scale_bytes * 2U;
+#ifdef _WIN32
+    const auto high = static_cast<DWORD>(static_cast<std::uint64_t>(mapping_bytes_) >> 32U);
+    const auto low = static_cast<DWORD>(static_cast<std::uint64_t>(mapping_bytes_));
+    mapping_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, high, low, nullptr);
+    if (mapping_ == nullptr) {
+      return;
+    }
+    view_ = static_cast<std::byte *>(MapViewOfFile(mapping_, FILE_MAP_ALL_ACCESS, 0U, 0U, 0U));
+    if (view_ == nullptr) {
+      CloseHandle(mapping_);
+      mapping_ = nullptr;
+      return;
+    }
+#else
+    if (static_cast<std::uintmax_t>(mapping_bytes_) >
+        static_cast<std::uintmax_t>(std::numeric_limits<off_t>::max())) {
+      return;
+    }
+    backing_file_ = std::tmpfile();
+    if (backing_file_ == nullptr ||
+        ftruncate(fileno(backing_file_), static_cast<off_t>(mapping_bytes_)) != 0) {
+      if (backing_file_ != nullptr) {
+        std::fclose(backing_file_);
+        backing_file_ = nullptr;
+      }
+      return;
+    }
+    void *const mapped = mmap(nullptr, mapping_bytes_, PROT_READ | PROT_WRITE, MAP_SHARED,
+                              fileno(backing_file_), 0);
+    if (mapped == MAP_FAILED) {
+      std::fclose(backing_file_);
+      backing_file_ = nullptr;
+      return;
+    }
+    view_ = static_cast<std::byte *>(mapped);
+#endif
+    scaled_regret_ = reinterpret_cast<std::uint16_t *>(view_);
+    scaled_strategy_ = reinterpret_cast<std::uint16_t *>(view_ + code_bytes);
+    regret_node_scale_ = reinterpret_cast<float *>(view_ + code_bytes * 2U);
+    strategy_node_scale_ = reinterpret_cast<float *>(view_ + code_bytes * 2U + scale_bytes);
+  }
+
+  PostflopRuntimeState(const PostflopRuntimeState &) = delete;
+  PostflopRuntimeState &operator=(const PostflopRuntimeState &) = delete;
+
+  ~PostflopRuntimeState() {
+    if (view_ != nullptr) {
+#ifdef _WIN32
+      UnmapViewOfFile(view_);
+#else
+      static_cast<void>(msync(view_, mapping_bytes_, MS_SYNC));
+      munmap(view_, mapping_bytes_);
+#endif
+    }
+#ifdef _WIN32
+    if (mapping_ != nullptr) {
+      CloseHandle(mapping_);
+    }
+#else
+    if (backing_file_ != nullptr) {
+      std::fclose(backing_file_);
+    }
+#endif
+  }
+
+  [[nodiscard]] bool valid() const noexcept { return view_ != nullptr; }
+  [[nodiscard]] std::size_t action_count() const noexcept { return action_count_; }
+  [[nodiscard]] std::size_t decision_node_count() const noexcept { return decision_node_count_; }
+  [[nodiscard]] std::uint16_t *scaled_regret() const noexcept { return scaled_regret_; }
+  [[nodiscard]] std::uint16_t *scaled_strategy() const noexcept { return scaled_strategy_; }
+  [[nodiscard]] float *regret_node_scale() const noexcept { return regret_node_scale_; }
+  [[nodiscard]] float *strategy_node_scale() const noexcept { return strategy_node_scale_; }
+
+  // State intervals are released only after a decision has consumed them.
+  // Batching the hints bounds syscall traffic while retaining a small recent
+  // working set. The mapping remains address-stable and byte-exact; release
+  // affects residency only, never the logical contents.
+  void release_after_decision(const std::size_t action_entries) noexcept {
+    const auto released_bytes =
+        static_cast<std::uint64_t>(action_entries) * 2U * sizeof(std::uint16_t) +
+        2U * sizeof(float);
+    const auto accumulated =
+        pending_release_bytes_.fetch_add(released_bytes, std::memory_order_relaxed) +
+        released_bytes;
+    if (accumulated < release_quantum_bytes_) {
+      return;
+    }
+    const auto pending = pending_release_bytes_.exchange(0U, std::memory_order_acq_rel);
+    if (pending >= release_quantum_bytes_) {
+      trim_resident_pages();
+    }
+  }
+
+  void trim_resident_pages() noexcept {
+    if (view_ == nullptr || trim_in_progress_.test_and_set(std::memory_order_acquire)) {
+      return;
+    }
+#ifdef _WIN32
+    SetLastError(ERROR_SUCCESS);
+    if (!VirtualUnlock(view_, mapping_bytes_) && GetLastError() != ERROR_NOT_LOCKED) {
+      trim_failures_.fetch_add(1U, std::memory_order_relaxed);
+    }
+#else
+    if (msync(view_, mapping_bytes_, MS_ASYNC) != 0 ||
+        madvise(view_, mapping_bytes_, MADV_DONTNEED) != 0) {
+      trim_failures_.fetch_add(1U, std::memory_order_relaxed);
+    }
+#endif
+    trim_in_progress_.clear(std::memory_order_release);
+  }
+
+  [[nodiscard]] std::uint64_t trim_failures() const noexcept {
+    return trim_failures_.load(std::memory_order_relaxed);
+  }
+
+  static void trim_process_working_set() noexcept {
+#ifdef _WIN32
+    static_cast<void>(EmptyWorkingSet(GetCurrentProcess()));
+#endif
+  }
+
+private:
+  std::size_t action_count_{0U};
+  std::size_t decision_node_count_{0U};
+  std::size_t mapping_bytes_{0U};
+  std::uint64_t release_quantum_bytes_{64U * 1'024U};
+  std::byte *view_{nullptr};
+  std::uint16_t *scaled_regret_{nullptr};
+  std::uint16_t *scaled_strategy_{nullptr};
+  float *regret_node_scale_{nullptr};
+  float *strategy_node_scale_{nullptr};
+  std::atomic<std::uint64_t> pending_release_bytes_{0U};
+  std::atomic<std::uint64_t> trim_failures_{0U};
+  std::atomic_flag trim_in_progress_ = ATOMIC_FLAG_INIT;
+#ifdef _WIN32
+  HANDLE mapping_{nullptr};
+#else
+  std::FILE *backing_file_{nullptr};
+#endif
+};
+
+} // namespace detail
+
 namespace {
 
 constexpr std::size_t combo_count = 630U;
@@ -175,12 +341,29 @@ struct ActionBuffers {
   std::size_t decision_node_count{0};
   bool action_major_compact{false};
   bool signed_scaled_regret{false};
+  detail::PostflopRuntimeState *runtime_state{nullptr};
 
   [[nodiscard]] double regret_at(std::size_t index) const;
   [[nodiscard]] double strategy_at(std::size_t index) const;
   void set_regret(std::size_t index, double value) const;
   void add_strategy(std::size_t index, double value) const;
   void scale_strategy(double factor) const;
+  void release_scaled_state(std::size_t action_entries) const noexcept {
+    if (runtime_state != nullptr) {
+      runtime_state->release_after_decision(action_entries);
+    }
+  }
+  void trim_scaled_state() const noexcept {
+    if (runtime_state != nullptr) {
+      runtime_state->trim_resident_pages();
+    }
+  }
+  void trim_budgeted_working_set() const noexcept {
+    if (runtime_state != nullptr) {
+      runtime_state->trim_resident_pages();
+      detail::PostflopRuntimeState::trim_process_working_set();
+    }
+  }
 };
 
 [[nodiscard]] std::uint32_t compact_word(const std::uint8_t *const bytes) noexcept {
@@ -2389,9 +2572,6 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
   layout.canonical_public_graph.implicit_identity_assignments = true;
   layout.canonical_public_graph.identity_automorphism = identity_index;
 
-  std::unordered_map<PhysicalTerminalPayoffKey, std::uint32_t, PhysicalTerminalPayoffKeyHash>
-      terminal_payoff_indices;
-  std::unordered_map<std::uint64_t, std::uint32_t> board_lookup;
   std::optional<PostflopSolverError> consumer_error;
   const bool report_private_orbits = layout_memory_reporting_enabled();
   std::vector<std::uint32_t> stabilizer_mask_by_node;
@@ -2411,9 +2591,10 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
     return false;
   };
   const auto board_index_for = [&](const std::uint64_t mask) -> std::optional<std::uint32_t> {
-    const auto existing = board_lookup.find(mask);
-    if (existing != board_lookup.end()) {
-      return existing->second;
+    const auto existing = std::ranges::find_if(
+        layout.boards, [mask](const BoardData &board) { return board.mask == mask; });
+    if (existing != layout.boards.end()) {
+      return static_cast<std::uint32_t>(std::distance(layout.boards.begin(), existing));
     }
     if (layout.boards.size() >= std::numeric_limits<std::uint32_t>::max()) {
       return std::nullopt;
@@ -2435,7 +2616,6 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
     }
     const auto index = static_cast<std::uint32_t>(layout.boards.size());
     layout.boards.push_back(std::move(board));
-    board_lookup.emplace(mask, index);
     return index;
   };
 
@@ -2497,18 +2677,24 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
                 static_cast<double>(settlement.value().payoff_units[1]) / units_per_ante;
           }
         }
-        const auto next_index = static_cast<std::uint32_t>(layout.terminal_payoffs.size());
-        const auto [found, inserted] =
-            terminal_payoff_indices.emplace(terminal_payoff_key(payoff), next_index);
-        if (inserted) {
+        const auto payoff_key = terminal_payoff_key(payoff);
+        const auto found = std::ranges::find_if(layout.terminal_payoffs, [&](const auto &existing) {
+          return terminal_payoff_key(existing) == payoff_key;
+        });
+        std::uint32_t payoff_index = 0U;
+        if (found == layout.terminal_payoffs.end()) {
+          payoff_index = static_cast<std::uint32_t>(layout.terminal_payoffs.size());
           layout.terminal_payoffs.push_back(payoff);
+        } else {
+          payoff_index =
+              static_cast<std::uint32_t>(std::distance(layout.terminal_payoffs.begin(), found));
         }
         // Terminal nodes do not need their final pointer until the interned
         // payoff vector is complete and stable. Reuse the pointer slot for
         // this construction-only index instead of retaining a parallel
         // four-byte array for every canonical node.
         layout.canonical_public_graph.nodes[static_cast<std::size_t>(id)]
-            .terminal.temporary_payoff_index = found->second;
+            .terminal.temporary_payoff_index = payoff_index;
         return true;
       },
       [&](const NodeId id, const std::vector<PublicTreeEdge> &source_edges) {
@@ -2665,11 +2851,9 @@ Result<DenseLayout, PostflopSolverError> build_streamed_canonical_layout(
   }
   stabilizer_mask_by_node.clear();
   stabilizer_mask_by_node.shrink_to_fit();
-  terminal_payoff_indices.clear();
-  terminal_payoff_indices.rehash(0U);
-  board_lookup.clear();
-  board_lookup.rehash(0U);
-  layout.boards.shrink_to_fit();
+  // Keep the final growth capacity. A shrink here temporarily materializes a
+  // second BoardData array and raises construction peak RSS by more than the
+  // small retained slack; the boards remain immutable for the solve.
   report_layout_process_memory("streamed_graph_complete");
 
   for (std::size_t index = 0U; index < layout.canonical_public_graph.nodes.size(); ++index) {
@@ -3827,6 +4011,13 @@ class DenseTraversal {
   [[nodiscard]] std::span<const CanonicalPublicEdge>
   canonical_node_edges(const CanonicalPublicNode &node) const noexcept {
     return canonical_edges(layout_.canonical_public_graph, node);
+  }
+
+  void release_canonical_state(const CanonicalPublicNode &node) const noexcept {
+    if (node.node_kind() == PublicNodeKind::Decision) {
+      buffers_.release_scaled_state(static_cast<std::size_t>(node.edges.local_hand_count) *
+                                    static_cast<std::size_t>(node.decision.action_count));
+    }
   }
 
   static __m256d load_four_as_double(const Scalar *const source) noexcept {
@@ -7830,7 +8021,10 @@ private:
                                const ReachRef &reach, const double strategy_weight) {
     if (parallel_worker_ != nullptr &&
         layout_.canonical_public_graph.nodes[node_id].node_kind() == PublicNodeKind::Decision) {
-      return cfr_canonical_parallel_decision(node_id, updating_player, reach, strategy_weight);
+      auto result =
+          cfr_canonical_parallel_decision(node_id, updating_player, reach, strategy_weight);
+      release_canonical_state(layout_.canonical_public_graph.nodes[node_id]);
+      return result;
     }
     return cfr_canonical(node_id, updating_player, reach, strategy_weight);
   }
@@ -9683,8 +9877,12 @@ private:
           canonical.showdown_payoff(updating_player)[2], updating_player,
           *reach[1U - updating_player], values_out, 0.0, nullptr);
     case PublicNodeKind::Decision:
-      return cfr_canonical_river_decision_into(canonical, updating_player, reach, strategy_weight,
-                                               values_out);
+      {
+        auto result = cfr_canonical_river_decision_into(canonical, updating_player, reach,
+                                                        strategy_weight, values_out);
+        release_canonical_state(canonical);
+        return result;
+      }
     case PublicNodeKind::Chance:
       return PostflopSolverError::InvalidConfiguration;
     }
@@ -9757,8 +9955,12 @@ private:
       return cfr_canonical_chance_into(canonical, updating_player, reach, strategy_weight,
                                        values_out);
     case PublicNodeKind::Decision:
-      return cfr_canonical_decision_into(canonical, updating_player, reach, strategy_weight,
-                                         values_out);
+      {
+        auto result = cfr_canonical_decision_into(canonical, updating_player, reach,
+                                                  strategy_weight, values_out);
+        release_canonical_state(canonical);
+        return result;
+      }
     }
     return PostflopSolverError::InvalidConfiguration;
   }
@@ -9808,8 +10010,12 @@ private:
       return policy_canonical_profile_br_chance_into(canonical, updating_player, reach, profile_out,
                                                      response_out);
     case PublicNodeKind::Decision:
-      return policy_canonical_profile_br_decision_into(canonical, updating_player, reach,
-                                                       profile_out, response_out);
+      {
+        auto result = policy_canonical_profile_br_decision_into(
+            canonical, updating_player, reach, profile_out, response_out);
+        release_canonical_state(canonical);
+        return result;
+      }
     }
     return PostflopSolverError::InvalidConfiguration;
   }
@@ -9834,7 +10040,11 @@ private:
     case PublicNodeKind::Chance:
       return policy_canonical_chance(canonical, updating_player, reach, best_response);
     case PublicNodeKind::Decision:
-      return policy_canonical_decision(canonical, updating_player, reach, best_response);
+      {
+        auto result = policy_canonical_decision(canonical, updating_player, reach, best_response);
+        release_canonical_state(canonical);
+        return result;
+      }
     }
     return Result<ComboVector, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
@@ -15905,6 +16115,35 @@ query_strategy_from_layout(const DenseLayout &layout, const ActionBuffers buffer
 
 Result<ActionBuffers, PostflopSolverError>
 in_memory_checkpoint_buffers(const PostflopCheckpoint &checkpoint) {
+  if (checkpoint.runtime_state != nullptr) {
+    if (checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
+        !checkpoint.runtime_state->valid() ||
+        checkpoint.runtime_state->action_count() != checkpoint.action_count ||
+        checkpoint.runtime_state->decision_node_count() != checkpoint.decision_node_count ||
+        !checkpoint.external_buffer_file.empty() || !checkpoint.cumulative_regret.empty() ||
+        !checkpoint.cumulative_strategy.empty() ||
+        !checkpoint.cumulative_regret_float32.empty() ||
+        !checkpoint.cumulative_strategy_float32.empty() ||
+        !checkpoint.cumulative_regret_float24.empty() ||
+        !checkpoint.cumulative_strategy_float16.empty() ||
+        !checkpoint.cumulative_compact_state.empty() ||
+        !checkpoint.cumulative_regret_uint16.empty() ||
+        !checkpoint.cumulative_strategy_uint16.empty() || !checkpoint.regret_node_scale.empty() ||
+        !checkpoint.strategy_node_scale.empty()) {
+      return Result<ActionBuffers, PostflopSolverError>::failure(
+          PostflopSolverError::CheckpointMismatch);
+    }
+    ActionBuffers buffers;
+    buffers.count = static_cast<std::size_t>(checkpoint.action_count);
+    buffers.scaled_regret = checkpoint.runtime_state->scaled_regret();
+    buffers.scaled_strategy = checkpoint.runtime_state->scaled_strategy();
+    buffers.regret_node_scale = checkpoint.runtime_state->regret_node_scale();
+    buffers.strategy_node_scale = checkpoint.runtime_state->strategy_node_scale();
+    buffers.decision_node_count = static_cast<std::size_t>(checkpoint.decision_node_count);
+    buffers.signed_scaled_regret = is_signed_scaled_dcfr_algorithm(checkpoint.algorithm);
+    buffers.runtime_state = checkpoint.runtime_state.get();
+    return Result<ActionBuffers, PostflopSolverError>::success(buffers);
+  }
   if (checkpoint.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy) {
     if (checkpoint.cumulative_regret_uint16.size() != checkpoint.action_count ||
         checkpoint.cumulative_strategy_uint16.size() != checkpoint.action_count ||
@@ -16993,6 +17232,8 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       options.memory_backend == MemoryPrototype::StreetDecomposition ||
       (options.memory_backend == MemoryPrototype::OutOfCore &&
        options.state_precision != PostflopStatePrecision::Float64) ||
+      (options.maximum_peak_rss_bytes != 0U &&
+       options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
       (is_signed_scaled_dcfr_algorithm(options.algorithm) &&
        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
       (options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy &&
@@ -17022,12 +17263,43 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     DenseLayout *pointer;
     [[nodiscard]] DenseLayout &value() const noexcept { return *pointer; }
   } layout{&prepared.implementation_->layout};
+  const bool scaled_uint16_precision =
+      options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy;
+  const auto scaled_state_bytes = [&]() -> std::optional<std::uint64_t> {
+    if (!scaled_uint16_precision) {
+      return std::nullopt;
+    }
+    if (layout.value().canonical_decision_nodes >
+            std::numeric_limits<std::uint64_t>::max() / (2U * sizeof(float)) ||
+        layout.value().actions >
+            (std::numeric_limits<std::uint64_t>::max() -
+             layout.value().canonical_decision_nodes * 2U * sizeof(float)) /
+                (2U * sizeof(std::uint16_t))) {
+      return std::nullopt;
+    }
+    return layout.value().actions * 2U * sizeof(std::uint16_t) +
+           layout.value().canonical_decision_nodes * 2U * sizeof(float);
+  }();
+  if (scaled_uint16_precision && !scaled_state_bytes) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  const auto budget_would_require_page_backing = [&](const std::uint64_t current_rss) {
+    return scaled_state_bytes && options.maximum_peak_rss_bytes != 0U &&
+           (current_rss >= options.maximum_peak_rss_bytes ||
+            *scaled_state_bytes > options.maximum_peak_rss_bytes - current_rss);
+  };
+  const bool prepare_under_tight_budget =
+      budget_would_require_page_backing(process_current_rss_bytes());
   const auto initialization_started = std::chrono::steady_clock::now();
   // Rank and terminal-index metadata are immutable during traversal. Build
   // them once on the caller thread so parallel workers only read BoardData
   // and never race on the lazy ranks_ready transition.
   std::fprintf(stderr, "solver_phase=prepare_ranks_start boards=%zu\n",
                layout.value().boards.size());
+  if (prepare_under_tight_budget) {
+    detail::PostflopRuntimeState::trim_process_working_set();
+  }
   for (std::uint32_t board_index = 0; board_index < layout.value().boards.size(); ++board_index) {
     if (std::popcount(layout.value().boards[board_index].mask) == 5) {
       const auto prepared_ranks = prepare_ranks(layout.value(), board_index);
@@ -17035,6 +17307,12 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         return Result<PostflopSolveResult, PostflopSolverError>::failure(prepared_ranks.error());
       }
     }
+    if (prepare_under_tight_budget && (board_index & 15U) == 15U) {
+      detail::PostflopRuntimeState::trim_process_working_set();
+    }
+  }
+  if (prepare_under_tight_budget) {
+    detail::PostflopRuntimeState::trim_process_working_set();
   }
   std::fprintf(stderr, "solver_phase=prepare_ranks_complete\n");
   report_dense_layout_memory("production_ranked", layout.value());
@@ -17153,6 +17431,12 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     checkpoint.dcfr_positive_regret_exponent = options.dcfr_positive_regret_exponent;
     checkpoint.dcfr_average_exponent = options.dcfr_average_exponent;
   }
+  const auto current_rss_before_state = process_current_rss_bytes();
+  const bool budget_requires_page_backing =
+      prepare_under_tight_budget || budget_would_require_page_backing(current_rss_before_state);
+  const bool page_backed_scaled_state =
+      scaled_uint16_precision &&
+      (checkpoint.runtime_state != nullptr || budget_requires_page_backing);
   if (out_of_core) {
     std::string backing_file =
         resume_from != nullptr ? checkpoint.external_buffer_file : options.backing_file;
@@ -17189,6 +17473,56 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     checkpoint.regret_node_scale.clear();
     checkpoint.strategy_node_scale.clear();
     buffers = mapped->buffers();
+  } else if (page_backed_scaled_state) {
+    if (!checkpoint.external_buffer_file.empty()) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::CheckpointMismatch);
+    }
+    if (checkpoint.runtime_state == nullptr) {
+      const bool resident_checkpoint = resume_from != nullptr;
+      if (resident_checkpoint &&
+          (checkpoint.cumulative_regret_uint16.size() != layout.value().actions ||
+           checkpoint.cumulative_strategy_uint16.size() != layout.value().actions ||
+           checkpoint.regret_node_scale.size() != layout.value().canonical_decision_nodes ||
+           checkpoint.strategy_node_scale.size() != layout.value().canonical_decision_nodes)) {
+        return Result<PostflopSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::CheckpointMismatch);
+      }
+      auto runtime_state = std::make_shared<detail::PostflopRuntimeState>(
+          static_cast<std::size_t>(layout.value().actions),
+          static_cast<std::size_t>(layout.value().canonical_decision_nodes), 64U * 1'024U);
+      if (!runtime_state->valid()) {
+        return Result<PostflopSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::MemoryFailure);
+      }
+      if (resident_checkpoint) {
+        std::copy(checkpoint.cumulative_regret_uint16.begin(),
+                  checkpoint.cumulative_regret_uint16.end(), runtime_state->scaled_regret());
+        std::copy(checkpoint.cumulative_strategy_uint16.begin(),
+                  checkpoint.cumulative_strategy_uint16.end(), runtime_state->scaled_strategy());
+        std::copy(checkpoint.regret_node_scale.begin(), checkpoint.regret_node_scale.end(),
+                  runtime_state->regret_node_scale());
+        std::copy(checkpoint.strategy_node_scale.begin(), checkpoint.strategy_node_scale.end(),
+                  runtime_state->strategy_node_scale());
+        runtime_state->trim_resident_pages();
+      }
+      checkpoint.cumulative_regret_uint16.clear();
+      checkpoint.cumulative_strategy_uint16.clear();
+      checkpoint.regret_node_scale.clear();
+      checkpoint.strategy_node_scale.clear();
+      checkpoint.runtime_state = std::move(runtime_state);
+    }
+    const auto runtime_buffers = in_memory_checkpoint_buffers(checkpoint);
+    if (!runtime_buffers) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(runtime_buffers.error());
+    }
+    buffers = runtime_buffers.value();
+    std::fprintf(stderr,
+                 "solver_state_backend=os_page_backed_scaled_uint16 logical_bytes=%llu "
+                 "rss_budget_bytes=%llu current_rss_bytes=%llu release_quantum_bytes=65536\n",
+                 static_cast<unsigned long long>(*scaled_state_bytes),
+                 static_cast<unsigned long long>(options.maximum_peak_rss_bytes),
+                 static_cast<unsigned long long>(current_rss_before_state));
   } else {
     const bool mixed_state =
         options.state_precision == PostflopStatePrecision::Float24RegretFloat16Strategy;
@@ -17197,8 +17531,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     const bool compact_state =
         options.state_precision == PostflopStatePrecision::Float13RegretFloat11Strategy ||
         action_major_compact_state;
-    const bool scaled_uint16_state =
-        options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy;
+    const bool scaled_uint16_state = scaled_uint16_precision;
     const bool float32_state = options.state_precision == PostflopStatePrecision::Float32;
     const bool checkpoint_size_matches =
         scaled_uint16_state
@@ -17352,6 +17685,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   auto traversal = make_dense_traversal_runner(
       layout.value(), buffers, deferred_delta_needed ? &deferred_regret_delta : nullptr,
       options.parallel_action_depth, prepared_root_lock.get());
+  buffers.trim_budgeted_working_set();
   report_layout_process_memory("solver_traversal_ready");
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
   std::shared_ptr<RealNodeReplayCollector> replay_collector;
@@ -17392,6 +17726,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     report_layout_process_memory("certification_start");
     const auto certification =
         certify(layout.value(), buffers, checkpoint.completed_iterations, prepared_root_lock.get());
+    buffers.trim_budgeted_working_set();
     report_layout_process_memory("certification_complete");
     result.timings.certification_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
@@ -17579,6 +17914,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       if (!applied) {
         return Result<PostflopSolveResult, PostflopSolverError>::failure(applied.error());
       }
+      buffers.trim_budgeted_working_set();
     } else {
       for (std::uint8_t player = 0; player < 2U; ++player) {
         const auto traversed = traversal->cfr(player, strategy_weight, regret_update_weight,
@@ -17595,6 +17931,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         if (!applied) {
           return Result<PostflopSolveResult, PostflopSolverError>::failure(applied.error());
         }
+        buffers.trim_budgeted_working_set();
       }
     }
     result.timings.traversal_seconds +=
@@ -17638,6 +17975,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       report_layout_process_memory("certification_start");
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
                                          prepared_root_lock.get());
+      buffers.trim_budgeted_working_set();
       report_layout_process_memory("certification_complete");
       result.timings.certification_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - certification_started)
@@ -17740,6 +18078,17 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
             PostflopSolverError::NumericalFailure);
       }
     }
+  } else if (checkpoint.runtime_state != nullptr) {
+    const auto scales_are_valid = [](const float *const values, const std::size_t count) {
+      return std::all_of(values, values + count,
+                         [](const float value) { return std::isfinite(value) && value >= 0.0F; });
+    };
+    if (!scales_are_valid(buffers.regret_node_scale, buffers.decision_node_count) ||
+        !scales_are_valid(buffers.strategy_node_scale, buffers.decision_node_count)) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::NumericalFailure);
+    }
+    buffers.trim_scaled_state();
   } else if ((!checkpoint.cumulative_regret.empty() &&
               (!finite_vector(checkpoint.cumulative_regret) ||
                !finite_vector(checkpoint.cumulative_strategy))) ||
@@ -17768,6 +18117,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   result.traversed_nodes = traversal->traversed_nodes();
   result.work_counters = traversal->work_counters();
   const auto normalization_error = measure_canonical_normalization_error(layout.value(), buffers);
+  buffers.trim_scaled_state();
   if (!normalization_error) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(normalization_error.error());
   }
@@ -17809,6 +18159,40 @@ normalized_max_deviation_gain(const PostflopCertification &certification, const 
   return std::isfinite(normalized)
              ? Result<double, PostflopSolverError>::success(normalized)
              : Result<double, PostflopSolverError>::failure(PostflopSolverError::NumericalFailure);
+}
+
+Result<bool, PostflopSolverError>
+materialize_postflop_checkpoint_state(PostflopCheckpoint &checkpoint) {
+  if (checkpoint.runtime_state == nullptr) {
+    return Result<bool, PostflopSolverError>::success(true);
+  }
+  const auto buffers = in_memory_checkpoint_buffers(checkpoint);
+  if (!buffers || buffers.value().scaled_regret == nullptr ||
+      buffers.value().scaled_strategy == nullptr || buffers.value().regret_node_scale == nullptr ||
+      buffers.value().strategy_node_scale == nullptr) {
+    return Result<bool, PostflopSolverError>::failure(
+        buffers ? PostflopSolverError::CheckpointMismatch : buffers.error());
+  }
+  try {
+    checkpoint.cumulative_regret_uint16.assign(
+        buffers.value().scaled_regret, buffers.value().scaled_regret + buffers.value().count);
+    checkpoint.cumulative_strategy_uint16.assign(
+        buffers.value().scaled_strategy, buffers.value().scaled_strategy + buffers.value().count);
+    checkpoint.regret_node_scale.assign(
+        buffers.value().regret_node_scale,
+        buffers.value().regret_node_scale + buffers.value().decision_node_count);
+    checkpoint.strategy_node_scale.assign(
+        buffers.value().strategy_node_scale,
+        buffers.value().strategy_node_scale + buffers.value().decision_node_count);
+  } catch (const std::bad_alloc &) {
+    checkpoint.cumulative_regret_uint16.clear();
+    checkpoint.cumulative_strategy_uint16.clear();
+    checkpoint.regret_node_scale.clear();
+    checkpoint.strategy_node_scale.clear();
+    return Result<bool, PostflopSolverError>::failure(PostflopSolverError::MemoryFailure);
+  }
+  checkpoint.runtime_state.reset();
+  return Result<bool, PostflopSolverError>::success(true);
 }
 
 Result<PostflopCertification, PostflopSolverError>

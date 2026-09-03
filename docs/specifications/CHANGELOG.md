@@ -11,16 +11,24 @@ sostituisce la cronologia Git né i report di fase.
   production, senza materializzare il secondo albero fisico durante il solve.
 - Sovrapposti gli offset mutuamente esclusivi del decision layout e rimossi gli
   accumulatori showdown del tipo scalare non usato da ogni traversal.
-- Aggiornato lo stato Peak RSS per-fixture: AHKHQH resta FAIL; TH7D6S e il
-  probe memoria TSTC9D passano nei nuovi run Release a processo singolo.
+- Aggiornato lo stato Peak RSS per-fixture: i run intermedi portavano TH7D6S e
+  il probe TSTC9D in PASS; il gate finale passa 3/3.
+- Compattati i record canonici node/edge/outcome a `16/8/8` byte e rimossi
+  indici temporanei e hash table non necessari dal compilatore streaming.
+- Aggiunto un backend exact OS-page-backed selezionato soltanto da un target di
+  working set esplicito, con residenza e materializzazione dichiarate nel
+  report; target zero conserva i vettori residenti.
 
 ### Verificato
 
 - Oracle streamed-vs-materialized `24.121` assert PASS e riferimento GTO+
   `24/24` PASS, inclusi ISO asimmetrico e prepared-root differential.
-- Build Release completa e CTest `28/28 PASS` in `215,82 s`.
-- AHKHQH `23.216.128 B`, TH7D6S `391.462.912 B`, TSTC9D
-  fixed-one-iteration `1.647.755.264 B`; nessun dispatch per fixture.
+- Build Release completa e CTest `28/28 PASS` in `198,25 s`.
+- Phase 10 `10.660` assert, riferimento GTO+ `24/24` e controesempio orbit
+  asimmetrico `11/11` PASS.
+- Peak RSS finale: AHKHQH max cinque processi `7.790.592 B`, TH7D6S max cinque
+  processi `363.569.152 B`, TSTC9D full-convergence `1.534.152.704 B`; gate
+  memoria 3/3 e correttezza 3/3 PASS, nessun dispatch per fixture.
 
 ## 2026-09-02
 

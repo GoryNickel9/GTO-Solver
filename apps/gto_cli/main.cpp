@@ -1088,6 +1088,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     options.target_normalized_max_deviation = spec.target_percent / 100.0;
   }
   options.strict_target = true;
+  options.maximum_peak_rss_bytes = spec.gto_plus_peak_rss_bytes;
   options.state_precision = spec.state_precision;
   options.algorithm = spec.algorithm;
   options.dcfr_positive_regret_exponent = spec.dcfr_positive_regret_exponent;
@@ -1793,6 +1794,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        : spec.state_precision == gtosd::PostflopStatePrecision::Float24RegretFloat16Strategy
            ? "float24_regret_float16_strategy_float64_compute"
            : "float32_state_float64_compute"},
+      {"solver_state_residency",
+       result.checkpoint.runtime_state != nullptr ? "budgeted_os_page_backed"
+                                                  : "resident_vectors"},
+      {"working_set_target_bytes", options.maximum_peak_rss_bytes},
+      {"runtime_state_materialization_required_for_persistence",
+       result.checkpoint.runtime_state != nullptr},
       {"exact_outcomes", true},
       {"sampling", false},
       {"bucketing", false},

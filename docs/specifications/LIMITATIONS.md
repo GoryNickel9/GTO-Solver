@@ -10,14 +10,16 @@ finite.
 
 ## Limiti di parità
 
-- dEV, root EV, layout, exact outcomes, `solver_state_bytes` e cap desktop
-  passano sui tre benchmark correnti; i gate velocità TH e TST falliscono.
+- dEV, root EV, layout, exact outcomes, `solver_state_bytes`, cap desktop e
+  Peak RSS per-fixture passano sui tre benchmark correnti; i gate velocità TH
+  e TST falliscono.
 - Cinque processi final-head producono mediane/p95 AHK
   0,758705/0,790918 s, TH 19,948228/24,192260 s e TST
   184,095930/197,865030 s contro limiti 1,900000 / 19,622222 / 128,988889 s.
   TH e TST falliscono sia mediana sia p95; la mediana TH supera il limite del
-  `1,661%`, quella TST del `42,722%`. Il cap desktop comune `< 2 GiB` passa su
-  tutte le fixture; i riferimenti peak-RSS di GTO+ restano diagnostici separati.
+  `1,661%`, quella TST del `42,722%`. Il recheck memoria 2026-09-03 misura
+  massimi AHK/TH `7.790.592/363.569.152 B` e TST full-convergence
+  `1.534.152.704 B`, tutti sotto i rispettivi riferimenti GTO+.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
 - F10.4 controlled-posterior è implementata esclusivamente come diagnostica
@@ -33,6 +35,10 @@ funzione ancora da implementare, ma una decisione permanente di prodotto e di
 architettura. Sono esclusi backend CUDA, ROCm, OpenCL, Vulkan Compute,
 DirectCompute e tecnologie equivalenti. La GPU può essere usata esclusivamente
 dal sistema grafico per renderizzare la GUI, senza partecipare ai calcoli.
+Il target di working set opzionale può affidare la residenza delle pagine al
+sistema operativo e quindi causare paging locale. Questo non è un backend di
+calcolo esterno, ma non garantisce che ogni byte resti fisicamente residente in
+RAM; chi richiede tale garanzia deve usare il target zero e i vettori residenti.
 
 ## Funzioni non ancora supportate
 
@@ -57,6 +63,9 @@ La presenza di tipi, placeholder o chunk riservati non costituisce supporto.
   dichiarato nel report; la best response enumera tutti gli outcome sullo stato
   decodificato. Ogni nuovo formato richiede BR, dEV e confronto di root EV, non
   soltanto finitezza.
+- Lo stato runtime OS-page-backed non è direttamente serializzato: checkpoint
+  o archivio richiedono materializzazione esplicita, che può aumentare il
+  working set dell'intera dimensione logica dello stato.
 - Con range asimmetrici e simmetrie di seme non banali il core usa ancora il
   layout fisico: la condivisione canonica richiede reach e molteplicità
   player-local non ancora implementate correttamente.

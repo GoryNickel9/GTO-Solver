@@ -7,7 +7,7 @@ execute_process(
   RESULT_VARIABLE benchmark_result
   OUTPUT_VARIABLE benchmark_output
   ERROR_VARIABLE benchmark_error)
-if(NOT benchmark_result EQUAL 0 AND NOT benchmark_result EQUAL 4)
+if(NOT benchmark_result EQUAL 0)
   message(FATAL_ERROR
     "benchmark command failed (${benchmark_result})\n${benchmark_output}\n${benchmark_error}")
 endif()
@@ -31,6 +31,10 @@ string(JSON memory_reference GET "${report_json}" memory_gate reference_bytes)
 string(JSON memory_unit GET "${report_json}" memory_gate reference_unit)
 string(JSON memory_comparison GET "${report_json}" memory_gate comparison)
 string(JSON memory_pass GET "${report_json}" memory_gate passed)
+string(JSON state_residency GET "${report_json}" solver_state_residency)
+string(JSON working_set_target GET "${report_json}" working_set_target_bytes)
+string(JSON materialization_required GET "${report_json}"
+  runtime_state_materialization_required_for_persistence)
 string(JSON desktop_metric GET "${report_json}" desktop_memory_gate metric)
 string(JSON desktop_cap GET "${report_json}" desktop_memory_gate cap_bytes)
 string(JSON desktop_unit GET "${report_json}" desktop_memory_gate cap_unit)
@@ -47,8 +51,11 @@ if(NOT report_schema STREQUAL "gtosd.gto_plus_convergence_run.v3" OR
    NOT memory_reference EQUAL 8000000 OR
    NOT memory_unit STREQUAL "bytes" OR
    NOT memory_comparison STREQUAL "less_than_or_equal" OR
-   memory_pass OR
-   NOT peak_rss GREATER 8000000 OR
+   NOT memory_pass OR
+   peak_rss GREATER 8000000 OR
+   NOT state_residency STREQUAL "budgeted_os_page_backed" OR
+   NOT working_set_target EQUAL 8000000 OR
+   NOT materialization_required OR
    NOT desktop_metric STREQUAL "peak_rss_bytes" OR
    NOT desktop_cap EQUAL 2147483648 OR
    NOT desktop_unit STREQUAL "GiB" OR
