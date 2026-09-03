@@ -220,9 +220,12 @@ Their exact component scope is still unresolved, so the GTO+ memory comparison
 is currently `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Process Peak RSS,
 private bytes and `solver_state_bytes` remain useful but separate diagnostics;
 none can be substituted for the GTO+ field without an equivalence proof. The
-v3 fixtures and reports still use the legacy name `peak_rss_bytes`, and their
-memory PASS/FAIL fields must be treated as semantically invalid until the v4
-migration is implemented. Correctness and timing results are unaffected. See
+current fixtures use `gtosd.gto_plus_convergence_benchmark.v4`; run and summary
+reports separate `gto_plus_reference_memory`, `solver_memory_accounting` and
+`process_memory`, while `memory_comparison` is explicitly `not_evaluated` with
+`passed: null`. Legacy v3 inputs remain readable only through an explicit
+`legacy_metric_misclassified` conversion and never become a process-memory
+budget. Correctness and timing results are unaffected. See
 `docs/GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`.
 
 The repository also preserves the rejected research families and their
@@ -253,11 +256,11 @@ The production core uses benchmark-independent signed regret and average
 strategy state through `ScaledUint16RegretStrategy`. Its common
 `production_dcfr` contract is `1.5/0/3`, with average resets at one-based
 iterations `1,2,5,17,65` and a one-iteration-lagged regret clock after 65.
-Current five-process Release runs pass dEV, root EV, layout, exact outcomes,
-solver-state and the diagnostic desktop cap on all three fixtures. Final dEV/root
+Current historical five-process Release runs pass dEV, root EV, layout and
+exact outcomes on all three fixtures. Final dEV/root
 EV values are AHKHQH `0.951423% / 19.118978`, TH7D6S
 `0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TH and TST execution
-time evidence remains reported independently. The fixture-specific GTO+ peak
-RSS references are acceptance gates: in the latest single-process recheck
-AHKHQH fails, while TH7D6S and the TSTC9D memory regression pass;
-multi-process promotion remains pending.
+time evidence remains reported independently. The GTO+ displayed memory values
+are preserved as external references, but no memory PASS/FAIL or parity claim is
+made until metric equivalence is established. Process Peak RSS and logical state
+bytes remain separate diagnostics.

@@ -165,8 +165,8 @@ Result<CanonicalLayoutReport, CanonicalLayoutError>
 estimate_canonical_chance_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                                  const CanonicalLayoutOptions &options) {
   if (!validate_postflop_ranges(config, ranges) || options.worker_threads.empty() ||
-      options.state_bytes_per_action.empty() || options.engineering_target_bytes == 0U ||
-      options.absolute_gate_bytes < options.engineering_target_bytes ||
+      options.state_bytes_per_action.empty() ||
+      (options.requested_budget && options.requested_budget->bytes == 0U) ||
       std::ranges::any_of(
           options.worker_threads, [](const auto value) { return value == 0U; }) ||
       std::ranges::any_of(
@@ -393,9 +393,10 @@ estimate_canonical_chance_layout(const PostflopTreeConfig &config, const Postflo
         return Result<CanonicalLayoutReport, CanonicalLayoutError>::failure(
             CanonicalLayoutError::ArithmeticOverflow);
       }
-      memory.meets_engineering_target =
-          memory.estimated_peak_bytes <= options.engineering_target_bytes;
-      memory.meets_absolute_gate = memory.estimated_peak_bytes <= options.absolute_gate_bytes;
+      if (options.requested_budget) {
+        memory.meets_requested_budget =
+            memory.estimated_peak_bytes <= options.requested_budget->bytes;
+      }
       report.memory_estimates.push_back(memory);
     }
   }
@@ -412,6 +413,17 @@ const char *canonical_layout_error_name(const CanonicalLayoutError error) noexce
     return "arithmetic_overflow";
   case CanonicalLayoutError::NonIntegralShape:
     return "non_integral_shape";
+  }
+  return "unknown";
+}
+
+const char *
+canonical_layout_budget_source_name(const CanonicalLayoutBudgetSource source) noexcept {
+  switch (source) {
+  case CanonicalLayoutBudgetSource::UserConfigured:
+    return "user_configured";
+  case CanonicalLayoutBudgetSource::Experiment:
+    return "experiment";
   }
   return "unknown";
 }

@@ -33,11 +33,19 @@ if (-not (Test-Path -LiteralPath $resolvedSpecification -PathType Leaf)) {
 New-Item -ItemType Directory -Force -Path $resolvedOutput | Out-Null
 
 $specificationData = Get-Content -LiteralPath $resolvedSpecification -Raw | ConvertFrom-Json
-if (($specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v1" -and
-     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v2" -and
-     $specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v3") -or
+if ($specificationData.schema -ne "gtosd.gto_plus_convergence_benchmark.v4" -or
     $specificationData.benchmark_id -notmatch "^GTP-[A-Z0-9]{2,}-[0-9]{3}$") {
   throw "Unexpected benchmark specification."
+}
+$gtoPlusSolverMemory = $specificationData.gto_plus_reference.solver_memory
+if (-not $gtoPlusSolverMemory -or
+    $gtoPlusSolverMemory.display_label -ne "Memory needed for solving" -or
+    $gtoPlusSolverMemory.display_unit -ne "MB" -or
+    $gtoPlusSolverMemory.normalization_rule -ne "decimal_mb_fixture_convention" -or
+    $gtoPlusSolverMemory.semantic_class -ne "gto_plus_internal_pre_solve_estimate" -or
+    $gtoPlusSolverMemory.comparability_status -ne "unresolved" -or
+    [uint64]$gtoPlusSolverMemory.normalized_reference_bytes -eq 0) {
+  throw "Invalid GTO+ solver-memory reference."
 }
 
 $commit = (git -C $repository rev-parse HEAD).Trim()
@@ -83,35 +91,37 @@ $allActionFrequenciesCorrect =
   @($runReports | Where-Object { -not $_.action_frequency_correctness_passed }).Count -eq 0
 $allConverged = @($runReports | Where-Object { -not $_.converged }).Count -eq 0
 $allRelease = @($runReports | Where-Object { $_.build.configuration -ne "Release" }).Count -eq 0
-$allRunReportsV3 =
-  @($runReports | Where-Object { $_.schema -ne "gtosd.gto_plus_convergence_run.v3" }).Count -eq 0
+$allRunReportsV4 =
+  @($runReports | Where-Object { $_.schema -ne "gtosd.gto_plus_convergence_run.v4" }).Count -eq 0
+$allMemoryComparisonsNotEvaluated =
+  @($runReports | Where-Object {
+      $_.memory_comparison.status -ne "not_evaluated" -or
+      $null -ne $_.memory_comparison.passed
+    }).Count -eq 0
+$allBenchmarkRunsUnbudgeted =
+  @($runReports | Where-Object {
+      $_.solver_state_residency -ne "resident_vectors" -or
+      $null -ne $_.resident_working_set_budget
+    }).Count -eq 0
 $consistentFingerprint = $fingerprints.Count -eq 1
 $consistentStateBytes =
   @($runReports | ForEach-Object { [uint64]$_.solver_state_bytes } | Sort-Object -Unique).Count -eq 1
-if (-not ($allRelease -and $allRunReportsV3 -and $consistentFingerprint -and
-          $consistentStateBytes)) {
+if (-not ($allRelease -and $allRunReportsV4 -and $allMemoryComparisonsNotEvaluated -and
+          $allBenchmarkRunsUnbudgeted -and $consistentFingerprint -and $consistentStateBytes)) {
   throw "One or more build or reproducibility checks failed."
 }
 
 $referenceSeconds = [double]$specificationData.gto_plus_reference.elapsed_seconds
-$referencePeakRssBytes = if ($null -ne $specificationData.gto_plus_reference.peak_rss_bytes) {
-  [double]$specificationData.gto_plus_reference.peak_rss_bytes
-} else {
-  [double]$specificationData.gto_plus_reference.solver_memory_bytes
-}
-$desktopPeakRssCapBytes = [double]2147483648
+$gtoPlusSolverMemoryReferenceBytes =
+  [double]$gtoPlusSolverMemory.normalized_reference_bytes
 $solverStateBytes = [double]$runReports[0].solver_state_bytes
-$peakRssBytes = [double](($runReports | ForEach-Object { [uint64]$_.peak_rss_bytes } |
+$peakRssBytes = [double](($runReports | ForEach-Object {
+      [uint64]$_.process_memory.peak_rss_bytes
+    } |
     Measure-Object -Maximum).Maximum)
 $speedScore = 100.0 * $referenceSeconds / $median
-$memoryScore = 100.0 * $referencePeakRssBytes / $peakRssBytes
-$gtoPlusPeakRssUtilization = 100.0 * $peakRssBytes / $referencePeakRssBytes
-$desktopPeakRssCapUtilization = 100.0 * $peakRssBytes / $desktopPeakRssCapBytes
 $speedGateSeconds = $referenceSeconds / 0.90
-$memoryGateBytes = $referencePeakRssBytes
 $speedGatePassed = $median -le $speedGateSeconds
-$memoryGatePassed = $peakRssBytes -le $memoryGateBytes
-$desktopMemoryGatePassed = $peakRssBytes -lt $desktopPeakRssCapBytes
 $referenceMetadataComplete = [bool]$specificationData.gto_plus_reference.metadata_complete
 # correctness_passed gates on the reference node EV selected by the
 # specification (gate_node, default the tree root). The all-node EV and
@@ -160,7 +170,7 @@ $scientificComparisonReady = $measurementValid -and $worktreeClean -and
                              $referenceMetadataComplete -and $hardwareMetadataComplete
 
 $summary = [ordered]@{
-  schema = "gtosd.gto_plus_convergence_summary.v3"
+  schema = "gtosd.gto_plus_convergence_summary.v4"
   benchmark_id = $specificationData.benchmark_id
   generated_at_utc = [DateTime]::UtcNow.ToString("o")
   repository = [ordered]@{
@@ -183,11 +193,8 @@ $summary = [ordered]@{
     target_metric = "maximum unilateral best-response gain / initial pot"
     target_dev_percent = [double]$specificationData.gto_plus_reference.target_dev_percent
     timer_scope = $specificationData.gtosd_run.timer_scope
-    gto_plus_peak_rss_reference_bytes = [uint64]$referencePeakRssBytes
-    gto_plus_peak_rss_gate = "less_than_or_equal"
-    desktop_peak_rss_cap_bytes = [uint64]$desktopPeakRssCapBytes
-    desktop_peak_rss_cap_unit = "GiB"
-    desktop_peak_rss_gate = "strict_less_than"
+    gto_plus_solver_memory_reference_bytes = [uint64]$gtoPlusSolverMemoryReferenceBytes
+    memory_comparability_status = "unresolved"
   }
   reference = $specificationData.gto_plus_reference
   runs = $runReports
@@ -196,14 +203,23 @@ $summary = [ordered]@{
     median_elapsed_seconds = $median
     p95_elapsed_seconds = $p95
     solver_state_bytes = [uint64]$solverStateBytes
-    peak_rss_bytes = [uint64]$peakRssBytes
+    process_memory = [ordered]@{
+      peak_rss_bytes = [uint64]$peakRssBytes
+      normative_gate = $null
+    }
+    solver_memory_accounting = [ordered]@{
+      schema = "gtosd.solver_memory_accounting.v1"
+      state_logical_bytes = [uint64]$solverStateBytes
+      managed_payload_peak_bytes = $null
+      managed_allocated_peak_bytes = $null
+    }
+    gto_plus_reference_memory = $gtoPlusSolverMemory
+    memory_comparison = [ordered]@{
+      status = "not_evaluated"
+      passed = $null
+      reason = "gto_plus_metric_semantics_unresolved"
+    }
     speed_score_percent = $speedScore
-    memory_score_percent = $memoryScore
-    memory_score_basis = "gto_plus_peak_rss_reference_over_peak_rss"
-    gto_plus_peak_rss_utilization_percent = $gtoPlusPeakRssUtilization
-    gto_plus_peak_rss_headroom_bytes = [int64]($referencePeakRssBytes - $peakRssBytes)
-    desktop_peak_rss_cap_utilization_percent = $desktopPeakRssCapUtilization
-    desktop_peak_rss_headroom_bytes = [int64]($desktopPeakRssCapBytes - $peakRssBytes)
     gto_plus_ev_checks = $runReports[0].gto_plus_ev_checks
     gto_plus_action_frequency_checks = $runReports[0].gto_plus_action_frequency_checks
   }
@@ -218,13 +234,14 @@ $summary = [ordered]@{
     scientific_comparison_ready = $scientificComparisonReady
     speed_threshold_seconds = $speedGateSeconds
     speed_passed = $speedGatePassed
-    memory_threshold_bytes = $memoryGateBytes
-    memory_comparison = "less_than_or_equal"
-    memory_passed = $memoryGatePassed
-    desktop_memory_threshold_bytes = [uint64]$desktopPeakRssCapBytes
-    desktop_memory_comparison = "strict_less_than"
-    desktop_memory_passed = $desktopMemoryGatePassed
-    parity_gate_passed = $scientificComparisonReady -and $speedGatePassed -and $memoryGatePassed
+    memory_comparison = [ordered]@{
+      status = "not_evaluated"
+      passed = $null
+      reason = "gto_plus_metric_semantics_unresolved"
+    }
+    active_gate_passed = $scientificComparisonReady -and $speedGatePassed
+    parity_gate_status = "not_evaluated_memory_comparability_unresolved"
+    parity_gate_passed = $null
   }
 }
 
@@ -232,6 +249,6 @@ $summaryPath = Join-Path $resolvedOutput "summary.json"
 $summary | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $summaryPath -Encoding utf8
 Write-Output $summaryPath
 
-if ($EnforceGate -and -not $summary.gates.parity_gate_passed) {
-  throw "The GTO+ parity gate did not pass. See $summaryPath"
+if ($EnforceGate -and -not $summary.gates.active_gate_passed) {
+  throw "One or more active correctness/time gates did not pass. See $summaryPath"
 }

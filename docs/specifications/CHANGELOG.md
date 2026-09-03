@@ -16,16 +16,46 @@ sostituisce la cronologia Git né i report di fase.
   `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; Peak RSS, private bytes e stato
   persistente restano telemetrie separate senza PASS/FAIL comparativo.
 - Marcati come semanticamente invalidi i PASS/FAIL memoria prodotti dagli
-  schema v3 ancora implementati; correttezza, convergenza e tempo conservano la
+  schema v3 precedenti; correttezza, convergenza e tempo conservano la
   propria validità indipendente.
 - Archiviati, senza cancellarne i dati, i report il cui oggetto principale era
   il falso gate Peak RSS/2 GB; i report misti conservano le evidenze con una
   errata corrige in apertura.
 
+### Implementato
+
+- Migrati template e fixture correnti a
+  `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
+  `gto_plus_reference.solver_memory` tipizzato e validato.
+- Emessi run `gtosd.gto_plus_convergence_run.v4` e summary v4 con
+  `gto_plus_reference_memory`, `solver_memory_accounting`, `process_memory` e
+  `memory_comparison` separati; rimossi i falsi gate memoria.
+- Impedito al benchmark di trasformare il riferimento GTO+ in un budget o in
+  una selezione page-backed. L’eventuale backend page-backed resta opt-in
+  generico tramite `resident_working_set_budget_bytes`.
+- Rimossi i target predefiniti 1,8/2,0 GB dall’estimatore del layout canonico;
+  un budget viene valutato soltanto se dichiarato come user-configured o
+  experiment.
+- Conservata la lettura diretta v1/v2/v3 con conversione v4 esplicita; una v3
+  viene marcata `legacy_metric_misclassified`. Il wrapper multiprocesso accetta
+  soltanto fixture v4.
+
 ### Pianificato, non ancora implementato
 
-- Fixture/report v4, ledger solver-owned e rimozione del wiring page-backed dal
-  riferimento GTO+ restano interventi di codice successivi.
+- Ledger completo dei picchi solver-owned (payload e allocated) e
+  ricostruzione black-box della formula GTO+ restano Fasi C/D separate. Fino ad
+  allora il confronto memoria rimane `NOT_EVALUATED`.
+
+### Verificato
+
+- Build MSVC Release dei target modificati completata senza errori.
+- CTest Release completo `28/28 PASS` in `105,46 s`, inclusi i test esaustivi e
+  l’oracolo GTO+.
+- Test manuali dei runner black-box e user-configured process-memory budget
+  PASS; parsing di 14 fixture JSON e 22 script PowerShell PASS.
+- Smoke AHKHQH v4 a cinque processi completato a 80 iterazioni e dEV
+  `0,951423%` in ogni run; essendo stato eseguito su worktree dirty, non è una
+  certificazione o una promozione prestazionale.
 
 ## 2026-09-03
 
@@ -60,8 +90,9 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Aggiornato
 
-- Separato il cap desktop comune `< 2 GiB` dai riferimenti peak-RSS GTO+ per
-  fixture: il primo passa su AHK/TH/TST, i secondi restano diagnostici.
+- Registrato allora un presunto cap desktop comune `< 2 GiB`, separato dai
+  riferimenti per fixture. La correzione del 2026-09-04 ne ritira interamente la
+  natura normativa; restano valide soltanto le misure OS grezze.
 - Consolidati su `main` tooling e report S6, strict-cap, Pure/Sync-PCFR,
   range-aware physical-orbit e black-box GTO+ senza promuovere percorsi
   respinti o default-off.
@@ -81,7 +112,8 @@ sostituisce la cronologia Git né i report di fase.
   `1,2,5,17,65`, regret clock post-65 ritardato di una iterazione).
 - Allineate le tre fixture production e mantenuta l'identita' checkpoint `11`.
 - Registrata la qualificazione final-head a cinque processi: `15/15` solve con
-  dEV `<1%`, correctness/layout/exact outcomes e cap desktop PASS.
+  dEV `<1%`, correctness/layout/exact outcomes. L’allora claim `cap desktop
+  PASS` è ritirato dalla correzione del 2026-09-04.
 - Pubblicati mediana/p95 AHK `0,758705/0,790918 s`, TH
   `19,948228/24,192260 s`, TST `184,095930/197,865030 s`.
 - Corretto lo stato del parity gate: AHK time PASS; TH e TST time FAIL

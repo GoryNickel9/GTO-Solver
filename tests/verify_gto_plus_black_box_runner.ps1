@@ -41,12 +41,20 @@ $runnerTokens = @(
     'TimeoutSeconds',
     'validity.json',
     'project_copy_unchanged',
-    'run_activity_observed'
+    'run_activity_observed',
+    'DisplayedSolverMemoryReferenceBytes',
+    'displayed_solver_memory_reference',
+    'gto_plus_internal_pre_solve_estimate',
+    "comparability_status = 'unresolved'"
 )
 foreach ($token in $runnerTokens) {
     if (-not $runner.Contains($token)) {
         throw "Runner contract token is missing: $token"
     }
+}
+if ($runner.Contains('SolverMemoryLimitBytes') -or
+    $runner.Contains('solver_memory_limit_bytes')) {
+    throw 'Runner retains the legacy solver-memory limit name.'
 }
 if ($runner -match '(?i)ocr_image|process memory scraping|ReadProcessMemory|WriteProcessMemory') {
     throw 'Runner contains a prohibited authority or process-memory operation.'

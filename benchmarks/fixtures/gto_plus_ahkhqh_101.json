@@ -1,5 +1,5 @@
 {
-  "schema": "gtosd.gto_plus_convergence_benchmark.v3",
+  "schema": "gtosd.gto_plus_convergence_benchmark.v4",
   "benchmark_id": "GTP-AHKHQH-101",
   "source": "GTO+",
   "fixture": {
@@ -36,13 +36,20 @@
   },
   "gto_plus_reference": {
     "elapsed_seconds": 1.71,
-    "peak_rss_bytes": 8000000,
+    "solver_memory": {
+      "display_label": "Memory needed for solving",
+      "display_value": 8.0,
+      "display_unit": "MB",
+      "normalized_reference_bytes": 8000000,
+      "normalization_rule": "decimal_mb_fixture_convention",
+      "semantic_class": "gto_plus_internal_pre_solve_estimate",
+      "comparability_status": "unresolved"
+    },
     "target_dev_percent": 1.0,
     "target_definition": "maximum unilateral best-response gain divided by the initial pot",
     "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed, same machine as GTOSD benchmark",
     "timing_scope": "click on Run Solver, tree already prepared, until complete consultable solution",
     "metadata_complete": true,
-    "memory_unit": "decimal_mb",
     "gate_node": "flop_co_root",
     "ev_absolute_tolerance_antes": 0.05,
     "action_frequency_absolute_tolerance_fraction": 0.01,

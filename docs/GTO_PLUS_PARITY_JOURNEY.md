@@ -36,7 +36,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
 > `1.969.860.608 B` e state TST `1.472.605.376 B` sono dati diagnostici.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
-> Full CTest Release corrente `27/27 PASS` (`218,43 s`, 2026-09-02).
+> Full CTest Release corrente `28/28 PASS` (`105,46 s`, 2026-09-04).
 > Il contratto memoria v3 confrontava impropriamente Peak RSS e display GTO+;
 > i risultati AHK/TH/TST restano misure grezze ma non classificazioni memoria.
 >
@@ -48,6 +48,14 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > TST, mentre la memoria non è valutabile. Evidenza e protocollo:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
 > `out/production-final-head-20260901/`.
+
+> **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti conservano
+> “Memory needed for solving” in `gto_plus_reference.solver_memory`. Run e
+> summary separano riferimento esterno, accounting solver-owned e telemetria
+> di processo; `memory_comparison` è `not_evaluated` con `passed: null`.
+> Nessun valore GTO+ seleziona più il backend page-backed o configura un budget.
+> La compatibilità diretta v3 produce soltanto un report v4 marcato
+> `legacy_metric_misclassified`; il wrapper a processi indipendenti richiede v4.
 
 > **Contratto memoria v3 2026-09-02 — legacy misclassified.** Il confronto
 > `peak_rss_bytes <= gto_plus_reference.peak_rss_bytes` e il presunto cap

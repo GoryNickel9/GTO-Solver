@@ -6,9 +6,9 @@
 > identificata; il confronto memoria è
 > `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I Peak RSS misurati nel recheck
 > 2026-09-03 (`7.790.592/363.569.152/1.534.152.704 B`) restano telemetria OS,
-> ma il claim storico `3/3 PASS` è ritirato. Il codice v3 continua
-> temporaneamente a emettere campi e selezioni page-backed derivati dal
-> contratto errato: non devono essere usati come autorità. Piano:
+> ma il claim storico `3/3 PASS` è ritirato. Lo schema v4 ora separa memoria di
+> processo, accounting solver-owned e riferimento GTO+; il benchmark non
+> configura più il backend page-backed né un budget dal valore esterno. Piano:
 > [`../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Production final-head — 2026-09-01, stato corrente.** La schedule comune
@@ -21,17 +21,18 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `27/27 PASS` (`218,43 s`, 2026-09-02). Il precedente
+> `28/28 PASS` (`105,46 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
 > [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **Schema memoria v3 — legacy misclassified.** `peak_rss_bytes`,
-> `memory_gate` e `desktop_memory_gate` descrivono il comportamento ancora
-> implementato, ma i loro PASS/FAIL memoria sono semanticamente invalidi. La
-> migrazione v4 separerà riferimento GTO+, accounting solver-owned e memoria di
-> processo. Il precedente contratto 2 GiB è archiviato come evidenza:
+> **Schema memoria v4 — implementato.** `gto_plus_reference.solver_memory`
+> conserva label, valore, unità, normalizzazione e semantica; i report v4 usano
+> `process_memory`, `solver_memory_accounting` e `memory_comparison` separati.
+> Gli input v3 sono letti soltanto come `legacy_metric_misclassified`; i loro
+> vecchi PASS/FAIL non vengono propagati. Il precedente contratto 2 GiB è
+> archiviato come evidenza:
 > [`../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
@@ -199,26 +200,27 @@ Il solver pubblica almeno:
 
 Il valore GTO+ “Memory needed for solving” è conservato con label, unità e
 precisione visualizzata. Finché non è identificato il suo perimetro, nessuna
-metrica GTOSD decide un PASS/FAIL memoria. Il contratto v3 che lo tratta come
-Peak RSS è legacy e sarà sostituito; `solver_state_bytes` resta un dato parziale
-di attribuzione.
+metrica GTOSD decide un PASS/FAIL memoria. Lo schema v4 lo conserva come
+`gto_plus_reference.solver_memory`; `solver_state_bytes` resta un dato parziale
+di attribuzione e i picchi solver-owned restano `null` fino al ledger dedicato.
 
 ## Fixture di parità
 
-La suite comparativa corrente comprende `GTP-AHKHQH-003`,
-`GTP-TH7D6S-101` e `GTP-TSTC9D-101`. La fixture v1 di AHKHQH resta congelata;
-le fixture generiche v3 permettono di aggiungere scenari senza modificare il
-codice del runner.
+La suite comparativa corrente comprende `GTP-AHKHQH-101`,
+`GTP-TH7D6S-101` e `GTP-TSTC9D-101`. La fixture v1 AHKHQH `003` resta
+congelata come riferimento storico; le fixture generiche v4 permettono di
+aggiungere scenari senza modificare il codice del runner.
 Lo script `tools/run_gto_plus_convergence_benchmark.ps1` avvia processi
 indipendenti e produce report versionati. Il confronto primario usa la mediana
 di cinque run e pubblica anche p95 e ogni campione.
 
-La specifica generica v3 (`gtosd.gto_plus_convergence_benchmark.v3`) permette
+La specifica generica v4 (`gtosd.gto_plus_convergence_benchmark.v4`) permette
 di registrare benchmark diagnostici di convergenza senza modifiche al codice: board,
 range, stack-to-pot, sizing, raise depth e nodi di riferimento EV/frequenze
 sono letti dalla fixture (`benchmarks/fixtures/gto_plus_ahkhqh_101.json` è la
-validazione v3 dello scenario 003). Nuovi benchmark ufficiali memoria restano
-sospesi fino allo schema v4.
+validazione v4 dello scenario 003). Nuovi benchmark possono qualificare
+correttezza e tempo; la componente memoria resta non valutata finché non viene
+dimostrata la comparabilità.
 
 Baseline storica AHKHQH documentata (re-baseline 2026-08-05, regola all-in
 naturale):

@@ -276,12 +276,14 @@ struct PostflopSolveOptions {
   // Selects the mathematical boundary of the convergence gate. Existing
   // callers retain <=; GTO+ Target dEV benchmarks use strict <.
   bool strict_target{false};
-  // Optional process working-set target. Zero preserves the ordinary resident
-  // backend. A nonzero value explicitly permits a local, OS-page-backed exact
-  // state when the state plus the already-resident layout cannot fit. This
-  // changes residency only: codec, update schedule and checkpoint bytes remain
-  // unchanged. Persisting that runtime state requires explicit materialization.
-  std::uint64_t maximum_peak_rss_bytes{0};
+  // Optional user-configured resident-working-set budget. Zero preserves the
+  // ordinary resident backend. A nonzero value explicitly opts into a local,
+  // OS-page-backed exact state when the state plus the already-resident layout
+  // cannot fit. This changes residency only: codec, update schedule and
+  // checkpoint bytes remain unchanged. Persisting that runtime state requires
+  // explicit materialization. External solver-memory references must never
+  // populate this field.
+  std::uint64_t resident_working_set_budget_bytes{0};
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
   PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};

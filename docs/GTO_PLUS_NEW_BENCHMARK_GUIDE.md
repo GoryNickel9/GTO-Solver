@@ -1,11 +1,10 @@
 # Guida: come introdurre un nuovo benchmark di convergenza GTO+
 
-Il benchmark v3 è guidato dalla specifica JSON, ma la creazione di nuovi
-benchmark ufficiali è **sospesa fino alla migrazione v4 della memoria**. Il
-campo v3 `peak_rss_bytes` è semanticamente errato: contiene “Memory needed for
-solving”, non Peak RSS. Una copia del template può essere usata per prove di
-correttezza e tempo, ma non per pubblicare un PASS/FAIL memoria. La struttura v4
-prevista è descritta nel
+Il benchmark corrente usa la specifica JSON v4. Nuovi scenari possono
+qualificare correttezza e tempo; la componente memoria resta
+`NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Il riferimento “Memory needed for
+solving” viene conservato con semantica e provenienza esplicite, non come Peak
+RSS e non come budget del processo. La struttura v4 è descritta nel
 [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > I valori del template **non vanno lasciati così**: `benchmark_id`, flop, range, pot/stack,
@@ -23,7 +22,7 @@ prevista è descritta nel
 `benchmark_id`: `GTP-<BOARD>-<NNN>`
 
 - `<BOARD>` = 2+ caratteri alfanumerici maiuscoli, es. `AHKHQH` (le carte del flop) o il nome dello scenario.
-- `<NNN>` = 3 cifre. `003` = v1 congelata (non toccare). `101+` = v3.
+- `<NNN>` = 3 cifre. `003` = v1 storica congelata. `101+` = v4 corrente.
 - Nome file: `benchmarks/fixtures/gto_plus_<board>_<nnn>.json`.
 
 ## 2. Campi da compilare — `fixture`
@@ -62,8 +61,13 @@ prevista è descritta nel
 | `elapsed_seconds` | Tempo GTO+ per il target (1.71). Usato come base del gate speed. |
 | `convergence_trace` | Se disponibile, sequenza temporale osservata `elapsed_seconds`, `dev_percent`, `dev_antes`; preserva i valori mostrati da GTO+ senza interpolazione. |
 | `first_strictly_below_target` | Primo punto osservato con `dev_percent < target_dev_percent`; deve coincidere con `elapsed_seconds`. |
-| `peak_rss_bytes` | **Legacy v3, nome errato.** Conserva il valore normalizzato del display GTO+ “Memory needed for solving”; non è Peak RSS e non deve decidere un gate. |
-| `memory_unit` | **Legacy v3.** Registra la convenzione di normalizzazione del display, non prova la semantica della metrica. |
+| `solver_memory.display_label` | Label trascritta esattamente: `Memory needed for solving`. |
+| `solver_memory.display_value` | Valore numerico mostrato dalla UI, senza inventare precisione. |
+| `solver_memory.display_unit` | Unità visualizzata dalla UI, oggi `MB`. |
+| `solver_memory.normalized_reference_bytes` | Normalizzazione separata secondo la convenzione dichiarata; non è una misura Peak RSS. |
+| `solver_memory.normalization_rule` | Regola versionabile, oggi `decimal_mb_fixture_convention`. |
+| `solver_memory.semantic_class` | `gto_plus_internal_pre_solve_estimate` finché il perimetro non è identificato. |
+| `solver_memory.comparability_status` | `unresolved` finché manca una prova di equivalenza. |
 | `target_dev_percent` | dEV target GTO+ in %; per questa suite deve essere `1.0` e il confronto è strettamente `<`. |
 | `target_definition` | Definizione del dEV (stringa, va lasciata/adeguata). |
 | `target_provenance` | Da dove arriva il riferimento (versione GTO+, macchina, run). |
@@ -75,8 +79,8 @@ prevista è descritta nel
 | `display_precision_percent` | Precisione di visualizzazione (0.1). |
 | `reference_nodes[]` | I nodi di confronto. Ogni nodo: `id` (**etichetta arbitraria**, regex `^[a-z0-9_]+$`, il template usa nomi generici tipo `flop_btn_after_co_bet` — è il `path` a identificare il nodo, non l'id), `path` (etichette azioni dal root, es. `[]`, `["check"]`, `["bet_20"]`, `["check","bet_20"]`), `player` (0=CO, 1=BTN), `ev_antes` (EV condizionale GTO+), `actions` (frequenze opzionali key=etichetta azione). |
 
-Per una nuova acquisizione conservare separatamente, anche prima che la v4 sia
-implementata: label esatta, valore visualizzato, unità, numero di decimali,
+Per una nuova acquisizione conservare: label esatta, valore visualizzato,
+unità, numero di decimali,
 versione GTO+ e screenshot/provenienza. Non inferire byte esatti oltre la
 precisione del display e non copiare il valore da un progetto con albero solo
 apparentemente simile.
@@ -136,7 +140,7 @@ tolleranza, è un vincolo esatto — il fixture certifica che il solver sta riso
 la partita dichiarata.
 
 **Passo C — benchmark a 5 run** (gate attivi: correctness e speed;
-EV/frequenze e memoria diagnostici finché la v4 non stabilisce la
+EV/frequenze non-gate e memoria `NOT_EVALUATED` finché non è stabilita la
 comparabilità):
 
 ```powershell
@@ -149,8 +153,9 @@ powershell -ExecutionPolicy Bypass -File tools/run_gto_plus_convergence_benchmar
 
 Risultato: `out/gtp_<nnn>_five_runs/summary.json` con mediana/p95, cinque
 processi indipendenti e nessuna cache condivisa, più `run-01.json`…`run-05.json`.
-I campi v3 `memory_gate` e `desktop_memory_gate` devono essere ignorati; i
-valori grezzi restano evidenza diagnostica.
+Il summary v4 separa `process_memory`, `solver_memory_accounting`,
+`gto_plus_reference_memory` e `memory_comparison`. Quest’ultimo deve avere
+`status: not_evaluated` e `passed: null`; `parity_gate_passed` resta `null`.
 
 ## 6. Regole fisse (PERFORMANCE.md, non modificabili)
 

@@ -334,7 +334,7 @@ void test_production_dcfr_schedule_and_resume() {
           "production DCFR preserves the qualified checkpoint identity");
 }
 
-void test_budgeted_page_backing_is_byte_exact() {
+void test_explicit_resident_working_set_budget_is_byte_exact() {
   const auto config = make_small_config();
   const auto ranges = gtosd::make_uniform_postflop_ranges();
   gtosd::PostflopSolveOptions resident_options;
@@ -349,7 +349,7 @@ void test_budgeted_page_backing_is_byte_exact() {
           "unbounded exact state remains resident");
 
   auto budgeted_options = resident_options;
-  budgeted_options.maximum_peak_rss_bytes = 1U;
+  budgeted_options.resident_working_set_budget_bytes = 1U;
   auto budgeted_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
   const auto budgeted = gtosd::solve_postflop_exact(*budgeted_tree, budgeted_options);
   require(budgeted.has_value() && budgeted.value().checkpoint.runtime_state != nullptr &&
@@ -440,7 +440,7 @@ int main() {
     test_architectural_topology_is_read_only_and_disjoint();
     test_hs_dcfr30_schedule_and_resume();
     test_production_dcfr_schedule_and_resume();
-    test_budgeted_page_backing_is_byte_exact();
+    test_explicit_resident_working_set_budget_is_byte_exact();
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
     test_real_node_replay_capture_is_bounded_and_authoritative();
 #endif

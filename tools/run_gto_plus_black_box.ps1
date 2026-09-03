@@ -20,7 +20,18 @@ param(
     [double]$TargetDevPercent = 1.0,
     [ValidateRange(1, 8)]
     [int]$MaximumSolverThreads = 8,
-    [long]$SolverMemoryLimitBytes = 2000000000,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, [long]::MaxValue)]
+    [long]$DisplayedSolverMemoryReferenceBytes,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$DisplayedSolverMemoryText,
+    [ValidateNotNullOrEmpty()]
+    [string]$DisplayedSolverMemoryLabel = 'Memory needed for solving',
+    [ValidateSet('MB', 'GB')]
+    [string]$DisplayedSolverMemoryUnit = 'MB',
+    [ValidateRange(0, 6)]
+    [int]$DisplayedSolverMemoryDecimalPlaces = 0,
     [switch]$DryRun
 )
 
@@ -39,9 +50,6 @@ foreach ($path in @($resolvedExecutable, $resolvedProject, $resolvedProfile)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Required input not found: $path"
     }
-}
-if ($SolverMemoryLimitBytes -lt 1) {
-    throw 'SolverMemoryLimitBytes must be positive.'
 }
 if (-not (Test-Path -LiteralPath $resolvedOutputRoot -PathType Container)) {
     [void](New-Item -ItemType Directory -Path $resolvedOutputRoot)
@@ -188,7 +196,16 @@ $manifest = [ordered]@{
         target_dev_percent = $TargetDevPercent
         strict_target = $true
         maximum_solver_threads = $MaximumSolverThreads
-        solver_memory_limit_bytes = $SolverMemoryLimitBytes
+        displayed_solver_memory_reference = [ordered]@{
+            display_label = $DisplayedSolverMemoryLabel
+            display_text = $DisplayedSolverMemoryText
+            display_unit = $DisplayedSolverMemoryUnit
+            display_decimal_places = $DisplayedSolverMemoryDecimalPlaces
+            normalized_reference_bytes = $DisplayedSolverMemoryReferenceBytes
+            normalization_rule = 'caller_declared'
+            semantic_class = 'gto_plus_internal_pre_solve_estimate'
+            comparability_status = 'unresolved'
+        }
         sample_interval_milliseconds = $SampleIntervalMilliseconds
         timeout_seconds = $TimeoutSeconds
         dry_run = [bool]$DryRun

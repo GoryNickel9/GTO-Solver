@@ -69,7 +69,27 @@ void test_asymmetric_range_canonical_layout() {
     require(memory.solver_state_bytes ==
                 report.value().action_entries * memory.state_bytes_per_action,
             "state byte accounting is exact");
+    require(!memory.meets_requested_budget.has_value(),
+            "default layout estimate has no implicit memory budget");
   }
+
+  gtosd::CanonicalLayoutOptions budgeted_options;
+  budgeted_options.requested_budget =
+      gtosd::CanonicalLayoutBudget{1U, gtosd::CanonicalLayoutBudgetSource::Experiment};
+  const auto budgeted =
+      gtosd::estimate_canonical_chance_layout(config, ranges, budgeted_options);
+  require(budgeted.has_value(), "layout accepts an explicit experiment budget");
+  for (const auto &memory : budgeted.value().memory_estimates) {
+    require(memory.meets_requested_budget.has_value() &&
+                !memory.meets_requested_budget.value(),
+            "explicit one-byte budget is evaluated without becoming a default gate");
+  }
+
+  gtosd::CanonicalLayoutOptions invalid_options;
+  invalid_options.requested_budget =
+      gtosd::CanonicalLayoutBudget{0U, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  require(!gtosd::estimate_canonical_chance_layout(config, ranges, invalid_options).has_value(),
+          "zero-byte explicit budget is rejected");
 }
 
 } // namespace

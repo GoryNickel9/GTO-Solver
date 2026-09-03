@@ -7,8 +7,11 @@
 > `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I Peak RSS GTOSD osservati nel
 > recheck 2026-09-03 (`7.790.592 B`, `363.569.152 B`, `1.534.152.704 B`) restano
 > telemetria OS valida, ma il precedente claim `3/3 PASS` è ritirato. Anche il
-> backend page-backed selezionato dal riferimento della fixture è una
-> conseguenza del contratto errato e non costituisce parità memoria. Stato,
+> backend page-backed storicamente selezionato dal riferimento della fixture era
+> una conseguenza del contratto errato e non costituisce parità memoria. Il
+> benchmark v4 usa sempre vettori residenti e non imposta budget; il backend
+> page-backed resta disponibile soltanto come opt-in esplicito e indipendente
+> tramite `resident_working_set_budget_bytes`. Stato,
 > dEV, root/layout, exact outcomes e test restano invariati. Piano e autorità:
 > [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
@@ -22,18 +25,19 @@
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `27/27 PASS` (`218,43 s`, 2026-09-02).
+> `28/28 PASS` (`105,46 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
-> **Schema memoria v3 — legacy misclassified dal 2026-09-04.** Il codice
-> corrente conserva ancora `gto_plus_reference.peak_rss_bytes`, `memory_gate` e
-> `desktop_memory_gate`, ma tali nomi e i relativi PASS/FAIL non sono più
-> autorità semantica. I valori devono essere letti come riferimenti al campo UI
-> GTO+; i Peak RSS misurati sono diagnostici. La migrazione v4 rimuoverà il falso
-> confronto e non introdurrà un nuovo cap implicito.
+> **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano
+> `gto_plus_reference.solver_memory`; report e summary separano
+> `gto_plus_reference_memory`, `solver_memory_accounting` e `process_memory`.
+> `memory_comparison` è `not_evaluated`, `passed` è `null` e nessun valore GTO+
+> configura residenza o budget del processo. Il loader diretto accetta ancora
+> v3 soltanto come `legacy_metric_misclassified`; il wrapper multiprocesso
+> richiede v4.
 
 > **Consolidamento ricerca 2026-09-02:** tooling e prove dei branch isolati
 > sono ora versionati su `main`, senza modificare i default production. S6
@@ -201,7 +205,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes e cap desktop PASS; Full CTest corrente 27/27 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+ |
+| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes PASS; la memoria resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Full CTest corrente 28/28 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+; nessuna parità memoria è dichiarata |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 

@@ -7,11 +7,11 @@
 > irrisolta; il confronto memoria corretto è
 > `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. I report run/summary v3 e i loro
 > PASS/FAIL memoria sono legacy misclassified. Correttezza e tempo restano
-> valutabili. La migrazione v4 è definita nel
+> valutabili. La migrazione v4 è stata implementata il 2026-09-04 secondo il
 > [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
-> **STATO: SPECIFICA V1 CONGELATA / RIFERIMENTO STORICO.** Il percorso v3 è
-> parametrico e va usato per nuovi scenari; questo documento conserva il
+> **STATO: V4 CORRENTE / SPECIFICA V1 CONGELATA COME RIFERIMENTO STORICO.** Il
+> percorso v4 è parametrico e va usato per nuovi scenari; questo documento conserva il
 > protocollo della fixture `GTP-AHKHQH-003` senza sostituire il parity journey.
 
 Benchmark ID: `GTP-AHKHQH-003`
@@ -81,23 +81,24 @@ per il run sorgente da `1,71 s`.
 
 ## Componenti
 
-- `benchmarks/fixtures/gto_plus_ahkhqh_003.json`: contratto versionato, target e
-  conteggi golden;
-- `benchmarks/fixtures/gto_plus_ahkhqh_103.json` e `gto_plus_ahkhqh_104.json`:
-  benchmark v3 costruiti dai valori degli export GTO+ documentati nei markdown
-  (vedi sotto);
-- `schemas/gto_plus_convergence_benchmark.schema.json`: schema del contratto;
+- `benchmarks/fixtures/gto_plus_ahkhqh_101.json`: validazione v4 dello scenario
+  AHKHQH storico, target e conteggi golden;
+- `benchmarks/fixtures/gto_plus_ahkhqh_103.json`: benchmark v4 costruito dai
+  valori degli export GTO+ documentati nei markdown (vedi sotto);
+- `benchmarks/fixtures/TEMPLATE.json`: contratto v4 commentato per nuovi scenari;
 - `gto_cli postflop benchmark-gto-plus`: un singolo processo indipendente e un
-  report atomico `gtosd.gto_plus_convergence_run.v3`;
+  report atomico `gtosd.gto_plus_convergence_run.v4`;
 - `tools/run_gto_plus_convergence_benchmark.ps1`: almeno cinque processi,
-  mediana, p95 nearest-rank, score e gate separati.
+  mediana, p95 nearest-rank e gate attivi separati dalla memoria non valutata.
 
-## Specifica v3: benchmark di convergenza generici
+## Specifica v4: benchmark di convergenza generici
 
 Il comando `benchmark-gto-plus` accetta la specifica generica
-`gtosd.gto_plus_convergence_benchmark.v3`. Il contratto v1
-`GTP-AHKHQH-003` resta congelato nei valori e nella validazione; anche quel
-percorso emette ora l'envelope report v3. La v3 rende ogni parametro leggibile
+`gtosd.gto_plus_convergence_benchmark.v4`. Per preservare l’ispezionabilità
+degli artefatti, il CLI diretto legge anche v1/v2/v3 e li converte in un report
+v4 che dichiara la source schema; una v3 diventa
+`legacy_metric_misclassified`. Il wrapper multiprocesso richiede invece una
+fixture v4 e non aggrega schemi legacy. La v4 rende ogni parametro leggibile
 dalla specifica:
 
 - **fixture**: board, `range_co`/`range_btn` (liste di classi tipo
@@ -109,9 +110,11 @@ dalla specifica:
   `final_bet_smoothing`, `rake_percent`;
 - **gtosd_run**: iterazioni, certification interval, averaging delay,
   parallel action depth, thread, processi indipendenti;
-- **gto_plus_reference**: target dEV, tempo e campo legacy
-  `peak_rss_bytes`, da interpretare esclusivamente come valore normalizzato del
-  display “Memory needed for solving”, tolleranze EV e
+- **gto_plus_reference**: target dEV, tempo e oggetto `solver_memory`, con
+  `display_label`, `display_value`, `display_unit`,
+  `normalized_reference_bytes`, `normalization_rule`, `semantic_class` e
+  `comparability_status`; il valore resta il display “Memory needed for
+  solving” e non un Peak RSS. Seguono tolleranze EV e
   frequenze, `gate_node` (opzionale: id del nodo il cui EV decide
   `correctness_passed`; default il root) e `reference_nodes`: una lista di
   nodi indirizzati con `path` (etichette di azione dal root, es. `[]` per il
@@ -120,26 +123,29 @@ dalla specifica:
   strada (i nodi chance non sono risolvibili da un path di sole azioni);
 - **expected_layout**: fingerprint e conteggi, come in v1.
 
-Il report implementato usa `gtosd.gto_plus_convergence_run.v3`: conserva i
-campi di correttezza e stato, ma `memory_gate` confronta impropriamente Peak RSS
-con il display GTO+ e `desktop_memory_gate` incorpora un cap inesistente.
-Entrambi devono essere ignorati. La v4 li sostituirà con sezioni distinte per
-memoria di processo, accounting solver-owned e riferimento GTO+.
+Il report implementato usa `gtosd.gto_plus_convergence_run.v4`. Espone il
+riferimento esterno in `gto_plus_reference_memory`, la telemetria OS in
+`process_memory` e l’attribuzione interna in `solver_memory_accounting`.
+Quest’ultima pubblica oggi `state_logical_bytes`; i picchi payload/allocated
+restano `null` fino alla Fase C. `memory_comparison` ha stato `not_evaluated`,
+`passed: null` e reason `gto_plus_metric_semantics_unresolved`. Non esistono
+`memory_gate`, `solver_state_gate` o `desktop_memory_gate`; il benchmark usa
+`solver_state_residency: resident_vectors` e
+`resident_working_set_budget: null`.
 Le chiavi applicative restano stabili;
 le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `reference_node_action_frequencies` sono gli `id` dichiarati nella specifica
 (per `GTP-AHKHQH-003` restano `flop_co_root`, `flop_btn_after_co_check`,
 `flop_btn_after_co_bet_20`; cambia soltanto l'envelope del contratto memoria).
 
-Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta v1, v2 legacy e v3 e
-deriva `benchmark_id` dalla specifica. Fino alla migrazione v4 sono autorevoli
-soltanto tempo, riproducibilità, EV, frequenze, correttezza e layout; il gate
-memoria emesso è invalido. `GTP-AHKHQH-101` è la fixture v3
+Il wrapper `run_gto_plus_convergence_benchmark.ps1` accetta soltanto v4 e
+deriva `benchmark_id` dalla specifica. Sono autorevoli tempo,
+riproducibilità, EV, frequenze, correttezza e layout; la memoria è esplicitamente
+non valutata. `GTP-AHKHQH-101` è la fixture v4
 di validazione: replica esattamente lo scenario di `003` e deve produrre gli
 stessi valori, ed è il riferimento per aggiungere nuovi benchmark: si copia la
 fixture, si cambia `benchmark_id`, board/range/stack/sizing e i valori GTO+
-osservati (`elapsed_seconds`, il valore UI memoria conservato nel campo legacy
-`peak_rss_bytes`, `target_dev_percent`,
+osservati (`elapsed_seconds`, `solver_memory`, `target_dev_percent`,
 `reference_nodes`), poi si aggiorna `expected_layout` con fingerprint e
 conteggi del primo run GTOSD (la prima esecuzione con layout errato fallisce
 il gate di layout, non la parità).
@@ -150,10 +156,10 @@ Il protocollo non ammette `maximum_iterations`: il solver core riceve
 arresti alternativi; il numero di iterazioni completate è un risultato, non un
 input del benchmark.
 
-> **Nuovi benchmark ufficiali sospesi per la memoria:** il template v3 conserva
-> un campo semanticamente errato. È possibile usare una copia per diagnostica
-> di correttezza/tempo, ma non congelare nuovi PASS/FAIL memoria prima dello
-> schema v4. Vedere `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md`.
+> **Nuovi benchmark:** il template v4 può essere usato per qualificare
+> correttezza e tempo. Il riferimento memoria deve essere trascritto con
+> provenienza completa, ma non può produrre un PASS/FAIL finché la comparabilità
+> resta irrisolta. Vedere `docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md`.
 
 ## Bug risolto: stack overflow del solver con all-in Go a soglia bassa
 
@@ -186,10 +192,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 Il wrapper produce sempre `summary.json` anche quando dEV o EV sono rossi, per
 non perdere l'evidenza diagnostica dei cinque processi. Build non Release,
 fingerprint o dimensioni divergenti restano errori strutturali. `-EnforceGate`
-restituisce errore secondo il contratto v3 implementato, che include il falso
-confronto memoria. Fino alla migrazione v4 non deve essere usato per una
-decisione di promozione complessiva; i campi attivi vanno valutati
-separatamente.
+restituisce errore se non passano i gate attivi di correttezza/tempo o se manca
+la prontezza scientifica richiesta. Non valuta la memoria; per questo
+`parity_gate_passed` resta `null` e `parity_gate_status` dichiara la
+comparabilità irrisolta.
 
 Il timer primario continuo include inizializzazione dei buffer, CFR+ alternating,
 averaging, certificazione exact BR finale e finalizzazione della soluzione.

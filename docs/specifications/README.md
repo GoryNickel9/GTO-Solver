@@ -4,8 +4,10 @@
 > corretta: “Memory needed for solving” non è Peak RSS e non è mai esistito un
 > cap desktop indipendente `<2 GiB`. Finché lo scope interno GTO+ non sarà
 > ricostruito, il confronto memoria resta `NOT_EVALUATED`; i contatori OS sono
-> diagnostici. Il codice e le fixture v3 mantengono temporaneamente i nomi
-> legacy e non costituiscono autorità semantica.
+> diagnostici. Fixture, report e runner correnti usano lo schema v4, separano
+> riferimento GTO+, accounting solver-owned e memoria di processo e non
+> ricavano alcun budget dal display esterno. Gli input v3 sono soltanto legacy
+> misclassified convertiti esplicitamente.
 
 Questa cartella contiene i contratti tecnici correnti del progetto. I documenti
 qui presenti descrivono il comportamento richiesto e lo stato realmente

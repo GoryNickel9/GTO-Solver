@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace gtosd {
@@ -42,15 +43,20 @@ struct CanonicalMemoryEstimate {
   std::uint64_t runtime_bytes{0};
   std::uint64_t reserve_bytes{0};
   std::uint64_t estimated_peak_bytes{0};
-  bool meets_engineering_target{false};
-  bool meets_absolute_gate{false};
+  std::optional<bool> meets_requested_budget;
+};
+
+enum class CanonicalLayoutBudgetSource : std::uint8_t { UserConfigured, Experiment };
+
+struct CanonicalLayoutBudget {
+  std::uint64_t bytes{0};
+  CanonicalLayoutBudgetSource source{CanonicalLayoutBudgetSource::UserConfigured};
 };
 
 struct CanonicalLayoutOptions {
   std::vector<std::uint32_t> worker_threads{1U, 2U, 4U, 8U};
   std::vector<std::uint8_t> state_bytes_per_action{3U, 4U};
-  std::uint64_t engineering_target_bytes{1'800'000'000U};
-  std::uint64_t absolute_gate_bytes{2'000'000'000U};
+  std::optional<CanonicalLayoutBudget> requested_budget;
   std::uint64_t certification_bytes{120'000'000U};
   std::uint64_t runtime_bytes{120'000'000U};
   std::uint64_t reserve_bytes{100'000'000U};
@@ -82,5 +88,8 @@ estimate_canonical_chance_layout(const PostflopTreeConfig &config, const Postflo
                                  const CanonicalLayoutOptions &options = {});
 
 [[nodiscard]] const char *canonical_layout_error_name(CanonicalLayoutError error) noexcept;
+
+[[nodiscard]] const char *
+canonical_layout_budget_source_name(CanonicalLayoutBudgetSource source) noexcept;
 
 } // namespace gtosd

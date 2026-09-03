@@ -46,6 +46,7 @@ gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>
 gto_cli postflop certify <config.json> <checkpoint>
 gto_cli postflop compare-gto-plus <config.json> <checkpoint> <reference.json>
 gto_cli postflop benchmark-gto-plus <specification.json> <report.json>
+gto_cli postflop layout-gto-plus <specification.json> <report.json>
 gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>
 gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <report.json>
 ```
@@ -53,18 +54,23 @@ gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <re
 `solve` e `resume` producono checkpoint e report JSON/Markdown. `certify`
 ricalcola best response e NashConv. `query` restituisce la strategia media per
 nodo/combo. `benchmark-gto-plus` usa lo schema e la fixture versionati; non va
-sostituito con un timing ad hoc. Accetta sia la specifica v1 congelata
-(`gtosd.gto_plus_convergence_benchmark.v1`, `GTP-AHKHQH-003`) sia la specifica
-generica v2 (`gtosd.gto_plus_convergence_benchmark.v2`), che parametrizza
-board, range, stack, sizing, profondità di raise, regola all-in, parametri di
-run e nodi di riferimento per azione. `root-lock-diagnostic` è il percorso
+sostituito con un timing ad hoc. La specifica corrente è
+`gtosd.gto_plus_convergence_benchmark.v4`: parametrizza board, range, stack,
+sizing, profondità di raise, regola all-in, parametri di run, nodi di riferimento
+e il riferimento `solver_memory`. Il report v4 separa
+`gto_plus_reference_memory`, `solver_memory_accounting` e `process_memory`; il
+confronto memoria è `not_evaluated`/`passed: null`. Il CLI diretto legge anche
+v1/v2/v3 per conversione esplicita, marcando v3 come
+`legacy_metric_misclassified`; il wrapper multiprocesso richiede v4.
+`layout-gto-plus` produce `gtosd.canonical_chance_layout.v2` senza budget
+impliciti. `root-lock-diagnostic` è il percorso
 diagnostico F10.4 `diagnostic_external_root_lock`: blocca la strategia del nodo
 root CO sulle probabilità esterne combo-per-combo (36 righe Bet 20/Check di
 GTO+ v1.6.9), risolve il gioco vincolato e riporta convergenza del gioco
 vincolato, exploitability del gioco originale ed EV dei nodi di riferimento
 con delta rispetto a GTO+.
 
-Nel campo `gtosd_run.algorithm` della specifica v2, `production_dcfr` seleziona
+Nel campo `gtosd_run.algorithm` della specifica v4, `production_dcfr` seleziona
 il contratto comune qualificato `1.5/0/3` con reset `1,2,5,17,65`. `dcfr`
 rimane la variante parametrica/comparator e non e' un alias della production.
 

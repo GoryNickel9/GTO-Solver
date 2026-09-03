@@ -5,7 +5,7 @@ param(
     [int]$EndRun = 5,
     [ValidateRange(1.0, 100.0)]
     [double]$MaximumIdleCpuPercent = 15.0,
-    [ValidateRange(2000000000, 128000000000)]
+    [ValidateRange(1, 128000000000)]
     [uint64]$MinimumFreeMemoryBytes = 4000000000,
     [ValidateRange(1, 1000)]
     [int]$MaximumPreflightAttempts = 120,

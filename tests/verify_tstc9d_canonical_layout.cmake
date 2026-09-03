@@ -17,11 +17,18 @@ string(JSON automorphisms GET "${report}" preserving_suit_automorphisms)
 string(JSON physical_match GET "${report}" physical_layout_matches_fixture)
 string(JSON profile_count LENGTH "${report}" memory_model profiles)
 string(JSON packed_peak_8 GET "${report}" memory_model profiles 3 estimated_peak_bytes)
-string(JSON packed_target_8 GET "${report}" memory_model profiles 3 meets_engineering_target)
 string(JSON scaled_peak_8 GET "${report}" memory_model profiles 7 estimated_peak_bytes)
-string(JSON scaled_gate_8 GET "${report}" memory_model profiles 7 meets_absolute_gate)
+string(JSON requested_budget_type TYPE "${report}" memory_model requested_budget)
+string(JSON packed_budget_type TYPE "${report}"
+  memory_model profiles 3 meets_requested_budget)
+string(JSON scaled_budget_type TYPE "${report}"
+  memory_model profiles 7 meets_requested_budget)
+string(JSON legacy_target_type ERROR_VARIABLE legacy_target_error
+  TYPE "${report}" memory_model profiles 3 meets_engineering_target)
+string(JSON legacy_gate_type ERROR_VARIABLE legacy_gate_error
+  TYPE "${report}" memory_model profiles 7 meets_absolute_gate)
 
-if(NOT schema STREQUAL "gtosd.canonical_chance_layout.v1" OR
+if(NOT schema STREQUAL "gtosd.canonical_chance_layout.v2" OR
    NOT physical_nodes STREQUAL "2791872" OR
    NOT canonical_nodes STREQUAL "1758624" OR
    NOT infosets STREQUAL "145524152" OR
@@ -30,9 +37,12 @@ if(NOT schema STREQUAL "gtosd.canonical_chance_layout.v1" OR
    NOT physical_match OR
    NOT profile_count STREQUAL "8" OR
    NOT packed_peak_8 STREQUAL "1545640016" OR
-   NOT packed_target_8 OR
    NOT scaled_peak_8 STREQUAL "1917574936" OR
-   NOT scaled_gate_8)
+   NOT requested_budget_type STREQUAL "NULL" OR
+   NOT packed_budget_type STREQUAL "NULL" OR
+   NOT scaled_budget_type STREQUAL "NULL" OR
+   NOT legacy_target_error OR
+   NOT legacy_gate_error)
   message(FATAL_ERROR "unexpected TSTC9D canonical layout report: ${report}")
 endif()
 

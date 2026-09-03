@@ -1,5 +1,5 @@
 {
-  "schema": "gtosd.gto_plus_convergence_benchmark.v3",
+  "schema": "gtosd.gto_plus_convergence_benchmark.v4",
   "benchmark_id": "GTP-TEMPLATE-100",
   "source": "GTO+",
   "fixture": {
@@ -37,8 +37,15 @@
   },
   "gto_plus_reference": {
     "elapsed_seconds": 1.71,
-    "peak_rss_bytes": 8000000,
-    "memory_unit": "decimal_mb",
+    "solver_memory": {
+      "display_label": "Memory needed for solving",
+      "display_value": 8.0,
+      "display_unit": "MB",
+      "normalized_reference_bytes": 8000000,
+      "normalization_rule": "decimal_mb_fixture_convention",
+      "semantic_class": "gto_plus_internal_pre_solve_estimate",
+      "comparability_status": "unresolved"
+    },
     "target_dev_percent": 1.0,
     "target_definition": "maximum unilateral best-response gain divided by the initial pot",
     "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed, same machine as GTOSD benchmark",
@@ -87,8 +94,8 @@
     "solver_state_bytes": 6677088
   },
   "_how_to_fill": {
-    "_intro": "Template benchmark v3: i valori qui sotto sono gli ESEMPI di GTP-AHKHQH-101. Copia questo file in benchmarks/fixtures/gto_plus_<board>_<nnn>.json e cambia SOLO i campi elencati qui. Guida completa: docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md. La chiave _how_to_fill (prefisso _) è ignorata dal CLI.",
-    "benchmark_id": "Cambia: GTP-<BOARD>-<NNN>, es. GTP-TH7D6S-101 (101+ = serie v2).",
+    "_intro": "Template benchmark v4: i valori qui sotto sono gli ESEMPI di GTP-AHKHQH-101. Copia questo file in benchmarks/fixtures/gto_plus_<board>_<nnn>.json e cambia SOLO i campi elencati qui. Guida completa: docs/GTO_PLUS_NEW_BENCHMARK_GUIDE.md. La chiave _how_to_fill (prefisso _) è ignorata dal CLI.",
+    "benchmark_id": "Cambia: GTP-<BOARD>-<NNN>, es. GTP-TH7D6S-101.",
     "fixture": {
       "flop": "Le 3 carte del flop, es. [\"Ah\",\"Kh\",\"Qh\"] (carta valida ^[AKQJT9876][shdc]$, mazzo corto 6-A).",
       "initial_pot_antes": "Pot iniziale in ante (già postato).",
@@ -109,7 +116,7 @@
       "elapsed_seconds": "Tempo GTO+ per il target (base del gate speed).",
       "convergence_trace": "Opzionale: punti GTO+ osservati [{elapsed_seconds, dev_percent, dev_antes}] in ordine temporale; elapsed_seconds deve coincidere con il primo punto strettamente sotto target_dev_percent.",
       "first_strictly_below_target": "Opzionale: copia esplicita del primo punto della convergence_trace con dev_percent < target_dev_percent.",
-      "peak_rss_bytes": "Riferimento GTO+ per il peak RSS in byte (MB decimali: 8 MB = 8000000); ogni fixture deve dichiarare il proprio valore.",
+      "solver_memory": "Trascrivi label, valore e unità visualizzati da GTO+; normalizza separatamente in byte, mantieni semantic_class e comparability_status=unresolved. Non usare questo valore come Peak RSS o gate GTOSD.",
       "target_dev_percent": "dEV target GTO+ in % (1.0): criterio di convergenza.",
       "gate_node": "Nodo che decide la correttezza (default: root). Non cambiare.",
       "ev_absolute_tolerance_antes": "Tolleranza EV base in ante (0.05) per il gate root e per il check EV pesato (tolleranza aggregata = base + budget arrotondamento display).",

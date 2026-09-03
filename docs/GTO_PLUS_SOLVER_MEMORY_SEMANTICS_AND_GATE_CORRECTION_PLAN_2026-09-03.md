@@ -787,8 +787,58 @@ La fase documentale preliminare è completata:
 - i quattro report centrati sul falso gate sono archiviati in
   `docs/archive/legacy-memory-gate/`;
 - nessun report è stato cancellato perché tutti contengono evidenza univoca;
-- codice, fixture, runner e test non sono ancora stati modificati e conservano
-  temporaneamente il comportamento legacy v3 descritto nel piano.
+- al momento del commit documentale preliminare `eddaa58`, codice, fixture,
+  runner e test conservavano ancora il comportamento legacy v3 descritto nel
+  piano.
 
-Il prossimo cambiamento autorizzabile resta la Fase A+B di codice, separata da
-questa errata corrige documentale.
+Questa fotografia preliminare è stata successivamente chiusa dalla Fase A+B
+descritta sotto.
+
+## 22. Stato di esecuzione Fase A+B — 2026-09-04
+
+Le Fasi A+B sono implementate senza introdurre un nuovo limite memoria:
+
+- tutte le fixture correnti usano
+  `gtosd.gto_plus_convergence_benchmark.v4` e l’oggetto tipizzato
+  `gto_plus_reference.solver_memory`;
+- il CLI emette `gtosd.gto_plus_convergence_run.v4`; il runner multiprocesso
+  emette summary v4 e accetta soltanto fixture v4;
+- `process_memory`, `solver_memory_accounting` e
+  `gto_plus_reference_memory` sono sezioni distinte;
+- `memory_comparison.status` è `not_evaluated`, `passed` è `null` e la reason è
+  `gto_plus_metric_semantics_unresolved`;
+- `memory_gate`, `solver_state_gate`, `desktop_memory_gate` e il cap desktop
+  implicito non sono più emessi;
+- i benchmark GTO+ usano vettori residenti con budget `null`; il supporto
+  page-backed rimane disponibile soltanto come opzione generica esplicita
+  `resident_working_set_budget_bytes`;
+- l’estimatore del layout non contiene più target predefiniti 1,8/2,0 GB e
+  valuta soltanto un eventuale budget tipizzato user-configured/experiment;
+- gli input diretti v3 restano leggibili soltanto tramite conversione v4
+  `legacy_metric_misclassified`, senza propagare un falso confronto.
+
+Gli artefatti sorgente esterni sono stati trattati come read-only e congelati
+per SHA-256 prima della validazione:
+
+| Artefatto | Byte | SHA-256 |
+|---|---:|---|
+| `benchmark GTO+/GTOSD.gto` | 149.608 | `5A22BB2803D84432FC23F0D48FA4C750CF3D205361FC7D28B8FB69C9E6AE74F6` |
+| `benchmark GTO+/GTOSD2.gto` | 373.588 | `F0AEA001678B50EB69E592BC0C986E6316BF92C7D4ABD34A5418635410479A9A` |
+| `benchmark GTO+/GTOSD3.gto` | 1.735.450 | `48EEDD8FAFFC80B805CFF40E8BED390E6EBB97A95262EC0865A182E79C79C464` |
+
+Il ledger completo dei picchi solver-owned e la ricostruzione black-box della
+formula GTO+ restano Fasi C/D separate. Finché non forniscono una prova di
+equivalenza, nessun dato memoria chiude il parity gate.
+
+Validazione osservata sul cambiamento Fase A+B:
+
+- build MSVC Release dei target `gto_cli`, `gtosd_phase10_tests` e
+  `gtosd_canonical_layout_tests`: PASS;
+- CTest Release completo: `28/28 PASS` in `105,46 s`;
+- regression v4 fixture/report, rigetto dei campi memoria legacy e conversione
+  v3 misclassified: PASS;
+- test manuali dei runner black-box e user-configured process-memory budget:
+  PASS;
+- smoke AHKHQH v4 a cinque processi: convergenza deterministica a 80
+  iterazioni e dEV `0,951423%`; non promotion-grade perché il worktree era
+  dirty e i metadati hardware non erano completi.

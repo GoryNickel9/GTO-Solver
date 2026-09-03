@@ -1,5 +1,5 @@
 {
-  "schema": "gtosd.gto_plus_convergence_benchmark.v3",
+  "schema": "gtosd.gto_plus_convergence_benchmark.v4",
   "benchmark_id": "GTP-TSTC9D-101",
   "source": "GTO+",
   "fixture": {
@@ -63,8 +63,15 @@
   },
   "gto_plus_reference": {
     "elapsed_seconds": 116.09,
-    "peak_rss_bytes": 2000000000,
-    "memory_unit": "decimal_mb",
+    "solver_memory": {
+      "display_label": "Memory needed for solving",
+      "display_value": 2000,
+      "display_unit": "MB",
+      "normalized_reference_bytes": 2000000000,
+      "normalization_rule": "decimal_mb_fixture_convention",
+      "semantic_class": "gto_plus_internal_pre_solve_estimate",
+      "comparability_status": "unresolved"
+    },
     "target_dev_percent": 1.0,
     "target_definition": "maximum unilateral best-response gain divided by the initial pot",
     "target_provenance": "GTO+ v1.6.9 64-bit, user-confirmed convergence trace, same machine as GTOSD benchmark",

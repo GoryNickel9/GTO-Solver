@@ -14,10 +14,11 @@ param(
     [switch]$LightweightHotpathProfile,
 
     [string]$BuildDir = 'out/build/windows-release',
-    [string]$OutputRoot = '.tmp/tst-strict-2gb-bottleneck-loop/03-baseline',
+    [string]$OutputRoot = '.tmp/user-configured-process-memory-budget',
 
+    [Parameter(Mandatory = $true)]
     [ValidateRange(1, [uint64]::MaxValue)]
-    [uint64]$MemoryCapBytes = 2000000000
+    [uint64]$ProcessMemoryBudgetBytes
 )
 
 $ErrorActionPreference = 'Stop'
@@ -62,7 +63,7 @@ $timeLimits = [ordered]@{
 $ambientGtosdVariables = @(Get-ChildItem Env: | Where-Object { $_.Name -like 'GTOSD_*' })
 if ($ambientGtosdVariables.Count -ne 0) {
     $names = ($ambientGtosdVariables | ForEach-Object { $_.Name }) -join ', '
-    throw "Strict-cap run requires a clean GTOSD environment; found: $names"
+    throw "User-configured memory-budget run requires a clean GTOSD environment; found: $names"
 }
 
 $buildPath = Resolve-RepositoryPath $BuildDir
@@ -90,9 +91,9 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($committedText)) {
 }
 $document = $committedText | ConvertFrom-Json
 
-Require-Equal $document.gtosd_run.algorithm 'dcfr' "$Fixture algorithm"
+Require-Equal $document.gtosd_run.algorithm 'production_dcfr' "$Fixture algorithm"
 Require-Equal $document.gtosd_run.dcfr_positive_regret_exponent 1.5 "$Fixture alpha"
-Require-Equal $document.gtosd_run.dcfr_average_exponent 2.0 "$Fixture gamma"
+Require-Equal $document.gtosd_run.dcfr_average_exponent 3.0 "$Fixture gamma"
 Require-Equal $document.gtosd_run.averaging_delay 0 "$Fixture averaging delay"
 Require-Equal $document.gtosd_run.state_precision 'scaled_uint16_regret_strategy' "$Fixture precision"
 Require-Equal $document.gtosd_run.parallel_action_depth 7 "$Fixture parallel depth"
@@ -111,10 +112,10 @@ $runPath = Join-Path $runDirectory 'run.json'
 Write-Json $fixturePath $document
 
 $contract = [ordered]@{
-    algorithm = 'exact_alternating_signed_dcfr'
+    algorithm = 'exact_production_dcfr'
     alpha = 1.5
     beta = 0.0
-    gamma = 2.0
+    gamma = 3.0
     averaging_delay = 0
     state_precision = 'scaled_uint16_regret_strategy'
     parallel_action_depth = 7
@@ -128,8 +129,9 @@ $contract = [ordered]@{
     bucketing = $false
     fixture_specific_logic = 'none'
     same_contract_all_fixtures = $true
-    memory_cap_bytes = $MemoryCapBytes
-    memory_comparison = 'strict_less_than'
+    process_memory_budget_bytes = $ProcessMemoryBudgetBytes
+    process_memory_budget_provenance = 'user_configured_experiment'
+    process_memory_comparison = 'strict_less_than'
 }
 $contractText = $contract | ConvertTo-Json -Compress -Depth 100
 $contractHashBytes = [System.Security.Cryptography.SHA256]::HashData(
@@ -139,7 +141,7 @@ $contractHash = [Convert]::ToHexString($contractHashBytes).ToLowerInvariant()
 $binaryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $executable).Hash.ToLowerInvariant()
 $fixtureHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $fixturePath).Hash.ToLowerInvariant()
 $runDocument = [ordered]@{
-    schema = 'gtosd.tst_strict_cap_run.v1'
+    schema = 'gtosd.user_configured_process_memory_budget_run.v1'
     run_id = $RunId
     generated_at_utc = [DateTime]::UtcNow.ToString('o')
     repository = [ordered]@{ root = $repoRoot; branch = $branch; commit = $commit }
@@ -163,7 +165,7 @@ $computer = Get-CimInstance Win32_ComputerSystem
 $operatingSystem = Get-CimInstance Win32_OperatingSystem
 $powerPlan = (& powercfg /GETACTIVESCHEME | Out-String).Trim()
 $environmentDocument = [ordered]@{
-    schema = 'gtosd.tst_strict_cap_environment.v1'
+    schema = 'gtosd.user_configured_process_memory_budget_environment.v1'
     generated_at_utc = [DateTime]::UtcNow.ToString('o')
     cpu_name = $processor.Name
     physical_cores = $processor.NumberOfCores
@@ -184,7 +186,7 @@ $oldInterval = $env:GTOSD_DIAGNOSTIC_CERTIFICATION_INTERVAL
 $oldLightweightProfile = $env:GTOSD_PROFILE_HOTPATH_LIGHTWEIGHT
 $process = $null
 $observedPeak = [uint64]0
-$capReached = $false
+$budgetExceeded = $false
 $startedAt = [DateTime]::UtcNow
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 try {
@@ -210,8 +212,8 @@ try {
         if ($sample -gt $observedPeak) {
             $observedPeak = $sample
         }
-        if ($sample -ge $MemoryCapBytes) {
-            $capReached = $true
+        if ($sample -ge $ProcessMemoryBudgetBytes) {
+            $budgetExceeded = $true
             Stop-Process -Id $process.Id -Force
             break
         }
@@ -239,11 +241,11 @@ finally {
 $exitCode = if ($process) { $process.ExitCode } else { -1 }
 $reportExists = Test-Path -LiteralPath $reportPath -PathType Leaf
 $report = if ($reportExists) { Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json } else { $null }
-$internalPeak = if ($report) { [uint64]$report.peak_rss_bytes } else { [uint64]0 }
+$internalPeak = if ($report) { [uint64]$report.process_memory.peak_rss_bytes } else { [uint64]0 }
 $effectivePeak = [Math]::Max($observedPeak, $internalPeak)
 
 $processDocument = [ordered]@{
-    schema = 'gtosd.tst_strict_cap_process.v1'
+    schema = 'gtosd.user_configured_process_memory_budget_process.v1'
     started_at_utc = $startedAt.ToString('o')
     ended_at_utc = [DateTime]::UtcNow.ToString('o')
     process_id = if ($process) { $process.Id } else { $null }
@@ -252,20 +254,20 @@ $processDocument = [ordered]@{
     external_observed_peak_working_set_bytes = $observedPeak
     internal_reported_peak_rss_bytes = $internalPeak
     effective_peak_rss_bytes = $effectivePeak
-    memory_cap_bytes = $MemoryCapBytes
-    cap_reached = $capReached
-    killed_on_cap = $capReached
+    process_memory_budget_bytes = $ProcessMemoryBudgetBytes
+    budget_exceeded = $budgetExceeded
+    killed_on_budget = $budgetExceeded
 }
 Write-Json $processPath $processDocument
 
-$schemaValid = $report -and $report.schema -eq 'gtosd.gto_plus_convergence_run.v1'
+$schemaValid = $report -and $report.schema -eq 'gtosd.gto_plus_convergence_run.v4'
 $releaseValid = $schemaValid -and $report.build.configuration -eq 'Release'
 $contractValid = $schemaValid -and
-    $report.algorithm -eq 'exact_dcfr' -and
+    $report.algorithm -eq 'exact_production_dcfr' -and
     $report.update_mode -eq 'alternating' -and
     [double]$report.dcfr_parameters.alpha -eq 1.5 -and
     [double]$report.dcfr_parameters.beta -eq 0.0 -and
-    [double]$report.dcfr_parameters.gamma -eq 2.0 -and
+    [double]$report.dcfr_parameters.gamma -eq 3.0 -and
     [uint64]$report.averaging_delay -eq 0 -and
     [uint64]$report.certification_interval -eq 20 -and
     [uint64]$report.maximum_solver_threads -eq 8 -and
@@ -277,10 +279,13 @@ $modeValid = $schemaValid -and ((-not $TargetDriven -and [bool]$report.fixed_ite
     ($TargetDriven -and -not [bool]$report.fixed_iteration_diagnostic))
 $layoutValid = $schemaValid -and [bool]$report.layout_matches_fixture -and
     $report.game_fingerprint -eq $document.expected_layout.game_fingerprint
-$stateValid = $schemaValid -and [bool]$report.solver_state_gate.passed -and
-    [uint64]$report.solver_state_bytes -eq [uint64]$document.expected_layout.solver_state_bytes
-$memoryValid = -not $capReached -and $effectivePeak -gt 0 -and $effectivePeak -lt $MemoryCapBytes
-$runCompleted = -not $capReached -and ($exitCode -eq 0 -or (-not $TargetDriven -and $exitCode -eq 4))
+$stateValid = $schemaValid -and
+    [uint64]$report.solver_memory_accounting.state_logical_bytes -eq
+    [uint64]$document.expected_layout.solver_state_bytes
+$memoryValid = -not $budgetExceeded -and $effectivePeak -gt 0 -and
+    $effectivePeak -lt $ProcessMemoryBudgetBytes
+$runCompleted = -not $budgetExceeded -and
+    ($exitCode -eq 0 -or (-not $TargetDriven -and $exitCode -eq 4))
 $lastCertification = if ($schemaValid -and $report.convergence.Count -gt 0) { $report.convergence[-1] } else { $null }
 $payoffSumValid = $lastCertification -and
     [Math]::Abs([double]$lastCertification.expected_payoff_sum_antes) -le 1.0e-11
@@ -302,7 +307,7 @@ $overallPassed = $runCompleted -and $schemaValid -and $releaseValid -and $contra
     (-not $TargetDriven -or $timePassed)
 
 $validityDocument = [ordered]@{
-    schema = 'gtosd.tst_strict_cap_validity.v1'
+    schema = 'gtosd.user_configured_process_memory_budget_validity.v1'
     run_completed = $runCompleted
     report_structurally_valid = $schemaValid
     release_valid = $releaseValid
@@ -316,21 +321,22 @@ $validityDocument = [ordered]@{
     root_passed = $rootValid
     correctness_passed = $correctnessValid
     time_passed = $timePassed
-    memory_passed = $memoryValid
+    process_memory_budget_passed = $memoryValid
+    process_memory_budget_provenance = 'user_configured_experiment'
     overall_passed = $overallPassed
     process_exit_code = $exitCode
-    cap_reached = $capReached
+    budget_exceeded = $budgetExceeded
     effective_peak_rss_bytes = $effectivePeak
-    memory_headroom_bytes = if ($effectivePeak -lt $MemoryCapBytes) {
-        $MemoryCapBytes - $effectivePeak
+    process_memory_budget_headroom_bytes = if ($effectivePeak -lt $ProcessMemoryBudgetBytes) {
+        $ProcessMemoryBudgetBytes - $effectivePeak
     } else { 0 }
 }
 Write-Json $validityPath $validityDocument
 
-if ($capReached) {
-    throw "Memory cap reached: observed $observedPeak B, cap $MemoryCapBytes B"
+if ($budgetExceeded) {
+    throw "Process-memory budget exceeded: observed $observedPeak B, budget $ProcessMemoryBudgetBytes B"
 }
 if (-not $overallPassed) {
-    throw "Strict-cap validity failed; see $validityPath"
+    throw "User-configured process-memory budget validity failed; see $validityPath"
 }
-Write-Output "strict_cap_run_complete run=$runDirectory peak_rss_bytes=$effectivePeak"
+Write-Output "process_memory_budget_run_complete run=$runDirectory peak_rss_bytes=$effectivePeak"

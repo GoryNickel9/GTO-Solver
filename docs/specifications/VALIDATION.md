@@ -32,7 +32,7 @@ in cui ogni livello controlla errori differenti:
 
 ## Gate GTO+
 
-La suite corrente comprende `GTP-AHKHQH-101` (equivalente v3 dello scenario
+La suite corrente comprende `GTP-AHKHQH-101` (equivalente v4 dello scenario
 congelato `003`), `GTP-TH7D6S-101` e `GTP-TSTC9D-101`. AHK usa flop `Ah Kh Qh`, range identici
 `AA-QQ, AKs-AQs, KQs, AKo-AQo, KQo`, 36 combo fisiche per player, pot 40,
 stack 100, bet/raise 50%, un raise per street, all-in `Go` alla soglia corretta,
@@ -49,6 +49,9 @@ I gate prestazionali della suite sono:
   solving”, non soglie Peak RSS;
 - `solver_state_bytes`, Peak RSS e private bytes pubblicati separatamente come
   diagnostica, senza un cap desktop implicito;
+- fixture v4 obbligatorie nel wrapper multiprocesso; report v4 con
+  `memory_comparison.status=not_evaluated`, `passed=null`, vettori residenti e
+  nessun budget derivato dal riferimento GTO+;
 - cinque processi indipendenti per la promozione temporale finale e, in futuro,
   per una promozione memoria soltanto dopo equivalenza semantica dimostrata.
 

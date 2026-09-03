@@ -134,7 +134,15 @@ foreach ($fixtureName in $fixturePaths.Keys) {
     }
 
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
-    Require-Equal $report.schema 'gtosd.gto_plus_convergence_run.v1' "$fixtureName report schema"
+    Require-Equal $report.schema 'gtosd.gto_plus_convergence_run.v4' "$fixtureName report schema"
+    Require-Equal $report.memory_comparison.status 'not_evaluated' `
+        "$fixtureName memory comparison status"
+    Require-Equal $report.memory_comparison.passed $null `
+        "$fixtureName memory comparison result"
+    Require-Equal $report.solver_state_residency 'resident_vectors' `
+        "$fixtureName benchmark residency"
+    Require-Equal $report.resident_working_set_budget $null `
+        "$fixtureName benchmark working-set budget"
     Require-Equal $report.build.configuration 'Release' "$fixtureName build configuration"
     Require-Equal $report.algorithm 'exact_dcfr' "$fixtureName algorithm"
     Require-Equal $report.update_mode 'alternating' "$fixtureName update mode"
@@ -188,10 +196,12 @@ foreach ($fixtureName in $fixturePaths.Keys) {
         decision_node_scales = [uint64]$report.decision_node_scales
         information_sets = [uint64]$report.information_sets
         actions = [uint64]$report.actions
-        solver_state_bytes = [uint64]$report.solver_state_bytes
-        solver_state_passed = [bool]$report.solver_state_gate.passed
-        peak_rss_bytes = [uint64]$report.peak_rss_bytes
-        desktop_ram_passed = [uint64]$report.peak_rss_bytes -lt 2000000000
+        solver_state_logical_bytes = [uint64]$report.solver_memory_accounting.state_logical_bytes
+        solver_state_logical_matches_fixture =
+            [uint64]$report.solver_memory_accounting.state_logical_bytes -eq
+            [uint64]$document.expected_layout.solver_state_bytes
+        process_peak_rss_bytes = [uint64]$report.process_memory.peak_rss_bytes
+        memory_comparison_status = $report.memory_comparison.status
         normalized_cpu_utilization_fraction = [double]$report.normalized_cpu_utilization_fraction
         tree_preparation_seconds = [Math]::Max(0.0, $wallSeconds - $solverSeconds)
         traversal_seconds = $traversalSeconds

@@ -99,9 +99,9 @@ foreach ($fixtureName in $fixturePaths.Keys) {
         correctness_passed = $report.correctness_passed
         layout_matches_fixture = $report.layout_matches_fixture
         exact_outcomes = $report.exact_outcomes
-        solver_state_bytes = $report.solver_state_bytes
-        peak_rss_bytes = $report.peak_rss_bytes
-        memory_gate_passed = $report.memory_gate.passed
+        solver_state_logical_bytes = $report.solver_memory_accounting.state_logical_bytes
+        process_peak_rss_bytes = $report.process_memory.peak_rss_bytes
+        memory_comparison_status = $report.memory_comparison.status
     }
 }
 

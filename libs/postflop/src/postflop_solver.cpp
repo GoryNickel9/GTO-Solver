@@ -17232,7 +17232,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       options.memory_backend == MemoryPrototype::StreetDecomposition ||
       (options.memory_backend == MemoryPrototype::OutOfCore &&
        options.state_precision != PostflopStatePrecision::Float64) ||
-      (options.maximum_peak_rss_bytes != 0U &&
+      (options.resident_working_set_budget_bytes != 0U &&
        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
       (is_signed_scaled_dcfr_algorithm(options.algorithm) &&
        options.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) ||
@@ -17285,9 +17285,9 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         PostflopSolverError::MemoryFailure);
   }
   const auto budget_would_require_page_backing = [&](const std::uint64_t current_rss) {
-    return scaled_state_bytes && options.maximum_peak_rss_bytes != 0U &&
-           (current_rss >= options.maximum_peak_rss_bytes ||
-            *scaled_state_bytes > options.maximum_peak_rss_bytes - current_rss);
+    return scaled_state_bytes && options.resident_working_set_budget_bytes != 0U &&
+           (current_rss >= options.resident_working_set_budget_bytes ||
+            *scaled_state_bytes > options.resident_working_set_budget_bytes - current_rss);
   };
   const bool prepare_under_tight_budget =
       budget_would_require_page_backing(process_current_rss_bytes());
@@ -17521,7 +17521,7 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
                  "solver_state_backend=os_page_backed_scaled_uint16 logical_bytes=%llu "
                  "rss_budget_bytes=%llu current_rss_bytes=%llu release_quantum_bytes=65536\n",
                  static_cast<unsigned long long>(*scaled_state_bytes),
-                 static_cast<unsigned long long>(options.maximum_peak_rss_bytes),
+                 static_cast<unsigned long long>(options.resident_working_set_budget_bytes),
                  static_cast<unsigned long long>(current_rss_before_state));
   } else {
     const bool mixed_state =
