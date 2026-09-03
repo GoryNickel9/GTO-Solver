@@ -1081,7 +1081,6 @@ struct TerminalComboData {
 
 struct BoardData {
   std::uint64_t mask{0};
-  std::array<std::int16_t, combo_count> local_index{};
   std::vector<ComboId> legal_combos;
   // Per-player live combos: only the acting player's own range combos are
   // stored as action slots at that player's decision nodes. This halves the
@@ -1104,6 +1103,14 @@ struct BoardData {
   std::uint16_t player_rank_count{0};
   bool ranks_ready{false};
 };
+
+[[nodiscard]] std::int16_t board_legal_local(const BoardData &board, const ComboId combo) noexcept {
+  const auto found = std::ranges::lower_bound(board.legal_combos, combo);
+  if (found == board.legal_combos.end() || *found != combo) {
+    return -1;
+  }
+  return static_cast<std::int16_t>(std::distance(board.legal_combos.begin(), found));
+}
 
 struct DenseLayout {
   PublicTree tree;
@@ -2067,7 +2074,6 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
     if (found == board_lookup.end()) {
       BoardData board;
       board.mask = node.state.board_mask;
-      board.local_index.fill(-1);
       for (auto &player_local : board.player_local) {
         player_local.fill(-1);
       }
@@ -2075,7 +2081,6 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
         const bool present_in_source_range = ranges.players[0][combo].basis_points() != 0U ||
                                              ranges.players[1][combo].basis_points() != 0U;
         if (present_in_source_range && (layout.combo_masks[combo] & board.mask) == 0U) {
-          board.local_index[combo] = static_cast<std::int16_t>(board.legal_combos.size());
           board.legal_combos.push_back(static_cast<ComboId>(combo));
         }
         for (std::size_t player = 0; player < 2U; ++player) {
@@ -2794,7 +2799,7 @@ prepare_root_lock(const DiagnosticRootLock &lock, const DenseLayout &layout) {
           PostflopSolverError::InvalidConfiguration);
     }
     const auto combo_id = static_cast<ComboId>(std::distance(layout.combos.begin(), combo_it));
-    const auto local = board.local_index[combo_id];
+    const auto local = board_legal_local(board, combo_id);
     if (local < 0 || static_cast<std::size_t>(local) >= covered.size() ||
         covered[static_cast<std::size_t>(local)]) {
       return Result<std::unique_ptr<PreparedRootLock>, PostflopSolverError>::failure(
@@ -7726,7 +7731,7 @@ private:
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
         const auto locked =
-            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
+            locked_node ? locked_root_strategy(board_legal_local(board, combo_id)) : std::nullopt;
         const auto strategy =
             locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), false);
         for (std::size_t action = 0; action < action_count; ++action) {
@@ -8358,7 +8363,7 @@ private:
     auto &strategies = scratch.strategies;
     const bool locked_root = is_locked_root(canonical);
     for (const ComboId combo : board.legal_combos) {
-      const auto local = board.local_index[combo];
+      const auto local = board_legal_local(board, combo);
       const auto locked = locked_root ? locked_root_strategy(local) : std::nullopt;
       const auto strategy = locked ? *locked : current_strategy(canonical, local, false);
       const auto slot = value_slot(combo, actor);
@@ -8404,7 +8409,7 @@ private:
       }
     }
     for (const ComboId combo : board.legal_combos) {
-      const auto local = board.local_index[combo];
+      const auto local = board_legal_local(board, combo);
       const auto slot = value_slot(combo, actor);
       const auto offset = canonical_action_base(canonical, local);
       for (std::size_t action = 0U; action < action_count; ++action) {
@@ -12331,7 +12336,7 @@ private:
     } else {
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo = actor_combos[local];
-        const auto locked = locked_node ? locked_root_strategy(board.local_index[combo])
+        const auto locked = locked_node ? locked_root_strategy(board_legal_local(board, combo))
                                         : std::nullopt;
         const auto strategy = locked
                                   ? *locked
@@ -13069,7 +13074,7 @@ private:
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
         const auto locked =
-            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
+            locked_node ? locked_root_strategy(board_legal_local(board, combo_id)) : std::nullopt;
         const auto strategy =
             locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), false);
         const auto slot = board_player_slot(board, decision.player, local);
@@ -14182,7 +14187,7 @@ private:
       for (std::size_t local = 0; local < actor_combos.size(); ++local) {
         const auto combo_id = actor_combos[local];
         const auto locked =
-            locked_node ? locked_root_strategy(board.local_index[combo_id]) : std::nullopt;
+            locked_node ? locked_root_strategy(board_legal_local(board, combo_id)) : std::nullopt;
         const auto strategy =
             locked ? *locked : current_strategy(decision, static_cast<std::int16_t>(local), true);
         const auto slot = board_player_slot(board, decision.player, local);

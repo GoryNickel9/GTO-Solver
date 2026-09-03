@@ -15,12 +15,12 @@ update and exact certification; the TH7D6S row was also confirmed by the full
 
 | Fixture | Previous peak RSS | Current peak RSS | GTO+ reference | Status |
 |---|---:|---:|---:|---|
-| AHKHQH-101 | ~166.8 MB | 33,406,976 B | 8,000,000 B | FAIL |
-| TH7D6S-101 | ~799.1 MB | 398,626,816 B | 399,000,000 B | PASS |
+| AHKHQH-101 | ~166.8 MB | 33,071,104 B | 8,000,000 B | FAIL |
+| TH7D6S-101 | ~799.1 MB | 398,049,280 B | 399,000,000 B | PASS |
 | TSTC9D-101 | 1,970,229,248 B | 1,666,785,280 B | 2,000,000,000 B | PASS |
 
 TH7D6S completed 80 iterations at `0.807956%` target dEV and passed the
-correctness gate. Its elapsed solver time was 30.9792 s, so the independent
+correctness gate. Its latest elapsed solver time was 34.4749 s, so the independent
 time-parity problem remains outside this memory-only change. TSTC9D was a
 fixed-iteration memory regression run, not convergence evidence.
 
@@ -59,7 +59,9 @@ fixed-iteration memory regression run, not convergence evidence.
   owned heap storage. Edge size is 32 bytes.
 - The 72 pre-expanded per-board compatibility vectors were replaced by direct
   immutable card-mask checks. The per-board rank index is now call-local
-  scratch and is released after terminal metadata is prepared.
+  scratch and is released after terminal metadata is prepared. The legacy
+  union-range local index is derived from the already sorted combo list rather
+  than retaining another fixed 630-entry array in every board.
 - Legacy union-range slot tables are not built for the player-indexed
   canonical production traversal. The physical/browser traversal still gets
   them.
@@ -120,7 +122,7 @@ run measured:
 - process startup peak before preparation: 5,758,976 B;
 - required solver state: 5,300,664 B;
 - ranked resident layout accounting: 5,474,598 B;
-- measured full-process peak: 33,406,976 B;
+- measured full-process peak: 33,071,104 B;
 - GTO+ reference: 8,000,000 B.
 
 The required state alone plus the observed process baseline is 11,059,640 B,
@@ -138,8 +140,7 @@ asymmetric-range and exact-reference oracles before promotion.
 ## Validation completed
 
 - Release build: PASS.
-- Focused production/Phase 7/Phase 10/GTO+/range-orbit/canonical tests: 6/6
-  PASS.
+- Full Release CTest suite: 28/28 PASS.
 - TH7D6S full convergence and correctness: PASS at iteration 80.
 - TH7D6S per-fixture Peak RSS: PASS.
 - TSTC9D fixed-iteration Peak RSS regression: PASS.
