@@ -31,12 +31,21 @@ struct WinnerMask {
 };
 
 struct Action {
-  ActionType type{ActionType::Check};
   Money amount{};
-  AllInKind all_in_kind{AllInKind::None};
   std::uint32_t requested_basis_points{0};
+  ActionType type{ActionType::Check};
+  AllInKind all_in_kind{AllInKind::None};
+
+  constexpr Action() = default;
+  constexpr Action(const ActionType action_type, const Money action_amount,
+                   const AllInKind action_all_in_kind,
+                   const std::uint32_t action_requested_basis_points) noexcept
+      : amount(action_amount), requested_basis_points(action_requested_basis_points),
+        type(action_type), all_in_kind(action_all_in_kind) {}
+
   friend bool operator==(const Action &, const Action &) = default;
 };
+static_assert(sizeof(Action) == 16U);
 
 struct PublicState {
   Street street{Street::Preflop};

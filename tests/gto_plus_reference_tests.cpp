@@ -180,8 +180,7 @@ void test_exact_reference_build() {
                    solved.value().convergence.back().normalized_nash_conv) < 1e-6,
           "float32 state stays within the declared one-iteration differential tolerance");
   auto mixed_options = options;
-  mixed_options.state_precision =
-      gtosd::PostflopStatePrecision::Float24RegretFloat16Strategy;
+  mixed_options.state_precision = gtosd::PostflopStatePrecision::Float24RegretFloat16Strategy;
   const auto mixed_solved = gtosd::solve_postflop_exact(config, ranges, mixed_options);
   require(mixed_solved.has_value() &&
               mixed_solved.value().checkpoint.state_precision == mixed_options.state_precision &&
@@ -204,8 +203,8 @@ void test_exact_reference_build() {
                        solved.value().convergence.back().normalized_nash_conv) < 2e-4,
           "mixed state remains certifiable and within its declared one-iteration tolerance");
   mixed_options.iterations = 2U;
-  const auto mixed_resumed = gtosd::solve_postflop_exact(
-      config, ranges, mixed_options, &mixed_solved.value().checkpoint);
+  const auto mixed_resumed =
+      gtosd::solve_postflop_exact(config, ranges, mixed_options, &mixed_solved.value().checkpoint);
   require(mixed_resumed.has_value() &&
               mixed_resumed.value().checkpoint.completed_iterations == 2U &&
               mixed_resumed.value().checkpoint.cumulative_regret_float24.size() ==
@@ -228,11 +227,10 @@ void test_exact_reference_build() {
                      parallel_float32.value().checkpoint.cumulative_regret_float32[action]) -
                  static_cast<double>(
                      float32_solved.value().checkpoint.cumulative_regret_float32[action])));
-    const double strategy_difference =
-        std::abs(static_cast<double>(
-                     parallel_float32.value().checkpoint.cumulative_strategy_float32[action]) -
-                 static_cast<double>(
-                     float32_solved.value().checkpoint.cumulative_strategy_float32[action]));
+    const double strategy_difference = std::abs(
+        static_cast<double>(
+            parallel_float32.value().checkpoint.cumulative_strategy_float32[action]) -
+        static_cast<double>(float32_solved.value().checkpoint.cumulative_strategy_float32[action]));
     if (strategy_difference > maximum_parallel_strategy_difference) {
       maximum_parallel_strategy_difference = strategy_difference;
       maximum_parallel_strategy_index = action;
@@ -241,13 +239,12 @@ void test_exact_reference_build() {
   std::cerr << "PARALLEL_STATE_DIAGNOSTIC max_regret_difference="
             << maximum_parallel_regret_difference
             << " max_strategy_difference=" << maximum_parallel_strategy_difference
-            << " strategy_index=" << maximum_parallel_strategy_index
-            << " serial_strategy="
-            << float32_solved.value().checkpoint
-                   .cumulative_strategy_float32[maximum_parallel_strategy_index]
+            << " strategy_index=" << maximum_parallel_strategy_index << " serial_strategy="
+            << float32_solved.value()
+                   .checkpoint.cumulative_strategy_float32[maximum_parallel_strategy_index]
             << " parallel_strategy="
-            << parallel_float32.value().checkpoint
-                   .cumulative_strategy_float32[maximum_parallel_strategy_index]
+            << parallel_float32.value()
+                   .checkpoint.cumulative_strategy_float32[maximum_parallel_strategy_index]
             << '\n';
   require(maximum_parallel_regret_difference == 0.0 && maximum_parallel_strategy_difference == 0.0,
           "parallel action subtrees reproduce the serial float32 state exactly");
@@ -360,19 +357,17 @@ void test_lossless_isomorphism_matches_physical_cfr() {
               iso_on.value().information_sets < iso_off.value().information_sets &&
               iso_on.value().actions < iso_off.value().actions,
           "ISO-on only removes suit-equivalent chance subtrees and their node-owned state");
-  require(iso_off.value().convergence.size() == 1U &&
-              iso_on.value().convergence.size() == 1U,
+  require(iso_off.value().convergence.size() == 1U && iso_on.value().convergence.size() == 1U,
           "both node-owned solves produce one comparable certification");
   const auto &iso_off_certification = iso_off.value().convergence.front();
   const auto &iso_on_certification = iso_on.value().convergence.front();
   constexpr double tolerance = 1e-11;
-  std::cerr << "ORBIT_DIAGNOSTIC baseline_profile="
-            << iso_off_certification.profile_value_antes[0] << ','
-            << iso_off_certification.profile_value_antes[1]
+  std::cerr << "ORBIT_DIAGNOSTIC baseline_profile=" << iso_off_certification.profile_value_antes[0]
+            << ',' << iso_off_certification.profile_value_antes[1]
             << " orbit_profile=" << iso_on_certification.profile_value_antes[0] << ','
             << iso_on_certification.profile_value_antes[1]
-            << " baseline_br=" << iso_off_certification.best_response_value_antes[0]
-            << ',' << iso_off_certification.best_response_value_antes[1]
+            << " baseline_br=" << iso_off_certification.best_response_value_antes[0] << ','
+            << iso_off_certification.best_response_value_antes[1]
             << " orbit_br=" << iso_on_certification.best_response_value_antes[0] << ','
             << iso_on_certification.best_response_value_antes[1] << '\n';
   for (std::size_t player = 0; player < 2U; ++player) {
@@ -383,11 +378,10 @@ void test_lossless_isomorphism_matches_physical_cfr() {
                      iso_on_certification.best_response_value_antes[player]) < tolerance,
             "asymmetric ISO compression preserves best-response EV");
   }
-  require(std::abs(iso_off_certification.nash_conv_antes -
-                   iso_on_certification.nash_conv_antes) < tolerance,
+  require(std::abs(iso_off_certification.nash_conv_antes - iso_on_certification.nash_conv_antes) <
+              tolerance,
           "asymmetric ISO compression preserves NashConv");
-  require(iso_off.value().checkpoint.game_fingerprint !=
-              iso_on.value().checkpoint.game_fingerprint,
+  require(iso_off.value().checkpoint.game_fingerprint != iso_on.value().checkpoint.game_fingerprint,
           "ISO-off and ISO-on checkpoints identify different layouts");
   std::cout << "ASYMMETRIC_RANGE_NODE_OWNED_ISOMORPHISM_TEST=PASS"
             << " iso_off_public_nodes=" << iso_off.value().canonical_public_nodes
@@ -399,19 +393,16 @@ void test_lossless_isomorphism_matches_physical_cfr() {
 void test_prepared_compressed_root_analysis_matches_certification() {
   const auto config = make_reference_config();
   const auto ranges = make_reference_ranges();
-  auto prepared =
-      gtosd::prepare_postflop_tree(config, ranges, true, true, true).value();
+  auto prepared = gtosd::prepare_postflop_tree(config, ranges, true, true, true).value();
   const auto estimate = gtosd::prepared_postflop_layout_estimate(*prepared);
-  require(estimate.physical_public_tree.node_count !=
-              estimate.canonical_public_nodes,
+  require(estimate.physical_public_tree.node_count != estimate.canonical_public_nodes,
           "prepared root differential uses a genuinely compressed public DAG");
 
   gtosd::PostflopSolveOptions options;
   options.iterations = 80U;
   options.certification_interval = 80U;
   options.algorithm = gtosd::PostflopAlgorithm::Dcfr;
-  options.state_precision =
-      gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+  options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
   options.dcfr_positive_regret_exponent = 1.5;
   options.dcfr_average_exponent = 2.0;
   options.averaging_delay = 0U;
@@ -424,32 +415,29 @@ void test_prepared_compressed_root_analysis_matches_certification() {
   require(std::abs(certification.expected_payoff_sum_antes) < 1.0e-11,
           "compressed canonical certification evaluates distinct transformed reaches exactly");
   select_legacy_certification(true);
-  const auto legacy_certification = gtosd::certify_postflop_checkpoint(
-      config, ranges, solved.value().checkpoint);
+  const auto legacy_certification =
+      gtosd::certify_postflop_checkpoint(config, ranges, solved.value().checkpoint);
   select_legacy_certification(false);
-  const auto paired_certification = gtosd::certify_postflop_checkpoint(
-      config, ranges, solved.value().checkpoint);
+  const auto paired_certification =
+      gtosd::certify_postflop_checkpoint(config, ranges, solved.value().checkpoint);
   require(legacy_certification.has_value() && paired_certification.has_value(),
           "legacy and same-player paired certification both succeed");
   for (std::size_t player = 0U; player < 2U; ++player) {
-    require(std::bit_cast<std::uint64_t>(
-                legacy_certification.value().profile_value_antes[player]) ==
+    require(
+        std::bit_cast<std::uint64_t>(legacy_certification.value().profile_value_antes[player]) ==
                 std::bit_cast<std::uint64_t>(
                     paired_certification.value().profile_value_antes[player]) &&
+            std::bit_cast<std::uint64_t>(
+                legacy_certification.value().best_response_value_antes[player]) ==
                 std::bit_cast<std::uint64_t>(
-                    legacy_certification.value().best_response_value_antes[player]) ==
-                std::bit_cast<std::uint64_t>(paired_certification.value()
-                                                 .best_response_value_antes[player]),
-            "same-player paired certification preserves profile and BR bits");
+                    paired_certification.value().best_response_value_antes[player]),
+        "same-player paired certification preserves profile and BR bits");
   }
-  require(std::bit_cast<std::uint64_t>(
-              legacy_certification.value().expected_payoff_sum_antes) ==
-              std::bit_cast<std::uint64_t>(
-                  paired_certification.value().expected_payoff_sum_antes) &&
-              std::bit_cast<std::uint64_t>(
-                  legacy_certification.value().normalized_nash_conv) ==
-              std::bit_cast<std::uint64_t>(
-                  paired_certification.value().normalized_nash_conv),
+  require(std::bit_cast<std::uint64_t>(legacy_certification.value().expected_payoff_sum_antes) ==
+                  std::bit_cast<std::uint64_t>(
+                      paired_certification.value().expected_payoff_sum_antes) &&
+              std::bit_cast<std::uint64_t>(legacy_certification.value().normalized_nash_conv) ==
+                  std::bit_cast<std::uint64_t>(paired_certification.value().normalized_nash_conv),
           "same-player paired certification preserves aggregate gate bits");
 
   auto zero_rake_config = config;
@@ -459,8 +447,7 @@ void test_prepared_compressed_root_analysis_matches_certification() {
   zero_rake_options.certification_interval = 2U;
   const auto zero_rake_solved =
       gtosd::solve_postflop_exact(zero_rake_config, ranges, zero_rake_options);
-  require(zero_rake_solved.has_value(),
-          "zero-rake paired-certification fixture solves");
+  require(zero_rake_solved.has_value(), "zero-rake paired-certification fixture solves");
   select_legacy_certification(true);
   const auto zero_rake_legacy = gtosd::certify_postflop_checkpoint(
       zero_rake_config, ranges, zero_rake_solved.value().checkpoint);
@@ -468,58 +455,65 @@ void test_prepared_compressed_root_analysis_matches_certification() {
   const auto zero_rake_paired = gtosd::certify_postflop_checkpoint(
       zero_rake_config, ranges, zero_rake_solved.value().checkpoint);
   require(zero_rake_legacy.has_value() && zero_rake_paired.has_value() &&
-              std::bit_cast<std::uint64_t>(
-                  zero_rake_legacy.value().profile_value_antes[1]) ==
-                  std::bit_cast<std::uint64_t>(
-                      zero_rake_paired.value().profile_value_antes[1]) &&
+              std::bit_cast<std::uint64_t>(zero_rake_legacy.value().profile_value_antes[1]) ==
+                  std::bit_cast<std::uint64_t>(zero_rake_paired.value().profile_value_antes[1]) &&
               zero_rake_paired.value().profile_value_antes[1] ==
                   -zero_rake_paired.value().profile_value_antes[0],
           "paired certification preserves the exact zero-rake mirror contract");
-  const auto direct = gtosd::analyze_postflop_node(
-      config, ranges, solved.value().checkpoint, 0U);
+  const auto direct = gtosd::analyze_postflop_node(config, ranges, solved.value().checkpoint, 0U);
   const auto browser_tree = gtosd::prepared_postflop_public_tree(prepared);
   require(direct.has_value() && browser_tree && !browser_tree->nodes.empty(),
           "direct root and prepared physical browser tree are available");
-  const auto prepared_root = gtosd::analyze_postflop_node(
-      *prepared, solved.value().checkpoint, browser_tree->root);
+  const auto prepared_root =
+      gtosd::analyze_postflop_node(*prepared, solved.value().checkpoint, browser_tree->root);
   require(prepared_root.has_value(), "prepared root analysis succeeds");
 
   const auto &root = browser_tree->nodes[browser_tree->root];
-  const auto check = std::ranges::find_if(root.edges, [](const auto &edge) {
-    return edge.action.type == gtosd::ActionType::Check;
-  });
-  const auto bet = std::ranges::find_if(root.edges, [](const auto &edge) {
-    return edge.action.type == gtosd::ActionType::Bet;
-  });
+  const auto check = std::ranges::find_if(
+      root.edges, [](const auto &edge) { return edge.action.type == gtosd::ActionType::Check; });
+  const auto bet = std::ranges::find_if(
+      root.edges, [](const auto &edge) { return edge.action.type == gtosd::ActionType::Bet; });
   require(check != root.edges.end() && bet != root.edges.end(),
           "prepared browser root exposes check and bet children");
-  const auto check_child = gtosd::analyze_postflop_node(
-      *prepared, solved.value().checkpoint, check->child);
-  const auto bet_child = gtosd::analyze_postflop_node(
-      *prepared, solved.value().checkpoint, bet->child);
+  const auto check_child =
+      gtosd::analyze_postflop_node(*prepared, solved.value().checkpoint, check->child);
+  const auto bet_child =
+      gtosd::analyze_postflop_node(*prepared, solved.value().checkpoint, bet->child);
   require(check_child.has_value() && bet_child.has_value(),
           "prepared physical browser still analyzes both non-root children");
 
-  const double certification_gto_plus =
-      certification.profile_value_antes[0] + 20.0;
+  auto compact_prepared = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  const auto compact_edges = gtosd::prepared_postflop_action_edges(*compact_prepared, 0U);
+  require(compact_edges.has_value() && compact_edges.value().size() == root.edges.size() &&
+              gtosd::prepared_postflop_public_tree(compact_prepared) == nullptr,
+          "solver-only prepared layout exposes actions without retaining a physical browser tree");
+  const auto compact_check = std::ranges::find_if(compact_edges.value(), [](const auto &edge) {
+    return edge.action.type == gtosd::ActionType::Check;
+  });
+  require(compact_check != compact_edges.value().end(),
+          "solver-only action navigation resolves the root check child");
+  const auto compact_check_child = gtosd::analyze_postflop_node(
+      *compact_prepared, solved.value().checkpoint, compact_check->child);
+  require(compact_check_child.has_value() &&
+              std::abs(compact_check_child.value().gto_plus_ev_antes[1] -
+                       check_child.value().gto_plus_ev_antes[1]) < 1.0e-9,
+          "solver-only non-root analysis matches physical-browser analysis");
+
+  const double certification_gto_plus = certification.profile_value_antes[0] + 20.0;
   std::cerr << "PREPARED_ROOT_DIFFERENTIAL iteration=80"
-            << " certification_profile_p0="
-            << certification.profile_value_antes[0]
+            << " certification_profile_p0=" << certification.profile_value_antes[0]
             << " certification_gto_plus_p0=" << certification_gto_plus
             << " direct_profile_p0=" << direct.value().profile_value_antes[0]
             << " direct_gto_plus_p0=" << direct.value().gto_plus_ev_antes[0]
-            << " prepared_profile_p0="
-            << prepared_root.value().profile_value_antes[0]
-            << " prepared_gto_plus_p0="
-            << prepared_root.value().gto_plus_ev_antes[0] << '\n';
+            << " prepared_profile_p0=" << prepared_root.value().profile_value_antes[0]
+            << " prepared_gto_plus_p0=" << prepared_root.value().gto_plus_ev_antes[0] << '\n';
 
   constexpr double root_tolerance = 1.0e-9;
-  require(std::abs(certification.profile_value_antes[0] -
-                   direct.value().profile_value_antes[0]) < root_tolerance,
+  require(std::abs(certification.profile_value_antes[0] - direct.value().profile_value_antes[0]) <
+              root_tolerance,
           "direct canonical root analysis matches exact certification");
   require(std::abs(direct.value().profile_value_antes[0] -
-                   prepared_root.value().profile_value_antes[0]) <
-              root_tolerance,
+                   prepared_root.value().profile_value_antes[0]) < root_tolerance,
           "prepared compressed root analysis matches direct canonical authority");
 }
 
@@ -615,20 +609,16 @@ void test_external_root_lock_diagnostic() {
     const auto combo_it = std::ranges::find(combos, entry.combo);
     require(combo_it != combos.end(), "locked combo is part of the game");
     const auto combo_id = static_cast<gtosd::ComboId>(std::distance(combos.begin(), combo_it));
-    const auto combo_analysis =
-        std::ranges::find_if(analysis.combos, [combo_id](const auto &combo) {
-          return combo.combo == combo_id;
-        });
+    const auto combo_analysis = std::ranges::find_if(
+        analysis.combos, [combo_id](const auto &combo) { return combo.combo == combo_id; });
     require(combo_analysis != analysis.combos.end(), "locked combo has a root posterior");
-    const auto bet_action = std::ranges::find_if(
-        analysis.actions, [](const gtosd::Action &action) {
-          return action.type == gtosd::ActionType::Bet &&
-                 action.amount.units() == 20 * gtosd::Money::units_per_ante;
-        });
+    const auto bet_action = std::ranges::find_if(analysis.actions, [](const gtosd::Action &action) {
+      return action.type == gtosd::ActionType::Bet &&
+             action.amount.units() == 20 * gtosd::Money::units_per_ante;
+    });
     require(bet_action != analysis.actions.end(), "root exposes the locked bet action");
-    const auto bet_probability =
-        combo_analysis->action_probabilities[static_cast<std::size_t>(
-            std::distance(analysis.actions.begin(), bet_action))];
+    const auto bet_probability = combo_analysis->action_probabilities[static_cast<std::size_t>(
+        std::distance(analysis.actions.begin(), bet_action))];
     maximum_probability_delta =
         std::max(maximum_probability_delta, std::abs(bet_probability - entry.probabilities[1]));
   }

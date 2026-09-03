@@ -69,8 +69,7 @@ is_production_dcfr_algorithm(const PostflopAlgorithm algorithm) noexcept {
 
 [[nodiscard]] constexpr bool
 is_signed_scaled_dcfr_algorithm(const PostflopAlgorithm algorithm) noexcept {
-  return algorithm == PostflopAlgorithm::Dcfr ||
-         algorithm == PostflopAlgorithm::HsDcfr30 ||
+  return algorithm == PostflopAlgorithm::Dcfr || algorithm == PostflopAlgorithm::HsDcfr30 ||
          is_production_dcfr_algorithm(algorithm);
 }
 
@@ -421,6 +420,16 @@ struct PostflopStrategyQuery {
   std::vector<double> probabilities;
 };
 
+// Compact prepared-tree navigation for decision histories.  It exposes the
+// canonical solver topology without materializing a second PublicTree with a
+// full PublicState in every node.  Chance navigation remains represented by
+// the existing physical browser tree until its card-conditioned handle is
+// migrated to the same compact API.
+struct PostflopPreparedActionEdge {
+  Action action{};
+  NodeId child{0};
+};
+
 struct PostflopLayoutEstimate {
   PublicTreeStats physical_public_tree;
   std::uint64_t canonical_public_nodes{0};
@@ -565,6 +574,8 @@ private:
   friend Result<PostflopNodeAnalysis, PostflopSolverError>
   analyze_postflop_node(PostflopPreparedTree &, const PostflopCheckpoint &, NodeId);
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
+  friend Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
+  prepared_postflop_action_edges(const PostflopPreparedTree &, NodeId);
   friend Result<PostflopArchitecturalTopology, PostflopSolverError>
   inspect_postflop_architectural_topology(const PostflopPreparedTree &);
   friend Result<PostflopArchitecturalShadowReport, PostflopSolverError>
@@ -582,6 +593,9 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
 
 [[nodiscard]] PostflopLayoutEstimate
 prepared_postflop_layout_estimate(const PostflopPreparedTree &prepared);
+
+[[nodiscard]] Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
+prepared_postflop_action_edges(const PostflopPreparedTree &prepared, NodeId node);
 
 // Explicit external inspector used by architecture tooling. It does not
 // participate in traversal and its temporary rows are released by the caller.

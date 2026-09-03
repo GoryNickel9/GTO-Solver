@@ -907,14 +907,13 @@ struct ConvergenceReferenceNode {
   std::map<std::string, double> actions;
 };
 
-constexpr std::uint64_t desktop_peak_rss_cap_bytes =
-    std::uint64_t{2} * 1024U * 1024U * 1024U;
+constexpr std::uint64_t desktop_peak_rss_cap_bytes = std::uint64_t{2} * 1024U * 1024U * 1024U;
 constexpr std::string_view desktop_peak_rss_cap_unit{"GiB"};
 constexpr std::string_view desktop_peak_rss_gate{"strict_less_than"};
 constexpr std::string_view gto_plus_peak_rss_gate{"less_than_or_equal"};
 
 constexpr bool passes_inclusive_byte_gate(const std::uint64_t measured_bytes,
-                                           const std::uint64_t reference_bytes) noexcept {
+                                          const std::uint64_t reference_bytes) noexcept {
   return measured_bytes <= reference_bytes;
 }
 
@@ -977,6 +976,24 @@ std::optional<gtosd::NodeId> resolve_reference_node(const gtosd::PublicTree &tre
     if (!found) {
       return std::nullopt;
     }
+  }
+  return current;
+}
+
+std::optional<gtosd::NodeId> resolve_reference_node(const gtosd::PostflopPreparedTree &prepared,
+                                                    const std::vector<std::string> &path) {
+  gtosd::NodeId current = 0U;
+  for (const auto &label : path) {
+    const auto edges = gtosd::prepared_postflop_action_edges(prepared, current);
+    if (!edges) {
+      return std::nullopt;
+    }
+    const auto found = std::ranges::find_if(
+        edges.value(), [&](const auto &edge) { return action_label(edge.action) == label; });
+    if (found == edges.value().end()) {
+      return std::nullopt;
+    }
+    current = found->child;
   }
   return current;
 }
@@ -1091,13 +1108,12 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   }
   const auto replay_output_path = environment_value("GTOSD_REAL_NODE_REPLAY_OUTPUT");
   if (replay_output_path) {
-    replay_capture.iterations = spec.diagnostic_iteration_limit == 0U
-                                    ? std::vector<std::uint64_t>{1U, 20U, 80U, 160U, 200U}
-                                    : std::vector<std::uint64_t>{
-                                          1U,
-                                          std::max<std::uint64_t>(
-                                              1U, spec.diagnostic_iteration_limit / 2U),
-                                          spec.diagnostic_iteration_limit};
+    replay_capture.iterations =
+        spec.diagnostic_iteration_limit == 0U
+            ? std::vector<std::uint64_t>{1U, 20U, 80U, 160U, 200U}
+            : std::vector<std::uint64_t>{
+                  1U, std::max<std::uint64_t>(1U, spec.diagnostic_iteration_limit / 2U),
+                  spec.diagnostic_iteration_limit};
     std::ranges::sort(replay_capture.iterations);
     replay_capture.iterations.erase(
         std::unique(replay_capture.iterations.begin(), replay_capture.iterations.end()),
@@ -1133,13 +1149,11 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   };
 
   const auto started = std::chrono::steady_clock::now();
-  const bool requires_physical_analysis_tree = std::ranges::any_of(
-      spec.reference_nodes, [](const auto &node) { return !node.path.empty(); });
   std::cerr << "benchmark_phase=prepare_start peak_rss_bytes=" << gtosd::process_peak_rss_bytes()
             << '\n';
-  const auto prepared = gtosd::prepare_postflop_tree(
-      config, spec.ranges, spec.enable_lossless_isomorphism, spec.enable_canonical_public_dag,
-      requires_physical_analysis_tree);
+  const auto prepared =
+      gtosd::prepare_postflop_tree(config, spec.ranges, spec.enable_lossless_isomorphism,
+                                   spec.enable_canonical_public_dag, false);
   if (!prepared) {
     std::cerr << "postflop benchmark-gto-plus failed: "
               << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
@@ -1199,52 +1213,50 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       for (const auto producer : sample.producers) {
         producers.emplace_back(producer_name(producer));
       }
-      samples.push_back({
-          {"iteration", sample.iteration},
-          {"representative_node", sample.representative_node},
-          {"board_mask", sample.board_mask},
-          {"structural_signature", sample.structural_signature},
-          {"street", sample.street},
-          {"update_player", sample.update_player},
-          {"actor", sample.actor},
-          {"action_count", sample.action_count},
-          {"hand_count", sample.hand_count},
-          {"regret_update_weight", sample.regret_update_weight},
-          {"strategy_weight", sample.strategy_weight},
-          {"positive_regret_discount", sample.positive_regret_discount},
-          {"negative_regret_discount", sample.negative_regret_discount},
-          {"old_regret_scale", sample.old_regret_scale},
-          {"old_strategy_scale", sample.old_strategy_scale},
-          {"resulting_regret_scale", sample.resulting_regret_scale},
-          {"resulting_strategy_scale", sample.resulting_strategy_scale},
-          {"producers", std::move(producers)},
-          {"old_regret_codes", sample.old_regret_codes},
-          {"old_strategy_codes", sample.old_strategy_codes},
-          {"current_policy", sample.current_policy},
-          {"actor_reach", sample.actor_reach},
-          {"opponent_reach", sample.opponent_reach},
-          {"action_values", sample.action_values},
-          {"current_values", sample.current_values},
-          {"immediate_regret_delta", sample.immediate_regret_delta},
-          {"average_contribution", sample.average_contribution},
-          {"resulting_regret_values", sample.resulting_regret_values},
-          {"resulting_strategy_values", sample.resulting_strategy_values},
-          {"resulting_regret_codes", sample.resulting_regret_codes},
-          {"resulting_strategy_codes", sample.resulting_strategy_codes},
-          {"parent_returned_values", sample.parent_returned_values}});
+      samples.push_back({{"iteration", sample.iteration},
+                         {"representative_node", sample.representative_node},
+                         {"board_mask", sample.board_mask},
+                         {"structural_signature", sample.structural_signature},
+                         {"street", sample.street},
+                         {"update_player", sample.update_player},
+                         {"actor", sample.actor},
+                         {"action_count", sample.action_count},
+                         {"hand_count", sample.hand_count},
+                         {"regret_update_weight", sample.regret_update_weight},
+                         {"strategy_weight", sample.strategy_weight},
+                         {"positive_regret_discount", sample.positive_regret_discount},
+                         {"negative_regret_discount", sample.negative_regret_discount},
+                         {"old_regret_scale", sample.old_regret_scale},
+                         {"old_strategy_scale", sample.old_strategy_scale},
+                         {"resulting_regret_scale", sample.resulting_regret_scale},
+                         {"resulting_strategy_scale", sample.resulting_strategy_scale},
+                         {"producers", std::move(producers)},
+                         {"old_regret_codes", sample.old_regret_codes},
+                         {"old_strategy_codes", sample.old_strategy_codes},
+                         {"current_policy", sample.current_policy},
+                         {"actor_reach", sample.actor_reach},
+                         {"opponent_reach", sample.opponent_reach},
+                         {"action_values", sample.action_values},
+                         {"current_values", sample.current_values},
+                         {"immediate_regret_delta", sample.immediate_regret_delta},
+                         {"average_contribution", sample.average_contribution},
+                         {"resulting_regret_values", sample.resulting_regret_values},
+                         {"resulting_strategy_values", sample.resulting_strategy_values},
+                         {"resulting_regret_codes", sample.resulting_regret_codes},
+                         {"resulting_strategy_codes", sample.resulting_strategy_codes},
+                         {"parent_returned_values", sample.parent_returned_values}});
     }
-    const nlohmann::json output{
-        {"schema", "gtosd.real_node_replay.v1"},
-        {"format_major", corpus.format_major},
-        {"format_minor", corpus.format_minor},
-        {"game_fingerprint", corpus.game_fingerprint},
-        {"seed", corpus.seed},
-        {"maximum_samples", corpus.maximum_samples},
-        {"sampling_modulus", replay_capture.sampling_modulus},
-        {"capture_iterations", replay_capture.iterations},
-        {"eligible_updates", corpus.eligible_updates},
-        {"retained_updates", corpus.retained_updates},
-        {"samples", std::move(samples)}};
+    const nlohmann::json output{{"schema", "gtosd.real_node_replay.v1"},
+                                {"format_major", corpus.format_major},
+                                {"format_minor", corpus.format_minor},
+                                {"game_fingerprint", corpus.game_fingerprint},
+                                {"seed", corpus.seed},
+                                {"maximum_samples", corpus.maximum_samples},
+                                {"sampling_modulus", replay_capture.sampling_modulus},
+                                {"capture_iterations", replay_capture.iterations},
+                                {"eligible_updates", corpus.eligible_updates},
+                                {"retained_updates", corpus.retained_updates},
+                                {"samples", std::move(samples)}};
     const std::filesystem::path replay_destination(*replay_output_path);
     if (!replay_destination.parent_path().empty()) {
       std::error_code directory_error;
@@ -1364,17 +1376,11 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                          (result.stop_reason == gtosd::PostflopStopReason::Converged ||
                           spec.diagnostic_fixed_iterations);
   const auto public_tree = gtosd::prepared_postflop_public_tree(prepared.value());
-  if (requires_physical_analysis_tree && !public_tree) {
-    std::cerr << "postflop benchmark-gto-plus failed: missing_analysis_tree\n";
-    return 1;
-  }
 
   std::vector<gtosd::PostflopNodeAnalysis> analyses;
   analyses.reserve(spec.reference_nodes.size());
   for (const auto &reference_node : spec.reference_nodes) {
-    const auto node = reference_node.path.empty()
-                          ? std::optional<gtosd::NodeId>{0U}
-                          : resolve_reference_node(*public_tree, reference_node.path);
+    const auto node = resolve_reference_node(*prepared.value(), reference_node.path);
     if (!node) {
       std::cerr << "postflop benchmark-gto-plus failed: reference_node_not_found id="
                 << reference_node.id << '\n';
@@ -1651,11 +1657,10 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
          {"minimum_phase", point.minimum_phase},
          {"finite_pursuits", point.finite_pursuits},
          {"unit_pursuits", point.unit_pursuits},
-         {"unit_pursuit_ratio",
-          point.finite_pursuits == 0U
-              ? 0.0
-              : static_cast<double>(point.unit_pursuits) /
-                    static_cast<double>(point.finite_pursuits)},
+         {"unit_pursuit_ratio", point.finite_pursuits == 0U
+                                    ? 0.0
+                                    : static_cast<double>(point.unit_pursuits) /
+                                          static_cast<double>(point.finite_pursuits)},
          {"pursuit_scan_seconds", point.pursuit_scan_seconds}});
   }
 
@@ -1767,19 +1772,16 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"compiler", compiler_identity()},
         {"api_version", std::string(gtosd::api_version_string)}}},
       {"algorithm",
-       pure_cfr_trajectory_enabled ? "diagnostic_pure_cfr_trajectory"
-                                   : report_algorithm_name},
+       pure_cfr_trajectory_enabled ? "diagnostic_pure_cfr_trajectory" : report_algorithm_name},
       {"dcfr_parameters",
        {{"alpha", spec.dcfr_positive_regret_exponent},
         {"beta", 0.0},
-        {"gamma", gtosd::is_production_dcfr_algorithm(spec.algorithm)
-                      ? 3.0
-                      : spec.dcfr_average_exponent}}},
-      {"update_mode",
-       pure_cfr_trajectory_enabled
-           ? (diagnostic_simultaneous ? "simultaneous_pure_cfr_trajectory"
-                                      : "alternating_pure_cfr_trajectory")
-           : (diagnostic_simultaneous ? "simultaneous" : "alternating")},
+        {"gamma",
+         gtosd::is_production_dcfr_algorithm(spec.algorithm) ? 3.0 : spec.dcfr_average_exponent}}},
+      {"update_mode", pure_cfr_trajectory_enabled
+                          ? (diagnostic_simultaneous ? "simultaneous_pure_cfr_trajectory"
+                                                     : "alternating_pure_cfr_trajectory")
+                          : (diagnostic_simultaneous ? "simultaneous" : "alternating")},
       {"precision",
        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy
            ? "action_major_scaled_uint16_regret_strategy_float32_compute"
@@ -1877,8 +1879,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"measured_bytes", solver_state_bytes},
         {"reference_bytes", spec.gto_plus_peak_rss_bytes},
         {"reference_basis", "gto_plus_peak_rss_bytes"},
-        {"passed",
-         passes_inclusive_byte_gate(solver_state_bytes, spec.gto_plus_peak_rss_bytes)}}},
+        {"passed", passes_inclusive_byte_gate(solver_state_bytes, spec.gto_plus_peak_rss_bytes)}}},
       {"gto_plus_reference_memory",
        {{"metric", "peak_rss_bytes"},
         {"reference_bytes", spec.gto_plus_peak_rss_bytes},
@@ -1889,8 +1890,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"reference_bytes", spec.gto_plus_peak_rss_bytes},
         {"reference_unit", "bytes"},
         {"comparison", std::string(gto_plus_peak_rss_gate)},
-        {"passed",
-         passes_inclusive_byte_gate(peak_rss_bytes, spec.gto_plus_peak_rss_bytes)}}},
+        {"passed", passes_inclusive_byte_gate(peak_rss_bytes, spec.gto_plus_peak_rss_bytes)}}},
       {"desktop_memory_gate",
        {{"metric", "peak_rss_bytes"},
         {"measured_bytes", peak_rss_bytes},
@@ -1907,11 +1907,10 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       {"final_gto_plus_dev_percent", final_deviation.value() * 100.0},
       {"final_normalized_nash_conv", final.normalized_nash_conv},
       {"convergence", std::move(convergence)}};
-  report["pure_cfr_trajectory"] =
-      {{"enabled", pure_cfr_trajectory_enabled},
-       {"phase_compression_applied", false},
-       {"phase_cap", options.diagnostic_pure_cfr_phase_cap},
-       {"points", std::move(pure_cfr_trajectory)}};
+  report["pure_cfr_trajectory"] = {{"enabled", pure_cfr_trajectory_enabled},
+                                   {"phase_compression_applied", false},
+                                   {"phase_cap", options.diagnostic_pure_cfr_phase_cap},
+                                   {"points", std::move(pure_cfr_trajectory)}};
   report["rbp_read_only_audit"] = {{"enabled", rbp_read_only_enabled},
                                    {"mutates_solver_state", false},
                                    {"changes_traversal_control_flow", false},
@@ -2107,9 +2106,9 @@ int run_gto_plus_convergence_benchmark_v2_or_v3(const char *const specification_
   spec.benchmark_id = specification["benchmark_id"].get<std::string>();
   spec.target_percent = reference.value("target_dev_percent", -1.0);
   spec.reference_seconds = reference.value("elapsed_seconds", -1.0);
-  spec.gto_plus_peak_rss_bytes =
-      specification_v3 ? reference.value("peak_rss_bytes", std::uint64_t{0})
-                       : reference.value("solver_memory_bytes", std::uint64_t{0});
+  spec.gto_plus_peak_rss_bytes = specification_v3
+                                     ? reference.value("peak_rss_bytes", std::uint64_t{0})
+                                     : reference.value("solver_memory_bytes", std::uint64_t{0});
   spec.target_definition = reference.value("target_definition", std::string{});
   spec.ev_tolerance = reference.value("ev_absolute_tolerance_antes", -1.0);
   spec.frequency_tolerance = reference.value("action_frequency_absolute_tolerance_fraction", -1.0);
@@ -2252,12 +2251,11 @@ int run_gto_plus_convergence_benchmark_v2_or_v3(const char *const specification_
       !std::isfinite(spec.reference_seconds) || spec.reference_seconds <= 0.0 ||
       spec.gto_plus_peak_rss_bytes == 0 ||
       (specification_v3 && (run.contains("peak_rss_cap_bytes") ||
-                            run.contains("peak_rss_cap_unit") ||
-                            run.contains("peak_rss_gate"))) ||
-      spec.target_definition.empty() ||
-      !std::isfinite(spec.ev_tolerance) || spec.ev_tolerance <= 0.0 ||
-      !std::isfinite(spec.frequency_tolerance) || spec.frequency_tolerance <= 0.0 ||
-      !std::isfinite(spec.display_precision_percent) || spec.display_precision_percent <= 0.0) {
+                            run.contains("peak_rss_cap_unit") || run.contains("peak_rss_gate"))) ||
+      spec.target_definition.empty() || !std::isfinite(spec.ev_tolerance) ||
+      spec.ev_tolerance <= 0.0 || !std::isfinite(spec.frequency_tolerance) ||
+      spec.frequency_tolerance <= 0.0 || !std::isfinite(spec.display_precision_percent) ||
+      spec.display_precision_percent <= 0.0) {
     std::cerr << "postflop benchmark-gto-plus failed: invalid_run_parameters\n";
     return 2;
   }
