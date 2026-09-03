@@ -88,12 +88,11 @@ void test_config_schema_contract() {
           "round trip preserves money");
 
   auto scheduled = parsed.value();
-  auto &scheduled_raise = scheduled.streets[0].players[0]
-      [static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)];
+  auto &scheduled_raise =
+      scheduled.streets[0].players[0][static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)];
   scheduled_raise.aggressive_sizes = {pct(3'300), pct(7'500)};
   scheduled_raise.raise_depth = 2U;
-  scheduled_raise.aggressive_sizes_by_raise_count =
-      {{pct(3'300), pct(7'500)}, {pct(7'500)}};
+  scheduled_raise.aggressive_sizes_by_raise_count = {{pct(3'300), pct(7'500)}, {pct(7'500)}};
   const auto scheduled_round_trip =
       gtosd::parse_tree_config_json(gtosd::serialize_tree_config_json(scheduled));
   require(scheduled_round_trip.has_value() &&
@@ -113,8 +112,7 @@ void test_config_schema_contract() {
               rounded_round_trip.value()
                       .streets[0]
                       .players[0][static_cast<std::size_t>(gtosd::BettingScenario::FacingBet)]
-                      .aggressive_target_rounding ==
-                  scheduled_raise.aggressive_target_rounding,
+                      .aggressive_target_rounding == scheduled_raise.aggressive_target_rounding,
           "generic aggressive-target rounding policy round trips");
 
   scheduled_raise.aggressive_sizes_by_raise_count = {{pct(7'500)}};
@@ -174,9 +172,10 @@ void test_streamed_tree_matches_materialized_tree() {
     std::vector<gtosd::PublicTreeEdge> edges;
   };
   std::vector<StreamedNode> streamed_nodes;
+  std::vector<std::vector<std::uint8_t>> streamed_stabilizers;
   const gtosd::PublicTreeStreamConsumer consumer{
-      [&](const gtosd::NodeId id, const gtosd::PublicNodeKind kind,
-          const gtosd::PublicState &state, const std::uint32_t depth) {
+      [&](const gtosd::NodeId id, const gtosd::PublicNodeKind kind, const gtosd::PublicState &state,
+          const std::uint32_t depth) {
         if (id != streamed_nodes.size()) {
           return false;
         }
@@ -188,6 +187,13 @@ void test_streamed_tree_matches_materialized_tree() {
           return false;
         }
         streamed_nodes[static_cast<std::size_t>(id)].edges = edges;
+        return true;
+      },
+      [&](const gtosd::NodeId id, const std::span<const std::uint8_t> stabilizer) {
+        if (id != streamed_stabilizers.size()) {
+          return false;
+        }
+        streamed_stabilizers.emplace_back(stabilizer.begin(), stabilizer.end());
         return true;
       }};
   const auto streamed = gtosd::stream_public_tree(check_only_config(), consumer);
@@ -201,6 +207,10 @@ void test_streamed_tree_matches_materialized_tree() {
           "streamed statistics match materialized tree");
   require(streamed_nodes.size() == materialized.value().nodes.size(),
           "stream emits every materialized node exactly once");
+  require(streamed_stabilizers.size() == streamed_nodes.size() &&
+              std::ranges::all_of(streamed_stabilizers,
+                                  [](const auto &stabilizer) { return stabilizer.empty(); }),
+          "stream emits the exact empty stabilizer for every non-canonical node");
   for (std::size_t index = 0U; index < streamed_nodes.size(); ++index) {
     const auto &streamed_node = streamed_nodes[index];
     const auto &materialized_node = materialized.value().nodes[index];
@@ -226,9 +236,8 @@ void test_streamed_tree_matches_materialized_tree() {
               "streamed edge payload matches materialized edge payload");
       for (std::size_t outcome = 0U; outcome < streamed_edge.chance_outcome_count; ++outcome) {
         require(streamed_edge.chance_outcomes[outcome].card ==
-                    materialized_edge.chance_outcomes[outcome].card &&
-                    streamed_edge.chance_outcomes[outcome]
-                            .physical_to_representative_permutation ==
+                        materialized_edge.chance_outcomes[outcome].card &&
+                    streamed_edge.chance_outcomes[outcome].physical_to_representative_permutation ==
                         materialized_edge.chance_outcomes[outcome]
                             .physical_to_representative_permutation,
                 "streamed chance mapping matches materialized mapping");

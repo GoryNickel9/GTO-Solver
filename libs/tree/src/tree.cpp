@@ -137,13 +137,13 @@ private:
   using Stabilizer = std::vector<std::uint8_t>;
 
   CardId transform_suit(const CardId card, const std::uint8_t permutation) const {
-    const auto suit = options_.canonical_chance_permutations[permutation]
-                                                        [static_cast<std::size_t>(card.suit())];
+    const auto suit =
+        options_.canonical_chance_permutations[permutation][static_cast<std::size_t>(card.suit())];
     return CardId::from_parts(card.rank(), static_cast<Suit>(suit));
   }
 
   Result<NodeId, TreeError> add_node(const PublicNodeKind kind, const PublicState &state,
-                                     const std::uint32_t depth) {
+                                     const std::uint32_t depth, const Stabilizer &stabilizer) {
     if (tree_.stats.node_count >= options_.maximum_nodes) {
       return Result<NodeId, TreeError>::failure(TreeError::BuildLimitExceeded);
     }
@@ -152,7 +152,8 @@ private:
     }
     const auto id = static_cast<NodeId>(tree_.stats.node_count);
     if (stream_consumer_ != nullptr) {
-      if (!stream_consumer_->node(id, kind, state, depth)) {
+      if (!stream_consumer_->node(id, kind, state, depth) ||
+          (stream_consumer_->stabilizer && !stream_consumer_->stabilizer(id, stabilizer))) {
         return Result<NodeId, TreeError>::failure(TreeError::StreamConsumerFailure);
       }
     } else {
@@ -193,13 +194,13 @@ private:
       if (!settlement) {
         return Result<NodeId, TreeError>::failure(TreeError::SettlementFailure);
       }
-      return add_node(PublicNodeKind::TerminalFold, state, depth);
+      return add_node(PublicNodeKind::TerminalFold, state, depth, stabilizer);
     }
     if (state.status == HandStatus::Showdown) {
       if (state.street != Street::River || std::popcount(state.board_mask) != 5) {
         return Result<NodeId, TreeError>::failure(TreeError::InvalidBoard);
       }
-      return add_node(PublicNodeKind::TerminalShowdown, state, depth);
+      return add_node(PublicNodeKind::TerminalShowdown, state, depth, stabilizer);
     }
     if (state.status == HandStatus::StreetComplete || state.status == HandStatus::AllInRunout) {
       return expand_chance(state, depth, stabilizer);
@@ -212,7 +213,7 @@ private:
 
   Result<NodeId, TreeError> expand_decision(const PublicState &state, const std::uint32_t depth,
                                             const Stabilizer &stabilizer) {
-    const auto node = add_node(PublicNodeKind::Decision, state, depth);
+    const auto node = add_node(PublicNodeKind::Decision, state, depth, stabilizer);
     if (!node) {
       return node;
     }
@@ -269,7 +270,7 @@ private:
         std::popcount(state.board_mask) >= 5) {
       return Result<NodeId, TreeError>::failure(TreeError::InvalidBoard);
     }
-    const auto node = add_node(PublicNodeKind::Chance, state, depth);
+    const auto node = add_node(PublicNodeKind::Chance, state, depth, stabilizer);
     if (!node) {
       return node;
     }

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -109,6 +110,10 @@ struct TreeBuildOptions {
 struct PublicTreeStreamConsumer {
   std::function<bool(NodeId, PublicNodeKind, const PublicState &, std::uint32_t)> node;
   std::function<bool(NodeId, const std::vector<PublicTreeEdge> &)> edges;
+  // Optional diagnostic/compiler metadata. Indices address
+  // TreeBuildOptions::canonical_chance_permutations and name the exact
+  // subgroup that fixes the ordered public chance history at this node.
+  std::function<bool(NodeId, std::span<const std::uint8_t>)> stabilizer;
 };
 
 struct PublicTreeStreamResult {

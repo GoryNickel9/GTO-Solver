@@ -15,9 +15,9 @@ update and exact certification; the TH7D6S row was also confirmed by the full
 
 | Fixture | Pre-stream peak RSS | Current peak RSS | GTO+ reference | Status |
 |---|---:|---:|---:|---|
-| AHKHQH-101 | 33,071,104 B | 23,216,128 B | 8,000,000 B | FAIL |
-| TH7D6S-101 | 398,049,280 B | 391,462,912 B | 399,000,000 B | PASS |
-| TSTC9D-101 | 1,666,785,280 B | 1,647,755,264 B | 2,000,000,000 B | PASS |
+| AHKHQH-101 | 33,071,104 B | 18,161,664 B | 8,000,000 B | FAIL |
+| TH7D6S-101 | 398,049,280 B | 380,362,752 B | 399,000,000 B | PASS |
+| TSTC9D-101 | 1,666,785,280 B | 1,606,082,560 B | 2,000,000,000 B | PASS |
 
 TH7D6S completed 80 iterations at `0.807956%` target dEV and passed the
 correctness gate. Its latest elapsed solver time was 24.7373 s; temporal parity
@@ -88,6 +88,21 @@ regression run, not convergence evidence.
   copies. Exact certification remains `double`; reusing the resident `float`
   solver traversal was explicitly rejected after violating the `1e-11`
   zero-sum tolerance.
+- Per-board private-hand lookup tables now live in each player's actual flop
+  range space. A narrow range no longer pays for two dense 630-entry arrays on
+  every turn and river board; full-range games retain the same O(hands) bound.
+- The traversal factory now instantiates its existing 36-combo specialization
+  when the real player ranges fit it instead of jumping directly to the
+  256-combo class.
+- Showdown accumulators are sized once from the maximum rank cardinality
+  actually present in the prepared boards. They remain allocation-free in the
+  hot path, but each worker no longer reserves the 630-combo maximum for a
+  narrow game.
+- Canonical edges are allocated in one stable contiguous arena. Identical
+  action descriptors are interned in a stable pool, canonical nodes derive
+  their representative id in the direct compiler, and exceptional legacy
+  mappings remain out-of-line. Canonical nodes are now 40 bytes and edges 24
+  bytes, down from 48 and 32 respectively.
 
 No fixture identifier, fingerprint, board literal or benchmark threshold is
 used by these paths.
@@ -135,33 +150,58 @@ replacements for the exact in-memory benchmark.
 ## Remaining AHKHQH blocker
 
 AHKHQH is still red after removing the duplicate analysis tree and streaming
-the canonical compiler. The latest
-run measured:
+the canonical compiler. The latest instrumented run measured:
 
-- process startup peak before preparation: 5,791,744 B;
+- process startup peak before preparation: 5,844,992 B;
 - required solver state: 5,300,664 B;
-- ranked resident layout accounting: 4,850,750 B;
-- preparation peak: 12,206,080 B;
-- measured full-process peak: 23,216,128 B;
+- ranked resident layout accounting: 3,643,734 B;
+- preparation peak: 10,231,808 B;
+- state-ready current RSS: 15,548,416 B;
+- traversal-ready current RSS: 15,695,872 B;
+- measured full-process peak: 18,161,664 B;
 - GTO+ reference: 8,000,000 B.
 
-The required state alone plus the observed process baseline is 11,092,408 B,
+The required state alone plus the observed process baseline is 11,145,656 B,
 before topology, board metadata, traversal scratch or allocator pages. Thus an
 8 MB whole-process RSS PASS is not reachable by allocator trimming alone.
 The gate is intentionally left unchanged and failing.
 
-The next technically valid frontier is a direct flat-arena compiler combined
-with lossless player-local private-hand orbit storage under each public
-history's stabilizer. That work must prove reach/value permutation parity and
-update each logical information set exactly once. It cannot reuse the rejected
-range-asymmetric physical-orbit aggregation, and it must pass the existing
-asymmetric-range and exact-reference oracles before promotion.
+The exact stabilizer census also bounds private-hand orbit storage. AHKHQH has
+595,626 physical infosets / 1,288,290 state actions and 385,980 exact private
+orbits / 834,636 actions. Even an ideal orbit implementation would reduce state
+only from 5,300,664 B to 3,486,048 B; combined with the process baseline it
+already exceeds 8 MB before topology and scratch. Private orbits remain useful,
+but cannot close this gate alone.
+
+A clean-room compression probe over the exact 80-iteration
+`ScaledUint16RegretStrategy` bytes found:
+
+| Independent raw block target | Zstandard level 1 bytes |
+|---:|---:|
+| 1,024 B | 3,545,729 B |
+| 4,096 B | 2,148,307 B |
+| 16,384 B | 1,227,023 B |
+| 65,536 B | 991,106 B |
+
+The corresponding simple palette and delta-varint codecs remained between
+2.75 MB and 3.81 MB, so dictionary coding alone is insufficient. These are
+offline size measurements, not promotion evidence: a production in-memory
+compressed arena must preserve every code and per-node scale, bound decoded
+pages per worker, prove thread ownership, and pass a local encode/decode/update
+cost gate before it can replace the direct vectors. The next valid frontier is
+therefore a bounded lossless state-page backend plus further heterogeneous
+terminal/control-node compaction, not fixture-specific scheduling or a lossy
+codec.
 
 ## Validation completed
 
 - Release build: PASS.
-- Full Release CTest suite: 28/28 PASS in 215.82 s.
-- TH7D6S full convergence and correctness: PASS at iteration 80.
-- TH7D6S per-fixture Peak RSS: PASS.
-- TSTC9D fixed-iteration Peak RSS regression: PASS.
+- Full Release CTest suite after the arena/range/scratch changes: 28/28 PASS in
+  193.21 s.
+- AHKHQH full convergence and correctness: PASS at iteration 80; Peak RSS
+  FAIL at 18,161,664 B against 8,000,000 B.
+- TH7D6S full convergence and correctness: PASS at iteration 80; per-fixture
+  Peak RSS PASS at 380,362,752 B against 399,000,000 B.
+- TSTC9D one-iteration diagnostic Peak RSS regression: PASS at 1,606,082,560 B
+  against 2,000,000,000 B. This is not convergence evidence.
 - AHKHQH per-fixture Peak RSS: FAIL; lower-bound evidence above.
