@@ -1,6 +1,7 @@
 add_library(gtosd_postflop
   src/canonical_layout.cpp
-  src/postflop_solver.cpp)
+  src/postflop_solver.cpp
+  src/solver_memory_ledger.cpp)
 add_library(gtosd::postflop ALIAS gtosd_postflop)
 
 target_include_directories(gtosd_postflop
@@ -39,7 +40,8 @@ endif()
 if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
   add_library(gtosd_postflop_range_orbit_oracle
     src/canonical_layout.cpp
-    src/postflop_solver.cpp)
+    src/postflop_solver.cpp
+    src/solver_memory_ledger.cpp)
   target_include_directories(gtosd_postflop_range_orbit_oracle
     PUBLIC
       $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>

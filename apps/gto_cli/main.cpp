@@ -1786,6 +1786,68 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
       return "exact_cfr_plus";
     }
   }();
+  nlohmann::json memory_categories = nlohmann::json::array();
+  nlohmann::json solver_memory_accounting = {
+      {"schema", "gtosd.solver_memory_accounting.v2"},
+      {"scope", "solver_owned_logical_and_allocated_capacity_excludes_process_rss"},
+      {"state_logical_bytes", solver_state_bytes},
+      {"predicted_managed_payload_bytes", result.predicted_solver_managed_logical_bytes},
+      {"predicted_managed_allocated_bytes", result.predicted_solver_managed_allocated_bytes},
+      {"managed_payload_peak_bytes", nullptr},
+      {"managed_allocated_peak_bytes", nullptr},
+      {"candidate_payload_peak_bytes", nullptr},
+      {"candidate_allocated_peak_bytes", nullptr},
+      {"accounting_complete", false},
+      {"categories", memory_categories}};
+  if (result.solver_memory_accounting) {
+    const auto &snapshot = *result.solver_memory_accounting;
+    for (const auto &category : snapshot.categories) {
+      const bool lazily_sized_runtime_arena =
+          category.name.starts_with("traversal.worker_and_arena_capacity") ||
+          category.name.starts_with("certification.");
+      const std::uint64_t predicted_logical =
+          lazily_sized_runtime_arena ? 0U : category.maximum_logical_bytes;
+      const std::uint64_t predicted_allocated =
+          lazily_sized_runtime_arena ? 0U : category.maximum_allocated_bytes;
+      memory_categories.push_back(
+          {{"name", category.name},
+           {"backing", gtosd::solver_memory_backing_name(category.metadata.backing)},
+           {"lifetime", gtosd::solver_memory_lifetime_name(category.metadata.lifetime)},
+           {"included_in_candidate", category.metadata.included_in_candidate},
+           {"candidate_reason", category.metadata.candidate_reason},
+           {"current_logical_bytes", category.current_logical_bytes},
+           {"maximum_logical_bytes", category.maximum_logical_bytes},
+           {"current_allocated_bytes", category.current_allocated_bytes},
+           {"maximum_allocated_bytes", category.maximum_allocated_bytes},
+           {"predicted_logical_bytes", predicted_logical},
+           {"predicted_allocated_bytes", predicted_allocated},
+           {"prediction_difference_reason",
+            lazily_sized_runtime_arena ? "arena_capacity_is_discovered_from_runtime_high_water"
+                                       : "no_difference_expected_for_preallocated_category"},
+           {"first_allocation_phase",
+            category.first_allocation_phase
+                ? nlohmann::json(gtosd::solver_memory_phase_name(
+                      *category.first_allocation_phase))
+                : nlohmann::json(nullptr)},
+           {"release_phase",
+            category.release_phase
+                ? nlohmann::json(gtosd::solver_memory_phase_name(*category.release_phase))
+                : nlohmann::json(nullptr)}});
+    }
+    solver_memory_accounting["managed_payload_peak_bytes"] = snapshot.maximum_logical_bytes;
+    solver_memory_accounting["managed_allocated_peak_bytes"] = snapshot.maximum_allocated_bytes;
+    solver_memory_accounting["candidate_payload_peak_bytes"] =
+        snapshot.candidate_maximum_logical_bytes;
+    solver_memory_accounting["candidate_allocated_peak_bytes"] =
+        snapshot.candidate_maximum_allocated_bytes;
+    solver_memory_accounting["current_payload_bytes"] = snapshot.current_logical_bytes;
+    solver_memory_accounting["current_allocated_bytes"] = snapshot.current_allocated_bytes;
+    solver_memory_accounting["final_phase"] =
+        gtosd::solver_memory_phase_name(snapshot.phase);
+    solver_memory_accounting["accounting_complete"] =
+        result.solver_memory_accounting_complete;
+    solver_memory_accounting["categories"] = std::move(memory_categories);
+  }
   nlohmann::json report = {
       {"schema", "gtosd.gto_plus_convergence_run.v4"},
       {"benchmark_id", spec.benchmark_id},
@@ -1913,11 +1975,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         {"current_rss_bytes", current_rss_bytes},
         {"peak_private_bytes", nullptr},
         {"normative_gate", nullptr}}},
-      {"solver_memory_accounting",
-       {{"schema", "gtosd.solver_memory_accounting.v1"},
-        {"state_logical_bytes", solver_state_bytes},
-        {"managed_payload_peak_bytes", nullptr},
-        {"managed_allocated_peak_bytes", nullptr}}},
+      {"solver_memory_accounting", std::move(solver_memory_accounting)},
       {"gto_plus_reference_memory", spec.gto_plus_reference_memory},
       {"memory_comparison",
        {{"status", "not_evaluated"},

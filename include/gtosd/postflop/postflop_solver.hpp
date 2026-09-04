@@ -3,6 +3,7 @@
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/equity/evaluator.hpp"
 #include "gtosd/memory/memory.hpp"
+#include "gtosd/postflop/solver_memory_ledger.hpp"
 
 #include <array>
 #include <cstdint>
@@ -296,6 +297,9 @@ struct PostflopSolveOptions {
   double dcfr_average_exponent{2.0};
   bool enable_lossless_isomorphism{true};
   bool enable_canonical_public_dag{true};
+  // Observational only: disabling detailed accounting must not alter solver
+  // allocations, traversal, checkpoint identity, or mathematical results.
+  bool enable_detailed_memory_accounting{true};
   std::uint8_t parallel_action_depth{0};
   // F10.4: when non-null, the tree-root CO strategy is locked to these
   // external probabilities for the whole solve. The pointer must outlive the
@@ -425,6 +429,10 @@ struct PostflopSolveResult {
   PostflopWorkCounters work_counters;
   double maximum_normalization_error{0.0};
   PostflopSolveTimings timings;
+  std::optional<SolverMemoryLedgerSnapshot> solver_memory_accounting;
+  std::uint64_t predicted_solver_managed_logical_bytes{0};
+  std::uint64_t predicted_solver_managed_allocated_bytes{0};
+  bool solver_memory_accounting_complete{false};
   PostflopStopReason stop_reason{PostflopStopReason::Completed};
   std::optional<PostflopRealNodeReplayCorpus> diagnostic_real_node_replay;
   std::vector<PostflopPureCfrTrajectoryPoint> diagnostic_pure_cfr_trajectory;

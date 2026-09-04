@@ -25,6 +25,16 @@ string(JSON managed_payload_type TYPE "${report_json}"
   solver_memory_accounting managed_payload_peak_bytes)
 string(JSON managed_allocated_type TYPE "${report_json}"
   solver_memory_accounting managed_allocated_peak_bytes)
+string(JSON managed_payload GET "${report_json}"
+  solver_memory_accounting managed_payload_peak_bytes)
+string(JSON managed_allocated GET "${report_json}"
+  solver_memory_accounting managed_allocated_peak_bytes)
+string(JSON accounting_complete GET "${report_json}"
+  solver_memory_accounting accounting_complete)
+string(JSON accounting_categories_type TYPE "${report_json}"
+  solver_memory_accounting categories)
+string(JSON accounting_categories_length LENGTH "${report_json}"
+  solver_memory_accounting categories)
 string(JSON external_metric GET "${report_json}" gto_plus_reference_memory metric)
 string(JSON external_label GET "${report_json}" gto_plus_reference_memory display_label)
 string(JSON external_value GET "${report_json}" gto_plus_reference_memory display_value)
@@ -56,10 +66,15 @@ string(JSON legacy_peak_type ERROR_VARIABLE legacy_peak_error
   TYPE "${report_json}" peak_rss_bytes)
 if(NOT report_schema STREQUAL "gtosd.gto_plus_convergence_run.v4" OR
    NOT source_fixture_schema STREQUAL "gtosd.gto_plus_convergence_benchmark.v4" OR
-   NOT state_accounting_schema STREQUAL "gtosd.solver_memory_accounting.v1" OR
+   NOT state_accounting_schema STREQUAL "gtosd.solver_memory_accounting.v2" OR
    NOT state_logical_bytes EQUAL 5300664 OR
-   NOT managed_payload_type STREQUAL "NULL" OR
-   NOT managed_allocated_type STREQUAL "NULL" OR
+   NOT managed_payload_type STREQUAL "NUMBER" OR
+   NOT managed_allocated_type STREQUAL "NUMBER" OR
+   managed_payload LESS state_logical_bytes OR
+   managed_allocated LESS managed_payload OR
+   NOT accounting_complete OR
+   NOT accounting_categories_type STREQUAL "ARRAY" OR
+   accounting_categories_length LESS 8 OR
    NOT external_metric STREQUAL "internal_solver_memory_estimate" OR
    NOT external_label STREQUAL "Memory needed for solving" OR
    NOT external_value EQUAL 8.0 OR

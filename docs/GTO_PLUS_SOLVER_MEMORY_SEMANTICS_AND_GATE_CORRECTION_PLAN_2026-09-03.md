@@ -314,6 +314,16 @@ chiarire se si tratta di un modello statico, quali componenti include e che non
 
 ## 9. Fase C — Accounting generico della memoria solver-owned
 
+> **Stato 2026-09-04: IMPLEMENTATA.** Il ledger thread-safe
+> `SolverMemoryLedger` registra payload logico e capacità allocata per tree,
+> DAG, board/rank metadata, stato regret/strategy/codec, mapping, traversal
+> arena e buffer exact certification/BR. La previsione pre-state copre le
+> categorie preallocate; gli arena lazy dichiarano separatamente il proprio
+> high-water runtime. Lo schema `gtosd.solver_memory_accounting.v2` non usa RSS
+> e non abilita ancora il confronto GTO+: `memory_comparison` resta
+> `not_evaluated`. Test dedicati coprono lifetime, picchi, underflow/overflow,
+> concorrenza, paging neutro e identità byte/EV con telemetria accesa o spenta.
+
 ### 9.1 Requisiti
 
 L’accounting deve essere generale per ogni tree e non conoscere gli ID dei

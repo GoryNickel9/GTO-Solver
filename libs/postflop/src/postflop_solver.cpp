@@ -33,6 +33,7 @@
 #include <sstream>
 #include <string_view>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -903,6 +904,12 @@ public:
                : 0U;
   }
 
+  [[nodiscard]] std::uint64_t heap_size_bytes() const noexcept {
+    return is_heap() ? static_cast<std::uint64_t>(heap()->size()) *
+                           sizeof(CanonicalPublicOutcome)
+                     : 0U;
+  }
+
 private:
   static constexpr std::uint8_t heap_tag = 0x80U;
   static_assert(maximum_action_count < heap_tag);
@@ -970,6 +977,8 @@ static_assert(sizeof(CanonicalOutcomeList) == 8U);
 
 template <typename Value> class CompactVector {
 public:
+  using value_type = Value;
+
   CompactVector() = default;
   ~CompactVector() { release(); }
 
@@ -1531,6 +1540,12 @@ template <typename Value>
   return static_cast<std::uint64_t>(values.capacity()) * sizeof(Value);
 }
 
+template <typename Values>
+[[nodiscard]] std::uint64_t vector_size_bytes(const Values &values) noexcept {
+  using Value = typename Values::value_type;
+  return static_cast<std::uint64_t>(values.size()) * sizeof(Value);
+}
+
 [[nodiscard]] std::uint64_t terminal_combo_heap_bytes(const TerminalComboData &data) noexcept {
   return vector_capacity_bytes(data.own_slot) + vector_capacity_bytes(data.opponent_slot) +
          vector_capacity_bytes(data.opponent_local) + vector_capacity_bytes(data.rank) +
@@ -1538,6 +1553,15 @@ template <typename Value>
          vector_capacity_bytes(data.first_all) + vector_capacity_bytes(data.second_all) +
          vector_capacity_bytes(data.touched_by_rank_card) + vector_capacity_bytes(data.first_card) +
          vector_capacity_bytes(data.second_card);
+}
+
+[[nodiscard]] std::uint64_t terminal_combo_payload_bytes(const TerminalComboData &data) noexcept {
+  return vector_size_bytes(data.own_slot) + vector_size_bytes(data.opponent_slot) +
+         vector_size_bytes(data.opponent_local) + vector_size_bytes(data.rank) +
+         vector_size_bytes(data.first_by_rank) + vector_size_bytes(data.second_by_rank) +
+         vector_size_bytes(data.first_all) + vector_size_bytes(data.second_all) +
+         vector_size_bytes(data.touched_by_rank_card) + vector_size_bytes(data.first_card) +
+         vector_size_bytes(data.second_card);
 }
 
 struct DenseLayoutMemoryBreakdown {
@@ -1582,7 +1606,7 @@ dense_layout_memory_breakdown(const DenseLayout &layout) noexcept {
   }
   result.canonical_node_bytes = vector_capacity_bytes(layout.canonical_public_graph.nodes);
   result.canonical_edge_bytes = vector_capacity_bytes(layout.canonical_public_graph.edges);
-  result.auxiliary_heap_bytes += layout.canonical_public_graph.actions.size() * sizeof(Action);
+  result.auxiliary_heap_bytes += vector_capacity_bytes(layout.canonical_public_graph.actions);
   for (const auto &edge : layout.canonical_public_graph.edges) {
     result.canonical_outcome_heap_bytes += edge.outcomes.heap_capacity_bytes();
   }
@@ -1614,6 +1638,107 @@ dense_layout_memory_breakdown(const DenseLayout &layout) noexcept {
   result.auxiliary_heap_bytes += vector_capacity_bytes(layout.automorphisms);
   result.auxiliary_heap_bytes += layout.fingerprint.capacity() + 1U;
   return result;
+}
+
+[[nodiscard]] DenseLayoutMemoryBreakdown
+dense_layout_memory_payload_breakdown(const DenseLayout &layout) noexcept {
+  DenseLayoutMemoryBreakdown result;
+  result.layout_object_bytes = sizeof(DenseLayout);
+  result.public_tree_node_bytes = vector_size_bytes(layout.tree.nodes);
+  for (const auto &node : layout.tree.nodes) {
+    result.public_tree_edge_bytes += vector_size_bytes(node.edges);
+  }
+  result.board_object_bytes = vector_size_bytes(layout.boards);
+  for (const auto &board : layout.boards) {
+    result.board_heap_bytes += vector_size_bytes(board.legal_combos);
+    for (std::size_t player = 0U; player < 2U; ++player) {
+      result.board_heap_bytes += vector_size_bytes(board.player_combos[player]);
+      result.board_heap_bytes += vector_size_bytes(board.player_active_slots[player]);
+      result.board_heap_bytes += vector_size_bytes(board.player_flop_slots[player]);
+      result.board_heap_bytes += vector_size_bytes(board.player_opponent_flop_slots[player]);
+      result.board_heap_bytes += vector_size_bytes(board.player_local_by_flop_slot[player]);
+      result.board_heap_bytes += terminal_combo_payload_bytes(board.terminal_combos[player]);
+    }
+    result.board_heap_bytes += terminal_combo_payload_bytes(board.terminal_active_combos);
+  }
+  result.canonical_node_bytes = vector_size_bytes(layout.canonical_public_graph.nodes);
+  result.canonical_edge_bytes = vector_size_bytes(layout.canonical_public_graph.edges);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.canonical_public_graph.actions);
+  for (const auto &edge : layout.canonical_public_graph.edges) {
+    result.canonical_outcome_heap_bytes += edge.outcomes.heap_size_bytes();
+  }
+  result.canonical_assignment_bytes =
+      vector_size_bytes(layout.canonical_public_graph.physical_assignments) +
+      vector_size_bytes(layout.canonical_public_graph.representative_nodes);
+  for (const auto &values : layout.active_slots_by_card) {
+    result.auxiliary_heap_bytes += vector_size_bytes(values);
+  }
+  for (const auto &values : layout.active_combos_by_card) {
+    result.auxiliary_heap_bytes += vector_size_bytes(values);
+  }
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.player_flop_combos[0]);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.player_flop_combos[1]);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.active_combos);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.active_automorphism_slots);
+  for (const auto &values : layout.active_automorphism_slots) {
+    result.auxiliary_heap_bytes += vector_size_bytes(values);
+  }
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.active_automorphism_is_identity);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.node_board);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.node_terminal_payoff);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.terminal_payoffs);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.decisions);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.physical_infoset_ids);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.canonical_action_bases);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.canonical_action_counts);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.canonical_infoset_multiplicity);
+  result.auxiliary_heap_bytes += vector_size_bytes(layout.automorphisms);
+  result.auxiliary_heap_bytes += layout.fingerprint.size() + 1U;
+  return result;
+}
+
+[[nodiscard]] SolverMemoryLedgerError account_dense_layout(SolverMemoryLedger &ledger,
+                                                            const DenseLayout &layout) {
+  const auto bytes = dense_layout_memory_breakdown(layout);
+  const auto payload = dense_layout_memory_payload_breakdown(layout);
+  const SolverMemoryCategoryMetadata metadata{SolverMemoryBacking::Heap,
+                                               SolverMemoryLifetime::Persistent, true,
+                                               "solver_owned_prepared_tree_and_layout"};
+  const auto set = [&](const char *name, const std::uint64_t logical,
+                       const std::uint64_t allocated) {
+    return ledger.set(name, metadata, SolverMemoryPhase::TreePreparation, logical, allocated);
+  };
+  struct CategoryBytes {
+    const char *name;
+    std::uint64_t logical;
+    std::uint64_t allocated;
+  };
+  for (const auto &category :
+       {CategoryBytes{"layout.object", payload.layout_object_bytes, bytes.layout_object_bytes},
+        CategoryBytes{"tree.public_nodes", payload.public_tree_node_bytes,
+                      bytes.public_tree_node_bytes},
+        CategoryBytes{"tree.action_chance_edges", payload.public_tree_edge_bytes,
+                      bytes.public_tree_edge_bytes},
+        CategoryBytes{"layout.board_objects", payload.board_object_bytes,
+                      bytes.board_object_bytes},
+        CategoryBytes{"layout.board_heaps_and_combo_maps", payload.board_heap_bytes,
+                      bytes.board_heap_bytes},
+        CategoryBytes{"layout.canonical_nodes", payload.canonical_node_bytes,
+                      bytes.canonical_node_bytes},
+        CategoryBytes{"layout.canonical_edges", payload.canonical_edge_bytes,
+                      bytes.canonical_edge_bytes},
+        CategoryBytes{"layout.canonical_outcomes", payload.canonical_outcome_heap_bytes,
+                      bytes.canonical_outcome_heap_bytes},
+        CategoryBytes{"layout.canonical_assignments", payload.canonical_assignment_bytes,
+                      bytes.canonical_assignment_bytes},
+        CategoryBytes{"layout.terminal_metadata_and_caches", payload.auxiliary_heap_bytes,
+                      bytes.auxiliary_heap_bytes}}) {
+    const auto error = set(category.name, category.logical, category.allocated);
+    if (error != SolverMemoryLedgerError::None) {
+      return error;
+    }
+  }
+  return SolverMemoryLedgerError::None;
 }
 
 [[nodiscard]] bool layout_memory_reporting_enabled() noexcept {
@@ -8782,6 +8907,38 @@ private:
   }
 
 public:
+  // Capacity owned by this traversal, including recursive workers and their
+  // reusable arenas. Solver state and the shared DenseLayout are references
+  // and intentionally excluded.
+  [[nodiscard]] std::uint64_t owned_capacity_bytes() const noexcept {
+    const auto bytes = [](const auto &values) {
+      using Value = typename std::remove_cvref_t<decltype(values)>::value_type;
+      return static_cast<std::uint64_t>(values.capacity()) * sizeof(Value);
+    };
+    std::uint64_t total = sizeof(DenseTraversal);
+    total += bytes(deferred_regret_touched_) + bytes(deferred_regret_touched_flags_) +
+             bytes(parallel_regret_delta_) + bytes(parallel_worker_deltas_) +
+             bytes(parallel_workers_) + bytes(decision_scratch_) + bytes(showdown_totals_) +
+             bytes(showdown_rank_base_) + bytes(showdown_by_card_) + bytes(showdown_prefix_) +
+             bytes(showdown_card_prefix_);
+    for (const auto &delta : parallel_worker_deltas_) {
+      total += bytes(delta);
+    }
+    for (const auto &scratch : decision_scratch_) {
+      total += sizeof(DecisionScratch) + bytes(scratch->local_regret_delta);
+    }
+    if (parallel_shared_ != nullptr) {
+      total += sizeof(ParallelTaskQueue);
+    }
+    if (parallel_worker_ != nullptr) {
+      total += parallel_worker_->owned_capacity_bytes();
+    }
+    for (const auto &worker : parallel_workers_) {
+      total += worker->owned_capacity_bytes();
+    }
+    return total;
+  }
+
   [[nodiscard]] std::uint64_t traversed_nodes() const noexcept {
     std::uint64_t total = traversed_nodes_;
     if (parallel_worker_ != nullptr) {
@@ -15340,6 +15497,7 @@ public:
   [[nodiscard]] virtual std::uint64_t traversed_nodes() const noexcept = 0;
   [[nodiscard]] virtual PostflopWorkCounters work_counters() const noexcept = 0;
   [[nodiscard]] virtual double maximum_normalization_error() const noexcept = 0;
+  [[nodiscard]] virtual std::uint64_t owned_capacity_bytes() const noexcept = 0;
   virtual void release_transient_scratch() = 0;
 };
 
@@ -15439,6 +15597,9 @@ public:
   }
   [[nodiscard]] double maximum_normalization_error() const noexcept override {
     return traversal_.maximum_normalization_error();
+  }
+  [[nodiscard]] std::uint64_t owned_capacity_bytes() const noexcept override {
+    return sizeof(*this) - sizeof(traversal_) + traversal_.owned_capacity_bytes();
   }
   void release_transient_scratch() override { traversal_.release_transient_scratch(); }
 
@@ -15658,7 +15819,7 @@ double root_public_reach_probability(const DenseLayout &layout,
 template <std::size_t Capacity, bool PlayerIndexed>
 Result<PostflopCertification, PostflopSolverError>
 certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint64_t iteration,
-              const PreparedRootLock *root_lock) {
+              const PreparedRootLock *root_lock, SolverMemoryLedger *memory_ledger) {
   const auto reach = initial_reach<Capacity, PlayerIndexed>(layout);
   const double public_reach_probability =
       root_public_reach_probability<Capacity, PlayerIndexed>(layout, reach);
@@ -15689,6 +15850,20 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     const std::uint8_t certification_parallel_depth = buffers.paged != nullptr ? 0U : 7U;
     DenseTraversal<Capacity, PlayerIndexed> traversal(layout, buffers, nullptr,
                                                       certification_parallel_depth, root_lock);
+    const SolverMemoryCategoryMetadata certification_metadata{
+        SolverMemoryBacking::Arena, SolverMemoryLifetime::Certification, true,
+        "solver_owned_exact_profile_and_best_response_buffers"};
+    const auto account_certification = [&] {
+      return memory_ledger == nullptr ||
+             memory_ledger->set("certification.serial_runner", certification_metadata,
+                                SolverMemoryPhase::Certification,
+                                traversal.owned_capacity_bytes(),
+                                traversal.owned_capacity_bytes()) == SolverMemoryLedgerError::None;
+    };
+    if (!account_certification()) {
+      return Result<PostflopCertification, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     PostflopCertification certification;
     certification.iteration = iteration;
     const auto evaluate = [&](const std::uint8_t player,
@@ -15697,6 +15872,9 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
       const auto values = traversal.policy(layout.tree.root, player, reach_ref, best_response);
       if (!values) {
         return Result<double, PostflopSolverError>::failure(values.error());
+      }
+      if (!account_certification()) {
+        return Result<double, PostflopSolverError>::failure(PostflopSolverError::MemoryFailure);
       }
       return Result<double, PostflopSolverError>::success(aggregate_value(player, values.value()));
     };
@@ -15735,38 +15913,90 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
       return Result<PostflopCertification, PostflopSolverError>::failure(
           PostflopSolverError::NumericalFailure);
     }
+    if (memory_ledger != nullptr &&
+        memory_ledger->release("certification.serial_runner", SolverMemoryPhase::Certification) !=
+            SolverMemoryLedgerError::None) {
+      return Result<PostflopCertification, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     return Result<PostflopCertification, PostflopSolverError>::success(certification);
   }
-  const auto evaluate = [&layout, buffers, &reach, root_lock, public_reach_probability](
+  const SolverMemoryCategoryMetadata certification_metadata{
+      SolverMemoryBacking::Arena, SolverMemoryLifetime::Certification, true,
+      "solver_owned_exact_profile_and_best_response_buffers"};
+  const auto evaluate = [&layout, buffers, &reach, root_lock, public_reach_probability,
+                         memory_ledger, &certification_metadata](
                             const std::uint8_t player, const bool best_response,
-                            const std::uint8_t worker_count) {
+                            const std::uint8_t worker_count, const char *category) {
     const std::uint8_t certification_worker_count = buffers.paged != nullptr ? 0U : worker_count;
     auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
         layout, buffers, nullptr, certification_worker_count, root_lock);
+    const auto account = [&] {
+      return memory_ledger == nullptr ||
+             memory_ledger->set(category, certification_metadata,
+                                SolverMemoryPhase::Certification,
+                                traversal->owned_capacity_bytes(),
+                                traversal->owned_capacity_bytes()) == SolverMemoryLedgerError::None;
+    };
+    if (!account()) {
+      return Result<double, PostflopSolverError>::failure(PostflopSolverError::MemoryFailure);
+    }
     const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
     const auto values = traversal->policy(layout.tree.root, player, reach_ref, best_response);
     if (!values) {
       return Result<double, PostflopSolverError>::failure(values.error());
     }
-    return Result<double, PostflopSolverError>::success(
+    if (!account()) {
+      return Result<double, PostflopSolverError>::failure(PostflopSolverError::MemoryFailure);
+    }
+    const double aggregate =
         reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value(), player) /
-        public_reach_probability);
+        public_reach_probability;
+    if (memory_ledger != nullptr &&
+        memory_ledger->release(category, SolverMemoryPhase::Certification) !=
+            SolverMemoryLedgerError::None) {
+      return Result<double, PostflopSolverError>::failure(PostflopSolverError::MemoryFailure);
+    }
+    return Result<double, PostflopSolverError>::success(aggregate);
   };
-  const auto evaluate_pair = [&layout, buffers, &reach, root_lock, public_reach_probability](
-                                 const std::uint8_t player, const std::uint8_t worker_count) {
+  const auto evaluate_pair = [&layout, buffers, &reach, root_lock, public_reach_probability,
+                              memory_ledger, &certification_metadata](
+                                 const std::uint8_t player, const std::uint8_t worker_count,
+                                 const char *category) {
     const std::uint8_t certification_worker_count = buffers.paged != nullptr ? 0U : worker_count;
     auto traversal = std::make_unique<DenseTraversal<Capacity, PlayerIndexed>>(
         layout, buffers, nullptr, certification_worker_count, root_lock);
+    const auto account = [&] {
+      return memory_ledger == nullptr ||
+             memory_ledger->set(category, certification_metadata,
+                                SolverMemoryPhase::Certification,
+                                traversal->owned_capacity_bytes(),
+                                traversal->owned_capacity_bytes()) == SolverMemoryLedgerError::None;
+    };
+    if (!account()) {
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     const std::array<const TraversalComboVector<Capacity> *, 2> reach_ref{&reach[0], &reach[1]};
     auto values = traversal->policy_profile_br_pair(player, reach_ref);
     if (!values) {
       return Result<std::array<double, 2>, PostflopSolverError>::failure(values.error());
+    }
+    if (!account()) {
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
     }
     std::array<double, 2> aggregated{};
     for (std::size_t lane = 0U; lane < aggregated.size(); ++lane) {
       aggregated[lane] =
           reach_weighted_sum<Capacity, PlayerIndexed>(layout, reach, values.value()[lane], player) /
           public_reach_probability;
+    }
+    if (memory_ledger != nullptr &&
+        memory_ledger->release(category, SolverMemoryPhase::Certification) !=
+            SolverMemoryLedgerError::None) {
+      return Result<std::array<double, 2>, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
     }
     return Result<std::array<double, 2>, PostflopSolverError>::success(aggregated);
   };
@@ -15784,16 +16014,16 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
           Result<std::array<double, 2>, PostflopSolverError>::failure(
               PostflopSolverError::InvalidConfiguration);
       if (buffers.paged != nullptr) {
-        player_zero = evaluate_pair(std::uint8_t{0}, 0U);
-        player_one = evaluate_pair(std::uint8_t{1}, 0U);
+        player_zero = evaluate_pair(std::uint8_t{0}, 0U, "certification.player_zero_pair");
+        player_one = evaluate_pair(std::uint8_t{1}, 0U, "certification.player_one_pair");
       } else {
         // Each paired profile/BR traversal owns a complete scratch arena for
         // every worker. Certification is outside the DCFR update and can use
         // the deterministic serial policy traversal: it preserves the exact
         // edge-order reductions while avoiding a second worker pool beside
         // the resident solving pool.
-        player_zero = evaluate_pair(std::uint8_t{0}, 0U);
-        player_one = evaluate_pair(std::uint8_t{1}, 0U);
+        player_zero = evaluate_pair(std::uint8_t{0}, 0U, "certification.player_zero_pair");
+        player_one = evaluate_pair(std::uint8_t{1}, 0U, "certification.player_one_pair");
       }
       if (!player_zero || !player_one) {
         const auto error = !player_zero ? player_zero.error() : player_one.error();
@@ -15818,10 +16048,15 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
       // would race on page_lookup_/pages_ and can return corrupt values or
       // crash. Keep exact certification sequential for this backend; in-RAM
       // buffers retain the four-way parallel evaluation below.
-      auto profile_zero = evaluate(std::uint8_t{0}, false, 0U);
-      auto response_zero = evaluate(std::uint8_t{0}, true, 0U);
-      auto response_one = evaluate(std::uint8_t{1}, true, 0U);
-      auto profile_one = layout.tree.config.rake.enabled ? evaluate(std::uint8_t{1}, false, 0U)
+      auto profile_zero =
+          evaluate(std::uint8_t{0}, false, 0U, "certification.profile_zero");
+      auto response_zero =
+          evaluate(std::uint8_t{0}, true, 0U, "certification.response_zero");
+      auto response_one =
+          evaluate(std::uint8_t{1}, true, 0U, "certification.response_one");
+      auto profile_one = layout.tree.config.rake.enabled
+                             ? evaluate(std::uint8_t{1}, false, 0U,
+                                        "certification.profile_one")
                                                          : mirror_profile(profile_zero);
       return {std::move(profile_zero), std::move(response_zero), std::move(profile_one),
               std::move(response_one)};
@@ -15832,11 +16067,14 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
       // 2, 3 and 3 threads respectively (async caller included) for exactly
       // eight certification threads.
       auto profile_zero =
-          std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1});
+          std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1},
+                     "certification.profile_zero");
       auto response_zero =
-          std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{2});
+          std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{2},
+                     "certification.response_zero");
       auto response_one =
-          std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{2});
+          std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{2},
+                     "certification.response_one");
       auto profile_zero_result = profile_zero.get();
       auto profile_one_result = mirror_profile(profile_zero_result);
       return {std::move(profile_zero_result), response_zero.get(), std::move(profile_one_result),
@@ -15845,13 +16083,17 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
     // With rake, all four profile/BR values are independent. One worker per
     // async traversal keeps the total at exactly eight threads.
     auto profile_zero =
-        std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1});
+        std::async(std::launch::async, evaluate, std::uint8_t{0}, false, std::uint8_t{1},
+                   "certification.profile_zero");
     auto response_zero =
-        std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{1});
+        std::async(std::launch::async, evaluate, std::uint8_t{0}, true, std::uint8_t{1},
+                   "certification.response_zero");
     auto profile_one =
-        std::async(std::launch::async, evaluate, std::uint8_t{1}, false, std::uint8_t{1});
+        std::async(std::launch::async, evaluate, std::uint8_t{1}, false, std::uint8_t{1},
+                   "certification.profile_one");
     auto response_one =
-        std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{1});
+        std::async(std::launch::async, evaluate, std::uint8_t{1}, true, std::uint8_t{1},
+                   "certification.response_one");
     return {profile_zero.get(), response_zero.get(), profile_one.get(), response_one.get()};
   }();
   for (const auto &value : evaluated) {
@@ -15884,37 +16126,42 @@ certify_typed(DenseLayout &layout, const ActionBuffers buffers, const std::uint6
 Result<PostflopCertification, PostflopSolverError> certify(DenseLayout &layout,
                                                            const ActionBuffers buffers,
                                                            const std::uint64_t iteration,
-                                                           const PreparedRootLock *root_lock) {
+                                                           const PreparedRootLock *root_lock,
+                                                           SolverMemoryLedger *memory_ledger = nullptr) {
   if (layout.uses_canonical_public_dag) {
     const auto maximum_player_combos =
         std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
     if (maximum_player_combos <= compact_combo_capacity) {
-      return certify_typed<compact_combo_capacity, true>(layout, buffers, iteration, root_lock);
+      return certify_typed<compact_combo_capacity, true>(layout, buffers, iteration, root_lock,
+                                                         memory_ledger);
     }
     if (maximum_player_combos <= medium_combo_capacity) {
-      return certify_typed<medium_combo_capacity, true>(layout, buffers, iteration, root_lock);
+      return certify_typed<medium_combo_capacity, true>(layout, buffers, iteration, root_lock,
+                                                        memory_ledger);
     }
     if (maximum_player_combos <= short_deck_range_capacity) {
-      return certify_typed<short_deck_range_capacity, true>(layout, buffers, iteration, root_lock);
+      return certify_typed<short_deck_range_capacity, true>(layout, buffers, iteration, root_lock,
+                                                            memory_ledger);
     }
     if (maximum_player_combos <= compact_player_combo_capacity) {
       return certify_typed<compact_player_combo_capacity, true>(layout, buffers, iteration,
-                                                                root_lock);
+                                                                root_lock, memory_ledger);
     }
     if (maximum_player_combos <= large_range_capacity) {
-      return certify_typed<large_range_capacity, true>(layout, buffers, iteration, root_lock);
+      return certify_typed<large_range_capacity, true>(layout, buffers, iteration, root_lock,
+                                                       memory_ledger);
     }
-    return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock);
+    return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock, memory_ledger);
   }
   if (layout.uses_direct_action_bases) {
     if (std::max(layout.player_flop_count[0], layout.player_flop_count[1]) <=
         compact_player_combo_capacity) {
       return certify_typed<compact_player_combo_capacity, true>(layout, buffers, iteration,
-                                                                root_lock);
+                                                                root_lock, memory_ledger);
     }
-    return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock);
+    return certify_typed<combo_count, true>(layout, buffers, iteration, root_lock, memory_ledger);
   }
-  return certify_typed<combo_count, false>(layout, buffers, iteration, root_lock);
+  return certify_typed<combo_count, false>(layout, buffers, iteration, root_lock, memory_ledger);
 }
 
 template <std::size_t Capacity, bool PlayerIndexed>
@@ -17263,6 +17510,14 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     DenseLayout *pointer;
     [[nodiscard]] DenseLayout &value() const noexcept { return *pointer; }
   } layout{&prepared.implementation_->layout};
+  std::optional<SolverMemoryLedger> memory_ledger;
+  if (options.enable_detailed_memory_accounting) {
+    memory_ledger.emplace();
+    if (account_dense_layout(*memory_ledger, layout.value()) != SolverMemoryLedgerError::None) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
+  }
   const bool scaled_uint16_precision =
       options.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy;
   const auto scaled_state_bytes = [&]() -> std::optional<std::uint64_t> {
@@ -17316,6 +17571,40 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   }
   std::fprintf(stderr, "solver_phase=prepare_ranks_complete\n");
   report_dense_layout_memory("production_ranked", layout.value());
+  if (memory_ledger &&
+      account_dense_layout(*memory_ledger, layout.value()) != SolverMemoryLedgerError::None) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  const auto predicted_layout_payload = dense_layout_memory_payload_breakdown(layout.value());
+  const auto predicted_layout_capacity = dense_layout_memory_breakdown(layout.value());
+  const auto predicted_state_bytes = [&]() -> std::uint64_t {
+    if (options.memory_backend == MemoryPrototype::OutOfCore) {
+      return layout.value().actions * sizeof(double) * 2U;
+    }
+    switch (options.state_precision) {
+    case PostflopStatePrecision::Float64:
+      return layout.value().actions * sizeof(double) * 2U;
+    case PostflopStatePrecision::Float32:
+      return layout.value().actions * sizeof(float) * 2U;
+    case PostflopStatePrecision::Float24RegretFloat16Strategy:
+      return layout.value().actions * 5U;
+    case PostflopStatePrecision::Float13RegretFloat11Strategy:
+    case PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy:
+      return layout.value().actions * 3U;
+    case PostflopStatePrecision::ScaledUint16RegretStrategy:
+      return *scaled_state_bytes;
+    }
+    return 0U;
+  }();
+  const bool predicted_deferred_delta_needed =
+      layout.value().uses_isomorphic_infosets && !layout.value().uses_direct_action_bases;
+  const std::uint64_t predicted_deferred_bytes =
+      predicted_deferred_delta_needed ? layout.value().actions * sizeof(double) : 0U;
+  const std::uint64_t predicted_managed_logical_bytes =
+      predicted_layout_payload.total_bytes() + predicted_state_bytes + predicted_deferred_bytes;
+  const std::uint64_t predicted_managed_allocated_bytes =
+      predicted_layout_capacity.total_bytes() + predicted_state_bytes + predicted_deferred_bytes;
   if (layout.value().uses_canonical_public_dag) {
     constexpr std::array<std::size_t, 4U> state_tile_sizes{8U, 16U, 32U, 64U};
     const SuitPermutation identity{};
@@ -17662,6 +17951,74 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   result.canonical_public_nodes = layout.value().canonical_public_graph.nodes.size();
   result.information_sets = layout.value().information_sets;
   result.actions = layout.value().actions;
+  result.predicted_solver_managed_logical_bytes = predicted_managed_logical_bytes;
+  result.predicted_solver_managed_allocated_bytes = predicted_managed_allocated_bytes;
+  const auto account_state = [&]() -> SolverMemoryLedgerError {
+    if (!memory_ledger) {
+      return SolverMemoryLedgerError::None;
+    }
+    const auto record = [&](const char *name, const SolverMemoryBacking backing,
+                            const std::uint64_t logical, const std::uint64_t allocated) {
+      return memory_ledger->set(
+          name,
+          {backing, SolverMemoryLifetime::Persistent, true,
+           backing == SolverMemoryBacking::Mapped
+               ? "solver_owned_logical_mapping_residency_excluded"
+               : "solver_owned_persistent_state"},
+          SolverMemoryPhase::SolverStateReady, logical, allocated);
+    };
+    const auto vector_record = [&](const char *name, const auto &values) {
+      using Value = typename std::remove_cvref_t<decltype(values)>::value_type;
+      return record(name, SolverMemoryBacking::Heap,
+                    static_cast<std::uint64_t>(values.size()) * sizeof(Value),
+                    static_cast<std::uint64_t>(values.capacity()) * sizeof(Value));
+    };
+    SolverMemoryLedgerError error = SolverMemoryLedgerError::None;
+    const auto checked = [&](const SolverMemoryLedgerError candidate) {
+      if (error == SolverMemoryLedgerError::None) {
+        error = candidate;
+      }
+    };
+    if (out_of_core) {
+      checked(record("state.regret", SolverMemoryBacking::Mapped,
+                     layout.value().actions * sizeof(double),
+                     layout.value().actions * sizeof(double)));
+      checked(record("state.cumulative_strategy", SolverMemoryBacking::Mapped,
+                     layout.value().actions * sizeof(double),
+                     layout.value().actions * sizeof(double)));
+    } else if (checkpoint.runtime_state != nullptr) {
+      checked(record("state.regret", SolverMemoryBacking::Mapped,
+                     layout.value().actions * sizeof(std::uint16_t),
+                     layout.value().actions * sizeof(std::uint16_t)));
+      checked(record("state.cumulative_strategy", SolverMemoryBacking::Mapped,
+                     layout.value().actions * sizeof(std::uint16_t),
+                     layout.value().actions * sizeof(std::uint16_t)));
+      checked(record("state.codec_scales", SolverMemoryBacking::Mapped,
+                     layout.value().canonical_decision_nodes * sizeof(float) * 2U,
+                     layout.value().canonical_decision_nodes * sizeof(float) * 2U));
+    } else if (!checkpoint.cumulative_regret_uint16.empty()) {
+      checked(vector_record("state.regret", checkpoint.cumulative_regret_uint16));
+      checked(vector_record("state.cumulative_strategy", checkpoint.cumulative_strategy_uint16));
+      checked(vector_record("state.regret_scales", checkpoint.regret_node_scale));
+      checked(vector_record("state.strategy_scales", checkpoint.strategy_node_scale));
+    } else if (!checkpoint.cumulative_compact_state.empty()) {
+      checked(vector_record("state.regret_strategy_packed", checkpoint.cumulative_compact_state));
+    } else if (!checkpoint.cumulative_regret_float24.empty()) {
+      checked(vector_record("state.regret", checkpoint.cumulative_regret_float24));
+      checked(vector_record("state.cumulative_strategy", checkpoint.cumulative_strategy_float16));
+    } else if (!checkpoint.cumulative_regret_float32.empty()) {
+      checked(vector_record("state.regret", checkpoint.cumulative_regret_float32));
+      checked(vector_record("state.cumulative_strategy", checkpoint.cumulative_strategy_float32));
+    } else {
+      checked(vector_record("state.regret", checkpoint.cumulative_regret));
+      checked(vector_record("state.cumulative_strategy", checkpoint.cumulative_strategy));
+    }
+    return error;
+  };
+  if (account_state() != SolverMemoryLedgerError::None) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
   std::vector<double> deferred_regret_delta;
   // The deferred regret delta (8 B x actions = 667 MB for th7d6s) is only
   // needed when the runner's traversal will actually accumulate into it: the
@@ -17673,6 +18030,18 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
       layout.value().uses_isomorphic_infosets && !layout.value().uses_direct_action_bases;
   if (deferred_delta_needed) {
     deferred_regret_delta.resize(static_cast<std::size_t>(layout.value().actions), 0.0);
+    if (memory_ledger &&
+        memory_ledger->set(
+            "traversal.deferred_regret_delta",
+            {SolverMemoryBacking::Heap, SolverMemoryLifetime::Scratch, true,
+             "solver_owned_traversal_scratch"},
+            SolverMemoryPhase::Traversal,
+            static_cast<std::uint64_t>(deferred_regret_delta.size()) * sizeof(double),
+            static_cast<std::uint64_t>(deferred_regret_delta.capacity()) * sizeof(double)) !=
+            SolverMemoryLedgerError::None) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
   }
   std::unique_ptr<PreparedRootLock> prepared_root_lock;
   if (options.diagnostic_root_lock != nullptr) {
@@ -17685,6 +18054,23 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   auto traversal = make_dense_traversal_runner(
       layout.value(), buffers, deferred_delta_needed ? &deferred_regret_delta : nullptr,
       options.parallel_action_depth, prepared_root_lock.get());
+  if (memory_ledger &&
+      memory_ledger->set("traversal.worker_and_arena_capacity",
+                         {SolverMemoryBacking::Arena, SolverMemoryLifetime::Scratch, true,
+                          "solver_owned_worker_and_traversal_buffers"},
+                         SolverMemoryPhase::Traversal, traversal->owned_capacity_bytes(),
+                         traversal->owned_capacity_bytes()) != SolverMemoryLedgerError::None) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  const auto refresh_traversal_accounting = [&](const SolverMemoryPhase phase) {
+    return !memory_ledger ||
+           memory_ledger->set("traversal.worker_and_arena_capacity",
+                              {SolverMemoryBacking::Arena, SolverMemoryLifetime::Scratch, true,
+                               "solver_owned_worker_and_traversal_buffers"},
+                              phase, traversal->owned_capacity_bytes(),
+                              traversal->owned_capacity_bytes()) == SolverMemoryLedgerError::None;
+  };
   buffers.trim_budgeted_working_set();
   report_layout_process_memory("solver_traversal_ready");
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
@@ -17722,10 +18108,19 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
   if (!target_driven_without_iteration_limit &&
       checkpoint.completed_iterations == options.iterations) {
     const auto certification_started = std::chrono::steady_clock::now();
+    if (!refresh_traversal_accounting(SolverMemoryPhase::Traversal)) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     traversal->release_transient_scratch();
+    if (!refresh_traversal_accounting(SolverMemoryPhase::Certification)) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     report_layout_process_memory("certification_start");
-    const auto certification =
-        certify(layout.value(), buffers, checkpoint.completed_iterations, prepared_root_lock.get());
+    const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
+                                       prepared_root_lock.get(),
+                                       memory_ledger ? &*memory_ledger : nullptr);
     buffers.trim_budgeted_working_set();
     report_layout_process_memory("certification_complete");
     result.timings.certification_seconds +=
@@ -17936,6 +18331,10 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     }
     result.timings.traversal_seconds +=
         std::chrono::duration<double>(std::chrono::steady_clock::now() - traversal_started).count();
+    if (!refresh_traversal_accounting(SolverMemoryPhase::Traversal)) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
     checkpoint.completed_iterations = iteration;
 #if defined(GTOSD_ENABLE_PURE_CFR_TRAJECTORY_PROBE)
     if (options.diagnostic_pure_cfr_trajectory) {
@@ -17972,9 +18371,14 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
         (!target_driven_without_iteration_limit && iteration == options.iterations) || stopping) {
       const auto certification_started = std::chrono::steady_clock::now();
       traversal->release_transient_scratch();
+      if (!refresh_traversal_accounting(SolverMemoryPhase::Certification)) {
+        return Result<PostflopSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::MemoryFailure);
+      }
       report_layout_process_memory("certification_start");
       const auto certification = certify(layout.value(), buffers, checkpoint.completed_iterations,
-                                         prepared_root_lock.get());
+                                         prepared_root_lock.get(),
+                                         memory_ledger ? &*memory_ledger : nullptr);
       buffers.trim_budgeted_working_set();
       report_layout_process_memory("certification_complete");
       result.timings.certification_seconds +=
@@ -18128,6 +18532,21 @@ solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions 
     result.diagnostic_real_node_replay = replay_collector->finish();
   }
 #endif
+  traversal.reset();
+  if (memory_ledger) {
+    if (memory_ledger->release("traversal.worker_and_arena_capacity",
+                               SolverMemoryPhase::SolutionReady) !=
+            SolverMemoryLedgerError::None ||
+        (deferred_delta_needed &&
+         memory_ledger->release("traversal.deferred_regret_delta",
+                                SolverMemoryPhase::SolutionReady) !=
+             SolverMemoryLedgerError::None)) {
+      return Result<PostflopSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
+    result.solver_memory_accounting = memory_ledger->snapshot();
+    result.solver_memory_accounting_complete = true;
+  }
   result.checkpoint = std::move(checkpoint);
   result.timings.finalization_seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - finalization_started)

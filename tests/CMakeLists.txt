@@ -176,6 +176,13 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_solver_memory_ledger_tests solver_memory_ledger_tests.cpp)
+target_link_libraries(gtosd_solver_memory_ledger_tests PRIVATE gtosd::postflop)
+gtosd_set_warnings(gtosd_solver_memory_ledger_tests)
+add_test(NAME gtosd_solver_memory_ledger_tests COMMAND gtosd_solver_memory_ledger_tests)
+set_tests_properties(gtosd_solver_memory_ledger_tests
+  PROPERTIES LABELS "postflop;memory;ledger;exact")
+
 if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
   add_executable(gtosd_range_orbit_oracle_tests range_orbit_oracle_tests.cpp)
   target_link_libraries(gtosd_range_orbit_oracle_tests

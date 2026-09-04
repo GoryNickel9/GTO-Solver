@@ -35,6 +35,21 @@
 > archiviato come evidenza:
 > [`../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md`](../archive/legacy-memory-gate/TWO_GIB_RESOURCE_CONTRACT_AND_FRONTIER_RECHECK_2026-09-01.md).
 
+> **Ledger solver-owned — 2026-09-04.** Lo schema interno
+> `gtosd.solver_memory_accounting.v2` riporta previsione pre-state, picco
+> osservato di payload e capacità, backing e lifetime per categoria. Tree/DAG,
+> board/rank metadata, regret, cumulative strategy, scale codec, mapping,
+> worker/traversal arena e certification/BR sono contabilizzati nei punti di
+> ownership; trimming e paging non modificano il valore logico. Il ledger è
+> distinto da Peak RSS e non risolve da solo la comparabilità con “Memory
+> needed for solving” di GTO+; il relativo gate resta `NOT_EVALUATED`.
+> Nello smoke AHKHQH Release il predictor pre-state riporta payload/capacità
+> `7.069.187/7.083.938 B`; il ledger osserva
+> `7.334.731/7.349.482 B`. Il delta `265.544 B` è attribuito agli arena lazy di
+> traversal; i due runner seriali di certification raggiungono `78.408 B`
+> ciascuno ma non sono simultanei. Questi numeri verificano l'accounting, non
+> costituiscono ancora confronto con gli `8 MB` mostrati da GTO+.
+
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,
 > probes and counterexample oracles are retained for reproducibility; the two

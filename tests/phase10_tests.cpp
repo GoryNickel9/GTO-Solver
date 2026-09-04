@@ -383,6 +383,57 @@ void test_explicit_resident_working_set_budget_is_byte_exact() {
           "resident and page-backed exact certifications are identical");
 }
 
+void test_solver_memory_accounting_is_observational() {
+  const auto config = make_small_config();
+  const auto ranges = gtosd::make_uniform_postflop_ranges();
+  gtosd::PostflopSolveOptions enabled_options;
+  enabled_options.iterations = 4U;
+  enabled_options.certification_interval = 4U;
+  enabled_options.algorithm = gtosd::PostflopAlgorithm::ProductionDcfr;
+  enabled_options.state_precision = gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy;
+
+  auto enabled_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  const auto enabled = gtosd::solve_postflop_exact(*enabled_tree, enabled_options);
+  require(enabled.has_value() && enabled.value().solver_memory_accounting_complete &&
+              enabled.value().solver_memory_accounting.has_value(),
+          "enabled solver memory accounting returns a complete ledger");
+  const auto &snapshot = *enabled.value().solver_memory_accounting;
+  std::uint64_t current_logical_sum = 0U;
+  std::uint64_t current_allocated_sum = 0U;
+  for (const auto &category : snapshot.categories) {
+    current_logical_sum += category.current_logical_bytes;
+    current_allocated_sum += category.current_allocated_bytes;
+  }
+  require(current_logical_sum == snapshot.current_logical_bytes &&
+              current_allocated_sum == snapshot.current_allocated_bytes &&
+              snapshot.maximum_allocated_bytes >= snapshot.maximum_logical_bytes &&
+              snapshot.maximum_logical_bytes >= enabled.value().checkpoint.action_count,
+          "ledger category totals and peaks satisfy accounting invariants");
+
+  auto disabled_options = enabled_options;
+  disabled_options.enable_detailed_memory_accounting = false;
+  auto disabled_tree = gtosd::prepare_postflop_tree(config, ranges, true, true, false).value();
+  const auto disabled = gtosd::solve_postflop_exact(*disabled_tree, disabled_options);
+  require(disabled.has_value() && !disabled.value().solver_memory_accounting.has_value() &&
+              !disabled.value().solver_memory_accounting_complete,
+          "disabled accounting returns no detailed telemetry");
+  require(enabled.value().checkpoint.game_fingerprint ==
+                  disabled.value().checkpoint.game_fingerprint &&
+              enabled.value().checkpoint.cumulative_regret_uint16 ==
+                  disabled.value().checkpoint.cumulative_regret_uint16 &&
+              enabled.value().checkpoint.cumulative_strategy_uint16 ==
+                  disabled.value().checkpoint.cumulative_strategy_uint16 &&
+              enabled.value().checkpoint.regret_node_scale ==
+                  disabled.value().checkpoint.regret_node_scale &&
+              enabled.value().checkpoint.strategy_node_scale ==
+                  disabled.value().checkpoint.strategy_node_scale &&
+              enabled.value().convergence.back().profile_value_antes ==
+                  disabled.value().convergence.back().profile_value_antes &&
+              enabled.value().convergence.back().best_response_value_antes ==
+                  disabled.value().convergence.back().best_response_value_antes,
+          "accounting toggle does not change fingerprint, state, strategy, or exact EVs");
+}
+
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
 void test_real_node_replay_capture_is_bounded_and_authoritative() {
   const auto config = make_small_config();
@@ -441,6 +492,7 @@ int main() {
     test_hs_dcfr30_schedule_and_resume();
     test_production_dcfr_schedule_and_resume();
     test_explicit_resident_working_set_budget_is_byte_exact();
+    test_solver_memory_accounting_is_observational();
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
     test_real_node_replay_capture_is_bounded_and_authoritative();
 #endif

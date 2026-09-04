@@ -39,18 +39,24 @@ sostituisce la cronologia Git né i report di fase.
 - Conservata la lettura diretta v1/v2/v3 con conversione v4 esplicita; una v3
   viene marcata `legacy_metric_misclassified`. Il wrapper multiprocesso accetta
   soltanto fixture v4.
+- Implementato `SolverMemoryLedger` generico e thread-safe con categorie,
+  backing, lifetime, payload/capacità correnti e massimi, prediction pre-state
+  e high-water runtime; il report usa
+  `gtosd.solver_memory_accounting.v2` senza riattivare il gate GTO+.
+- Verificata l'osservazionalità del ledger: disabilitarlo non modifica
+  fingerprint, checkpoint, strategia o EV exact.
 
 ### Pianificato, non ancora implementato
 
-- Ledger completo dei picchi solver-owned (payload e allocated) e
-  ricostruzione black-box della formula GTO+ restano Fasi C/D separate. Fino ad
-  allora il confronto memoria rimane `NOT_EVALUATED`.
+- Ricostruzione black-box della formula GTO+ e promozione dell'eventuale
+  comparatore restano Fasi D/E separate. Fino ad allora il confronto memoria
+  rimane `NOT_EVALUATED`.
 
 ### Verificato
 
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `28/28 PASS` in `105,46 s`, inclusi i test esaustivi e
-  l’oracolo GTO+.
+- CTest Release completo `29/29 PASS` in `228,77 s`, incluso il nuovo ledger,
+  i test esaustivi e l’oracolo GTO+.
 - Test manuali dei runner black-box e user-configured process-memory budget
   PASS; parsing di 14 fixture JSON e 22 script PowerShell PASS.
 - Smoke AHKHQH v4 a cinque processi completato a 80 iterazioni e dEV
