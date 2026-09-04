@@ -4,8 +4,10 @@
 #include "gtosd/core/result.hpp"
 #include "gtosd/solver/finite_game.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gtosd {
@@ -15,6 +17,10 @@ namespace gtosd {
 // before feature enumeration starts.
 inline constexpr std::uint64_t maximum_card_abstraction_feature_cache_observations = 2'000'000U;
 inline constexpr std::uint32_t production_card_abstraction_feature_workers = 8U;
+inline constexpr std::string_view equity_feature_schema_v1 = "equity-features-l2-v1";
+inline constexpr std::string_view equity_distribution_feature_schema_v2 =
+    "next-street-equity-quantiles-16-l2-v2";
+inline constexpr std::size_t equity_distribution_quantile_count = 16U;
 
 enum class CardAbstractionKind : std::uint8_t { ExactIdentity, EquityFeatureKMeans };
 
@@ -40,7 +46,7 @@ struct CardAbstractionConfig {
   CardAbstractionKind kind{CardAbstractionKind::ExactIdentity};
   std::uint32_t buckets_per_partition{0};
   std::uint32_t maximum_iterations{100};
-  std::string feature_schema_id{"equity-features-l2-v1"};
+  std::string feature_schema_id{equity_distribution_feature_schema_v2};
 
   friend bool operator==(const CardAbstractionConfig &, const CardAbstractionConfig &) = default;
 };
@@ -121,7 +127,7 @@ struct CardAbstractionFeatureCache {
 
   std::uint32_t major{format_major};
   std::uint32_t minor{format_minor};
-  std::string feature_schema_id{"equity-features-l2-v1"};
+  std::string feature_schema_id{equity_distribution_feature_schema_v2};
   std::string source_fingerprint;
   std::string fingerprint;
   std::uint64_t partition_count{0};
@@ -131,15 +137,19 @@ struct CardAbstractionFeatureCache {
                          const CardAbstractionFeatureCache &) = default;
 };
 
-// Exact postflop W/T/L + equity feature generation against the configured
-// weighted opponent range. Flop and turn runouts are fully enumerated; river
-// uses the single complete board. This is preparation work, not chance
-// sampling inside CFR.
+// Exact postflop feature generation against the configured weighted opponent
+// range. V1 emits aggregate W/T/L/equity. V2 emits deterministic weighted
+// quantiles of equity conditional on the next public card (showdown outcome on
+// the river), preserving future-card potential without sampling. Flop and turn
+// runouts are fully enumerated. This is preparation work, not chance sampling
+// inside CFR.
 [[nodiscard]] Result<std::vector<CardAbstractionObservation>, CardAbstractionError>
 build_exact_postflop_equity_observations(const std::vector<CardId> &board,
                                          const PostflopRanges &ranges, std::uint8_t player,
                                          const std::string &partition,
-                                         const std::string &information_set_prefix);
+                                         const std::string &information_set_prefix,
+                                         std::string_view feature_schema_id =
+                                             equity_feature_schema_v1);
 
 [[nodiscard]] Result<CardAbstractionFeatureCache, CardAbstractionError>
 build_card_abstraction_feature_cache(const std::vector<CardAbstractionObservation> &observations,

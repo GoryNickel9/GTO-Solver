@@ -3579,7 +3579,9 @@ native_decision_counts(const DenseLayout &layout) {
 [[nodiscard]] Result<CardAbstractionFeatureCache, PostflopSolverError>
 build_native_feature_cache(const DenseLayout &layout, const PostflopRanges &ranges,
                            const std::string &feature_schema_id) {
-  if (feature_schema_id != "equity-features-l2-v1" || !layout.uses_canonical_public_dag ||
+  if ((feature_schema_id != equity_feature_schema_v1 &&
+       feature_schema_id != equity_distribution_feature_schema_v2) ||
+      !layout.uses_canonical_public_dag ||
       layout.fingerprint.empty()) {
     return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
@@ -3634,7 +3636,8 @@ build_native_feature_cache(const DenseLayout &layout, const PostflopRanges &rang
       }
       const auto &job = jobs[index];
       auto built = build_exact_postflop_equity_observations(job.board_cards, ranges, job.player,
-                                                            job.partition, job.partition);
+                                                            job.partition, job.partition,
+                                                            feature_schema_id);
       if (!built) {
         unsigned expected = 0U;
         first_error.compare_exchange_strong(expected, 1U, std::memory_order_relaxed);
@@ -3706,7 +3709,8 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
       abstraction.minor > CardAbstractionConfig::format_minor ||
       abstraction.kind != CardAbstractionKind::EquityFeatureKMeans ||
       abstraction.buckets_per_partition == 0U || abstraction.maximum_iterations == 0U ||
-      abstraction.feature_schema_id != "equity-features-l2-v1") {
+      (abstraction.feature_schema_id != equity_feature_schema_v1 &&
+       abstraction.feature_schema_id != equity_distribution_feature_schema_v2)) {
     return Result<DenseLayout, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }
@@ -3812,6 +3816,10 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
+      const std::size_t expected_feature_dimensions =
+          abstraction.feature_schema_id == equity_feature_schema_v1
+              ? 4U
+              : equity_distribution_quantile_count;
       for (std::size_t local = 0U; local < observations.value().size(); ++local) {
         const auto &observation = observations.value()[local];
         const auto expected_weight =
@@ -3823,7 +3831,7 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
             observation.player != player || observation.public_card_mask != board.mask ||
             observation.combo != board.player_combos[player][local] ||
             observation.reach_weight != expected_weight ||
-            observation.equity_features.size() != 4U) {
+            observation.equity_features.size() != expected_feature_dimensions) {
           return Result<DenseLayout, PostflopSolverError>::failure(
               reused_feature_cache ? PostflopSolverError::CheckpointMismatch
                                    : PostflopSolverError::InvalidConfiguration);
@@ -17441,7 +17449,9 @@ Result<CardAbstractionFeatureCache, PostflopSolverError>
 build_postflop_card_abstraction_feature_cache(const PostflopTreeConfig &config,
                                               const PostflopRanges &ranges,
                                               const std::string &feature_schema_id) {
-  if (!validate_postflop_ranges(config, ranges) || feature_schema_id != "equity-features-l2-v1") {
+  if (!validate_postflop_ranges(config, ranges) ||
+      (feature_schema_id != equity_feature_schema_v1 &&
+       feature_schema_id != equity_distribution_feature_schema_v2)) {
     return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
   }

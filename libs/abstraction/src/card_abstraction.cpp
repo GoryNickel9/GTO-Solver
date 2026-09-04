@@ -33,6 +33,56 @@ constexpr std::uint64_t short_deck_mask = (std::uint64_t{1} << 36U) - 1U;
 constexpr double distance_tolerance = 1.0e-15;
 constexpr std::size_t maximum_feature_dimensions = 64U;
 
+struct EquityOutcomeAccumulator {
+  double wins{0.0};
+  double ties{0.0};
+  double losses{0.0};
+
+  void add(const int comparison, const double weight) noexcept {
+    if (comparison > 0) {
+      wins += weight;
+    } else if (comparison == 0) {
+      ties += weight;
+    } else {
+      losses += weight;
+    }
+  }
+
+  [[nodiscard]] double total() const noexcept { return wins + ties + losses; }
+  [[nodiscard]] double equity() const noexcept {
+    const double denominator = total();
+    return denominator > 0.0 ? (wins + 0.5 * ties) / denominator : 0.0;
+  }
+};
+
+std::vector<double>
+weighted_equity_quantiles(std::vector<std::pair<double, double>> distribution) {
+  std::ranges::sort(distribution, [](const auto &left, const auto &right) {
+    return left.first < right.first || (left.first == right.first && left.second < right.second);
+  });
+  double total_weight = 0.0;
+  for (const auto &[value, weight] : distribution) {
+    static_cast<void>(value);
+    total_weight += weight;
+  }
+  std::vector<double> quantiles(equity_distribution_quantile_count, 0.0);
+  if (!(total_weight > 0.0) || !std::isfinite(total_weight)) {
+    return quantiles;
+  }
+  std::size_t sample = 0U;
+  double cumulative = distribution.front().second;
+  for (std::size_t index = 0U; index < quantiles.size(); ++index) {
+    const double target =
+        (static_cast<double>(index) + 0.5) * total_weight / static_cast<double>(quantiles.size());
+    while (sample + 1U < distribution.size() && cumulative < target) {
+      ++sample;
+      cumulative += distribution[sample].second;
+    }
+    quantiles[index] = distribution[sample].first;
+  }
+  return quantiles;
+}
+
 struct PartitionDefinition {
   std::uint8_t player{0};
   std::size_t dimensions{0};
@@ -394,9 +444,12 @@ Result<std::vector<CardAbstractionObservation>, CardAbstractionError>
 build_exact_postflop_equity_observations(const std::vector<CardId> &board,
                                          const PostflopRanges &ranges, const std::uint8_t player,
                                          const std::string &partition,
-                                         const std::string &information_set_prefix) {
+                                         const std::string &information_set_prefix,
+                                         const std::string_view feature_schema_id) {
   if (player > 1U || board.size() < 3U || board.size() > 5U || partition.empty() ||
-      information_set_prefix.empty()) {
+      information_set_prefix.empty() ||
+      (feature_schema_id != equity_feature_schema_v1 &&
+       feature_schema_id != equity_distribution_feature_schema_v2)) {
     return Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::failure(
         CardAbstractionError::InvalidConfiguration);
   }
@@ -419,9 +472,8 @@ build_exact_postflop_equity_observations(const std::vector<CardId> &board,
     if (hero_weight == 0U || (hero_mask & board_mask_value) != 0U) {
       continue;
     }
-    double wins = 0.0;
-    double ties = 0.0;
-    double losses = 0.0;
+    EquityOutcomeAccumulator aggregate;
+    std::array<EquityOutcomeAccumulator, 36U> next_card_outcomes{};
     for (std::size_t opponent_id = 0; opponent_id < combos.size(); ++opponent_id) {
       const auto opponent_weight = ranges.players[opponent][opponent_id].basis_points();
       const auto &villain = combos[opponent_id];
@@ -463,12 +515,18 @@ build_exact_postflop_equity_observations(const std::vector<CardId> &board,
                 CardAbstractionError::NumericalFailure);
           }
           const double weight = static_cast<double>(opponent_weight);
-          if (hero_value.value() > villain_value.value()) {
-            wins += weight;
-          } else if (hero_value.value() == villain_value.value()) {
-            ties += weight;
-          } else {
-            losses += weight;
+          const int comparison = hero_value.value() > villain_value.value()
+                                     ? 1
+                                     : hero_value.value() == villain_value.value() ? 0 : -1;
+          aggregate.add(comparison, weight);
+          if (missing_board_cards == 1U) {
+            next_card_outcomes[runout.front().value()].add(comparison, weight);
+          } else if (missing_board_cards == 2U) {
+            // Each unordered final-board pair represents both equiprobable
+            // turn/river orders. Attribute it to both possible next cards so
+            // the distribution is conditional on the actual next street.
+            next_card_outcomes[runout[0].value()].add(comparison, weight);
+            next_card_outcomes[runout[1].value()].add(comparison, weight);
           }
           return Result<bool, CardAbstractionError>::success(true);
         }
@@ -489,22 +547,39 @@ build_exact_postflop_equity_observations(const std::vector<CardId> &board,
             enumerated.error());
       }
     }
-    const double total = wins + ties + losses;
+    const double total = aggregate.total();
     if (total <= 0.0 || !std::isfinite(total)) {
       return Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::failure(
           CardAbstractionError::InvalidObservation);
     }
-    const double win_probability = wins / total;
-    const double tie_probability = ties / total;
-    const double loss_probability = losses / total;
+    const double win_probability = aggregate.wins / total;
+    const double tie_probability = aggregate.ties / total;
+    const double loss_probability = aggregate.losses / total;
+    std::vector<double> features;
+    if (feature_schema_id == equity_feature_schema_v1) {
+      features = {loss_probability, tie_probability, win_probability,
+                  win_probability + 0.5 * tie_probability};
+    } else {
+      std::vector<std::pair<double, double>> distribution;
+      if (missing_board_cards == 0U) {
+        distribution = {{0.0, aggregate.losses}, {0.5, aggregate.ties}, {1.0, aggregate.wins}};
+      } else {
+        distribution.reserve(next_card_outcomes.size());
+        for (const auto &outcomes : next_card_outcomes) {
+          if (outcomes.total() > 0.0) {
+            distribution.emplace_back(outcomes.equity(), outcomes.total());
+          }
+        }
+      }
+      features = weighted_equity_quantiles(std::move(distribution));
+    }
     observations.push_back({information_set_prefix + ":combo=" + std::to_string(hero_id),
                             partition,
                             player,
                             static_cast<ComboId>(hero_id),
                             board_mask_value,
                             static_cast<double>(hero_weight) / 10'000.0,
-                            {loss_probability, tie_probability, win_probability,
-                             win_probability + 0.5 * tie_probability}});
+                            std::move(features)});
   }
   if (observations.empty()) {
     return Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::failure(

@@ -97,6 +97,29 @@ void test_exact_postflop_feature_generation() {
       board, ranges, 0, "flop:AsQd9c:p0", "flop-root:p0");
   require(flop.has_value() && flop.value().size() == 2U,
           "flop feature generation enumerates two-card runouts exactly");
+  const auto potential_aware = gtosd::build_exact_postflop_equity_observations(
+      board, ranges, 0, "flop:AsQd9c:p0", "flop-root:p0",
+      gtosd::equity_distribution_feature_schema_v2);
+  require(potential_aware.has_value() && potential_aware.value().size() == 2U,
+          "potential-aware flop features enumerate the same exact private states");
+  for (const auto &observation : potential_aware.value()) {
+    require(observation.equity_features.size() ==
+                gtosd::equity_distribution_quantile_count,
+            "potential-aware schema emits the declared equity quantiles");
+    require(std::ranges::is_sorted(observation.equity_features) &&
+                observation.equity_features.front() >= 0.0 &&
+                observation.equity_features.back() <= 1.0,
+            "potential-aware quantiles are finite ordered probabilities");
+  }
+  const auto repeated_potential = gtosd::build_exact_postflop_equity_observations(
+      board, ranges, 0, "flop:AsQd9c:p0", "flop-root:p0",
+      gtosd::equity_distribution_feature_schema_v2);
+  require(repeated_potential.has_value() &&
+              repeated_potential.value() == potential_aware.value(),
+          "potential-aware feature generation is bit deterministic");
+  require(!gtosd::build_exact_postflop_equity_observations(
+              board, ranges, 0, "flop:AsQd9c:p0", "flop-root:p0", "unknown-schema"),
+          "unknown exact feature schema is rejected");
 }
 
 void test_exact_identity_and_card_removal() {

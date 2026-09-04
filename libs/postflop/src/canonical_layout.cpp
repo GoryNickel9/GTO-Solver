@@ -23,11 +23,11 @@ constexpr std::uint64_t compact_chance_edge_bytes = 8U;
 constexpr std::uint64_t board_header_bytes = 64U;
 constexpr std::uint64_t player_local_map_bytes = 2U * canonical_combo_count * sizeof(std::int16_t);
 constexpr std::uint64_t minimum_worker_arena_bytes = 4U * 1'024U * 1'024U;
-constexpr std::uint64_t native_feature_dimensions = 4U;
+constexpr std::uint64_t native_feature_dimensions = equity_distribution_quantile_count;
 constexpr std::string_view native_partition_prefix = "native-postflop-v1:board=";
 constexpr std::string_view native_partition_player = ":player=";
 constexpr std::string_view native_information_combo = ":combo=";
-constexpr std::string_view native_feature_schema = "equity-features-l2-v1";
+constexpr std::string_view native_feature_schema = equity_distribution_feature_schema_v2;
 
 bool checked_add(std::uint64_t &target, const std::uint64_t value) {
   if (target > std::numeric_limits<std::uint64_t>::max() - value) {
@@ -490,7 +490,8 @@ estimate_canonical_chance_layout(const PostflopTreeConfig &config, const Postflo
     preflight.feature_cache_worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(
         production_card_abstraction_feature_workers, preflight.partition_count));
     constexpr std::string_view cache_header = "GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0\n";
-    constexpr std::string_view schema_header = "SCHEMA \"equity-features-l2-v1\"\n";
+    constexpr std::string_view schema_header =
+        "SCHEMA \"next-street-equity-quantiles-16-l2-v2\"\n";
     constexpr std::string_view source_header = "SOURCE \"";
     constexpr std::string_view fingerprint_header = "FINGERPRINT \"";
     constexpr std::string_view quoted_fingerprint_suffix = "\"\n";

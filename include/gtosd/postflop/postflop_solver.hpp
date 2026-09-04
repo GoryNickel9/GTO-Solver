@@ -663,7 +663,8 @@ validate_postflop_ranges(const PostflopTreeConfig &config, const PostflopRanges 
 [[nodiscard]] Result<CardAbstractionFeatureCache, PostflopSolverError>
 build_postflop_card_abstraction_feature_cache(
     const PostflopTreeConfig &config, const PostflopRanges &ranges,
-    const std::string &feature_schema_id = "equity-features-l2-v1");
+    const std::string &feature_schema_id =
+        std::string(equity_distribution_feature_schema_v2));
 
 [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOptions &options,
