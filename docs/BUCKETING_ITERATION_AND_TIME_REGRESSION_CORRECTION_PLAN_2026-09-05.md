@@ -1,0 +1,385 @@
+# Piano di correzione delle regressioni di iterazioni e tempo — 2026-09-05
+
+## Analisi
+
+### Obiettivo
+
+Portare bucketing e subgame solving production a una configurazione globale,
+con CFR+ e otto thread, che non richieda più iterazioni e non richieda più
+tempo del percorso production precedente. Non sono accettabili compromessi in
+cui uno dei due assi migliora mentre l'altro peggiora.
+
+I benchmark servono a validare il prodotto condiviso. Non è ammesso cambiare
+K, feature, algoritmo o parametri in base al nome della fixture, al board o al
+fingerprint.
+
+### Baseline congelata
+
+I valori completi sono in
+`docs/BUCKETING_PRODUCT_BENCHMARK_BASELINES_2026-09-05.md`.
+
+| Benchmark | Exact production: iterazioni | Exact production: solver mediano | Exact production: wall mediano | Migliore point qualification bucketed |
+|---|---:|---:|---:|---|
+| AHKHQH | 80 | 0,758705 s | 6,231883 s | K16, primo `<1%` a 200; 500 iterazioni, 9,936001 s mediani |
+| TH7D6S | 80 | 19,948228 s | 35,208170 s | K128, primo `<1%` a 400; 435,349473 s mediani |
+| TSTC9D | 160 | 184,095930 s | 208,403423 s | nessuna solve bucketed |
+
+La baseline exact usa target dEV, mentre i run bucketed usano exact full-game
+NashConv. Prima del confronto finale occorre certificare entrambe le famiglie
+con la stessa metrica. Questa correzione metodologica non autorizza ad alzare i
+limiti di iterazioni o tempo.
+
+### Evidenza del problema
+
+Il percorso W/T/L/equity v1 K32 su TH termina a 800 iterazioni con
+`2,8595946893%` NashConv/pot e `752,519128 s`. Il candidato potential-aware v2
+K32 migliora a `2,8185024455%` e `720,911874 s`, ma resta respinto. La curva v2
+ha il minimo osservato a 400 iterazioni (`2,7619094034%`) e poi risale:
+
+```text
+iterazione:       100       200       300       400       500       600       700       800
+NashConv/pot: 4,598051  3,000406  2,788622  2,761909  2,771263  2,787935  2,804004  2,818502 %
+```
+
+Continuare a iterare non risolve il floor. Anche il miglioramento di circa
+`4,20%` del wall v2 contro v1 è insufficiente rispetto al prodotto exact.
+
+## Cause radice
+
+### C1 — Contratto algoritmico diverso
+
+La baseline usa DCFR alternato `1.5/0/2`; il percorso bucketed usa CFR+.
+L'iterazione è una traversata completa in entrambi i casi, ma discount e
+averaging producono velocità di convergenza diverse. Il passaggio a CFR+ spiega
+una parte dell'aumento da `80` a `200/400+` iterazioni.
+
+### C2 — Metrica di arresto diversa
+
+La baseline exact è target-driven su dEV; il bucketed è certificato con exact
+full-game NashConv ogni 100 iterazioni e viene spesso eseguito fino
+all'orizzonte fisso. dEV e NashConv non possono essere trattati come la stessa
+misura. L'orizzonte fisso fa inoltre pagare iterazioni successive al primo PASS.
+
+### C3 — L'implementazione condivide lo stato, ma attraversa ancora il gioco exact
+
+L'attuale bucketing riduce regret e strategy sum, ma continua a enumerare:
+
+- combo private esatte;
+- chance outcome esatti;
+- payoff terminali esatti;
+- action value per combo;
+- exact combo best response durante la certificazione.
+
+In più aggrega i delta combo→bucket a ogni decision node. Ridurre lo stato non
+riduce quindi in proporzione il lavoro di traversata; introduce anzi gather,
+scatter e somme aggiuntive. Questo è il motivo principale per cui il costo per
+iterazione non scende come atteso.
+
+### C4 — Floor dell'astrazione
+
+Con K32 più combo strategicamente diverse condividono una sola strategia. Lo
+schema v1 aggregava tutti i runout in W/T/L/equity e perdeva il potenziale della
+prossima street. Il v2 conserva quantili next-street e migliora ogni checkpoint
+TH, ma K32 resta troppo poco espressivo: l'errore rialzato non scompare con
+altre iterazioni.
+
+### C5 — Precisione e hot path differenti
+
+Il bucketed production è vincolato a stato Float64 e percorre un ramo generico
+non coperto da tutte le ottimizzazioni SIMD/codec del percorso exact. Allocazioni
+e azzeramenti dei buffer di aggregazione per nodo, accessi indiretti
+local→bucket e layout non bucket-major aumentano il costo.
+
+### C6 — Certificazione costosa
+
+Su TH v2 K32, 800 iterazioni spendono `688,629563 s` in traversata e
+`30,309202 s` in certificazione. Ridurre le certificazioni aiuta il wall, ma da
+solo non chiude il divario: la traversata resta il costo dominante.
+
+### C7 — Preparazione cold-start
+
+La cache v2 richiede `1,541 s` AHK, `158,057 s` TH e `126,667 s` TST. Questi
+tempi non sono inclusi nel wall della singola qualification, che parte da cache
+già costruita. Per il prodotto vanno pubblicati separatamente cold-start,
+warm-cache e solve; nessuna colonna può essere rinominata per ottenere un PASS.
+
+## Invarianti
+
+1. CPU locale, nessuna GPU e massimo/target production di otto thread.
+2. CFR+ resta l'algoritmo production richiesto; DCFR rimane controllo causale.
+3. Chance e runout non vengono campionati nel gate autorevole.
+4. Best response e NashConv finali restano combo-level esatti.
+5. Card removal, range pesati, ruleset e action tree restano invariati.
+6. Un solo contratto globale governa tutte le fixture.
+7. Warm start, precomputation e cache vengono conteggiati esplicitamente; non si
+   nasconde lavoro fuori dal timer.
+8. Ogni candidato deve essere Pareto non-regressivo: tempo **e** iterazioni non
+   superiori, qualità non inferiore, RAM entro il budget dichiarato.
+9. Il percorso exact resta oracle e deve conservare test e benchmark propri.
+
+## Spazio completo delle soluzioni
+
+### A — Correggere il contratto di misura
+
+Queste azioni non rendono il solver più veloce da sole, ma sono prerequisite.
+
+1. **Cross-certification della baseline exact.** Calcolare exact NashConv sui
+   checkpoint DCFR a `80/80/160`, senza retraining, e registrare insieme dEV e
+   NashConv.
+2. **Runner target-driven.** Fermare CFR+ al primo checkpoint strettamente sotto
+   `1%`, registrando sia `requested_max_iterations` sia
+   `completed_iterations`.
+3. **Timer non ambigui.** Pubblicare feature preparation, layout/clustering,
+   traversal, certification, solver total e process wall.
+4. **Cold e warm separati.** Un gate per primo solve senza cache e uno per solve
+   con cache verificata; il prodotto deve mostrare entrambi.
+5. **Work counters normalizzati.** Nodi, chance outcome, terminali, regret entry
+   e strategy entry per iterazione, per attribuire il costo senza affidarsi al
+   solo wall rumoroso.
+6. **Cinque processi solo dopo i pre-gate.** Mediana/p95, stesso exe hash, CPU
+   idle e piano energetico registrati.
+
+### B — Ridurre le iterazioni CFR+
+
+1. **Verifica della semantica CFR+ standard.** Audit di alternating update,
+   regret truncation, linear averaging, reach e ordine update. Un errore qui ha
+   priorità assoluta su qualsiasi tuning.
+2. **Averaging CFR+ globale.** Valutare delay e peso lineare con una sola policy
+   versionata. Nessun valore per-fixture; il lavoro scartato prima del delay
+   conta comunque nel totale.
+3. **Regret-based pruning CFR+.** Dopo un burn-in globale, saltare azioni con
+   regret negativo sotto una soglia matematica conservativa e riattivarle
+   periodicamente. Exact BR resta il guard.
+4. **Warm start multi-risoluzione.** Risolvere una granularità più piccola,
+   prolungare strategia/regret su quella più fine e continuare. Si contano tutte
+   le traversate di entrambi i livelli.
+5. **Blueprint warm start.** Riutilizzare una soluzione compatibile per solve
+   successive reali. Il cold-start resta comunque un gate separato.
+6. **Feature potential-aware.** Quantili next-street, histogrammi/CDF ed EMD o
+   Wasserstein per non fondere mani con equity media uguale e potenziale diverso.
+7. **Clustering reach-aware robusto.** Seeding deterministico weighted
+   k-means++, medoid o quantili pesati; più restart deterministici soltanto se il
+   costo cold-start resta nel budget.
+8. **Astrazione street-aware.** River exact o quasi exact, turn più fine del
+   flop, con formula globale basata su street e cardinalità, non sul board.
+9. **Transition-consistent buckets.** Penalizzare split incoerenti tra street
+   consecutive per stabilizzare i counterfactual value.
+10. **Action-aware/CVF-aware features.** Usare vettori di counterfactual value o
+    risposta alle azioni ottenuti da un pilot solve generico, conteggiandone il
+    costo. È più fedele dell'equity, ma rischia circolarità e overfitting.
+11. **Refinement adattivo globale.** Split dei bucket con alta varianza di
+    regret/CFV secondo una regola comune; merge dei bucket indistinguibili.
+12. **K globale più alto.** K64/K128 può abbassare il floor, ma è accettabile
+    solo se chiude anche tempo, RAM e iterazioni. Non è una soluzione automatica.
+13. **Regola globale K(n).** Una funzione deterministica della cardinalità della
+    partizione può evitare bucket inutilizzati e allocazioni eccessive. Non può
+    contenere ID fixture, board specifici o fingerprint.
+14. **DCFR come controllo/alternativa esplicita.** Serve a quantificare quanto
+    del gap dipende da CFR+. Non sostituisce CFR+ production senza una nuova
+    decisione dell'utente.
+
+### C — Ridurre il costo di ogni iterazione
+
+1. **Vera traversata del gioco astratto — priorità massima.** Precomputare e
+   attraversare stati bucket-level invece di attraversare tutte le combo e
+   condividere soltanto regret/strategy.
+2. **Transizioni chance bucket→bucket.** Per ogni carta pubblica canonica,
+   precomputare masse di transizione range- e blocker-correct; nessun sampling.
+3. **Payoff terminali bucket×bucket.** Preaggregare fold e showdown con pesi
+   combo esatti. Validare contro enumerazione combo-level su giochi ridotti.
+4. **Layout bucket-major SoA.** Rendere contigui regret, strategy, reach e value
+   per bucket/action; eliminare gather casuali.
+5. **Local→bucket preordinato.** Riordinare le combo per bucket una volta e
+   memorizzare offset/count, evitando mappe e branch nell'hot path.
+6. **Buffer thread-local persistenti.** Eliminare `assign`, resize e zeroing
+   ridondanti per decision node; usare generazioni o touched ranges.
+7. **SIMD sulle action lane e sui bucket.** Vectorizzare regret matching,
+   accumulo value e strategy sum dopo avere ottenuto layout contigui.
+8. **Kernel specializzati per 2/3/4 azioni.** Generazione compile-time dei casi
+   dominanti, mantenendo un fallback generico testato.
+9. **Parallelismo chance/board bilanciato.** Profilare scaling 1/2/4/8, work
+   stealing e granularità task. Otto thread devono essere realmente occupati,
+   non soltanto configurati.
+10. **Riduzione delle synchronization barrier.** Thread-local delta e reduction
+    deterministica per blocchi, senza lock globali nell'hot path.
+11. **Certificazione a due livelli.** Proxy conservativo economico ai checkpoint
+    e exact BR solo quando il proxy può attraversare la soglia, più exact BR
+    finale obbligatorio. Nessun proxy viene pubblicato come NashConv.
+12. **Exact BR incrementale.** Riutilizzare topologia, payoff, ordine e buffer;
+    invalidare soltanto le parti dipendenti dalla strategia.
+13. **Evitare rebuild duplicati.** Preparare una volta layout, abstraction e
+    analysis view; riusarli in solve, certify e query.
+14. **Cache binaria versionata.** Eliminare parsing decimale e copie delle
+    feature; mmap/read-only opzionale con checksum e atomic replace.
+15. **Precisione ibrida.** Storage Float32 con accumulo/reduction Float64, o
+    codec CFR+ dedicato. Promuovere solo se la curva e la strategia rialzata
+    restano entro tolleranze più strette del guadagno.
+16. **Precomputation condivisa.** Riutilizzare evaluator, matchup e runout table
+    tra feature, traversal e BR senza duplicare memoria oltre budget.
+
+### D — Ridurre il gioco attivo con subgame solving
+
+1. **Trunk + subgame decomposition.** CFR+ sul trunk astratto e solve separati
+   dei subgame alle frontier pubbliche.
+2. **CFR-D/safe resolving.** Boundary counterfactual values e gadget game per
+   impedire l'aumento di exploitability quando si sostituisce un subgame.
+3. **Depth-limited solving.** Arrestare la traversata a frontier versionate e
+   usare CFV verificati, non equity grezza.
+4. **Canonical subgame cache.** Riutilizzare soluzioni fra board isomorfi con
+   prova di compatibilità di range, blocker, action tree e ruleset.
+5. **Solve-on-demand con budget.** Dare priorità ai subgame con maggiore reach;
+   per il gate completo tutte le masse omesse devono avere un bound esplicito.
+6. **Parallelismo per subgame.** Scheduler globale a otto thread, evitando otto
+   pool annidati e oversubscription.
+7. **Refinement locale governato.** Aumentare granularità dove il bound CFV è
+   alto usando una regola matematica comune, non un elenco di fixture.
+
+### E — Soluzioni combinate realistiche
+
+1. **E1: CFR+ + vera traversata astratta + K64 globale.** Riduce il lavoro per
+   iterazione e il floor; è il candidato diretto più semplice.
+2. **E2: CFR+ + K(n) globale + river exact + transizioni preaggregate.** Migliore
+   allocazione della capacità e più correttezza endgame.
+3. **E3: CFR+ multi-risoluzione + refinement CFV-aware.** Mira soprattutto alla
+   riduzione delle iterazioni, ma deve conteggiare il pilot solve.
+4. **E4: trunk CFR+ + safe subgame solving + cache canonica.** È la strada più
+   adatta al preflop e ai grandi alberi, ma richiede boundary CFV affidabili.
+5. **E5: E2/E4 + precisione ibrida qualificata.** Solo dopo avere chiuso
+   correttezza e profilo; non è il primo intervento.
+
+## Alternative respinte in anticipo
+
+- aumentare semplicemente a 800/1.600/3.200 iterazioni;
+- promuovere il v2 K32 perché è soltanto meno lento del v1;
+- usare K16 su AHK e K128 su TH;
+- introdurre eccezioni per board, benchmark ID o fingerprint;
+- ridurre i thread sotto otto per ottenere un oracle più semplice;
+- rilassare la soglia `<1%`;
+- chiamare exact una best response campionata;
+- confrontare solver time exact con wall bucketed o viceversa;
+- escludere cache, warm start o pilot solve dal tempo senza dichiararlo;
+- sostituire CFV con equity grezza alle frontier;
+- ottimizzare soltanto serializzazione/cache e dichiarare risolto il solve;
+- promuovere Float32/codec senza differential test e exact BR;
+- scegliere K128 globale senza prima dimostrare il limite di tempo.
+
+## Piano operativo
+
+### Fase 0 — Correzione metrologica
+
+File coinvolti:
+
+- runner globale e comando CLI di qualification;
+- schema JSON dei report;
+- documenti PERFORMANCE, VALIDATION e TESTING.
+
+Implementazione minima:
+
+1. cross-certificare i checkpoint exact con NashConv;
+2. aggiungere stop target-driven e `completed_iterations` al report bucketed;
+3. separare cold/warm/solver/wall;
+4. aggiungere confronto automatico contro il baseline JSON versionato.
+
+Gate: nessuna promozione se un campo temporale o metrico è ambiguo.
+
+### Fase 1 — Profilo causale del costo per iterazione
+
+Misurare AHK/TH a 100 iterazioni con v1/v2 e K16/32/64/128, senza usare i
+risultati per scegliere parametri per-fixture. Attribuire tempo a traversal,
+bucket aggregation, terminal, chance, regret matching, reduction e BR.
+
+Kill gate: se una proposta non riduce almeno un costo dominante senza
+peggiorare gli altri benchmark, non procede a TST.
+
+### Fase 2 — Hot path bucket-major
+
+Implementare nell'ordine:
+
+1. preordine per bucket e offset contigui;
+2. buffer persistenti/touched ranges;
+3. kernel action-count specializzati e SIMD;
+4. scaling 1/2/4/8 e determinismo.
+
+Gate intermedio: stessa strategia/NashConv bitwise o entro tolleranza dichiarata,
+stesse iterazioni, wall inferiore su AHK e TH.
+
+### Fase 3 — Vera traversata astratta
+
+Costruire transizioni chance e payoff terminali preaggregati. Validare prima su
+Kuhn/Leduc e su un river Short Deck enumerabile, poi sul postflop nativo.
+
+Gate matematico:
+
+- conservazione della massa;
+- utility zero-sum;
+- card removal esatto;
+- differenziale contro traversal combo-level;
+- exact lifted NashConv finale.
+
+### Fase 4 — Riduzione delle iterazioni
+
+Dopo avere ridotto il costo per iterazione, valutare con una policy globale:
+
+1. K64;
+2. K(n) deterministico + river exact;
+3. warm start multi-risoluzione;
+4. regret pruning CFR+;
+5. refinement CFV-aware.
+
+Ogni candidato viene confrontato contro il genitore su tutti i checkpoint. Si
+mantiene soltanto una modifica causalmente utile alla volta.
+
+### Fase 5 — Decomposizione production
+
+Collegare trunk, boundary CFV, safe subgame solver e cache canonica. Il guard
+full-game exact decide merge o rollback. Nessun supporto preflop viene dichiarato
+finché il tree/layout preflop non esiste e il gate postflop non è chiuso.
+
+### Fase 6 — Gate globale finale
+
+Ordine fisso AHKHQH → TH7D6S → TSTC9D:
+
+1. un processo target-driven per fixture;
+2. early reject immediato su qualità, iterazioni, solver time, wall, RAM o disco;
+3. cinque processi indipendenti solo dopo tre PASS;
+4. oracle seriale soltanto dopo le ripetizioni;
+5. suite Release completa;
+6. documentazione e commit finale.
+
+## Gate finali non negoziabili
+
+La configurazione production comune deve:
+
+- usare CFR+ e otto thread;
+- ottenere exact full-game `NashConv/pot <1%`;
+- non superare `80/80/160` iterazioni su AHK/TH/TST;
+- non superare, dopo calibrazione metrica, i solver time mediani exact
+  `0,758705/19,948228/184,095930 s`;
+- non superare i wall mediani exact
+  `6,231883/35,208170/208,403423 s` nel contratto cold/warm corrispondente;
+- non peggiorare root EV, invarianti o correctness;
+- rispettare 12.000.000.000 B RAM e 10 GiB disco;
+- usare una sola policy globale e artefatti versionati;
+- superare cinque processi e la suite Release completa.
+
+Se CFR+ non può soddisfare contemporaneamente questi limiti dopo vera
+traversata astratta e decomposizione, l'esito corretto è un blocker documentato,
+non più iterazioni e non una soglia più debole.
+
+## Decisioni
+
+1. Il candidato quantile v2 resta evidenza sperimentale e non viene promosso:
+   migliora K32 TH ma non chiude il gate.
+2. Il prossimo intervento non sarà un altro K isolato. Prima si corregge la
+   misura e si profila il costo per iterazione; poi si costruisce la vera
+   traversata bucket-level.
+3. L'aumento di K viene rivalutato soltanto insieme a una riduzione dimostrata
+   del lavoro per iterazione.
+4. Il subgame solver esistente resta un componente verificato, ma non viene
+   confuso con una decomposizione full-game production già completata.
+
+## Passo successivo
+
+Implementare esclusivamente la **Fase 0 — correzione metrologica**, iniziando
+dalla cross-certification NashConv dei checkpoint exact e dal runner
+target-driven con confronto automatico contro la baseline versionata.
