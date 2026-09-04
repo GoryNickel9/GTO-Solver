@@ -152,6 +152,8 @@ void test_safe_guard_accepts_improvement() {
           "resolver reports the replaced strategy boundary");
   require(resolved.value().solve.checkpoint.config.algorithm == gtosd::SolverAlgorithm::CfrPlus,
           "subgame checkpoint records CFR+ rather than an implicit algorithm");
+  require(resolved.value().solve.checkpoint.config.thread_count == 8U,
+          "production subgame checkpoint records the eight-thread solver contract");
 }
 
 void test_safe_guard_falls_back_to_blueprint() {

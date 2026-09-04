@@ -21,7 +21,7 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `33/33 PASS` (`217,44 s`, 2026-09-04). Il precedente
+> `34/34 PASS` (`205,42 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -54,19 +54,34 @@
 > benchmark Release `gtosd_abstraction_subgame_benchmark` misura separatamente
 > CFR+ esatto, cache, clustering/traversal bucketed e resolving con guard
 > full-game. Sul computer di sviluppo (8 logical CPU a 3,6 GHz), cinque
-> ripetizioni, la mediana della cache turn è `52,873 ms` wall / `48,438 ms` CPU
+> ripetizioni, la mediana della cache turn è `21,289 ms` wall
 > per 66 partizioni e 744 osservazioni. Sul fixture fixed-river da 48 infoset e
-> 1.000 iterazioni, exact usa `1.536 B` e `9,514 ms`; il percorso con cache
-> riusata produce: K=1 `128 B`, `12x`, MSE `0,294077`, `7,619 ms`; K=2 `256 B`,
-> `6x`, MSE `0,069559`, `8,667 ms`; K=3 `384 B`, `4x`, MSE `0,026860`,
-> `8,768 ms`; K=6 `768 B`, `2x`, MSE `0,002066`, `8,906 ms`; K=12 `1.536 B`,
-> `1x`, MSE `0`, `9,720 ms`. Il costo di validazione cache per solve è circa
-> `0,024–0,025 ms` mediano e il clustering `0,041–0,057 ms`. I numeri provano
+> 1.000 iterazioni, exact usa `1.536 B` e `12,673 ms`; il percorso con cache
+> riusata produce: K=1 `128 B`, `12x`, MSE `0,294077`, `8,146 ms`; K=2 `256 B`,
+> `6x`, MSE `0,069559`, `8,798 ms`; K=3 `384 B`, `4x`, MSE `0,026860`,
+> `9,250 ms`; K=6 `768 B`, `2x`, MSE `0,002066`, `9,443 ms`; K=12 `1.536 B`,
+> `1x`, MSE `0`, `10,414 ms`. I numeri provano
 > riuso e trade-off memoria/errore su una fixture ridotta, non uno speedup o un
 > default commerciale. Sul fixture CLI fixed-river uniforme, 8 bucket riducono
 > 1.860 a 32 infoset (`58,125x`) e raggiungono exact-certified
 > `NashConv/pot=0,751763%` a 200 iterazioni. Flop/turn e preflop rappresentativi
 > restano gate distinti.
+
+> **Bucketing production a otto thread — 2026-09-04.** Il builder exact-feature
+> usa otto worker e merge canonico. AHKHQH flop conserva il fingerprint
+> `e0179a28bd72d999` e scende da circa `4,15 s` seriali a `1,57246 s`,
+> Peak RSS `23.076.864 B`. TH7D6S produce 280.308 osservazioni e
+> 59.982.478 byte in `169,398 s`, Peak RSS `314.556.416 B`; il precedente
+> builder seriale era ancora incompleto dopo oltre nove minuti. Su AHKHQH K=16,
+> cinque processi solver a otto thread sono deterministici a
+> `NashConv/pot=0,6029051267%`, wall mediano `9,936001 s`, RSS mediano
+> `25.227.264 B`. L'oracolo seriale misura `0,6099145321%` e `31,051574 s`:
+> speedup sulla mediana parallela `3,13x`, differenza NashConv `7,0094e-5` sotto la tolleranza
+> parallelo/seriale `1e-4`. Il preflight include scratch di otto thread e non
+> assume un vantaggio RSS out-of-core non misurato.
+> TH7D6S K=128 passa cinque processi a `0,8816749004%`, wall mediano
+> `435,349473 s`, RSS mediano `694.796.288 B`; l'oracolo seriale misura
+> `0,8770330545%` in `1.493,513047 s`, delta `4,64185e-5` e speedup `3,43x`.
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,

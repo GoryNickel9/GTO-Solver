@@ -25,7 +25,7 @@
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `33/33 PASS` (`217,44 s`, 2026-09-04).
+> `34/34 PASS` (`205,42 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
@@ -38,17 +38,27 @@
 > reach-weighted e guard full-game exact-NashConv con fallback. Il test
 > end-to-end riduce Kuhn da 12 a 8 infoset e certifica la policy rialzata; il
 > resolving rifiuta un candidato sotto-allenato. Il bridge `DenseLayout` HU
-> postflop è ora disponibile via API/CLI bucketed separate: CFR+ Float64
-> seriale, delta combo aggregati reach-weighted prima della proiezione, lift
+> postflop è ora disponibile via API/CLI bucketed separate: CFR+ Float64 a
+> otto thread (`7` worker più coordinatore), delta combo aggregati
+> reach-weighted prima della proiezione, lift
 > combo-level, BR exact, checkpoint/resume e query bucket-aware. Il fixture CLI
 > 8-bucket comprime 1.860→32 infoset e raggiunge `0,751763%` NashConv/pot a 200
 > iterazioni. È ora disponibile anche il manifest exact-feature 1.0, atomico e
 > indipendente da K: solve/resume/query/certify possono riusarlo e verificano
 > sorgente/fingerprint; percorso diretto e cache danno checkpoint bit-identici.
 > Lo sweep ridotto K=1/2/3/6/12 misura compression/MSE/tempo senza scegliere un
-> default commerciale. Restano aperti `.gtsd`, GUI, cache compressa/mmap,
-> preflight astratto e frontier merge postflop nativo. La parity GTO+ riprenderà
-> dopo la scelta su fixture rappresentative, non prima.
+> default commerciale. Il preflight astratto layout-only ora stima stato,
+> transienti a otto thread, cache, scrittura atomica e disco prima di allocare;
+> il builder exact-feature usa otto worker e merge canonico deterministico. La
+> qualifica AHK flop K=16 passa in cinque processi a otto thread con NashConv
+> `0,602905%`, RSS mediana `25.227.264 B` e wall mediano `9,936001 s`; il
+> confronto diagnostico seriale differisce di `7,0094e-5` NashConv ed è sotto
+> la tolleranza `1e-4`. TH flop K=128 passa cinque processi a `0,881675%`,
+> wall mediano `435,349473 s`, RSS mediana `694.796.288 B` e delta seriale
+> `4,64185e-5`; K=16 è respinto. CTest Release è `34/34 PASS` in `205,42 s`.
+> Restano aperti `.gtsd`, GUI, cache compressa/mmap, preflop rappresentativo e
+> frontier merge postflop nativo. La parity GTO+
+> riprenderà dopo questi gate, non prima.
 
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano
 > `gto_plus_reference.solver_memory`; report e summary separano
@@ -226,8 +236,8 @@ riassume gate ed evidenza di implementazione.
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
 | GTO+ parity gate | **NON SUPERATO; temporaneamente posposto** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED` | Riprendere la parity sul percorso bucketing/subgame dopo integrazione postflop; exact resta oracle |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
-| Abstraction/subgame core | **Implementato; cache e sweep ridotto qualificati** | Moduli versionati, `DenseLayout` CFR+ bucketed, manifest exact-feature 1.0, CLI solve/resume/query/certify, exact lift/BR guard, fallback e benchmark K=1/2/3/6/12 | Collegare `.gtsd`, GUI e frontier mid-tree; qualificare fixture reali |
-| F11+ | **Riattivata dalla decisione 2026-09-04** | Card abstraction, safe subgame core, bridge postflop, cache e sweep ridotto completati | Selezionare granularità commerciali su workload rappresentativi e proseguire con persistenza/GUI prima della parity |
+| Abstraction/subgame core | **Implementato; AHK K=16 e TH K=128 qualificati a 8 thread** | Moduli versionati, `DenseLayout` CFR+ bucketed, preflight per K, cache exact-feature a otto worker, CLI a otto thread, exact lift/BR guard, fallback e benchmark K=1/2/3/6/12 | Collegare `.gtsd`, GUI e frontier mid-tree; qualificare preflop |
+| F11+ | **Riattivata dalla decisione 2026-09-04** | Card abstraction, safe subgame core, bridge postflop, preflight e qualifiche AHK/TH a cinque processi completati | Chiudere preflop e frontier merge nativo prima della parity |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -707,9 +717,10 @@ Il dettaglio, i limiti e i comandi di riproduzione sono in
 
 F10.4 resta un esperimento diagnostico, non node locking di prodotto. La
 decisione 2026-09-04 rende prioritario il percorso astratto: aggregazione
-reach-weighted, CLI, cache/manifest exact e sweep ridotto sono completati. Il
-prossimo ingresso è il preflight cache/layout astratto su fixture flop/turn
-rappresentative, seguito da persistenza `.gtsd`, GUI e frontier merge nativo.
+reach-weighted, CLI, preflight e cache/manifest exact a otto worker sono
+completati; AHK flop K=16 e TH flop K=128 passano la qualifica a cinque
+processi. Il prossimo ingresso è il frontier merge nativo, seguito da preflop,
+persistenza `.gtsd` e GUI.
 Il percorso exact resta oracle con differenziale e best response; la parity GTO+
 riprenderà dopo la scelta della granularità commerciale. Il solving resta
 permanentemente CPU/RAM-only.

@@ -17,6 +17,12 @@
 
 namespace gtosd {
 
+// The qualified desktop contract is one coordinator plus seven traversal
+// workers. `parallel_action_depth` is a legacy name for the worker count.
+inline constexpr std::uint8_t maximum_postflop_solver_threads = 8U;
+inline constexpr std::uint8_t production_postflop_parallel_workers =
+    maximum_postflop_solver_threads - 1U;
+
 namespace detail {
 class PostflopRuntimeState;
 }
@@ -301,6 +307,8 @@ struct PostflopSolveOptions {
   // Observational only: disabling detailed accounting must not alter solver
   // allocations, traversal, checkpoint identity, or mathematical results.
   bool enable_detailed_memory_accounting{true};
+  // Legacy name: number of additional traversal workers. The caller is the
+  // remaining solver thread; values above 7 are rejected.
   std::uint8_t parallel_action_depth{0};
   // F10.4: when non-null, the tree-root CO strategy is locked to these
   // external probabilities for the whole solve. The pointer must outlive the

@@ -86,6 +86,32 @@ std::optional<std::uint64_t> parse_u64(const std::string_view text) {
   return value;
 }
 
+std::optional<std::vector<std::uint32_t>> parse_bucket_candidates(const std::string_view text) {
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  std::vector<std::uint32_t> result;
+  std::size_t begin = 0U;
+  while (begin < text.size()) {
+    const auto separator = text.find(',', begin);
+    const auto end = separator == std::string_view::npos ? text.size() : separator;
+    const auto value = parse_u64(text.substr(begin, end - begin));
+    if (!value || *value == 0U || *value > std::numeric_limits<std::uint32_t>::max() ||
+        std::ranges::find(result, static_cast<std::uint32_t>(*value)) != result.end()) {
+      return std::nullopt;
+    }
+    result.push_back(static_cast<std::uint32_t>(*value));
+    if (separator == std::string_view::npos) {
+      break;
+    }
+    begin = separator + 1U;
+    if (begin == text.size()) {
+      return std::nullopt;
+    }
+  }
+  return result;
+}
+
 std::optional<std::string> environment_value(const char *const name) {
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -146,7 +172,7 @@ const char *action_type_name(const gtosd::ActionType type) {
 
 bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolveResult &result,
                             const double elapsed_seconds, const std::uint64_t peak_rss_bytes,
-                            const std::string_view backend) {
+                            const std::string_view backend, const std::uint8_t solver_threads) {
   if (prefix.empty()) {
     return false;
   }
@@ -161,6 +187,7 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
          << "  \"schema_version\": 1,\n"
          << "  \"status\": \"" << postflop_stop_reason_name(result.stop_reason) << "\",\n"
          << "  \"backend\": \"" << backend << "\",\n"
+         << "  \"solver_threads\": " << static_cast<unsigned>(solver_threads) << ",\n"
          << "  \"exact_outcomes\": true,\n"
          << "  \"uses_bucketing\": " << (uses_bucketing ? "true" : "false") << ",\n"
          << "  \"abstraction_kind\": \"" << abstraction_kind << "\",\n"
@@ -208,6 +235,7 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
              << "|---|---:|\n"
              << "| Stato | " << postflop_stop_reason_name(result.stop_reason) << " |\n"
              << "| Backend | " << backend << " |\n"
+             << "| Thread solver | " << static_cast<unsigned>(solver_threads) << " |\n"
              << "| Card abstraction | " << abstraction_kind << " |\n"
              << "| Bucketing | " << (uses_bucketing ? "si" : "no") << " |\n"
              << "| Iterazioni | " << result.checkpoint.completed_iterations << " |\n"
@@ -292,18 +320,44 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
     std::cerr << "postflop solve failed: " << config_error << '\n';
     return 1;
   }
-  const auto lazy = gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::LazyInRam);
-  const auto out_of_core =
-      gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::OutOfCore);
-  if (!lazy || !out_of_core) {
-    std::cerr << "postflop solve failed: preflight_failure\n";
-    return 1;
-  }
   const std::uint64_t ram_bytes = *ram_gib * gib;
   const std::uint64_t disk_bytes = *disk_gib * gib;
-  const bool lazy_fits = lazy.value().memory.peak_resident_bytes <= ram_bytes;
-  const bool out_of_core_fits = out_of_core.value().memory.peak_resident_bytes <= ram_bytes &&
-                                out_of_core.value().memory.backing_store_bytes <= disk_bytes;
+  bool lazy_fits = false;
+  bool out_of_core_fits = false;
+  if (uses_bucketing) {
+    gtosd::CanonicalLayoutOptions preflight_options;
+    preflight_options.card_abstraction_buckets = {static_cast<std::uint32_t>(*abstraction_buckets)};
+    preflight_options.requested_budget =
+        gtosd::CanonicalLayoutBudget{ram_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+    preflight_options.requested_feature_cache_disk_budget = gtosd::CanonicalLayoutBudget{
+        disk_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+    const auto preflight = gtosd::estimate_canonical_chance_layout(
+        *config, gtosd::make_uniform_postflop_ranges(), preflight_options);
+    if (!preflight || !preflight.value().card_abstraction_preflight ||
+        preflight.value().card_abstraction_preflight->candidates.size() != 1U) {
+      std::cerr << "postflop solve failed: bucketed_preflight_failure\n";
+      return 1;
+    }
+    const auto &abstraction_preflight = *preflight.value().card_abstraction_preflight;
+    if (!abstraction_preflight.feature_cache_format_limit_ok) {
+      std::cerr << "postflop solve failed: feature_cache_observation_limit\n";
+      return 3;
+    }
+    const auto &candidate = abstraction_preflight.candidates.front();
+    lazy_fits = candidate.in_ram_meets_requested_budget.value_or(false);
+    out_of_core_fits = candidate.out_of_core_meets_requested_budgets.value_or(false);
+  } else {
+    const auto lazy = gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::LazyInRam);
+    const auto out_of_core =
+        gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::OutOfCore);
+    if (!lazy || !out_of_core) {
+      std::cerr << "postflop solve failed: preflight_failure\n";
+      return 1;
+    }
+    lazy_fits = lazy.value().memory.peak_resident_bytes <= ram_bytes;
+    out_of_core_fits = out_of_core.value().memory.peak_resident_bytes <= ram_bytes &&
+                       out_of_core.value().memory.backing_store_bytes <= disk_bytes;
+  }
   if (!lazy_fits && !out_of_core_fits) {
     std::cerr << "postflop solve failed: insufficient_ram_or_disk\n";
     return 3;
@@ -343,6 +397,7 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
       checkpoint ? checkpoint->averaging_delay : std::min<std::uint64_t>(100U, *iterations / 10U);
   options.certification_interval = *certification_interval;
   options.memory_backend = backend;
+  options.parallel_action_depth = uses_bucketing ? gtosd::production_postflop_parallel_workers : 0U;
   options.backing_file = std::string(arguments.checkpoint_path) + ".buffers";
   options.progress_callback = [](const gtosd::PostflopCertification &point) {
     std::cout << "progress iteration=" << point.iteration
@@ -399,6 +454,7 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
             << "backend=" << backend_name
             << " exact_outcomes=true bucketing=" << (uses_bucketing ? "true" : "false")
             << " buckets_per_partition=" << *abstraction_buckets
+            << " solver_threads=" << static_cast<unsigned>(options.parallel_action_depth + 1U)
             << " target_iterations=" << *iterations
             << " certification_interval=" << *certification_interval << std::endl;
   const auto started = std::chrono::steady_clock::now();
@@ -429,7 +485,8 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
   const auto peak_rss_bytes = gtosd::process_peak_rss_bytes();
   if (solved.value().convergence.empty() ||
       !write_postflop_reports(arguments.report_prefix, solved.value(), elapsed, peak_rss_bytes,
-                              backend_name)) {
+                              backend_name,
+                              static_cast<std::uint8_t>(options.parallel_action_depth + 1U))) {
     std::cerr << "postflop solve failed: report_io_failure\n";
     return 1;
   }
@@ -1044,6 +1101,71 @@ gtosd::PostflopRanges make_convergence_ranges(const gtosd::PostflopRange &co_ran
   return ranges;
 }
 
+struct LoadedGtoPlusFixture {
+  std::string benchmark_id;
+  std::string schema;
+  gtosd::PostflopTreeConfig config;
+  gtosd::PostflopRanges ranges;
+};
+
+std::optional<LoadedGtoPlusFixture> load_gto_plus_fixture(const char *const specification_path,
+                                                          const std::string_view fixed_turn,
+                                                          std::string &error) {
+  nlohmann::json specification;
+  try {
+    std::ifstream input(specification_path, std::ios::binary);
+    input >> specification;
+    const auto schema = specification.value("schema", std::string{});
+    if (!input || !specification.is_object() ||
+        (schema != "gtosd.gto_plus_convergence_benchmark.v2" &&
+         schema != "gtosd.gto_plus_convergence_benchmark.v3" &&
+         schema != "gtosd.gto_plus_convergence_benchmark.v4") ||
+        !specification.contains("fixture") || !specification["fixture"].is_object()) {
+      error = "specification_mismatch";
+      return std::nullopt;
+    }
+    const auto &fixture = specification["fixture"];
+    const auto all_in = parse_all_in_spec(fixture.value("automatic_all_in", std::string{}));
+    const auto range_co = parse_hand_class_range(fixture.value("range_co", std::string{}));
+    const auto range_btn = parse_hand_class_range(fixture.value("range_btn", std::string{}));
+    if (!all_in.valid || !range_co || !range_btn || !fixture.contains("flop") ||
+        !fixture["flop"].is_array() || fixture["flop"].size() != 3U ||
+        !fixture.contains("initial_pot_antes") || !fixture.contains("effective_stack_antes") ||
+        !fixture.contains("rake_percent") || !fixture.contains("bet_size_percent_pot") ||
+        !fixture.contains("raise_size_percent_pot") ||
+        !fixture.contains("maximum_raises_per_street") ||
+        !fixture.contains("automatic_all_in_strict_boundary")) {
+      error = "invalid_fixture";
+      return std::nullopt;
+    }
+    LoadedGtoPlusFixture result;
+    result.benchmark_id = specification.value("benchmark_id", std::string{});
+    result.schema = schema;
+    result.config = make_convergence_config(fixture, all_in);
+    result.ranges = make_convergence_ranges(*range_co, *range_btn);
+    if (!fixed_turn.empty()) {
+      const auto turn = gtosd::parse_card(fixed_turn);
+      if (!turn) {
+        error = "invalid_fixed_turn";
+        return std::nullopt;
+      }
+      result.config.turn = turn.value();
+      result.config.river.reset();
+    }
+    if (!gtosd::validate_postflop_ranges(result.config, result.ranges)) {
+      error = "invalid_fixture";
+      return std::nullopt;
+    }
+    return result;
+  } catch (const nlohmann::json::exception &) {
+    error = "invalid_specification_json";
+    return std::nullopt;
+  } catch (const std::exception &) {
+    error = "invalid_fixture";
+    return std::nullopt;
+  }
+}
+
 struct ConvergenceReferenceNode {
   std::string id;
   std::vector<std::string> path;
@@ -1096,10 +1218,8 @@ bool valid_gto_plus_solver_memory_v4(const nlohmann::json &memory) {
       memory.value("display_unit", std::string{}) != "MB" ||
       !memory.contains("normalized_reference_bytes") ||
       !memory["normalized_reference_bytes"].is_number_unsigned() ||
-      memory.value("normalization_rule", std::string{}) !=
-          "decimal_mb_fixture_convention" ||
-      memory.value("semantic_class", std::string{}) !=
-          "gto_plus_internal_pre_solve_estimate" ||
+      memory.value("normalization_rule", std::string{}) != "decimal_mb_fixture_convention" ||
+      memory.value("semantic_class", std::string{}) != "gto_plus_internal_pre_solve_estimate" ||
       memory.value("comparability_status", std::string{}) != "unresolved") {
     return false;
   }
@@ -1971,8 +2091,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                                        : "no_difference_expected_for_preallocated_category"},
            {"first_allocation_phase",
             category.first_allocation_phase
-                ? nlohmann::json(gtosd::solver_memory_phase_name(
-                      *category.first_allocation_phase))
+                ? nlohmann::json(gtosd::solver_memory_phase_name(*category.first_allocation_phase))
                 : nlohmann::json(nullptr)},
            {"release_phase",
             category.release_phase
@@ -1987,10 +2106,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         snapshot.candidate_maximum_allocated_bytes;
     solver_memory_accounting["current_payload_bytes"] = snapshot.current_logical_bytes;
     solver_memory_accounting["current_allocated_bytes"] = snapshot.current_allocated_bytes;
-    solver_memory_accounting["final_phase"] =
-        gtosd::solver_memory_phase_name(snapshot.phase);
-    solver_memory_accounting["accounting_complete"] =
-        result.solver_memory_accounting_complete;
+    solver_memory_accounting["final_phase"] = gtosd::solver_memory_phase_name(snapshot.phase);
+    solver_memory_accounting["accounting_complete"] = result.solver_memory_accounting_complete;
     solver_memory_accounting["categories"] = std::move(memory_categories);
   }
   nlohmann::json report = {
@@ -2025,8 +2142,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
            ? "float24_regret_float16_strategy_float64_compute"
            : "float32_state_float64_compute"},
       {"solver_state_residency",
-       result.checkpoint.runtime_state != nullptr ? "budgeted_os_page_backed"
-                                                  : "resident_vectors"},
+       result.checkpoint.runtime_state != nullptr ? "budgeted_os_page_backed" : "resident_vectors"},
       {"resident_working_set_budget",
        options.resident_working_set_budget_bytes == 0U
            ? nlohmann::json(nullptr)
@@ -2324,10 +2440,8 @@ int run_gto_plus_convergence_benchmark_v2_to_v4(const char *const specification_
   const auto &run = specification["gtosd_run"];
   const auto &expected = specification["expected_layout"];
   const auto specification_schema = specification.value("schema", std::string{});
-  const bool specification_v3 =
-      specification_schema == "gtosd.gto_plus_convergence_benchmark.v3";
-  const bool specification_v4 =
-      specification_schema == "gtosd.gto_plus_convergence_benchmark.v4";
+  const bool specification_v3 = specification_schema == "gtosd.gto_plus_convergence_benchmark.v3";
+  const bool specification_v4 = specification_schema == "gtosd.gto_plus_convergence_benchmark.v4";
 
   if (specification_v3 &&
       (!reference.contains("peak_rss_bytes") || !reference["peak_rss_bytes"].is_number_unsigned() ||
@@ -2511,8 +2625,7 @@ int run_gto_plus_convergence_benchmark_v2_to_v4(const char *const specification_
       spec.gto_plus_solver_memory_reference_bytes == 0 ||
       ((specification_v3 || specification_v4) &&
        (run.contains("peak_rss_cap_bytes") || run.contains("peak_rss_cap_unit") ||
-        run.contains("peak_rss_gate") ||
-        run.contains("resident_working_set_budget_bytes"))) ||
+        run.contains("peak_rss_gate") || run.contains("resident_working_set_budget_bytes"))) ||
       spec.target_definition.empty() || !std::isfinite(spec.ev_tolerance) ||
       spec.ev_tolerance <= 0.0 || !std::isfinite(spec.frequency_tolerance) ||
       spec.frequency_tolerance <= 0.0 || !std::isfinite(spec.display_precision_percent) ||
@@ -2802,10 +2915,9 @@ int run_gto_plus_layout_preflight(const char *const specification_path,
                       {"runtime_bytes", value.runtime_bytes},
                       {"reserve_bytes", value.reserve_bytes},
                       {"estimated_peak_bytes", value.estimated_peak_bytes},
-                      {"meets_requested_budget",
-                       value.meets_requested_budget
-                           ? nlohmann::json(*value.meets_requested_budget)
-                           : nlohmann::json(nullptr)}});
+                      {"meets_requested_budget", value.meets_requested_budget
+                                                     ? nlohmann::json(*value.meets_requested_budget)
+                                                     : nlohmann::json(nullptr)}});
   }
   const auto expected_physical_nodes =
       specification.value("expected_layout", nlohmann::json::object())
@@ -2872,6 +2984,372 @@ int run_gto_plus_layout_preflight(const char *const specification_path,
             << " infosets=" << layout.value().information_sets
             << " actions=" << layout.value().action_entries
             << " elapsed_seconds=" << elapsed_seconds << '\n';
+  return 0;
+}
+
+int run_gto_plus_bucketing_preflight(const char *const specification_path,
+                                     const char *const report_path,
+                                     const std::string_view bucket_text,
+                                     const std::string_view ram_bytes_text,
+                                     const std::string_view disk_bytes_text,
+                                     const std::string_view fixed_turn) {
+  const auto buckets = parse_bucket_candidates(bucket_text);
+  const auto ram_bytes = parse_u64(ram_bytes_text);
+  const auto disk_bytes = parse_u64(disk_bytes_text);
+  if (!buckets || !ram_bytes || *ram_bytes == 0U || !disk_bytes || *disk_bytes == 0U) {
+    std::cerr << "postflop preflight-bucketing-gto-plus failed: invalid_argument\n";
+    return 2;
+  }
+
+  std::string fixture_error;
+  const auto fixture = load_gto_plus_fixture(specification_path, fixed_turn, fixture_error);
+  if (!fixture) {
+    std::cerr << "postflop preflight-bucketing-gto-plus failed: " << fixture_error << '\n';
+    return 2;
+  }
+
+  gtosd::CanonicalLayoutOptions options;
+  options.card_abstraction_buckets = *buckets;
+  options.requested_budget =
+      gtosd::CanonicalLayoutBudget{*ram_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  options.requested_feature_cache_disk_budget =
+      gtosd::CanonicalLayoutBudget{*disk_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  const auto started = std::chrono::steady_clock::now();
+  const auto layout =
+      gtosd::estimate_canonical_chance_layout(fixture->config, fixture->ranges, options);
+  const double elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (!layout || !layout.value().card_abstraction_preflight) {
+    std::cerr << "postflop preflight-bucketing-gto-plus failed: "
+              << (layout ? "missing_abstraction_preflight"
+                         : gtosd::canonical_layout_error_name(layout.error()))
+              << '\n';
+    return 1;
+  }
+
+  const auto &preflight = *layout.value().card_abstraction_preflight;
+  nlohmann::json candidates = nlohmann::json::array();
+  std::uint64_t feasible_in_ram_candidates = 0U;
+  std::uint64_t feasible_out_of_core_candidates = 0U;
+  for (const auto &candidate : preflight.candidates) {
+    const bool in_ram = candidate.in_ram_meets_requested_budget.value_or(false);
+    const bool out_of_core = candidate.out_of_core_meets_requested_budgets.value_or(false);
+    feasible_in_ram_candidates += in_ram ? 1U : 0U;
+    feasible_out_of_core_candidates += out_of_core ? 1U : 0U;
+    candidates.push_back(
+        {{"buckets_per_partition", candidate.buckets_per_partition},
+         {"abstract_information_sets_upper_bound", candidate.abstract_information_sets_upper_bound},
+         {"abstract_action_entries_upper_bound", candidate.abstract_action_entries_upper_bound},
+         {"bucket_mapping_bytes_upper_bound", candidate.bucket_mapping_bytes_upper_bound},
+         {"solver_state_bytes_upper_bound", candidate.solver_state_bytes_upper_bound},
+         {"preparation_transient_bytes_estimate", candidate.preparation_transient_bytes_estimate},
+         {"estimated_in_ram_peak_bytes", candidate.estimated_in_ram_peak_bytes},
+         {"estimated_out_of_core_peak_bytes", candidate.estimated_out_of_core_peak_bytes},
+         {"out_of_core_backing_store_bytes", candidate.out_of_core_backing_store_bytes},
+         {"estimated_disk_bytes_with_cache", candidate.estimated_disk_bytes_with_cache},
+         {"in_ram_meets_requested_budget",
+          candidate.in_ram_meets_requested_budget
+              ? nlohmann::json(*candidate.in_ram_meets_requested_budget)
+              : nlohmann::json(nullptr)},
+         {"out_of_core_meets_requested_budgets",
+          candidate.out_of_core_meets_requested_budgets
+              ? nlohmann::json(*candidate.out_of_core_meets_requested_budgets)
+              : nlohmann::json(nullptr)}});
+  }
+
+  const auto output = nlohmann::json{
+      {"schema", "gtosd.card_abstraction_preflight.v1"},
+      {"benchmark_id", fixture->benchmark_id},
+      {"source_fixture_schema", fixture->schema},
+      {"starting_street", fixed_turn.empty() ? "flop" : "turn"},
+      {"fixed_turn",
+       fixed_turn.empty() ? nlohmann::json(nullptr) : nlohmann::json(std::string(fixed_turn))},
+      {"exact_outcomes", true},
+      {"uses_bucketing", true},
+      {"selection_status", "FEASIBILITY_ONLY_NOT_PROMOTABLE"},
+      {"requested_ram_bytes", *ram_bytes},
+      {"requested_disk_bytes", *disk_bytes},
+      {"exact_layout",
+       {{"physical_public_nodes", layout.value().physical_public_tree.node_count},
+        {"canonical_public_nodes", layout.value().canonical_public_nodes},
+        {"canonical_decision_nodes", layout.value().canonical_decision_nodes},
+        {"information_sets", layout.value().information_sets},
+        {"action_entries", layout.value().action_entries},
+        {"maximum_live_combos", layout.value().maximum_live_combos},
+        {"maximum_actions", layout.value().maximum_actions}}},
+      {"feature_cache",
+       {{"format", "GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1.0"},
+        {"feature_schema_id", "equity-features-l2-v1"},
+        {"worker_count", preflight.feature_cache_worker_count},
+        {"feature_dimensions", preflight.feature_dimensions},
+        {"partition_count", preflight.partition_count},
+        {"observation_count", preflight.observation_count},
+        {"maximum_partition_observations", preflight.maximum_partition_observations},
+        {"logical_bytes", preflight.feature_cache_logical_bytes},
+        {"serialized_bytes_upper_bound", preflight.feature_cache_serialized_bytes_upper_bound},
+        {"atomic_write_bytes_upper_bound", preflight.feature_cache_atomic_write_bytes_upper_bound},
+        {"build_peak_bytes_estimate", preflight.feature_cache_build_peak_bytes_estimate},
+        {"format_limit_observations", gtosd::maximum_card_abstraction_feature_cache_observations},
+        {"format_limit_ok", preflight.feature_cache_format_limit_ok},
+        {"atomic_write_meets_requested_disk_budget",
+         preflight.feature_cache_atomic_write_meets_requested_budget
+             ? nlohmann::json(*preflight.feature_cache_atomic_write_meets_requested_budget)
+             : nlohmann::json(nullptr)}}},
+      {"candidates", std::move(candidates)},
+      {"feasible_in_ram_candidate_count", feasible_in_ram_candidates},
+      {"feasible_out_of_core_candidate_count", feasible_out_of_core_candidates},
+      {"memory_model",
+       {{"name", "native_bucketed_float64_static_preflight_v1"},
+        {"solver_state", "two Float64 arrays per abstract action entry"},
+        {"solver_threads", preflight.solver_thread_count},
+        {"note",
+         "Conservative static component estimate, not measured process RSS. The out-of-core "
+         "RAM bound assumes all mapped state pages may become resident; allocator overhead is "
+         "not modeled. K selection still requires measured abstraction error and exact BR."}}},
+      {"preflight_elapsed_seconds", elapsed_seconds},
+      {"process_peak_rss_bytes", gtosd::process_peak_rss_bytes()}};
+
+  std::ofstream report(report_path, std::ios::binary | std::ios::trunc);
+  report << output.dump(2) << '\n';
+  if (!report) {
+    std::cerr << "postflop preflight-bucketing-gto-plus failed: report_io_failure\n";
+    return 1;
+  }
+  std::cout << "GTOSD_CARD_ABSTRACTION_PREFLIGHT_1"
+            << " benchmark_id=" << fixture->benchmark_id
+            << " street=" << (fixed_turn.empty() ? "flop" : "turn")
+            << " partitions=" << preflight.partition_count
+            << " observations=" << preflight.observation_count
+            << " cache_bytes_upper=" << preflight.feature_cache_serialized_bytes_upper_bound
+            << " feasible_in_ram=" << feasible_in_ram_candidates
+            << " feasible_out_of_core=" << feasible_out_of_core_candidates
+            << " elapsed_seconds=" << elapsed_seconds << '\n';
+  return preflight.feature_cache_format_limit_ok ? 0 : 3;
+}
+
+int run_gto_plus_feature_cache_build(const char *const specification_path,
+                                     const char *const cache_path,
+                                     const std::string_view fixed_turn) {
+  std::string fixture_error;
+  const auto fixture = load_gto_plus_fixture(specification_path, fixed_turn, fixture_error);
+  if (!fixture) {
+    std::cerr << "postflop build-feature-cache-gto-plus failed: " << fixture_error << '\n';
+    return 2;
+  }
+  gtosd::CanonicalLayoutOptions preflight_options;
+  preflight_options.card_abstraction_buckets = {1U};
+  const auto preflight =
+      gtosd::estimate_canonical_chance_layout(fixture->config, fixture->ranges, preflight_options);
+  if (!preflight || !preflight.value().card_abstraction_preflight ||
+      !preflight.value().card_abstraction_preflight->feature_cache_format_limit_ok) {
+    std::cerr << "postflop build-feature-cache-gto-plus failed: preflight_rejected\n";
+    return 3;
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto cache =
+      gtosd::build_postflop_card_abstraction_feature_cache(fixture->config, fixture->ranges);
+  if (!cache) {
+    std::cerr << "postflop build-feature-cache-gto-plus failed: "
+              << gtosd::postflop_solver_error_name(cache.error()) << '\n';
+    return 1;
+  }
+  const auto saved = gtosd::save_card_abstraction_feature_cache(cache.value(), cache_path);
+  if (!saved) {
+    std::cerr << "postflop build-feature-cache-gto-plus failed: feature_cache_"
+              << gtosd::card_abstraction_error_name(saved.error()) << '\n';
+    return 1;
+  }
+  const double elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  std::error_code size_error;
+  const auto serialized_bytes = std::filesystem::file_size(cache_path, size_error);
+  if (size_error) {
+    std::cerr << "postflop build-feature-cache-gto-plus failed: io_failure\n";
+    return 1;
+  }
+  std::cout << "GTOSD_GTO_PLUS_FEATURE_CACHE_1"
+            << " benchmark_id=" << fixture->benchmark_id
+            << " street=" << (fixed_turn.empty() ? "flop" : "turn")
+            << " partitions=" << cache.value().partition_count
+            << " observations=" << cache.value().observations.size() << " workers="
+            << preflight.value().card_abstraction_preflight->feature_cache_worker_count
+            << " serialized_bytes=" << serialized_bytes
+            << " cache_fingerprint=" << cache.value().fingerprint
+            << " elapsed_seconds=" << elapsed_seconds
+            << " peak_rss_bytes=" << gtosd::process_peak_rss_bytes() << '\n';
+  return 0;
+}
+
+int run_gto_plus_bucketing_qualification(
+    const char *const specification_path, const char *const cache_path,
+    const char *const report_path, const std::string_view bucket_text,
+    const std::string_view iteration_text, const std::string_view ram_bytes_text,
+    const std::string_view disk_bytes_text, const std::string_view fixed_turn) {
+  const auto bucket_value = parse_u64(bucket_text);
+  const auto iterations = parse_u64(iteration_text);
+  const auto ram_bytes = parse_u64(ram_bytes_text);
+  const auto disk_bytes = parse_u64(disk_bytes_text);
+  if (!bucket_value || *bucket_value == 0U ||
+      *bucket_value > std::numeric_limits<std::uint32_t>::max() || !iterations ||
+      *iterations == 0U || !ram_bytes || *ram_bytes == 0U || !disk_bytes || *disk_bytes == 0U) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: invalid_argument\n";
+    return 2;
+  }
+  std::string fixture_error;
+  const auto fixture = load_gto_plus_fixture(specification_path, fixed_turn, fixture_error);
+  if (!fixture) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: " << fixture_error << '\n';
+    return 2;
+  }
+
+  gtosd::CanonicalLayoutOptions preflight_options;
+  preflight_options.card_abstraction_buckets = {static_cast<std::uint32_t>(*bucket_value)};
+  preflight_options.requested_budget =
+      gtosd::CanonicalLayoutBudget{*ram_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  preflight_options.requested_feature_cache_disk_budget =
+      gtosd::CanonicalLayoutBudget{*disk_bytes, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  const auto preflight =
+      gtosd::estimate_canonical_chance_layout(fixture->config, fixture->ranges, preflight_options);
+  if (!preflight || !preflight.value().card_abstraction_preflight ||
+      preflight.value().card_abstraction_preflight->candidates.size() != 1U ||
+      !preflight.value().card_abstraction_preflight->feature_cache_format_limit_ok) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: preflight_failure\n";
+    return 1;
+  }
+  const auto &candidate = preflight.value().card_abstraction_preflight->candidates.front();
+  if (!candidate.in_ram_meets_requested_budget.value_or(false)) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: insufficient_ram\n";
+    return 3;
+  }
+
+  const auto loaded_cache = gtosd::load_card_abstraction_feature_cache(cache_path);
+  if (!loaded_cache) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: feature_cache_"
+              << gtosd::card_abstraction_error_name(loaded_cache.error()) << '\n';
+    return 1;
+  }
+  gtosd::CardAbstractionConfig abstraction;
+  abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(*bucket_value);
+  std::uint8_t solver_threads = gtosd::maximum_postflop_solver_threads;
+  if (const auto diagnostic_threads =
+          environment_value("GTOSD_CARD_ABSTRACTION_DIAGNOSTIC_SOLVER_THREADS")) {
+    const auto parsed_threads = parse_u64(*diagnostic_threads);
+    if (!parsed_threads ||
+        (*parsed_threads != 1U && *parsed_threads != gtosd::maximum_postflop_solver_threads)) {
+      std::cerr << "postflop qualify-bucketing-gto-plus failed: invalid_solver_threads\n";
+      return 2;
+    }
+    solver_threads = static_cast<std::uint8_t>(*parsed_threads);
+  }
+  const auto started = std::chrono::steady_clock::now();
+  auto prepared = gtosd::prepare_postflop_abstracted_tree(fixture->config, fixture->ranges,
+                                                          abstraction, loaded_cache.value());
+  if (!prepared) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: "
+              << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
+    return 1;
+  }
+  const auto actual_layout = gtosd::prepared_postflop_layout_estimate(*prepared.value());
+  gtosd::PostflopSolveOptions solve_options;
+  solve_options.iterations = *iterations;
+  // Keep the qualification schedule invariant when the iteration horizon is
+  // changed.  A horizon-derived delay would make two K/iteration reports use
+  // different CFR+ algorithms and invalidate their comparison.
+  solve_options.averaging_delay = 0U;
+  solve_options.certification_interval = std::min<std::uint64_t>(100U, *iterations);
+  solve_options.algorithm = gtosd::PostflopAlgorithm::CfrPlus;
+  solve_options.state_precision = gtosd::PostflopStatePrecision::Float64;
+  solve_options.parallel_action_depth = static_cast<std::uint8_t>(solver_threads - 1U);
+  const auto solved = gtosd::solve_postflop_abstracted(*prepared.value(), solve_options);
+  const double elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (!solved || solved.value().convergence.empty() || !solved.value().card_abstraction) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: "
+              << (solved ? "missing_certification"
+                         : gtosd::postflop_solver_error_name(solved.error()))
+              << '\n';
+    return 1;
+  }
+  const auto &certification = solved.value().convergence.back();
+  const auto &summary = *solved.value().card_abstraction;
+  const auto peak_rss = gtosd::process_peak_rss_bytes();
+  const bool convergence_gate = certification.normalized_nash_conv < 0.01;
+  const bool memory_gate = peak_rss != 0U && peak_rss < *ram_bytes;
+  const bool gate_pass = convergence_gate && memory_gate;
+  nlohmann::json convergence = nlohmann::json::array();
+  for (const auto &point : solved.value().convergence) {
+    convergence.push_back({{"iteration", point.iteration},
+                           {"normalized_nash_conv", point.normalized_nash_conv},
+                           {"nash_conv_antes", point.nash_conv_antes},
+                           {"profile_value_antes", point.profile_value_antes},
+                           {"best_response_value_antes", point.best_response_value_antes}});
+  }
+  const auto output = nlohmann::json{
+      {"schema", "gtosd.card_abstraction_qualification.v1"},
+      {"benchmark_id", fixture->benchmark_id},
+      {"starting_street", fixed_turn.empty() ? "flop" : "turn"},
+      {"fixed_turn",
+       fixed_turn.empty() ? nlohmann::json(nullptr) : nlohmann::json(std::string(fixed_turn))},
+      {"qualification_scope", "single_fixture_single_k_single_process"},
+      {"algorithm", "cfr_plus"},
+      {"state_precision", "float64"},
+      {"solver_threads", solver_threads},
+      {"parallel_action_workers", solve_options.parallel_action_depth},
+      {"exact_outcomes", true},
+      {"exact_combo_best_response", true},
+      {"uses_bucketing", true},
+      {"buckets_per_partition", *bucket_value},
+      {"iterations", *iterations},
+      {"averaging_delay", solve_options.averaging_delay},
+      {"certification_interval", solve_options.certification_interval},
+      {"feature_cache_fingerprint", loaded_cache.value().fingerprint},
+      {"feature_cache_reused", summary.reused_feature_cache},
+      {"abstract_information_sets", actual_layout.information_sets},
+      {"abstract_action_entries", actual_layout.actions},
+      {"solver_state_bytes", actual_layout.regret_bytes + actual_layout.strategy_bytes},
+      {"compression_ratio", summary.metrics.compression_ratio},
+      {"weighted_mean_squared_error", summary.metrics.weighted_mean_squared_error},
+      {"maximum_l2_error", summary.metrics.maximum_l2_error},
+      {"normalized_nash_conv", certification.normalized_nash_conv},
+      {"nash_conv_antes", certification.nash_conv_antes},
+      {"profile_value_antes", certification.profile_value_antes},
+      {"best_response_value_antes", certification.best_response_value_antes},
+      {"convergence", std::move(convergence)},
+      {"preflight",
+       {{"estimated_in_ram_peak_bytes", candidate.estimated_in_ram_peak_bytes},
+        {"solver_state_bytes_upper_bound", candidate.solver_state_bytes_upper_bound},
+        {"requested_ram_bytes", *ram_bytes},
+        {"requested_disk_bytes", *disk_bytes}}},
+      {"measured",
+       {{"process_peak_rss_bytes", peak_rss},
+        {"wall_seconds", elapsed_seconds},
+        {"layout_seconds", solved.value().timings.layout_seconds},
+        {"traversal_seconds", solved.value().timings.traversal_seconds},
+        {"certification_seconds", solved.value().timings.certification_seconds}}},
+      {"gates",
+       {{"normalized_nash_conv_strictly_below_one_percent", convergence_gate},
+        {"peak_rss_strictly_below_requested_ram", memory_gate},
+        {"pass", gate_pass}}},
+      {"selection_status",
+       gate_pass ? "QUALIFIED_FOR_THIS_FIXTURE_AND_K" : "REJECTED_FOR_THIS_FIXTURE_AND_K"},
+      {"limitation",
+       "A single fixture/K/process result is not a universal commercial default; repeat-run "
+       "and cross-fixture qualification remain required."}};
+  std::ofstream report(report_path, std::ios::binary | std::ios::trunc);
+  report << output.dump(2) << '\n';
+  if (!report) {
+    std::cerr << "postflop qualify-bucketing-gto-plus failed: report_io_failure\n";
+    return 1;
+  }
+  std::cout << "GTOSD_CARD_ABSTRACTION_QUALIFICATION_1"
+            << " benchmark_id=" << fixture->benchmark_id
+            << " street=" << (fixed_turn.empty() ? "flop" : "turn") << " K=" << *bucket_value
+            << " iterations=" << *iterations << " infosets=" << actual_layout.information_sets
+            << " actions=" << actual_layout.actions
+            << " solver_threads=" << static_cast<unsigned>(solver_threads)
+            << " normalized_nash_conv=" << certification.normalized_nash_conv
+            << " peak_rss_bytes=" << peak_rss << " gate=" << (gate_pass ? "pass" : "fail") << '\n';
   return 0;
 }
 
@@ -4296,6 +4774,8 @@ void print_usage() {
             << "  gto_cli memory-probe <pf-f1|pf-f2|pf-f3> <backing_file>\n"
             << "  gto_cli postflop validate <config.json>\n"
             << "  gto_cli postflop build-feature-cache <config.json> <feature_cache>\n"
+            << "  gto_cli postflop build-feature-cache-gto-plus <specification.json> "
+               "<feature_cache> [fixed_turn]\n"
             << "  gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>\n"
             << "  gto_cli postflop solve <config.json> <iterations> <checkpoint> "
                "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
@@ -4316,6 +4796,11 @@ void print_usage() {
                "<reference.json>\n"
             << "  gto_cli postflop benchmark-gto-plus <specification.json> <report.json>\n"
             << "  gto_cli postflop layout-gto-plus <specification.json> <report.json>\n"
+            << "  gto_cli postflop preflight-bucketing-gto-plus <specification.json> "
+               "<report.json> <K_csv> <ram_bytes> <disk_bytes> [fixed_turn]\n"
+            << "  gto_cli postflop qualify-bucketing-gto-plus <specification.json> "
+               "<feature_cache> <report.json> <K> <iterations> <ram_bytes> <disk_bytes> "
+               "[fixed_turn]\n"
             << "  gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>\n"
             << "  gto_cli postflop root-lock-diagnostic <config.json> <lock.json> "
                "<iterations> <report.json>\n"
@@ -4376,6 +4861,11 @@ int run_cli(const int argc, const char *const argv[]) {
       std::string_view(argv[2]) == "build-feature-cache") {
     return run_postflop_build_feature_cache(argv[3], argv[4]);
   }
+  if ((argc == 5 || argc == 6) && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "build-feature-cache-gto-plus") {
+    return run_gto_plus_feature_cache_build(
+        argv[3], argv[4], argc == 6 ? std::string_view(argv[5]) : std::string_view{});
+  }
   if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "estimate") {
     return run_postflop_estimate(argv[3], argv[4], argv[5]);
@@ -4429,6 +4919,18 @@ int run_cli(const int argc, const char *const argv[]) {
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "layout-gto-plus") {
     return run_gto_plus_layout_preflight(argv[3], argv[4]);
+  }
+  if ((argc == 8 || argc == 9) && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "preflight-bucketing-gto-plus") {
+    return run_gto_plus_bucketing_preflight(argv[3], argv[4], argv[5], argv[6], argv[7],
+                                            argc == 9 ? std::string_view(argv[8])
+                                                      : std::string_view{});
+  }
+  if ((argc == 10 || argc == 11) && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "qualify-bucketing-gto-plus") {
+    return run_gto_plus_bucketing_qualification(
+        argv[3], argv[4], argv[5], argv[6], argv[7], argv[8], argv[9],
+        argc == 11 ? std::string_view(argv[10]) : std::string_view{});
   }
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "architecture-gto-plus") {

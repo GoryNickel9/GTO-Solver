@@ -39,7 +39,7 @@ struct SubgameSolveConfig {
 
   std::uint32_t major{format_major};
   std::uint32_t minor{format_minor};
-  SolverConfig solver{SolverAlgorithm::CfrPlus, 10'000, 0x53554247414d4553ULL, 1, 100, {}};
+  SolverConfig solver{SolverAlgorithm::CfrPlus, 10'000, 0x53554247414d4553ULL, 8, 100, {}};
   SubgameSafetyMode safety{SubgameSafetyMode::ExactNashConvGuard};
   // Absolute utility tolerance for candidate_nash_conv <= baseline + tolerance.
   double safety_tolerance{1.0e-12};

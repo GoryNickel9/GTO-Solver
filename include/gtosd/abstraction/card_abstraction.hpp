@@ -10,6 +10,12 @@
 
 namespace gtosd {
 
+// Serialization and in-memory validation share this hard safety bound.  The
+// canonical preflight publishes whether a requested game can be represented
+// before feature enumeration starts.
+inline constexpr std::uint64_t maximum_card_abstraction_feature_cache_observations = 2'000'000U;
+inline constexpr std::uint32_t production_card_abstraction_feature_workers = 8U;
+
 enum class CardAbstractionKind : std::uint8_t { ExactIdentity, EquityFeatureKMeans };
 
 enum class CardAbstractionError : std::uint8_t {

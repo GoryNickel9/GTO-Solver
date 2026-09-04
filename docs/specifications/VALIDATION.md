@@ -38,9 +38,11 @@ in cui ogni livello controlla errori differenti:
 - Il bridge HU postflop aggiunge range frazionari/asimmetrici, aggregazione
   reach-weighted, API exact/abstracted non intercambiabili, checkpoint
   Float64 round-trip, resume bit-identico, query combo→bucket e rifiuto di
-  precisione/algoritmo/parallelismo non qualificati.
+  precisione/algoritmo non qualificati o più di otto thread. Un test
+  differenziale richiede stato e BR bit-identici tra seriale e otto thread sul
+  caso ridotto; il gate fixture ampio misura una tolleranza numerica `1e-4`.
 - Il test CLI costruisce atomicamente il manifest, risolve e riprende un fixed
-  river bucketed riusando la cache, verifica fingerprint e tempi nel report e
+  river bucketed a otto thread riusando la cache, verifica fingerprint e tempi nel report e
   richiede query e certificazione combo-level exact; checkpoint exact o
   granularità differente devono fallire per fingerprint mismatch.
 - Un frontier subgame che taglia un information set viene rifiutato. Il guard
@@ -146,7 +148,9 @@ report lo marca come limite anziché inventarlo.
 
 La decisione di prodotto 2026-09-04 sospende il vincolo che subordinava F11+
 alla parity exact GTO+. Card abstraction, safe subgame solving e il primo bridge
-HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Cache e
-sweep ridotto sono ora qualificati, ma prima di riprendere la parity servono
-fixture flop/turn/preflop rappresentative e una decisione esplicita su quale
-percorso commerciale confrontare. F10.4 non è una prova di tale integrazione.
+HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Preflight
+astratto, cache a otto worker, AHK flop K=16 e TH flop K=128 a cinque processi
+sono qualificati. K=16 su TH è respinto, quindi non esiste ancora un K
+universale. Prima di riprendere la parity restano un workload preflop
+rappresentativo e il frontier merge postflop nativo. F10.4
+non è una prova di tale integrazione.

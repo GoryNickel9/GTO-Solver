@@ -2088,9 +2088,11 @@ Parità physical/canonical e suite Release PASS
 
 La decisione di prodotto del 2026-09-04 rimuove questo gate come blocco per
 F11+: bucketing e subgame solving devono essere implementati e qualificati
-prima di riprendere la parity. Il bridge postflop iniziale è ora presente, ma
-la parity non riparte finché non sono scelte granularità e fixture commerciali
-riproducibili. Il gate memoria potrà contribuire soltanto dopo una definizione
+prima di riprendere la parity. Il bridge postflop, il preflight, la cache a otto
+worker e le qualifiche AHK K=16/TH K=128 a cinque processi e otto thread sono
+presenti, ma la parity non riparte finché il percorso non copre un workload
+preflop e il frontier merge postflop nativo non è collegato. Il gate memoria
+potrà contribuire soltanto dopo una definizione
 comparabile e versionata; nel frattempo non è né PASS né FAIL. Fixture e runner
 non possono essere adattati per ottenere il risultato: ogni correzione deve
 appartenere al core generale.
@@ -2357,7 +2359,7 @@ L’algoritmo multiway è una decisione futura: il self-play CFR standard non ri
 | F7 | HU postflop CLI | Persistenza commerciale |
 | F8 | File robusti | UX |
 | F10 | MVP postflop GUI | Nodelock/database |
-| Card abstraction/subgame | Stato ridotto, lift e guard full-game | Granularità commerciale o preflop completo |
+| Card abstraction/subgame | Stato ridotto, preflight 8-thread, lift e guard full-game | Granularità cross-fixture, preflop e frontier merge nativo |
 | F11 | Nodelock globale | Preflop |
 | F13 | Database | Full preflop |
 | F15 | Fattibilità preflop–river | Multiway |

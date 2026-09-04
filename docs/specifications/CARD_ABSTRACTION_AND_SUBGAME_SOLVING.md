@@ -122,6 +122,11 @@ Sono disponibili due modalità:
 - `exact_nash_conv_guard`: best response esatta sul gioco completo prima e
   dopo il merge.
 
+Il default production del minimizer è CFR+ con otto thread; `thread_count=1`
+resta configurabile come oracle differenziale. Su un sottogioco giocattolo con
+meno di otto rami chance indipendenti il pool usa soltanto i rami disponibili,
+senza creare lavoro fittizio.
+
 Il candidato viene distribuito soltanto se:
 
 ```text
@@ -170,12 +175,14 @@ La prima configurazione qualificata è intenzionalmente stretta:
 
 - CFR+ alternato;
 - stato `Float64` residente o out-of-core;
-- traversal seriale (`parallel_action_depth=0`);
+- otto thread solver (`parallel_action_depth=7`: sette worker più il thread
+  chiamante);
 - canonical public DAG e isomorfismo lossless attivi;
 - nessun root lock, replay diagnostico, Pure-CFR o street decomposition.
 
-DCFR, `ScaledUint16RegretStrategy`, update paralleli e i diagnostici vengono
-rifiutati, non eseguiti con semantica non validata. Il fingerprint del layout
+DCFR, `ScaledUint16RegretStrategy` e i diagnostici incompatibili vengono
+rifiutati, non eseguiti con semantica non validata. Più di otto thread vengono
+rifiutati dall'API. Il fingerprint del layout
 include versione, feature schema, parametri e tutte le assegnazioni
 deterministiche; resume/query/certification con configurazione exact o bucket
 count differente falliscono con checkpoint mismatch. La query combo espone
@@ -197,33 +204,70 @@ Sul fixture CLI river fixed-board a range uniformi, 8 bucket riducono 1.860
 infoset exact a 32 infoset solver (`58,125x`) e 200 iterazioni raggiungono
 `NashConv/pot = 0,751763%` sotto certificazione exact. Il microbenchmark
 end-to-end a 1.000 iterazioni riduce lo stato Float64 da 1.536 a 384 byte
-(`4x`), ma misura `13,323 ms` exact contro `14,781 ms` bucketed: su un gioco
-così piccolo il costo di feature, clustering e certificazione supera il
-risparmio di traversal. Non è una prova di speedup generale.
+(`4x`) e misura `12,673 ms` exact contro `9,250 ms` bucketed. K=3 resta però a
+`5,339393%` NashConv/pot: un wall inferiore su questo gioco minuscolo non è una
+prova di speedup utile o di qualità production.
 
 La qualifica Release multi-granularità usa cinque ripetizioni e mediana su 8
 logical CPU a 3,6 GHz. La cache turn (66 partizioni, 744 osservazioni) richiede
-`52,873 ms` wall. Sul fixture fixed-river da 48 infoset esatti, lo sweep CFR+
+`21,289 ms` wall. Sul fixture fixed-river da 48 infoset esatti, lo sweep CFR+
 da 1.000 iterazioni riusa una sola cache e produce:
 
 | Bucket/partizione | Infoset astratti | Stato Float64 | Compressione | Weighted MSE | Max L2 | Wall mediano | NashConv/pot |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 4 | 128 B | 12x | 0,294077 | 0,869201 | 7,619 ms | 15,151551% |
-| 2 | 8 | 256 B | 6x | 0,069559 | 0,395394 | 8,667 ms | 10,315783% |
-| 3 | 12 | 384 B | 4x | 0,026860 | 0,236189 | 8,768 ms | 5,339393% |
-| 6 | 24 | 768 B | 2x | 0,002066 | 0,078730 | 8,906 ms | 0,001636% |
-| 12 | 48 | 1.536 B | 1x | 0 | 0 | 9,720 ms | 0,001968% |
+| 1 | 4 | 128 B | 12x | 0,294077 | 0,869201 | 8,146 ms | 15,151551% |
+| 2 | 8 | 256 B | 6x | 0,069559 | 0,395394 | 8,798 ms | 10,315783% |
+| 3 | 12 | 384 B | 4x | 0,026860 | 0,236189 | 9,250 ms | 5,339393% |
+| 6 | 24 | 768 B | 2x | 0,002066 | 0,078730 | 9,443 ms | 0,001636% |
+| 12 | 48 | 1.536 B | 1x | 0 | 0 | 10,414 ms | 0,001968% |
 
 L'errore delle feature è monotono su questo sweep ed è nullo alla granularità
 identità; NashConv a iterazioni fisse non è invece una metrica monotona di
 errore di astrazione. La fixture è ridotta e qualifica i contratti, non sceglie
 una granularità commerciale universale.
 
+## Preflight e qualifica a otto thread
+
+`preflight-bucketing-gto-plus` enumera soltanto la forma canonica e, per ogni
+K richiesto, pubblica upper bound di infoset, action entries e stato CFR+
+Float64. Stima separatamente cache logica/serializzata, doppio spazio della
+scrittura atomica, transienti del clustering, scratch degli otto thread e
+disco page-backed. L'out-of-core non riceve un vantaggio RSS non misurato: il
+bound conservativo assume che tutte le pagine mappate possano diventare
+residenti. Il formato rifiuta oltre 2.000.000 osservazioni prima di enumerare.
+L'upper bound serializzato include entrambi gli identificatori, le due
+occorrenze del combo id e i bit pattern decimali completi di peso e feature;
+il gate disco combinato conserva anche entrambe le copie della sostituzione
+atomica mentre esiste lo state page-backed.
+
+Il builder exact-feature usa otto worker su partizioni board/player
+indipendenti. Ogni worker scrive in uno slot preassegnato e il merge segue
+l'ordine canonico, quindi il fingerprint non dipende dallo scheduling. Su
+AHKHQH flop il fingerprint resta `e0179a28bd72d999`; il wall scende da circa
+`4,15 s` seriali a `1,57246 s`, con Peak RSS `23.076.864 B`. Su TH7D6S il
+builder a otto worker completa 280.308 osservazioni in `169,398 s`, Peak RSS
+`314.556.416 B`, mentre il vecchio percorso seriale era ancora incompleto
+dopo oltre nove minuti.
+
+La qualifica K=16 AHKHQH flop esegue cinque processi indipendenti, ciascuno con
+otto thread, cache condivisa, CFR+ Float64, delay zero e best response esatta
+combo-level. Tutti passano NashConv strettamente sotto 1% e RAM richiesta:
+NashConv deterministico `0,6029051267%`, wall mediano `9,936001 s`, Peak RSS
+mediano `25.227.264 B`. L'oracolo seriale separato misura `0,6099145321%`; la
+differenza assoluta `7,0094e-5` in frazione è sotto il gate `1e-4`. Questa è
+equivalenza numerica quantificata, non identità bitwise sul fixture grande.
+
+TH7D6S richiede una granularità differente: K=16 resta a `5,924317%` dopo 800
+iterazioni, mentre K=128 raggiunge `0,8816749004%` a 400. Cinque processi a
+otto thread producono la stessa metrica, wall mediano `435,349473 s` e Peak RSS
+mediano `694.796.288 B`. L'oracolo seriale misura `0,8770330545%` in
+`1.493,513047 s`; delta `4,64185e-5` e speedup mediano `3,43x`.
+
 ## Limiti aperti
 
-- La cache esatta evita di rigenerare i runout tra granularità, ma il formato
-  testuale non è ancora compresso o memory-mapped e il preflight non ne stima
-  ancora picco transiente e spazio disco su alberi grandi.
+- La cache esatta evita di rigenerare i runout tra granularità e il preflight
+  ne stima transienti e spazio disco, ma il formato testuale non è ancora
+  compresso o memory-mapped.
 - Il container `.gtsd` non ha ancora un chunk `ABSTRACTION`; checkpoint e
   report CLI sono persistibili, ma il packaging prodotto completo richiede
   config/range/abstraction esterni identici e verificati dal fingerprint.

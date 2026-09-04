@@ -57,9 +57,44 @@ struct CanonicalLayoutOptions {
   std::vector<std::uint32_t> worker_threads{1U, 2U, 4U, 8U};
   std::vector<std::uint8_t> state_bytes_per_action{3U, 4U};
   std::optional<CanonicalLayoutBudget> requested_budget;
+  std::optional<CanonicalLayoutBudget> requested_feature_cache_disk_budget;
+  // Empty keeps the exact-only report unchanged.  Non-zero values request a
+  // conservative production preflight for native Float64 CFR+ bucketing.
+  std::vector<std::uint32_t> card_abstraction_buckets;
   std::uint64_t certification_bytes{120'000'000U};
   std::uint64_t runtime_bytes{120'000'000U};
   std::uint64_t reserve_bytes{100'000'000U};
+};
+
+struct CanonicalCardAbstractionCandidateEstimate {
+  std::uint32_t buckets_per_partition{0};
+  std::uint64_t abstract_information_sets_upper_bound{0};
+  std::uint64_t abstract_action_entries_upper_bound{0};
+  std::uint64_t bucket_mapping_bytes_upper_bound{0};
+  std::uint64_t solver_state_bytes_upper_bound{0};
+  std::uint64_t preparation_transient_bytes_estimate{0};
+  std::uint64_t estimated_in_ram_peak_bytes{0};
+  std::uint64_t estimated_out_of_core_peak_bytes{0};
+  std::uint64_t out_of_core_backing_store_bytes{0};
+  std::uint64_t estimated_disk_bytes_with_cache{0};
+  std::optional<bool> in_ram_meets_requested_budget;
+  std::optional<bool> out_of_core_meets_requested_budgets;
+};
+
+struct CanonicalCardAbstractionPreflight {
+  std::uint32_t feature_cache_worker_count{0};
+  std::uint32_t solver_thread_count{0};
+  std::uint64_t partition_count{0};
+  std::uint64_t observation_count{0};
+  std::uint64_t maximum_partition_observations{0};
+  std::uint64_t feature_dimensions{4};
+  std::uint64_t feature_cache_logical_bytes{0};
+  std::uint64_t feature_cache_serialized_bytes_upper_bound{0};
+  std::uint64_t feature_cache_atomic_write_bytes_upper_bound{0};
+  std::uint64_t feature_cache_build_peak_bytes_estimate{0};
+  bool feature_cache_format_limit_ok{false};
+  std::optional<bool> feature_cache_atomic_write_meets_requested_budget;
+  std::vector<CanonicalCardAbstractionCandidateEstimate> candidates;
 };
 
 struct CanonicalLayoutReport {
@@ -78,6 +113,7 @@ struct CanonicalLayoutReport {
   std::uint64_t maximum_live_combos{0};
   std::uint64_t maximum_actions{0};
   std::vector<CanonicalMemoryEstimate> memory_estimates;
+  std::optional<CanonicalCardAbstractionPreflight> card_abstraction_preflight;
 };
 
 // Counts a lossless orbit-representative chance tree without materializing the

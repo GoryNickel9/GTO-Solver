@@ -46,7 +46,7 @@ Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
 > `1.969.860.608 B` e state TST `1.472.605.376 B` sono dati diagnostici.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
-> Full CTest Release corrente `33/33 PASS` (`222,29 s`, 2026-09-04).
+> Full CTest Release corrente `34/34 PASS` (`205,42 s`, 2026-09-04).
 > Il contratto memoria v3 confrontava impropriamente Peak RSS e display GTO+;
 > i risultati AHK/TH/TST restano misure grezze ma non classificazioni memoria.
 >

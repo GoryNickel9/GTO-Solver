@@ -20,6 +20,7 @@ gtosd::SolverConfig cfr_plus_config(const std::uint64_t iterations) {
   config.iterations = iterations;
   config.averaging_delay = std::min<std::uint64_t>(100U, iterations / 10U);
   config.seed = 0x42454e4348414253ULL;
+  config.thread_count = 8U;
   return config;
 }
 
@@ -121,7 +122,7 @@ gtosd::PostflopSolveOptions native_cfr_plus_options(const std::uint64_t iteratio
   options.certification_interval = iterations;
   options.algorithm = gtosd::PostflopAlgorithm::CfrPlus;
   options.state_precision = gtosd::PostflopStatePrecision::Float64;
-  options.parallel_action_depth = 0U;
+  options.parallel_action_depth = gtosd::production_postflop_parallel_workers;
   return options;
 }
 
@@ -158,7 +159,10 @@ void BM_CfrPlusKuhnBucketed(benchmark::State &state) {
 }
 
 void BM_ExactGuardedSubgame(benchmark::State &state) {
-  const auto game = gtosd::make_matching_pennies_game();
+  // Leduc's root chance fanout is wider than the production pool, so this
+  // benchmark exercises all eight configured CFR+ threads rather than merely
+  // recording an eight-thread config on a single decision-root toy game.
+  const auto game = gtosd::make_leduc_poker_game();
   const auto blueprint = gtosd::uniform_strategy_profile(game);
   if (!blueprint) {
     state.SkipWithError("blueprint build failed");

@@ -52,6 +52,9 @@ gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets> [feature_
 gto_cli postflop compare-gto-plus <config.json> <checkpoint> <reference.json>
 gto_cli postflop benchmark-gto-plus <specification.json> <report.json>
 gto_cli postflop layout-gto-plus <specification.json> <report.json>
+gto_cli postflop preflight-bucketing-gto-plus <specification.json> <report.json> <K_csv> <ram_bytes> <disk_bytes> [fixed_turn]
+gto_cli postflop build-feature-cache-gto-plus <specification.json> <feature_cache> [fixed_turn]
+gto_cli postflop qualify-bucketing-gto-plus <specification.json> <feature_cache> <report.json> <K> <iterations> <ram_bytes> <disk_bytes> [fixed_turn]
 gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>
 gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <report.json>
 ```
@@ -63,7 +66,7 @@ di bucket. Stampa schema, fingerprint sorgente/cache, partizioni, osservazioni,
 byte e tempo di costruzione.
 
 I corrispondenti comandi `*-bucketed` selezionano esplicitamente k-means su
-feature W/T/L/equity exact e CFR+ Float64 seriale; non modificano il default
+feature W/T/L/equity exact e CFR+ Float64 a otto thread; non modificano il default
 dei comandi storici. Il parametro `buckets` è per partizione board/player.
 `certify-bucketed` rialza la policy e ricalcola best response/NashConv sul gioco
 combo-level completo. `query-bucketed` restituisce strategia media, bucket e
@@ -75,10 +78,23 @@ bit-identici; granularità o config differenti sono rifiutate. La CLI corrente
 usa range uniformi, come il percorso
 postflop exact storico; range personalizzati sono disponibili nell'API C++.
 
-Il preflight CLI bucketed è conservativo: usa ancora la stima exact esistente,
-quindi non sottostima le risorse ma può rifiutare una configurazione che il solo
-stato astratto farebbe entrare in RAM. Il report dichiara sempre
-`uses_bucketing`, fingerprint, compression ratio e weighted MSE.
+Il preflight CLI bucketed usa la forma canonica senza allocare lo stato e
+calcola upper bound specifici per ogni K: stato Float64 astratto, mapping,
+scratch a otto thread, cache, transienti e spazio atomico/page-backed. Non
+attribuisce un vantaggio RSS non misurato all'out-of-core. Il report solve
+dichiara sempre `solver_threads=8`, `uses_bucketing`, fingerprint, compression
+ratio e weighted MSE.
+
+I tre comandi `*-bucketing-gto-plus` applicano lo stesso contratto alle fixture
+versionate e ai turn opzionali. Il runner
+`tools/run_card_abstraction_qualification.ps1` costruisce una cache una volta,
+esegue cinque processi a otto thread e un oracle seriale separato, richiedendo
+fingerprint e metriche deterministiche, NashConv `<1%`, RAM sotto il budget e
+differenza parallelo/seriale `<=1e-4`. La variabile
+`GTOSD_CARD_ABSTRACTION_DIAGNOSTIC_SOLVER_THREADS=1` è riservata all'oracolo;
+il percorso promuovibile resta a otto thread. `RamBytes` e `DiskBytes` sono
+obbligatori: il runner non reintroduce un cap implicito da 2 GB né ricava un
+budget dai valori “Memory needed for solving” di GTO+.
 
 `benchmark-gto-plus` usa lo schema e la fixture versionati; non va
 sostituito con un timing ad hoc. La specifica corrente è

@@ -44,6 +44,7 @@ endif()
 file(READ "${report_prefix}.json" report)
 string(JSON uses_bucketing GET "${report}" uses_bucketing)
 string(JSON exact_outcomes GET "${report}" exact_outcomes)
+string(JSON solver_threads GET "${report}" solver_threads)
 string(JSON abstraction_kind GET "${report}" abstraction_kind)
 string(JSON abstraction_fingerprint GET "${report}" abstraction_fingerprint)
 string(JSON buckets GET "${report}" buckets_per_partition)
@@ -52,7 +53,7 @@ string(JSON nash_conv GET "${report}" normalized_nash_conv)
 string(JSON iterations GET "${report}" iterations)
 string(JSON cache_reused GET "${report}" feature_cache_reused)
 string(JSON cache_fingerprint GET "${report}" feature_cache_fingerprint)
-if(NOT uses_bucketing OR NOT exact_outcomes OR
+if(NOT uses_bucketing OR NOT exact_outcomes OR NOT solver_threads EQUAL 8 OR
    NOT abstraction_kind STREQUAL "equity_feature_kmeans" OR
    abstraction_fingerprint STREQUAL "" OR NOT buckets EQUAL 8 OR
    NOT compression GREATER 1.0 OR NOT nash_conv LESS 0.01 OR NOT iterations EQUAL 200 OR

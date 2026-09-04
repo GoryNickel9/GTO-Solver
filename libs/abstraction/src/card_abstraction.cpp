@@ -31,7 +31,6 @@ namespace {
 
 constexpr std::uint64_t short_deck_mask = (std::uint64_t{1} << 36U) - 1U;
 constexpr double distance_tolerance = 1.0e-15;
-constexpr std::uint64_t maximum_feature_cache_observations = 2'000'000U;
 constexpr std::size_t maximum_feature_dimensions = 64U;
 
 struct PartitionDefinition {
@@ -301,7 +300,7 @@ read_feature_cache_stream(std::istream &stream) {
       !(stream >> token >> observation_count) || token != "OBSERVATIONS" ||
       cache.feature_schema_id.empty() || cache.source_fingerprint.empty() ||
       cache.partition_count == 0U || observation_count == 0U ||
-      observation_count > maximum_feature_cache_observations ||
+      observation_count > maximum_card_abstraction_feature_cache_observations ||
       observation_count > std::numeric_limits<std::size_t>::max()) {
     return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
         CardAbstractionError::InvalidSerializedData);
@@ -520,7 +519,7 @@ build_card_abstraction_feature_cache(const std::vector<CardAbstractionObservatio
                                      const std::string &feature_schema_id,
                                      const std::string &source_fingerprint) {
   if (feature_schema_id.empty() || source_fingerprint.empty() || observations.empty() ||
-      observations.size() > maximum_feature_cache_observations) {
+      observations.size() > maximum_card_abstraction_feature_cache_observations) {
     return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
         CardAbstractionError::InvalidConfiguration);
   }
@@ -557,7 +556,7 @@ validate_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache
   }
   if (cache.feature_schema_id.empty() || cache.source_fingerprint.empty() ||
       cache.observations.empty() ||
-      cache.observations.size() > maximum_feature_cache_observations ||
+      cache.observations.size() > maximum_card_abstraction_feature_cache_observations ||
       !std::ranges::is_sorted(cache.observations, canonical_observation_less) ||
       std::ranges::any_of(cache.observations, [](const CardAbstractionObservation &observation) {
         return observation.equity_features.size() > maximum_feature_dimensions;

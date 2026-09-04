@@ -31,6 +31,8 @@ sostituisce la cronologia Git né i report di fase.
 - Aggiunto resolving su frontier reach-weighted e infoset-closed, con modalità
   unsafe esplicita e guard full-game exact-NashConv. Un candidato peggiore
   viene rifiutato mantenendo il blueprint invariato.
+- Portato il default production del minimizer subgame CFR+ a otto thread; il
+  checkpoint registra il thread count e il seriale resta un oracle esplicito.
 - Nel percorso composto bucketed/subgame, candidato e blueprint vengono
   rialzati e confrontati sul gioco esatto; il solo NashConv astratto non può
   autorizzare il deploy.
@@ -46,8 +48,8 @@ sostituisce la cronologia Git né i report di fase.
   granularità, compression ratio, weighted MSE e membership; i comandi exact
   mantengono il proprio dispatch e rifiutano checkpoint astratti.
 - Limitato esplicitamente il primo bridge nativo qualificato a CFR+ Float64,
-  traversal seriale e canonical DAG lossless. DCFR, codec compressi,
-  parallelismo e diagnostici incompatibili vengono rifiutati.
+  otto thread e canonical DAG lossless. DCFR, codec compressi, più di otto
+  thread e diagnostici incompatibili vengono rifiutati.
 - Aggiunto il manifest `GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0`: ordine
   canonico, bit IEEE esatti, fingerprint sorgente/cache, load validato e
   scrittura atomica. È indipendente dal bucket count e riusabile tra sweep.
@@ -56,6 +58,15 @@ sostituisce la cronologia Git né i report di fase.
   e tempi separati di feature preparation e clustering.
 - Qualificata l'equivalenza bit-identica tra percorso diretto e cache, il
   rifiuto di sorgenti stale e lo sweep K=1/2/3/6/12 con errore non crescente.
+- Aggiunto il preflight bucketing layout-only con upper bound per K, limite
+  preventivo di 2.000.000 osservazioni, accounting di stato Float64, mapping,
+  transienti, otto worker, scrittura atomica e spazio page-backed.
+- Parallelizzato il builder exact-feature su otto partizioni indipendenti con
+  merge canonico deterministico. Il percorso CLI bucketed e la qualification
+  usano sette worker più il thread chiamante; il cap API è otto thread totali.
+- Aggiunti i comandi GTO+ di preflight/cache/qualification e il runner a cinque
+  processi con oracle seriale separato. Il gate richiede exact BR, NashConv
+  `<1%`, RAM esplicita, determinismo e delta parallelo/seriale `<=1e-4`.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
@@ -88,18 +99,32 @@ sostituisce la cronologia Git né i report di fase.
 ### Verificato
 
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `33/33 PASS` in `217,44 s`, inclusi ledger,
+- CTest Release completo `34/34 PASS` in `205,42 s`, inclusi ledger,
   CardAbstraction, SubgameSolver, bridge/CLI postflop bucketed, CFR+, test
   esaustivi, oracle e riferimento GTO+.
-- Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `12,9 ms`,
-  CFR+ Kuhn 2-bucket `10,8 ms`, subgame exact-guarded `1,63 ms`; valori
+- Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `78,045 ms`,
+  CFR+ Kuhn 2-bucket `79,383 ms`, subgame Leduc exact-guarded `2.645,542 ms`;
+  il benchmark Leduc esercita tutti gli otto thread; valori
   registrati come baseline funzionale, non come speedup qualificato.
-- Benchmark nativo Release, cinque ripetizioni: cache turn `52,873 ms` mediana
+- Benchmark nativo Release, cinque ripetizioni: cache turn `21,289 ms` mediana
   per 66 partizioni/744 osservazioni; fixed-river a 1.000 iterazioni da K=1 a
   K=12 usa `128/256/384/768/1.536 B`, compression `12/6/4/2/1x`, weighted MSE
   `0,294077/0,069559/0,026860/0,002066/0` e wall mediano
-  `7,619/8,667/8,768/8,906/9,720 ms`. Exact misura `9,514 ms` e `1.536 B`.
+  `8,146/8,798/9,250/9,443/10,414 ms`. Exact misura `12,673 ms` e `1.536 B`.
   La fixture ridotta qualifica il trade-off, non uno speedup commerciale.
+- AHKHQH flop K=16, cinque processi a otto thread: NashConv deterministico
+  `0,6029051267%`, wall mediano `9,936001 s`, Peak RSS mediano `25.227.264 B`;
+  oracle seriale `0,6099145321%`, `31,051574 s`, delta `7,0094e-5` e speedup
+  sulla mediana parallela `3,13x`. Il builder AHK passa da circa `4,15 s` a `1,57246 s`
+  conservando il fingerprint. Il builder TH completa 280.308 osservazioni in
+  `169,398 s`/`314.556.416 B`, contro il seriale incompleto oltre nove minuti.
+- TH7D6S K=128, cinque processi a otto thread: NashConv deterministico
+  `0,8816749004%`, wall mediano `435,349473 s`, Peak RSS mediano
+  `694.796.288 B`; oracle seriale `0,8770330545%` in `1.493,513047 s`, delta
+  `4,64185e-5` e speedup `3,43x`. K=16 è respinto anche a 800 iterazioni.
+- Corretto il preflight cache: upper bound testuale sempre sopra il file reale,
+  doppia copia atomica inclusa nel budget disco e limite osservazioni verificato
+  prima di avviare i worker. RAM e disco sono parametri obbligatori del runner.
 - Tutti i nuovi file C++ passano `clang-format --dry-run --Werror`. Il target
   globale continua a segnalare debito di formato in sorgenti preesistenti e non
   e' stato usato per produrre una riscrittura meccanica fuori scope.

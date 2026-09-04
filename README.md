@@ -136,11 +136,15 @@ Exact commands keep their original semantics. A local bucketed run uses:
 Reports declare the abstraction fingerprint, requested buckets, compression
 ratio, weighted feature MSE, cache fingerprint/reuse and separate feature and
 clustering time. The versioned exact-feature cache is independent of bucket
-count and uses atomic replacement. The current qualified bridge is serial CFR+
-Float64; compressed cache/state, parallel bucket updates, GUI selection,
-`.gtsd` packaging and native mid-tree frontier merge remain explicit follow-up
-work.
+count and uses atomic replacement. The qualified CLI bridge uses CFR+ Float64
+with seven workers plus its calling thread. Feature-cache construction uses
+eight deterministic workers and the layout-only preflight accounts state,
+worker scratch, cache and atomic disk space before allocation. Compressed
+cache/state, GUI selection, `.gtsd` packaging and native mid-tree frontier
+merge remain explicit follow-up work.
 See `docs/specifications/CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`.
+Measured AHK/TH qualification and the TST preflight are recorded in
+`docs/CARD_ABSTRACTION_SUBGAME_PRODUCTION_QUALIFICATION_2026-09-04.md`.
 
 Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
 container, per-chunk Zstandard compression, independent authenticated

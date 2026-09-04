@@ -1,3 +1,4 @@
+#include "gtosd/postflop/canonical_layout.hpp"
 #include "gtosd/postflop/postflop_solver.hpp"
 
 #include <algorithm>
@@ -159,6 +160,11 @@ void test_cfr_plus_solve_resume_certify_and_query() {
   const auto feature_cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
   require(feature_cache.has_value() && feature_cache.value().partition_count > 0U,
           "native exact feature cache builds independently of bucket count");
+  const auto repeated_feature_cache =
+      gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  require(repeated_feature_cache.has_value() &&
+              repeated_feature_cache.value() == feature_cache.value(),
+          "eight-worker feature cache construction is bit deterministic");
   gtosd::PostflopSolveOptions options;
   options.iterations = 40U;
   options.certification_interval = 40U;
@@ -168,8 +174,12 @@ void test_cfr_plus_solve_resume_certify_and_query() {
 
   const auto solved = gtosd::solve_postflop_abstracted(config, ranges, abstraction, options);
   require(solved.has_value() && solved.value().card_abstraction.has_value() &&
-              solved.value().convergence.size() == 1U,
-          "native bucketed CFR+ solve completes and certifies");
+              solved.value().convergence.size() == 1U &&
+              !solved.value().card_abstraction->reused_feature_cache &&
+              solved.value().card_abstraction->feature_cache_fingerprint ==
+                  feature_cache.value().fingerprint,
+          "native bucketed CFR+ solve builds its exact features with the deterministic "
+          "eight-worker cache path");
   const auto cached_solved =
       gtosd::solve_postflop_abstracted(config, ranges, abstraction, feature_cache.value(), options);
   require(cached_solved.has_value() && cached_solved.value().card_abstraction.has_value() &&
@@ -183,6 +193,18 @@ void test_cfr_plus_solve_resume_certify_and_query() {
               cached_solved.value().checkpoint.cumulative_strategy ==
                   solved.value().checkpoint.cumulative_strategy,
           "cached and direct feature paths produce bit-identical CFR+ state");
+  auto parallel_options = options;
+  parallel_options.parallel_action_depth = gtosd::production_postflop_parallel_workers;
+  const auto parallel_solved = gtosd::solve_postflop_abstracted(
+      config, ranges, abstraction, feature_cache.value(), parallel_options);
+  require(parallel_solved.has_value() &&
+              parallel_solved.value().checkpoint.cumulative_regret ==
+                  solved.value().checkpoint.cumulative_regret &&
+              parallel_solved.value().checkpoint.cumulative_strategy ==
+                  solved.value().checkpoint.cumulative_strategy &&
+              parallel_solved.value().convergence.back().normalized_nash_conv ==
+                  solved.value().convergence.back().normalized_nash_conv,
+          "eight-thread bucketed CFR+ reproduces serial state and exact best response bitwise");
   const auto &certification = solved.value().convergence.back();
   require(std::isfinite(certification.normalized_nash_conv) &&
               certification.normalized_nash_conv >= 0.0,
@@ -269,9 +291,9 @@ void test_cfr_plus_solve_resume_certify_and_query() {
   require(!gtosd::solve_postflop_abstracted(config, ranges, abstraction, unsupported),
           "native bucketed path rejects non-CFR+ algorithms");
   unsupported = options;
-  unsupported.parallel_action_depth = 1U;
+  unsupported.parallel_action_depth = gtosd::maximum_postflop_solver_threads;
   require(!gtosd::solve_postflop_abstracted(config, ranges, abstraction, unsupported),
-          "native bucketed path rejects unqualified parallel updates");
+          "native bucketed path rejects more than eight total solver threads");
 
   auto stale_cache = feature_cache.value();
   stale_cache.source_fingerprint += ":stale";
@@ -287,6 +309,15 @@ void test_turn_cache_multi_granularity_sweep() {
   require(cache.has_value() && cache.value().partition_count > 2U &&
               cache.value().observations.size() > 12U,
           "turn cache covers the turn root and exact river partitions");
+  gtosd::CanonicalLayoutOptions preflight_options;
+  preflight_options.card_abstraction_buckets = {12U};
+  const auto preflight = gtosd::estimate_canonical_chance_layout(config, ranges, preflight_options);
+  require(preflight.has_value() && preflight.value().card_abstraction_preflight.has_value() &&
+              preflight.value().card_abstraction_preflight->partition_count ==
+                  cache.value().partition_count &&
+              preflight.value().card_abstraction_preflight->observation_count ==
+                  cache.value().observations.size(),
+          "layout-only preflight predicts the exact deduplicated feature-cache shape");
 
   std::uint64_t previous_actions = 0U;
   double previous_error = std::numeric_limits<double>::infinity();
@@ -307,6 +338,43 @@ void test_turn_cache_multi_granularity_sweep() {
   }
 }
 
+void test_turn_identity_abstraction_matches_exact_oracle() {
+  auto config = make_river_config();
+  config.river.reset();
+  const auto ranges = make_narrow_ranges(config);
+  const auto cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  require(cache.has_value(), "identity-oracle turn feature cache builds");
+  gtosd::PostflopSolveOptions options;
+  options.iterations = 200U;
+  options.averaging_delay = 20U;
+  options.certification_interval = 200U;
+  const auto exact = gtosd::solve_postflop_exact(config, ranges, options);
+  const auto abstracted = gtosd::solve_postflop_abstracted(config, ranges, make_abstraction(12U),
+                                                           cache.value(), options);
+  require(exact.has_value() && abstracted.has_value() && !exact.value().convergence.empty() &&
+              !abstracted.value().convergence.empty(),
+          "exact and identity-bucket turn solves certify");
+  require(abstracted.value().card_abstraction.has_value(),
+          "identity abstraction publishes metrics");
+  const auto &metrics = abstracted.value().card_abstraction->metrics;
+  require(std::abs(metrics.compression_ratio - 1.0) < 1.0e-12,
+          "identity abstraction has unit compression ratio");
+  require(metrics.weighted_mean_squared_error < 1.0e-24,
+          "identity abstraction has zero feature error");
+  require(abstracted.value().information_sets == exact.value().information_sets &&
+              abstracted.value().actions == exact.value().actions,
+          "identity abstraction preserves exact state shape");
+  const auto &exact_certification = exact.value().convergence.back();
+  const auto &abstracted_certification = abstracted.value().convergence.back();
+  require(std::abs(exact_certification.normalized_nash_conv -
+                   abstracted_certification.normalized_nash_conv) < 1.0e-12 &&
+              std::abs(exact_certification.profile_value_antes[0] -
+                       abstracted_certification.profile_value_antes[0]) < 1.0e-12 &&
+              std::abs(exact_certification.profile_value_antes[1] -
+                       abstracted_certification.profile_value_antes[1]) < 1.0e-12,
+          "identity bucketing matches the exact combo oracle at certification");
+}
+
 } // namespace
 
 int main() {
@@ -314,6 +382,7 @@ int main() {
     test_layout_and_exact_boundary();
     test_cfr_plus_solve_resume_certify_and_query();
     test_turn_cache_multi_granularity_sweep();
+    test_turn_identity_abstraction_matches_exact_oracle();
     std::cout << "Native postflop abstraction tests passed (" << assertions << " assertions).\n";
     return 0;
   } catch (const std::exception &error) {
