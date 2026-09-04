@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
   gtosd
-  VERSION 0.11.0
-  DESCRIPTION "Short Deck game and solver core"
+  VERSION 0.10.0
+  DESCRIPTION "Exact Short Deck game and solver core"
   LANGUAGES CXX)
 
 option(GTOSD_BUILD_TESTS "Build first-party tests" ON)
@@ -88,8 +88,6 @@ add_subdirectory(libs/tree)
 add_subdirectory(libs/isomorphism)
 add_subdirectory(libs/solver)
 add_subdirectory(libs/best_response)
-add_subdirectory(libs/abstraction)
-add_subdirectory(libs/subgame)
 add_subdirectory(libs/memory)
 add_subdirectory(libs/postflop)
 add_subdirectory(libs/storage)
@@ -124,8 +122,6 @@ install(TARGETS
     gtosd_isomorphism
     gtosd_solver
     gtosd_best_response
-    gtosd_abstraction
-    gtosd_subgame
     gtosd_memory
     gtosd_postflop
     gtosd_storage
@@ -139,6 +135,11 @@ install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   PATTERN "*.in" EXCLUDE)
 install(FILES ${PROJECT_BINARY_DIR}/generated/gtosd/version.hpp
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/gtosd)
+install(FILES schemas/postflop_tree_config.schema.json
+              schemas/gto_plus_reference.schema.json
+              schemas/gto_plus_convergence_benchmark.schema.json
+              schemas/gto_plus_convergence_benchmark.v2.schema.json
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
 install(DIRECTORY benchmarks/fixtures/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)
 install(EXPORT gtosdTargets

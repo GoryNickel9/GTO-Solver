@@ -1,6 +1,5 @@
 #pragma once
 
-#include "gtosd/abstraction/card_abstraction.hpp"
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/equity/evaluator.hpp"
 #include "gtosd/memory/memory.hpp"
@@ -16,12 +15,6 @@
 #include <vector>
 
 namespace gtosd {
-
-// The qualified desktop contract is one coordinator plus seven traversal
-// workers. `parallel_action_depth` is a legacy name for the worker count.
-inline constexpr std::uint8_t maximum_postflop_solver_threads = 8U;
-inline constexpr std::uint8_t production_postflop_parallel_workers =
-    maximum_postflop_solver_threads - 1U;
 
 namespace detail {
 class PostflopRuntimeState;
@@ -307,8 +300,6 @@ struct PostflopSolveOptions {
   // Observational only: disabling detailed accounting must not alter solver
   // allocations, traversal, checkpoint identity, or mathematical results.
   bool enable_detailed_memory_accounting{true};
-  // Legacy name: number of additional traversal workers. The caller is the
-  // remaining solver thread; values above 7 are rejected.
   std::uint8_t parallel_action_depth{0};
   // F10.4: when non-null, the tree-root CO strategy is locked to these
   // external probabilities for the whole solve. The pointer must outlive the
@@ -416,20 +407,6 @@ struct PostflopSolveTimings {
   double total_seconds{0.0};
 };
 
-// Compact, checkpoint-relevant description of the optional lossy card
-// abstraction used by the native HU postflop engine. The assignment itself
-// remains owned by the prepared layout and is rebuilt deterministically from
-// the game, ranges and versioned configuration.
-struct PostflopCardAbstractionSummary {
-  CardAbstractionConfig config{};
-  std::string fingerprint;
-  std::string feature_cache_fingerprint;
-  CardAbstractionMetrics metrics{};
-  double feature_preparation_seconds{0.0};
-  double clustering_seconds{0.0};
-  bool reused_feature_cache{false};
-};
-
 struct PostflopPureCfrTrajectoryPoint {
   std::uint64_t iteration{0};
   std::uint64_t minimum_phase{1};
@@ -459,7 +436,6 @@ struct PostflopSolveResult {
   PostflopStopReason stop_reason{PostflopStopReason::Completed};
   std::optional<PostflopRealNodeReplayCorpus> diagnostic_real_node_replay;
   std::vector<PostflopPureCfrTrajectoryPoint> diagnostic_pure_cfr_trajectory;
-  std::optional<PostflopCardAbstractionSummary> card_abstraction;
 };
 
 struct PostflopStrategyQuery {
@@ -467,8 +443,6 @@ struct PostflopStrategyQuery {
   ComboId combo{0};
   std::vector<Action> actions;
   std::vector<double> probabilities;
-  std::optional<std::uint32_t> abstraction_bucket;
-  std::optional<std::uint32_t> abstraction_bucket_size;
 };
 
 // Compact prepared-tree navigation for decision histories.  It exposes the
@@ -481,67 +455,6 @@ struct PostflopPreparedActionEdge {
   NodeId child{0};
 };
 
-// Lossless navigation row for the production canonical public graph. Decision
-// edges expose one action and one outcome; chance edges expose every retained
-// canonical outcome, including the representative card, physical
-// multiplicity and the exact child-coordinate suit transform.
-struct PostflopPreparedOutcome {
-  NodeId child{0};
-  CardId chance_card{};
-  std::uint32_t physical_outcome_count{1};
-  std::uint8_t physical_to_child_automorphism{0};
-};
-
-struct PostflopPreparedEdge {
-  std::optional<Action> action;
-  std::vector<PostflopPreparedOutcome> outcomes;
-};
-
-struct PostflopSubgamePathStep {
-  std::uint32_t edge_index{0};
-  std::uint32_t outcome_index{0};
-
-  friend bool operator==(const PostflopSubgamePathStep &,
-                         const PostflopSubgamePathStep &) = default;
-};
-
-enum class PostflopSubgameDeployment : std::uint8_t { CandidateAccepted, BlueprintFallback };
-
-// Production resolving is deliberately narrower than the general FiniteGame
-// API: it is CFR+, uses one coordinator plus seven workers, and always guards
-// a candidate with exact full-game NashConv before mutating the deployed
-// checkpoint. The iteration clock is local to the selected subgame.
-struct PostflopSubgameSolveConfig {
-  static constexpr std::uint32_t format_major = 1;
-  static constexpr std::uint32_t format_minor = 0;
-
-  std::uint32_t major{format_major};
-  std::uint32_t minor{format_minor};
-  std::uint64_t iterations{1'000};
-  std::uint64_t averaging_delay{0};
-  double safety_tolerance{0.0};
-  std::uint8_t parallel_action_depth{production_postflop_parallel_workers};
-  // Optional caller-owned cap for the byte-exact rollback snapshot. No
-  // product or external-solver memory value is inferred when it is absent.
-  std::optional<std::uint64_t> snapshot_budget_bytes;
-};
-
-struct PostflopSubgameSolveResult {
-  NodeId canonical_root{0};
-  std::uint64_t board_mask{0};
-  double public_reach_probability{0.0};
-  std::uint64_t affected_decision_nodes{0};
-  std::uint64_t affected_action_entries{0};
-  std::uint64_t rollback_snapshot_bytes{0};
-  std::uint64_t local_iterations{0};
-  std::uint8_t solver_thread_count{maximum_postflop_solver_threads};
-  double solve_seconds{0.0};
-  PostflopCertification baseline;
-  PostflopCertification candidate;
-  PostflopCertification deployed;
-  PostflopSubgameDeployment deployment{PostflopSubgameDeployment::BlueprintFallback};
-};
-
 struct PostflopLayoutEstimate {
   PublicTreeStats physical_public_tree;
   std::uint64_t canonical_public_nodes{0};
@@ -549,7 +462,6 @@ struct PostflopLayoutEstimate {
   std::uint64_t actions{0};
   std::uint64_t regret_bytes{0};
   std::uint64_t strategy_bytes{0};
-  std::optional<PostflopCardAbstractionSummary> card_abstraction;
 };
 
 // Read-only topology row for architectural traversal feasibility studies.
@@ -657,15 +569,6 @@ struct PostflopNodeAnalysis {
 [[nodiscard]] Result<bool, PostflopSolverError>
 validate_postflop_ranges(const PostflopTreeConfig &config, const PostflopRanges &ranges);
 
-// Enumerates the exact W/T/L/equity observations for every decision-bearing
-// board/player partition once. The resulting cache is independent of bucket
-// count and is bound to the exact layout/ranges by source_fingerprint.
-[[nodiscard]] Result<CardAbstractionFeatureCache, PostflopSolverError>
-build_postflop_card_abstraction_feature_cache(
-    const PostflopTreeConfig &config, const PostflopRanges &ranges,
-    const std::string &feature_schema_id =
-        std::string(equity_distribution_feature_schema_v2));
-
 [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
@@ -674,21 +577,6 @@ solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOption
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                      const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
-
-// Explicit opt-in native card-abstraction path. Chance, card removal,
-// terminal values and exact best responses remain combo-level; only CFR+
-// regret/average-strategy state is bucketed. `solve_postflop_exact` never
-// selects this path.
-[[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
-solve_postflop_abstracted(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                          const CardAbstractionConfig &abstraction,
-                          const PostflopSolveOptions &options,
-                          const PostflopCheckpoint *resume_from = nullptr);
-
-[[nodiscard]] Result<PostflopSolveResult, PostflopSolverError> solve_postflop_abstracted(
-    const PostflopTreeConfig &config, const PostflopRanges &ranges,
-    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
-    const PostflopSolveOptions &options, const PostflopCheckpoint *resume_from = nullptr);
 
 class PostflopPreparedTree final {
 public:
@@ -701,36 +589,18 @@ public:
 private:
   struct Impl;
   explicit PostflopPreparedTree(std::unique_ptr<Impl> implementation);
-  [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
-  solve_internal(const PostflopSolveOptions &, const PostflopCheckpoint *);
   std::unique_ptr<Impl> implementation_;
 
   friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
   prepare_postflop_tree(const PostflopTreeConfig &, const PostflopRanges &, bool, bool, bool);
-  friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
-  prepare_postflop_abstracted_tree(const PostflopTreeConfig &, const PostflopRanges &,
-                                   const CardAbstractionConfig &, bool);
-  friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
-  prepare_postflop_abstracted_tree(const PostflopTreeConfig &, const PostflopRanges &,
-                                   const CardAbstractionConfig &,
-                                   const CardAbstractionFeatureCache &, bool);
   friend Result<PostflopSolveResult, PostflopSolverError>
   solve_postflop_exact(PostflopPreparedTree &, const PostflopSolveOptions &,
                        const PostflopCheckpoint *);
-  friend Result<PostflopSolveResult, PostflopSolverError>
-  solve_postflop_abstracted(PostflopPreparedTree &, const PostflopSolveOptions &,
-                            const PostflopCheckpoint *);
   friend Result<PostflopNodeAnalysis, PostflopSolverError>
   analyze_postflop_node(PostflopPreparedTree &, const PostflopCheckpoint &, NodeId);
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
   friend Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
   prepared_postflop_action_edges(const PostflopPreparedTree &, NodeId);
-  friend Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>
-  prepared_postflop_edges(const PostflopPreparedTree &, NodeId);
-  friend Result<PostflopSubgameSolveResult, PostflopSolverError>
-  resolve_postflop_subgame(PostflopPreparedTree &, PostflopCheckpoint &,
-                           std::span<const PostflopSubgamePathStep>,
-                           const PostflopSubgameSolveConfig &);
   friend Result<PostflopArchitecturalTopology, PostflopSolverError>
   inspect_postflop_architectural_topology(const PostflopPreparedTree &);
   friend Result<PostflopArchitecturalShadowReport, PostflopSolverError>
@@ -746,34 +616,11 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
                       bool enable_lossless_isomorphism = true,
                       bool enable_canonical_public_dag = true, bool prepare_analysis = false);
 
-[[nodiscard]] Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
-prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                                 const CardAbstractionConfig &abstraction,
-                                 bool prepare_analysis = false);
-
-[[nodiscard]] Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
-prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                                 const CardAbstractionConfig &abstraction,
-                                 const CardAbstractionFeatureCache &feature_cache,
-                                 bool prepare_analysis = false);
-
 [[nodiscard]] PostflopLayoutEstimate
 prepared_postflop_layout_estimate(const PostflopPreparedTree &prepared);
 
 [[nodiscard]] Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
 prepared_postflop_action_edges(const PostflopPreparedTree &prepared, NodeId node);
-
-[[nodiscard]] Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>
-prepared_postflop_edges(const PostflopPreparedTree &prepared, NodeId node);
-
-// Resolves one infoset-closed canonical frontier in place. The input
-// checkpoint is the blueprint. Only action-state slices reachable from the
-// selected root are snapshotted and reset; an exact full-game NashConv guard
-// either deploys the CFR+ candidate or restores the blueprint byte-for-byte.
-[[nodiscard]] Result<PostflopSubgameSolveResult, PostflopSolverError>
-resolve_postflop_subgame(PostflopPreparedTree &prepared, PostflopCheckpoint &checkpoint,
-                         std::span<const PostflopSubgamePathStep> path,
-                         const PostflopSubgameSolveConfig &config = {});
 
 // Explicit external inspector used by architecture tooling. It does not
 // participate in traversal and its temporary rows are released by the caller.
@@ -797,10 +644,6 @@ prepared_postflop_public_tree(const std::shared_ptr<PostflopPreparedTree> &prepa
 solve_postflop_exact(PostflopPreparedTree &prepared, const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
 
-[[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
-solve_postflop_abstracted(PostflopPreparedTree &prepared, const PostflopSolveOptions &options,
-                          const PostflopCheckpoint *resume_from = nullptr);
-
 // Explicitly copies a runtime OS-page-backed exact state into the ordinary
 // checkpoint vectors. This is intended for persistence/export and may raise
 // the caller's working set by the full logical state size.
@@ -814,19 +657,6 @@ certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopChec
 certify_postflop_checkpoint(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                             const PostflopCheckpoint &checkpoint);
 
-[[nodiscard]] Result<PostflopCertification, PostflopSolverError>
-certify_postflop_abstracted_checkpoint(const PostflopTreeConfig &config,
-                                       const PostflopRanges &ranges,
-                                       const CardAbstractionConfig &abstraction,
-                                       const PostflopCheckpoint &checkpoint);
-
-[[nodiscard]] Result<PostflopCertification, PostflopSolverError>
-certify_postflop_abstracted_checkpoint(const PostflopTreeConfig &config,
-                                       const PostflopRanges &ranges,
-                                       const CardAbstractionConfig &abstraction,
-                                       const CardAbstractionFeatureCache &feature_cache,
-                                       const PostflopCheckpoint &checkpoint);
-
 [[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError>
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint,
                         NodeId public_node, ComboId combo);
@@ -835,32 +665,12 @@ query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoi
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                         const PostflopCheckpoint &checkpoint, NodeId public_node, ComboId combo);
 
-[[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError>
-query_postflop_abstracted_strategy(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                                   const CardAbstractionConfig &abstraction,
-                                   const PostflopCheckpoint &checkpoint, NodeId public_node,
-                                   ComboId combo);
-
-[[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError> query_postflop_abstracted_strategy(
-    const PostflopTreeConfig &config, const PostflopRanges &ranges,
-    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
-    const PostflopCheckpoint &checkpoint, NodeId public_node, ComboId combo);
-
 [[nodiscard]] Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>
 query_postflop_strategies(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                           const PostflopCheckpoint &checkpoint, NodeId public_node);
 
 [[nodiscard]] Result<PostflopLayoutEstimate, PostflopSolverError>
 estimate_postflop_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges);
-
-[[nodiscard]] Result<PostflopLayoutEstimate, PostflopSolverError>
-estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                                    const CardAbstractionConfig &abstraction);
-
-[[nodiscard]] Result<PostflopLayoutEstimate, PostflopSolverError>
-estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
-                                    const CardAbstractionConfig &abstraction,
-                                    const CardAbstractionFeatureCache &feature_cache);
 
 [[nodiscard]] Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node(const PostflopTreeConfig &config, const PostflopRanges &ranges,

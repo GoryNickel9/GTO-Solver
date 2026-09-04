@@ -25,8 +25,7 @@ prestazionali del solver devono quindi essere soddisfatti con CPU e RAM.
 core -> equity -> tree -> isomorphism
   \        \        \          \
    \        +--------+-----------+-> postflop -> storage
-    +-----------------> solver -> best_response
-                              \-> abstraction -> subgame
+    +-----------------> solver -> best_response       \
                          memory ------------------------+-> CLI / Qt GUI
 ```
 
@@ -40,10 +39,8 @@ Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
 | `gtosd_isomorphism` | permutazioni globali lossless dei semi |
 | `gtosd_solver` | giochi finiti di riferimento e varianti CFR |
 | `gtosd_best_response` | profile value, best response e NashConv |
-| `gtosd_abstraction` | feature exact postflop, cache/manifest 1.0, bucketing deterministico e lift |
-| `gtosd_subgame` | frontier reach-weighted, resolving CFR+ e guard exact-game |
 | `gtosd_memory` | layout e backend di memoria |
-| `gtosd_postflop` | solver HU range-aware exact e bucketed opt-in, exact BR e analytics |
+| `gtosd_postflop` | solver exact HU range-aware e analytics |
 | `gtosd_storage` | container `.gtsd`, cifratura, compressione e catalogo |
 | `gto_cli` | automazione, solve, inspect e benchmark |
 | `gto_gui` | workflow desktop Qt 6 Widgets |
@@ -66,14 +63,10 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
    può richiedere la materializzazione fisica completa.
 4. L'isomorfismo lossless riduce infoset duplicati; il target migrato usa un
    canonical chance tree senza unificare history arbitrarie.
-5. `prepare_postflop_tree` crea il layout exact; l'API distinta
-   `prepare_postflop_abstracted_tree` calcola feature exact, mappa le combo nei
-   bucket e rialloca soltanto gli action slot del solver. Gli indici analytics
-   restano opt-in.
-6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture parity
-   non astratte usano `ProductionDcfr`. Il percorso bucketed nativo usa CFR+
-   Float64 seriale e aggrega i delta combo reach-weighted prima della singola
-   proiezione per bucket.
+5. `prepare_postflop_tree` crea il layout infoset/action e, se richiesto, gli
+   indici analytics.
+6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture production
+   usano `ProductionDcfr`, mentre CFR+ resta oracle/fallback.
 7. A intervalli espliciti la best response certifica il profilo medio.
 8. Checkpoint e soluzione possono essere salvati e ripresi solo con fingerprint
    compatibile.
@@ -103,14 +96,7 @@ esplicita e il report deve rendere visibile la residenza scelta.
 - `tree` contiene solo stato pubblico; le combo private entrano negli infoset.
 - `isomorphism` applica una permutazione globale, mai una canonicalizzazione
   board-only che rompa i blocker.
-- `postflop` non campiona e non bucketizza nel percorso exact/parity; il
-  bucketing richiede API o comando CLI esplicitamente `abstracted/bucketed`.
-- `abstraction` non raggruppa player, public state/history o action schema
-  incompatibili; il suo fingerprint entra nell'identità del gioco. La cache
-  exact è separata dalla granularità e viene validata contro la sorgente prima
-  di alimentare il clustering.
-- `subgame` non taglia un information set e non usa la metrica del solo gioco
-  astratto per autorizzare un deploy guardato.
+- `postflop` non campiona e non bucketizza nel percorso exact.
 - `postflop`, `solver` e `best_response` non delegano calcolo a GPU o altri
   acceleratori: CPU e RAM sono l'unico backend autorizzato.
 - `storage` non modifica semantica o precisione del solve.
@@ -132,13 +118,9 @@ Node locking, preflop HU e multiway devono aggiungere moduli o contratti senza
 inserire dipendenze nella GUI. Il root lock F10.4 implementato è un esperimento
 diagnostico test-only e non costituisce l'API di node locking di prodotto.
 
-Il preflop userà action abstraction, `CardAbstraction`, decomposizione e stima
-risorse. L'API generica bucketing/resolving e il bridge `DenseLayout` HU
-postflop sono implementati, incluso il merge di un frontier canonico a ingresso
-univoco; restano da collegare il layout preflop e, separatamente, multi-root e
-continual resolving. Nessuno di questi percorsi reinterpreta
-silenziosamente il solver exact. Il multiway richiederà utility e metriche
-differenti.
+Il preflop richiederà action abstraction, decomposizione e stima risorse; il
+multiway richiederà utility e metriche differenti. Nessuna delle due estensioni
+può essere ottenuta reinterpretando silenziosamente il solver HU postflop.
 
 ## Toolchain e distribuzione
 

@@ -2,18 +2,7 @@
 
 Aggiornato: 2026-09-04
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
-Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
-
-> **Correzione del gate bucketing 2026-09-04.** Prima di riprendere questo
-> journey devono essere integrati e qualificati bucketing e subgame solving
-> come politica del prodotto condiviso. Moduli, cache, bridge HU postflop CFR+
-> Float64 e frontier merge sono implementati e verificati, ma le prove AHK
-> K=16 / TH K=128 sono per-fixture e non selezionano un default globale. Il gate
-> è quindi `BLOCKED`: K16 e K32 sono entrambi respinti globalmente dal FAIL TH
-> a 800 iterazioni (`5,924317%` e `2,859595%` NashConv/pot). Il pre-gate K32
-> passa AHK (`0,499452%`) e interrompe correttamente TST dopo il FAIL TH. La
-> parity resta posposta. Il solver non astratto resta oracle per correttezza e
-> regressione.
+Stato del gate: **BLOCCANTE — NON SUPERATO**
 
 > **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
 > `8/399/2.000 MB` provengono dal campo UI “Memory needed for solving”. Gli
@@ -47,7 +36,7 @@ Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
 > correctness, layout ed exact outcomes. Peak RSS massimo TST
 > `1.969.860.608 B` e state TST `1.472.605.376 B` sono dati diagnostici.
 > CPU preflight media `9,8-14,6%` e RAM libera minima `16.890.228.736 B`.
-> Full CTest Release corrente `34/34 PASS` (`205,42 s`, 2026-09-04).
+> Full CTest Release corrente `28/28 PASS` (`105,46 s`, 2026-09-04).
 > Il contratto memoria v3 confrontava impropriamente Peak RSS e display GTO+;
 > i risultati AHK/TH/TST restano misure grezze ma non classificazioni memoria.
 >
@@ -984,12 +973,10 @@ Decisione: ACCEPT / REJECT / INCONCLUSIVE
 Prossimo esperimento singolo:
 ```
 
-## 10. Condizione di promozione della parity
+## 10. Condizione di sblocco
 
-Il freeze resta attivo: nessun K globale tra 16 e 32 ha superato il gate.
-Questo journey resta posposto e potrà essere dichiarato superato
-soltanto quando una voce del registro, sul percorso commerciale esplicitamente
-selezionato, dimostra contemporaneamente:
+Il freeze delle fasi viene rimosso soltanto quando una voce del registro
+dimostra contemporaneamente:
 
 ```text
 speed_score >= 90%
@@ -999,7 +986,6 @@ release_suite = PASS
 reproducibility = PASS
 ```
 
-Nel frattempo sono autorizzati soltanto il completamento e la qualifica del
-percorso bucketing/subgame. Persistenza, GUI, preflop e altra parity restano
-fuori dall'obiettivo corrente. Nessun benchmark può sostituire l'oracolo exact
-o essere adattato per favorire una fixture specifica.
+Fino ad allora il solo lavoro autorizzato sul percorso principale è
+benchmarking, profiling, correttezza o ottimizzazione direttamente collegata a
+`GTP-AHKHQH-003`.

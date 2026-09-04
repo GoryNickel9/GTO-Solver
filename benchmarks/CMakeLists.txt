@@ -48,22 +48,6 @@ target_link_libraries(gtosd_fd_ftrl_omd_local_benchmark
   PRIVATE benchmark::benchmark)
 gtosd_set_warnings(gtosd_fd_ftrl_omd_local_benchmark)
 
-add_executable(gtosd_abstraction_subgame_benchmark
-  abstraction_subgame_benchmark.cpp)
-target_link_libraries(gtosd_abstraction_subgame_benchmark
-  PRIVATE
-    gtosd::postflop
-    gtosd::subgame
-    benchmark::benchmark)
-gtosd_set_warnings(gtosd_abstraction_subgame_benchmark)
-
-add_test(NAME gtosd_abstraction_subgame_benchmark_smoke
-  COMMAND gtosd_abstraction_subgame_benchmark
-    --benchmark_min_time=0.01s
-    --benchmark_repetitions=1)
-set_tests_properties(gtosd_abstraction_subgame_benchmark_smoke
-  PROPERTIES LABELS "benchmark;abstraction;bucketing;subgame;cfr-plus")
-
 add_test(NAME gtosd_fd_ftrl_omd_local_benchmark_smoke
   COMMAND gtosd_fd_ftrl_omd_local_benchmark
     --benchmark_filter=local/.*_direct

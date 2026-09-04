@@ -11,53 +11,6 @@ GTOSD distingue:
 Un checkpoint non sostituisce una soluzione verificata. Una soluzione conserva
 config, range, checkpoint e certificazione coerenti.
 
-## Manifest card abstraction e subgame
-
-`CardAbstraction` usa il formato testuale `GTOSD_CARD_ABSTRACTION 1 0`. Conserva
-kind, granularità, schema delle feature, information set, partizione, combo,
-board mask, reach weight e feature con bit IEEE esatti. Il reader ricostruisce
-l'astrazione e rifiuta un fingerprint divergente. L'identità del gioco CFR
-include il fingerprint dell'astrazione.
-
-Le feature preparatorie possono essere persistite separatamente nel manifest
-`GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0`. L'header dichiara schema,
-fingerprint della sorgente, fingerprint della cache, numero di partizioni e
-osservazioni; ogni osservazione conserva player, combo, board mask, reach
-weight e feature tramite bit IEEE esatti. Le righe sono in ordine canonico e
-il reader impone limiti prima dell'allocazione, ricalcola il fingerprint e
-rifiuta trailing data o contenuto corrotto. Il salvataggio usa temporary
-sibling e replace atomico.
-
-Il manifest è intenzionalmente indipendente da `buckets_per_partition`: più
-configurazioni k-means possono riusare gli stessi dati esatti. Il fingerprint
-della cache documenta la provenienza nel report, ma non cambia il fingerprint
-del gioco quando le osservazioni sono semanticamente identiche a quelle
-generate direttamente.
-
-Il checkpoint prodotto da un subgame conserva il fingerprint del gioco
-astratto e del frontier reach-weighted. La strategia distribuita e la metrica
-full-game appartengono al risultato di resolving: non è valido riaprire quel
-checkpoint contro un frontier, un blueprint o un'astrazione differenti.
-
-Nel postflop nativo il fingerprint del checkpoint include configurazione,
-feature schema e assegnazioni combo→bucket. Il report JSON/Markdown della CLI
-conserva inoltre kind, bucket richiesti, fingerprint, compression ratio,
-weighted MSE, cache riusata e tempi separati di feature/clustering. Il resume
-richiede di nuovo lo stesso config, gli stessi range e
-la stessa configurazione di astrazione; un checkpoint exact o un bucket count
-diverso viene rifiutato prima del traversal.
-
-`resolve-bucketed` scrive sempre un checkpoint di destinazione distinto con lo
-stesso fingerprint del blueprint e con i soli segmenti accettati aggiornati.
-Il report sidecar `gtosd.postflop.bucketed-subgame-resolution.v1` conserva path,
-root canonica, reach, iterazioni locali, byte del rollback, certificazioni e
-decisione candidate/fallback. Il clock globale del checkpoint non incorpora le
-iterazioni locali. Il sidecar non è ancora autenticato insieme al checkpoint:
-per audit e packaging `.gtsd` va conservato come artefatto associato esplicito.
-Un successivo `resume-bucketed` è quindi un warm start CFR+ dal profilo
-distribuito, non la continuazione bit-identica della traiettoria full-game
-precedente; questa distinzione va mantenuta nel report di sessione.
-
 ## Checkpoint postflop
 
 `PostflopCheckpoint` contiene:
@@ -96,11 +49,7 @@ HEADER | CHUNK_INDEX | ENCRYPTED_CHUNKS | FOOTER
 ```
 
 I chunk tipizzati sono `CONFIG`, `TREE`, `ISOMORPHISM`, `STRATEGY`, `EV`,
-`RANGES`, `NODELOCKS`, `METRICS` e `DICTIONARY`. Finché non esiste un chunk
-`ABSTRACTION` versionato nel container `.gtsd`, un checkpoint postflop nativo
-bucketed resta riprendibile e verificabile tramite config/range/abstraction
-esterni e report, ma non è ancora impacchettabile come soluzione `.gtsd`
-autosufficiente. L'indice registra offset,
+`RANGES`, `NODELOCKS`, `METRICS` e `DICTIONARY`. L'indice registra offset,
 dimensione raw/compressa/cifrata e uso del dizionario. I feature bit dichiarano
 chunking, Zstandard, secretstream, random access e strategia exact o quantizzata.
 

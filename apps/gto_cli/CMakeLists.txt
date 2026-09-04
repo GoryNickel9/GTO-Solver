@@ -24,32 +24,6 @@ if(MSVC)
 endif()
 gtosd_set_warnings(gto_cli)
 
-add_test(NAME gtosd_bucketed_postflop_cli
-  COMMAND ${CMAKE_COMMAND}
-    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
-    -DGTOSD_FIXTURE=${PROJECT_SOURCE_DIR}/tests/fixtures/postflop_fixed_river_bet.json
-    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
-    -P ${PROJECT_SOURCE_DIR}/tests/verify_bucketed_postflop_cli.cmake)
-set_tests_properties(gtosd_bucketed_postflop_cli
-  PROPERTIES LABELS "postflop;abstraction;bucketing;cfr-plus;cli;production;exact-br")
-if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-  set_tests_properties(gtosd_bucketed_postflop_cli PROPERTIES
-    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
-endif()
-
-add_test(NAME gtosd_bucketed_subgame_cli
-  COMMAND ${CMAKE_COMMAND}
-    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
-    -DGTOSD_FIXTURE=${PROJECT_SOURCE_DIR}/tests/fixtures/postflop_fixed_river_bet.json
-    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
-    -P ${PROJECT_SOURCE_DIR}/tests/verify_bucketed_subgame_cli.cmake)
-set_tests_properties(gtosd_bucketed_subgame_cli
-  PROPERTIES LABELS "postflop;abstraction;bucketing;subgame;cfr-plus;cli;production;exact-br")
-if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-  set_tests_properties(gtosd_bucketed_subgame_cli PROPERTIES
-    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
-endif()
-
 add_test(NAME gtosd_gto_plus_action_catalog_smoke
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
@@ -76,20 +50,6 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
-add_test(NAME gtosd_bucketed_preflight_cli
-  COMMAND ${CMAKE_COMMAND}
-    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
-    -DGTOSD_TST_FIXTURE=${PROJECT_SOURCE_DIR}/benchmarks/fixtures/gto_plus_tstc9d_101.json
-    -DGTOSD_AHK_FIXTURE=${PROJECT_SOURCE_DIR}/benchmarks/fixtures/gto_plus_ahkhqh_101.json
-    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
-    -P ${PROJECT_SOURCE_DIR}/tests/verify_bucketed_preflight_cli.cmake)
-set_tests_properties(gtosd_bucketed_preflight_cli
-  PROPERTIES LABELS "postflop;abstraction;bucketing;preflight;gto-plus;production")
-if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-  set_tests_properties(gtosd_bucketed_preflight_cli PROPERTIES
-    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
-endif()
-
 add_test(NAME gtosd_production_dcfr_contract
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_FIXTURE_DIR=${PROJECT_SOURCE_DIR}/benchmarks/fixtures
@@ -97,10 +57,3 @@ add_test(NAME gtosd_production_dcfr_contract
     -P ${PROJECT_SOURCE_DIR}/tests/verify_production_dcfr_contract.cmake)
 set_tests_properties(gtosd_production_dcfr_contract
   PROPERTIES LABELS "phase10;postflop;gto-plus;contract")
-
-add_test(NAME gtosd_global_card_abstraction_runner_contract
-  COMMAND ${CMAKE_COMMAND}
-    -DGTOSD_GLOBAL_ABSTRACTION_RUNNER=${PROJECT_SOURCE_DIR}/tools/run_global_card_abstraction_qualification.ps1
-    -P ${PROJECT_SOURCE_DIR}/tests/verify_global_card_abstraction_runner.cmake)
-set_tests_properties(gtosd_global_card_abstraction_runner_contract
-  PROPERTIES LABELS "postflop;abstraction;bucketing;cfr-plus;production;contract")

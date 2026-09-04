@@ -13,16 +13,6 @@ La suite copre:
 - tree builder, chance, hash e serialization;
 - isomorfismo globale lossless;
 - solver laboratory, best response e checkpoint;
-- card abstraction, feature exact postflop, cache 1.0 atomica/corruption-safe,
-  equivalenza diretta-cache, builder deterministico a otto worker, preflight
-  statico, sweep multi-granularità, lift e CFR+ bucketed a otto thread;
-- contratto del runner globale: un solo K per tutte le fixture, CFR+ Float64,
-  otto thread, exact BR, commit/hash binario e nessuna selezione per benchmark;
-- subgame frontier, reach, infoset closure, default CFR+ a otto thread,
-  guard/fallback e composizione bucketed con certificazione sul gioco esatto;
-- resolver `DenseLayout` card-conditioned, prior privato blueprint, chance
-  probability/automorfismi, snapshot bounded, navigazione e workflow CLI con
-  output checkpoint separato;
 - memoria e postflop exact;
 - storage autenticato e migrazioni;
 - GUI prototype/product E2E;
@@ -49,15 +39,13 @@ codice: i gate Windows devono essere eseguiti nel developer environment.
 
 ## Suite corrente
 
-La suite Release corrente registra 35 test CTest: infrastruttura, core, fasi
-1-10, contratto `production_dcfr`, riferimento GTO+, ledger solver-owned,
-layout canonico, oracoli (incluso il recheck Pure/Sync-PCFR), CardAbstraction,
-feature cache, SubgameSolver, bridge postflop nativo, workflow CLI bucketed con
-cache, workflow CLI del frontier resolver e benchmark smoke.
-Test GUI, sanitizer, nightly o altri preset sono prove separate e il report
-deve dire con precisione cosa è stato escluso.
+La suite `windows-release-current` registra 27 test CTest: infrastruttura, core,
+fasi 1-10, contratto `production_dcfr`, riferimento GTO+, layout canonico,
+oracoli, incluso il recheck Pure/Sync-PCFR, e benchmark smoke. Test GUI,
+sanitizer, nightly o altri preset sono prove separate e il report deve dire con
+precisione cosa è stato escluso.
 
-Ultima verifica completa (2026-09-04): Release `35/35 PASS` in `208,99 s`.
+Ultima verifica completa (2026-09-02): Release `27/27 PASS` in `218,43 s`.
 Sono inoltre passati il resume production byte-equivalent attraverso il reset
 finale, il contratto delle tre fixture e cinque processi final-head con `15/15`
 solve target-driven corretti. Questa evidenza non viene presentata come nuova
@@ -99,5 +87,5 @@ installato e CI remota sono prove diverse e non vanno fuse in un unico “PASS�
 I test Release coprono allocazione, update e certificazione dello stato core
 `ScaledUint16RegretStrategy`, validazione dei valori finiti, scale per decision
 node, resume continuo/segmentato byte-equivalent e persistenza autenticata con
-round-trip byte-for-byte. La suite corrente passa 35/35. I tre benchmark RAM
+round-trip byte-for-byte. La suite corrente passa 27/27. I tre benchmark RAM
 restano integration gate separati dalla suite e dai time gate.

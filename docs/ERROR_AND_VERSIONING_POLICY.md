@@ -29,12 +29,10 @@ comando CMake `project()`. CMake genera `gtosd/version.hpp`.
 | Minor | Funzione retrocompatibile |
 | Patch | Correzione retrocompatibile |
 
-La versione corrente è `0.11.0`: la minor aggiunge le API installabili di card
-abstraction, feature postflop exact-outcome e subgame solving con guard
-exact-NashConv. Il formato `.gtsd` resta 1.0 e non contiene ancora un chunk
-abstraction; il manifest separato `GTOSD_CARD_ABSTRACTION` è 1.0. Il chunk
-`RANGES` continua a contenere 1.260 pesi lossless e il reader conserva
-compatibilità con il marker uniform-range scritto da F8/F9.
+La versione corrente è `0.10.0`: la minor F10 aggiunge la GUI prodotto Qt,
+i range fisici pesati al solver postflop e le query strategy batch. Il formato
+`.gtsd` resta 1.0: il chunk `RANGES` ora contiene 1.260 pesi lossless e il
+reader conserva compatibilità con il marker uniform-range scritto da F8/F9.
 Durante lo sviluppo pre-1.0 una modifica incompatibile richiede almeno un
 incremento minor e una nota di migrazione.
 
@@ -49,7 +47,6 @@ Ogni formato persistente ha una coppia `major/minor` indipendente:
 | Soluzione `.gtsd` | 1.0 |
 | Checkpoint `.gtsdckpt` | 1.0 |
 | Checkpoint postflop F7 | 1.0 |
-| Manifest card abstraction | 1.0 |
 
 - un reader rifiuta un major futuro;
 - un minor futuro può essere accettato soltanto se tutte le feature richieste

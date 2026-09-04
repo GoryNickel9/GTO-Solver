@@ -26,35 +26,6 @@ in cui ogni livello controlla errori differenti:
 - Single-thread/parallel, `Float64`/`Float32` e resume/continuous sono confronti
   differenziali con tolleranze esplicite.
 - La somma dei payoff deve riflettere zero-sum o rake, mai una compensazione UI.
-- Il bucketing viene validato contro card removal, determinismo, serializzazione,
-  riduzione reale degli infoset e NashConv della strategia rialzata sul gioco
-  non astratto.
-- La feature cache 1.0 viene validata con ordine d'input differente,
-  round-trip bit-exact, corruzione rilevata e replace atomico. Nel bridge nativo
-  il percorso diretto e quello cache devono avere fingerprint di gioco e
-  checkpoint bit-identici; una cache da config/range differenti viene rifiutata.
-- Lo sweep turn `K={1,2,3,6,12}` riusa la stessa cache, richiede stato solver
-  non decrescente e weighted MSE non crescente fino all'identità senza errore.
-- Il bridge HU postflop aggiunge range frazionari/asimmetrici, aggregazione
-  reach-weighted, API exact/abstracted non intercambiabili, checkpoint
-  Float64 round-trip, resume bit-identico, query combo→bucket e rifiuto di
-  precisione/algoritmo non qualificati o più di otto thread. Un test
-  differenziale richiede stato e BR bit-identici tra seriale e otto thread sul
-  caso ridotto; il gate fixture ampio misura una tolleranza numerica `1e-4`.
-- Il test CLI costruisce atomicamente il manifest, risolve e riprende un fixed
-  river bucketed a otto thread riusando la cache, verifica fingerprint e tempi nel report e
-  richiede query e certificazione combo-level exact; checkpoint exact o
-  granularità differente devono fallire per fingerprint mismatch.
-- Un frontier subgame che taglia un information set viene rifiutato. Il guard
-  safe accetta il candidato soltanto dopo due best response full-game esatte;
-  il test di regressione verifica anche il fallback a blueprint invariato.
-- Il resolver nativo percorre anche un frontier successivo a una chance card:
-  verifica card removal, automorfismo, prior privato condizionato dal blueprint,
-  reach pubblico strettamente tra zero e uno, proprietà esclusiva dei segmenti
-  di stato e round-trip del checkpoint distribuito. Configurazioni diverse da
-  sette worker più coordinatore e snapshot oltre budget falliscono senza
-  mutare il blueprint. Il test CLI copre inoltre navigazione JSON, preflight,
-  report candidate/fallback e rifiuto della sovrascrittura della sorgente.
 - Le prove di prodotto devono usare il backend CPU/RAM-only. L'accelerazione
   GPU della GUI non può partecipare a tree building, traversal, best response
   o certificazione e non può essere inclusa in un risultato solver.
@@ -153,12 +124,6 @@ report lo marca come limite anziché inventarlo.
 
 ## Criterio di avanzamento
 
-La decisione di prodotto 2026-09-04 mantiene F11+ subordinata alla qualifica
-globale del percorso astratto. Card abstraction, safe subgame solving e il
-primo bridge HU postflop CFR+ sono implementati; il path exact resta
-l'oracolo. Preflight, cache a otto worker e point qualification AHK K=16 / TH
-K=128 verificano l'infrastruttura ma non un default comune. K16 e K32 sono
-entrambi respinti globalmente dal FAIL TH a 800 iterazioni (`5,924317%` e
-`2,859595%`); TST K32 è skipped dall'early reject. Il frontier merge postflop nativo è protetto da exact full-game
-NashConv, ma non chiude da solo il gate di granularità. Parity, preflop e F11+
-restano congelati fino alla decisione globale.
+F11 e le fasi successive restano bloccate finché tutti i tre time gate non
+passano insieme a dEV/root/RAM o il criterio viene modificato con una decisione
+documentata. F10.4 non sblocca il gate velocità.

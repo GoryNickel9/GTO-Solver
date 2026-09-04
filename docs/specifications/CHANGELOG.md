@@ -7,13 +7,6 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Corretto
 
-- Ritirata la precedente chiusura del gate card abstraction/subgame: AHK K=16
-  e TH K=128 sono point qualification per-fixture e non una configurazione di
-  prodotto condivisa.
-- Resa vincolante la selezione globale K16/K32 sulla stessa terna
-  AHKHQH/TH7D6S/TSTC9D, con otto thread e CFR+ Float64. K16 e K32 sono REJECT
-  globali per il FAIL TH a 800 iterazioni (`5,924317%` e `2,859595%`). TST K32
-  è skipped dopo il verdetto globale; parity e F11+ restano congelati.
 - Riclassificati `8 MB`, `399 MB` e `2.000 MB` come valori del campo GTO+
   “Memory needed for solving”, non come Peak RSS del processo.
 - Eliminata dalla documentazione normativa l'esistenza di un cap desktop
@@ -30,65 +23,6 @@ sostituisce la cronologia Git né i report di fase.
   errata corrige in apertura.
 
 ### Implementato
-
-- Aggiunti i moduli installabili `gtosd::abstraction` e `gtosd::subgame`.
-  Il primo produce feature W/T/L/equity postflop con runout esatti, esegue
-  bucketing k-means deterministico per partizione, misura l'errore, serializza
-  e riscrive gli infoset realmente consumati da CFR+.
-- Aggiunto resolving su frontier reach-weighted e infoset-closed, con modalità
-  unsafe esplicita e guard full-game exact-NashConv. Un candidato peggiore
-  viene rifiutato mantenendo il blueprint invariato.
-- Portato il default production del minimizer subgame CFR+ a otto thread; il
-  checkpoint registra il thread count e il seriale resta un oracle esplicito.
-- Nel percorso composto bucketed/subgame, candidato e blueprint vengono
-  rialzati e confrontati sul gioco esatto; il solo NashConv astratto non può
-  autorizzare il deploy.
-- Aggiornata la decisione di prodotto: bucketing e decomposizione precedono la
-  ripresa della parity; il percorso exact resta oracle, non requisito del
-  default commerciale per alberi grandi.
-- Collegata `CardAbstraction` al `DenseLayout` HU postflop con API opt-in
-  prepare/solve/estimate/query/certify. Chance, payoff e BR restano combo-level;
-  regret e average strategy sono bucketed con aggregazione reach-weighted e
-  singola proiezione CFR+ per bucket.
-- Aggiunti comandi CLI separati `solve-bucketed`, `resume-bucketed`,
-  `query-bucketed` e `certify-bucketed`. Report e query espongono fingerprint,
-  granularità, compression ratio, weighted MSE e membership; i comandi exact
-  mantengono il proprio dispatch e rifiutano checkpoint astratti.
-- Limitato esplicitamente il primo bridge nativo qualificato a CFR+ Float64,
-  otto thread e canonical DAG lossless. DCFR, codec compressi, più di otto
-  thread e diagnostici incompatibili vengono rifiutati.
-- Aggiunto il manifest `GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0`: ordine
-  canonico, bit IEEE esatti, fingerprint sorgente/cache, load validato e
-  scrittura atomica. È indipendente dal bucket count e riusabile tra sweep.
-- Aggiunti API e CLI `postflop build-feature-cache`; solve/resume/query/certify
-  bucketed accettano la cache opzionale e pubblicano fingerprint, flag di riuso
-  e tempi separati di feature preparation e clustering.
-- Qualificata l'equivalenza bit-identica tra percorso diretto e cache, il
-  rifiuto di sorgenti stale e lo sweep K=1/2/3/6/12 con errore non crescente.
-- Aggiunto il preflight bucketing layout-only con upper bound per K, limite
-  preventivo di 2.000.000 osservazioni, accounting di stato Float64, mapping,
-  transienti, otto worker, scrittura atomica e spazio page-backed.
-- Parallelizzato il builder exact-feature su otto partizioni indipendenti con
-  merge canonico deterministico. Il percorso CLI bucketed e la qualification
-  usano sette worker più il thread chiamante; il cap API è otto thread totali.
-- Aggiunti i comandi GTO+ di preflight/cache/qualification e il runner a cinque
-  processi con oracle seriale separato. Il gate richiede exact BR, NashConv
-  `<1%`, RAM esplicita, determinismo e delta parallelo/seriale `<=1e-4`.
-- Collegato il resolving mid-tree al `DenseLayout` postflop bucketed. Il path
-  propaga range blueprint, chance/card removal e automorfismi; solo gli action
-  slot del frontier sono resettati e sottoposti a snapshot entro budget.
-- Aggiunti `prepared_postflop_edges`, `resolve_postflop_subgame` e i comandi
-  CLI `edges-bucketed`/`resolve-bucketed`. Il solve locale usa CFR+ a otto
-  thread e il deploy è autorizzato soltanto da exact-NashConv full-game; il
-  fallback ripristina il blueprint byte-per-byte e l'output non sovrascrive la
-  sorgente.
-- Aggiunto il test CLI end-to-end del resolver e un test nativo che attraversa
-  un chance node, verifica il prior privato condizionato, il budget dello
-  snapshot e la persistenza del checkpoint distribuito.
-- Verificato il contratto funzionale abstraction/subgame del prodotto HU
-  postflop. La precedente dichiarazione di chiusura e ripresa parity è
-  superseded dalla correzione del gate globale sopra. Il futuro solver preflop
-  resta Fase 14 e non viene presentato come già implementato.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
@@ -120,45 +54,9 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Verificato
 
-- Runner globale K32 sul commit `b3b1a1d`: AHK PASS a `0,499452%`, TH FAIL a
-  `2,859595%` dopo 800 iterazioni; TST preflight/cache PASS ma solve skipped
-  dall'early reject. Esito `NO_GLOBAL_K_QUALIFIED`.
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `35/35 PASS` in `208,99 s`, inclusi ledger,
-  CardAbstraction, SubgameSolver, bridge/CLI postflop bucketed, CFR+, test
-  esaustivi, oracle e riferimento GTO+.
-- Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `78,045 ms`,
-  CFR+ Kuhn 2-bucket `79,383 ms`, subgame Leduc exact-guarded `2.645,542 ms`;
-  il benchmark Leduc esercita tutti gli otto thread; valori
-  registrati come baseline funzionale, non come speedup qualificato.
-- Benchmark nativo Release, cinque ripetizioni: cache turn `21,289 ms` mediana
-  per 66 partizioni/744 osservazioni; fixed-river a 1.000 iterazioni da K=1 a
-  K=12 usa `128/256/384/768/1.536 B`, compression `12/6/4/2/1x`, weighted MSE
-  `0,294077/0,069559/0,026860/0,002066/0` e wall mediano
-  `8,146/8,798/9,250/9,443/10,414 ms`. Exact misura `12,673 ms` e `1.536 B`.
-  La fixture ridotta qualifica il trade-off, non uno speedup commerciale.
-- AHKHQH flop K=16, cinque processi a otto thread: NashConv deterministico
-  `0,6029051267%`, wall mediano `9,936001 s`, Peak RSS mediano `25.227.264 B`;
-  oracle seriale `0,6099145321%`, `31,051574 s`, delta `7,0094e-5` e speedup
-  sulla mediana parallela `3,13x`. Il builder AHK passa da circa `4,15 s` a `1,57246 s`
-  conservando il fingerprint. Il builder TH completa 280.308 osservazioni in
-  `169,398 s`/`314.556.416 B`, contro il seriale incompleto oltre nove minuti.
-- TH7D6S K=128, cinque processi a otto thread: NashConv deterministico
-  `0,8816749004%`, wall mediano `435,349473 s`, Peak RSS mediano
-  `694.796.288 B`; oracle seriale `0,8770330545%` in `1.493,513047 s`, delta
-  `4,64185e-5` e speedup `3,43x`. K=16 è respinto anche a 800 iterazioni.
-- Corretto il preflight cache: upper bound testuale sempre sopra il file reale,
-  doppia copia atomica inclusa nel budget disco e limite osservazioni verificato
-  prima di avviare i worker. RAM e disco sono parametri obbligatori del runner.
-- Tutti i nuovi file C++ passano `clang-format --dry-run --Werror`. Il target
-  globale continua a segnalare debito di formato in sorgenti preesistenti e non
-  e' stato usato per produrre una riscrittura meccanica fuori scope.
-- Rimosso dal manifest di install il riferimento stantio ai quattro JSON Schema
-  eliminati in precedenza dal repository; install tree e consumer esterno 0.11
-  PASS verificano anche gli export CMake `gtosd::abstraction` e
-  `gtosd::subgame`. Il consumer collega anche `gtosd::postflop`, verifica la
-  dipendenza pubblica dall'astrazione e invoca build/validation della feature
-  cache dall'install tree.
+- CTest Release completo `29/29 PASS` in `228,77 s`, incluso il nuovo ledger,
+  i test esaustivi e l’oracolo GTO+.
 - Test manuali dei runner black-box e user-configured process-memory budget
   PASS; parsing di 14 fixture JSON e 22 script PowerShell PASS.
 - Smoke AHKHQH v4 a cinque processi completato a 80 iterazioni e dEV

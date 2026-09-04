@@ -25,50 +25,11 @@
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `35/35 PASS` (`208,99 s`, 2026-09-04).
+> `28/28 PASS` (`105,46 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
-
-> **Abstraction e subgame solving 2026-09-04 — gate corretto.**
-> Implementati `gtosd::abstraction` e `gtosd::subgame`: feature postflop W/T/L
-> exact-outcome, k-means deterministico per partizione, fingerprint/round-trip,
-> riscrittura reale degli infoset CFR+, lift al gioco esatto, frontier
-> reach-weighted e guard full-game exact-NashConv con fallback. Il test
-> end-to-end riduce Kuhn da 12 a 8 infoset e certifica la policy rialzata; il
-> resolving rifiuta un candidato sotto-allenato. Il bridge `DenseLayout` HU
-> postflop è ora disponibile via API/CLI bucketed separate: CFR+ Float64 a
-> otto thread (`7` worker più coordinatore), delta combo aggregati
-> reach-weighted prima della proiezione, lift
-> combo-level, BR exact, checkpoint/resume e query bucket-aware. Il fixture CLI
-> 8-bucket comprime 1.860→32 infoset e raggiunge `0,751763%` NashConv/pot a 200
-> iterazioni. È ora disponibile anche il manifest exact-feature 1.0, atomico e
-> indipendente da K: solve/resume/query/certify possono riusarlo e verificano
-> sorgente/fingerprint; percorso diretto e cache danno checkpoint bit-identici.
-> Lo sweep ridotto K=1/2/3/6/12 misura compression/MSE/tempo senza scegliere un
-> default commerciale. Il preflight astratto layout-only ora stima stato,
-> transienti a otto thread, cache, scrittura atomica e disco prima di allocare;
-> il builder exact-feature usa otto worker e merge canonico deterministico. La
-> qualifica AHK flop K=16 passa in cinque processi a otto thread con NashConv
-> `0,602905%`, RSS mediana `25.227.264 B` e wall mediano `9,936001 s`; il
-> confronto diagnostico seriale differisce di `7,0094e-5` NashConv ed è sotto
-> la tolleranza `1e-4`. TH flop K=128 passa cinque processi a `0,881675%`,
-> wall mediano `435,349473 s`, RSS mediana `694.796.288 B` e delta seriale
-> `4,64185e-5`; K=16 è respinto. Queste due qualifiche usano K differenti e
-> sono quindi evidenza locale, non una selezione production. CTest Release è
-> `35/35 PASS` in `208,99 s`.
-> Il frontier merge postflop nativo è ora collegato: path navigabile, range
-> blueprint condizionati, chance/isomorfismi, snapshot degli action slot entro
-> budget, CFR+ a otto thread e deploy/fallback governato da exact-NashConv
-> full-game. Sul fixed-river K=8 il candidato peggiore viene ripristinato
-> byte-per-byte (`512 B` di snapshot). Il contratto funzionale del resolver è
-> verificato, ma il gate abstraction/subgame del prodotto HU postflop resta
-> **BLOCKED**: K16 e K32 sono entrambi respinti dal FAIL TH a 800 iterazioni,
-> rispettivamente `5,924317%` e `2,859595%` NashConv/pot. AHK K32 passa a
-> `0,499452%`; TST è skipped dopo il REJECT globale TH. La parity GTO+ resta
-> posposta. `.gtsd`, GUI, cache compressa/mmap e multi-root/continual resolving
-> restano miglioramenti; il vero layout preflop appartiene alla Fase 14 separata.
 
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano
 > `gto_plus_reference.solver_memory`; report e summary separano
@@ -244,10 +205,9 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; POSPOSTO** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; K16/K32 sono entrambi REJECT globali | Non riprendere la parity senza una nuova decisione globale di prodotto |
+| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes PASS; la memoria resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Full CTest corrente 28/28 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+; nessuna parità memoria è dichiarata |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
-| Abstraction/subgame core | **Implementato; gate prodotto BLOCKED** | Moduli versionati, `DenseLayout` CFR+ bucketed, preflight/cache, exact lift/BR guard e frontier mid-tree con rollback; K16/K32 falliscono entrambi TH a 800 iterazioni | Nessuna granularità globale qualificata nell'insieme autorizzato |
-| F11+ | **CONGELATA** | Il core necessario esiste, ma K16 e K32 sono REJECT globali | Richiede una nuova decisione di prodotto sullo spazio dei candidati |
+| F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -276,7 +236,7 @@ essere osservata solo dopo un push.
 | 8 | GitHub Actions Windows x64 Debug/Release | Completato | Matrice `windows-debug`/`windows-release`, bootstrap vcpkg pinned, build, test, CLI smoke, install e benchmark |
 | 9 | Sanitizer clang-cl dove supportato | Completato | Job Windows clang-cl ASan e job Linux UBSan; preset MSVC ASan locale; directory runtime del compilatore propagata ai test CTest |
 | 10 | Policy `Result<T, Error>` | Completato | `Result` è `[[nodiscard]]`; policy degli errori, eccezioni e diagnostiche documentata in `ERROR_AND_VERSIONING_POLICY.md` |
-| 11 | Semantic versioning file/API | Completato | API corrente `0.11.0` generata da CMake; major/minor espliciti per public tree, solution, checkpoint e card abstraction; incompatibilità major testata |
+| 11 | Semantic versioning file/API | Completato | API corrente `0.10.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
 | 12 | `THIRD_PARTY_NOTICES.md` | Completato | Baseline, versioni risolte, licenze e distinzione dipendenze production/development registrate |
 
 ### Dipendenze risolte
@@ -725,17 +685,16 @@ Il dettaglio, i limiti e i comandi di riproduzione sono in
 
 ## Prossimo ingresso
 
-F10.4 resta un esperimento diagnostico, non node locking di prodotto. La
-decisione 2026-09-04 rende prioritario il percorso astratto: aggregazione
-reach-weighted, CLI, preflight e cache/manifest exact a otto worker sono
-completati; AHK flop K=16 e TH flop K=128 passano soltanto qualifiche locali a
-cinque processi. Anche il frontier merge nativo con rollback exact-guarded è
-funzionalmente verificato. Il gate globale K16/K32 è ora concluso con entrambi
-i candidati REJECT per il FAIL TH a 800 iterazioni; TST K32 è stato skipped
-dopo il verdetto globale. Preflop, parity, persistenza `.gtsd` e GUI
-dell'astrazione restano congelati in attesa di una nuova decisione di prodotto.
-Il percorso exact resta oracle con differenziale e best response. Il solving resta
-permanentemente CPU/RAM-only.
+F10.4 è completata come esperimento diagnostico e non è node locking di
+prodotto. Il prossimo lavoro autorizzato è ridurre il tempo dei tre benchmark
+intervenendo soltanto sul core generale e mantenendo dEV, root EV e RAM. Il
+profilo corrente indica che micro-ottimizzazioni isolate non coprono il gap.
+Prima si deve abilitare il fast path fisico generale quando il fallback non usa
+infoset isomorfi: action base dirette, layout `PlayerIndexed`, regret immediati
+e nessun workspace differito. Seguono DAG lossless per range asimmetrici con
+reach/molteplicità player-local e isomorfismo street-local. Ogni candidato deve
+passare il differenziale `1e-11` prima dei benchmark. Il solving resta
+permanentemente CPU/RAM-only e F11+ resta congelata.
 
 ## Contratti poker già codificati
 

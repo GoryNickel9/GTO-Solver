@@ -3,12 +3,10 @@
 ## Stato prodotto corrente
 
 GTOSD supporta un workflow locale HU postflop exact con range pesati, tree
-configurabile, CFR+/DCFR, best response, checkpoint, storage autenticato, CLI e
-GUI Qt. Supporta inoltre API installabili di card abstraction e subgame solving
-CFR+ con guard exact-NashConv e un percorso HU postflop bucketed opt-in via API
-e CLI. “Exact” significa enumerazione del gioco
-discretizzato configurato senza sampling o bucketing; non significa equilibrio
-matematico esatto a iterazioni finite.
+configurabile, CFR+, best response, checkpoint, storage autenticato, CLI e GUI
+Qt. “Exact” significa enumerazione del gioco discretizzato configurato senza
+sampling o bucketing; non significa equilibrio matematico esatto a iterazioni
+finite.
 
 ## Limiti di parità
 
@@ -26,13 +24,10 @@ matematico esatto a iterazioni finite.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
 - F10.4 controlled-posterior è implementata esclusivamente come diagnostica
-  test-only; non è node locking globale di prodotto.
+  test-only; non è node locking globale di prodotto e non sblocca F11+.
 - Il run GTO+ a target 0,10% non ha raggiunto il target dopo circa 245 s.
 
-La parity è posposta mentre viene qualificata una granularità globale del nuovo
-percorso bucketed/subgame. La precedente matrice AHK K=16 / TH K=128 non è un
-default di prodotto. Il path exact resta l'oracolo e i risultati bucketed non
-possono essere chiamati exact strategy.
+Le fasi F11+ restano congelate dal parity journey.
 
 ## Vincolo permanente CPU/RAM
 
@@ -42,10 +37,11 @@ architettura. Sono esclusi backend CUDA, ROCm, OpenCL, Vulkan Compute,
 DirectCompute e tecnologie equivalenti. La GPU può essere usata esclusivamente
 dal sistema grafico per renderizzare la GUI, senza partecipare ai calcoli.
 Il target di working set opzionale può affidare la residenza delle pagine al
-sistema operativo e quindi causare paging locale. Il wiring storico che lo
-derivava impropriamente dal riferimento GTO+ è stato rimosso; il backend è ora
-solo opt-in tramite budget utente esplicito. Il backing logico completo deve
-comunque essere contabilizzato e non può ridurre la metrica comparabile.
+sistema operativo e quindi causare paging locale. Il wiring benchmark corrente
+lo deriva impropriamente dal riferimento GTO+ e deve essere rimosso. Se il
+backend resterà disponibile come funzione di prodotto, richiederà un budget
+utente esplicito; in ogni caso il backing logico completo deve essere
+contabilizzato e non può ridurre la metrica comparabile.
 
 ## Funzioni non ancora supportate
 
@@ -53,24 +49,7 @@ comunque essere contabilizzato e non può ridurre la metrica comparabile.
 - albero HU preflop completo e workflow preflop-river;
 - multiway, side pot completi e metriche general-sum;
 - database di flop e trainer di prodotto;
-- chunk `ABSTRACTION` e packaging autosufficiente `.gtsd` del postflop bucketed;
-- selettore di granularità nella GUI;
-- cache feature compressa/memory-mapped; il manifest testuale exact 1.0 e il
-  preflight RAM/disco specifico per cache/layout astratto sono disponibili;
-- codec bucketed compresso e DCFR bucketed qualificato; gli update CFR+
-  Float64 a otto thread sono supportati;
-- multi-root, continual resolving e gadget teorico safe con boundary
-  counterfactual values; il resolver `DenseLayout` corrente accetta un singolo
-  frontier canonico a ingresso univoco e usa un guard exact full-game;
-- provenance del resolving incorporata nel container: lo stato è nel checkpoint
-  atomico distinto, mentre path e decisione candidate/fallback sono nel report
-  JSON sidecar; un resume successivo è un warm start, non trajectory parity;
-- generazione/qualificazione delle feature preflop;
-- qualifica globale K16/K32 sulla terna AHK/TH/TST e, successivamente, su
-  ulteriori fixture turn/preflop rappresentative; K16 e K32 sono entrambi
-  respinti dal FAIL TH a 800 iterazioni, TST K32 è skipped dall'early reject;
-- gadget safe scalabile con boundary counterfactual values quando la BR esatta
-  full-game non è fattibile;
+- abstraction/bucketing con errore misurato;
 - calcolo distribuito;
 - rake avanzato per stake/player count, jackpot drop e valute;
 - formati di soluzione preflop/multiway.

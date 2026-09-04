@@ -488,7 +488,7 @@ ProductWindow::ProductWindow(QWidget *const parent) : QMainWindow(parent) {
   build_ui();
   load_default_project();
   append_log(QStringLiteral("info"), QStringLiteral("application_started"),
-             QStringLiteral("version=0.11.0"));
+             QStringLiteral("version=0.10.0"));
   auto *const heartbeat = new QTimer(this);
   heartbeat->setInterval(10);
   connect(heartbeat, &QTimer::timeout, this, [this] {

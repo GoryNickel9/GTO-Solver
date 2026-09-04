@@ -21,7 +21,7 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `35/35 PASS` (`208,99 s`, 2026-09-04). Il precedente
+> `28/28 PASS` (`105,46 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -49,55 +49,6 @@
 > traversal; i due runner seriali di certification raggiungono `78.408 B`
 > ciascuno ma non sono simultanei. Questi numeri verificano l'accounting, non
 > costituiscono ancora confronto con gli `8 MB` mostrati da GTO+.
-
-> **Abstraction/subgame e feature-cache evidence — 2026-09-04.** Il
-> benchmark Release `gtosd_abstraction_subgame_benchmark` misura separatamente
-> CFR+ esatto, cache, clustering/traversal bucketed e resolving con guard
-> full-game. Sul computer di sviluppo (8 logical CPU a 3,6 GHz), cinque
-> ripetizioni, la mediana della cache turn è `21,289 ms` wall
-> per 66 partizioni e 744 osservazioni. Sul fixture fixed-river da 48 infoset e
-> 1.000 iterazioni, exact usa `1.536 B` e `12,673 ms`; il percorso con cache
-> riusata produce: K=1 `128 B`, `12x`, MSE `0,294077`, `8,146 ms`; K=2 `256 B`,
-> `6x`, MSE `0,069559`, `8,798 ms`; K=3 `384 B`, `4x`, MSE `0,026860`,
-> `9,250 ms`; K=6 `768 B`, `2x`, MSE `0,002066`, `9,443 ms`; K=12 `1.536 B`,
-> `1x`, MSE `0`, `10,414 ms`. I numeri provano
-> riuso e trade-off memoria/errore su una fixture ridotta, non uno speedup o un
-> default commerciale. Sul fixture CLI fixed-river uniforme, 8 bucket riducono
-> 1.860 a 32 infoset (`58,125x`) e raggiungono exact-certified
-> `NashConv/pot=0,751763%` a 200 iterazioni. Flop/turn e preflop rappresentativi
-> restano gate distinti.
-
-> **Bucketing provisional a otto thread — 2026-09-04.** Il builder exact-feature
-> usa otto worker e merge canonico. AHKHQH flop conserva il fingerprint
-> `e0179a28bd72d999` e scende da circa `4,15 s` seriali a `1,57246 s`,
-> Peak RSS `23.076.864 B`. TH7D6S produce 280.308 osservazioni e
-> 59.982.478 byte in `169,398 s`, Peak RSS `314.556.416 B`; il precedente
-> builder seriale era ancora incompleto dopo oltre nove minuti. Su AHKHQH K=16,
-> cinque processi solver a otto thread sono deterministici a
-> `NashConv/pot=0,6029051267%`, wall mediano `9,936001 s`, RSS mediano
-> `25.227.264 B`. L'oracolo seriale misura `0,6099145321%` e `31,051574 s`:
-> speedup sulla mediana parallela `3,13x`, differenza NashConv `7,0094e-5` sotto la tolleranza
-> parallelo/seriale `1e-4`. Il preflight include scratch di otto thread e non
-> assume un vantaggio RSS out-of-core non misurato.
-> TH7D6S K=128 passa cinque processi a `0,8816749004%`, wall mediano
-> `435,349473 s`, RSS mediano `694.796.288 B`; l'oracolo seriale misura
-> `0,8770330545%` in `1.493,513047 s`, delta `4,64185e-5` e speedup `3,43x`.
-> AHK K=16 e TH K=128 non costituiscono una configurazione comune: sono point
-> qualification locali. Il gate di prodotto è `BLOCKED`: K16 e K32 sono
-> entrambi respinti globalmente dal FAIL TH a 800 iterazioni, rispettivamente
-> `5,924317%` e `2,859595%` NashConv/pot. AHK K32 passa a `0,499452%`; TST K32
-> è skipped dall'early reject comune. La parity non riparte.
-
-> **Native frontier resolve — 2026-09-04.** Sul fixture Release fixed-river
-> uniforme, una blueprint K=8 a 100 iterazioni ha
-> `NashConv/pot=0,7208569471%`. Il frontier dopo root-check contiene 2 decision
-> node e 32 action entry; il rollback è esattamente `512 B`. Cento iterazioni
-> CFR+ locali a otto thread richiedono `8,59 ms`; il ciclo completo con due
-> certificazioni exact e report richiede `11,66 ms`, Peak RSS diagnostico
-> `8.364.032 B`. Il candidato sale a `0,7332005210%` e viene quindi respinto:
-> il checkpoint distribuito conserva il blueprint a `0,7208569471%`. Questa è
-> evidenza funzionale e di rollback su un caso ridotto, non una previsione di
-> latenza per un frontier commerciale.
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,
@@ -467,12 +418,10 @@ iterazioni richieste dalla dinamica CFR/DCFR; non è lecito attribuire un
 miglioramento del kernel a una convergenza ottenuta con meno iterazioni.
 
 Lo stato corrente è pertanto: le ottimizzazioni lossless già mantenute sono
-globali al binario e non contengono branch per benchmark. Anche la granularità
-bucketed production deve essere unica: la configurabilità dell'API non
-autorizza un K diverso per fixture. Il prossimo intervento prioritario è il
-gate comune K16/K32 sui tre carichi. Quel gate è ora concluso con entrambi i
-candidati REJECT per il FAIL TH; ampliare lo spazio dei candidati richiede una
-nuova decisione di prodotto, non un'ottimizzazione mirata a una fixture.
+globali al binario e non contengono branch per benchmark, ma la loro efficacia
+non è ancora stata dimostrata con una profilazione comparativa omogenea sui
+tre carichi. Il prossimo intervento prioritario è questa misura comparativa;
+non una nuova ottimizzazione mirata a TSTC9D.
 
 ## Piano prestazionale CPU/RAM-only
 
@@ -537,10 +486,10 @@ regressioni, ma non dimostrano parità GTO+ se fixture o timer differiscono.
 - conservare report grezzi insieme al riepilogo.
 
 Il percorso root-lock diagnostico ha ridotto il mismatch downstream, ma non
-modifica i gate prestazionali del percorso standard. Questa priorità storica è
-superseded dalla decisione 2026-09-04: integrazione e qualifica globale di
-bucketing e subgame solving prima di riprendere la parity sui tre benchmark.
-Le point qualification con K differenti non chiudono il gate.
+modifica i gate prestazionali del percorso standard. Il prossimo intervento è
+il fast path generale del fallback fisico descritto sopra, seguito dal
+differenziale sul chance tree asimmetrico; F11+ resta congelata finché tutti e tre i
+benchmark non superano i rispettivi gate.
 
 ## Benchmark grande TH7D6S — checkpoint storico 2026-08-08
 
