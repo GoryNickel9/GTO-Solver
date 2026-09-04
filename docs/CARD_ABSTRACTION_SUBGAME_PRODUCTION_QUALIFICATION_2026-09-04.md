@@ -1,16 +1,25 @@
-# Qualifica production card abstraction e subgame solving — 2026-09-04
+# Qualifica provisional card abstraction e subgame solving — 2026-09-04
 
-## Esito
+## Esito corretto
 
-Il percorso HU postflop bucketed è qualificato per due fixture flop distinte:
+**PROVISIONAL — NON QUALIFICATO COME DEFAULT DI PRODOTTO.**
+
+Il percorso HU postflop bucketed dispone di due qualifiche locali distinte:
 
 - AHKHQH con `K=16`, CFR+ Float64, 500 iterazioni e otto thread;
 - TH7D6S con `K=128`, CFR+ Float64, 400 iterazioni e otto thread.
 
-In entrambi i casi cinque processi indipendenti passano il gate
+In entrambi i casi cinque processi indipendenti passano il gate locale
 `NashConv/pot < 1%`, usano la stessa cache exact-feature e producono la stessa
 metrica. Un run seriale separato verifica che la differenza dovuta al
 parallelismo resti `<= 1e-4` in frazione.
+
+Questi risultati non selezionano un default commerciale: usare `K=16` per
+AHKHQH e `K=128` per TH7D6S è una matrice per-fixture e non soddisfa la policy
+del prodotto condiviso. I benchmark devono validare una sola configurazione,
+non determinarla. Finché un unico `K` non supera la suite comune
+AHKHQH/TH7D6S/TSTC9D, il bucketing resta opt-in/provisional e la parity non
+riparte sul percorso bucketed.
 
 Il `SubgameSolver` safe è qualificato sul contratto installabile `FiniteGame`:
 frontier reach-weighted e infoset-closed, minimizer CFR+, merge nel blueprint,
@@ -21,12 +30,33 @@ pool completo.
 Il bridge successivo collega inoltre un singolo frontier canonico mid-tree al
 `DenseLayout` postflop, con range privati condizionati dal blueprint, card
 removal, snapshot limitato agli action slot del sottogioco e rollback governato
-da exact-NashConv sul gioco completo. Non sceglie un singolo K universale e non
-dichiara supporto preflop: il tree/layout preflop non esiste ancora. L'exact
+da exact-NashConv sul gioco completo. Non seleziona ancora un singolo K globale
+e non dichiara supporto preflop: il tree/layout preflop non esiste ancora. L'exact
 resta un oracle differenziale, non il percorso commerciale predefinito per
 alberi grandi.
 
-## Contratto qualificato
+## Gate globale di prodotto aperto
+
+I soli candidati correnti sono `K=16` e `K=32`. La selezione deve rispettare
+un unico contratto:
+
+- stesso K su AHKHQH, TH7D6S e TSTC9D;
+- CFR+ alternato Float64, delay zero, esattamente otto thread;
+- chance completa e best response combo-level esatta;
+- `NashConv/pot < 1%` entro l'orizzonte comune massimo di 800 iterazioni, con
+  certificazione ogni 100 iterazioni;
+- soft budget solver del prodotto minimo da 16 GB: 12.000.000.000 B;
+- prima un processo per ciascun membro della terna; cinque processi e oracle
+  seriale soltanto dopo che tutta la terna ha superato il pre-gate;
+- decisione sul caso peggiore: un solo FAIL respinge il K globalmente.
+
+K16 è già **REJECT globale** perché TH7D6S resta a
+`NashConv/pot=5,924317%` dopo 800 iterazioni. K32 è `PENDING`: il risultato TH
+a 100 iterazioni (`4,623514%`) è soltanto un punto di curva e non decide il
+gate. Nessuna selezione o fallback può dipendere dal benchmark ID, dal board o
+dal nome della fixture.
+
+## Contratto infrastrutturale verificato
 
 - CPU locale, nessuna GPU;
 - otto thread solver: sette worker più il thread chiamante;
@@ -155,11 +185,11 @@ verifica automorfismi, card removal, reach strettamente sotto uno, prior privato
 condizionato, budget prima dell'allocazione, fallback byte-identico oppure
 accept coerente col guard e round-trip del checkpoint risultante.
 
-Con questa prova il prerequisito card abstraction/subgame solving del prodotto
-HU postflop corrente è chiuso. La parity GTO+ può riprendere mantenendo il path
-exact come oracle. Il solver preflop completo resta Fase 14: beneficerà degli
-stessi moduli, ma non viene dichiarato implementato né usato come condizione
-retroattiva per la parity postflop.
+Questa prova chiude il contratto funzionale del resolver, non il gate globale
+di granularità del prodotto HU postflop. La parity GTO+ resta posposta finché
+K16/K32 non ricevono una decisione comune sulla terna. Il solver preflop
+completo resta Fase 14: beneficerà degli stessi moduli, ma non viene dichiarato
+implementato.
 
 ## Benchmark ridotto abstraction
 
@@ -193,19 +223,20 @@ preflight e il percorso di preparazione feature senza cache esterna. Il solve
 con cache esterna, CFR+, clustering, traversal e best response misurati da TH
 non sono cambiati. AHK, build e CTest sono stati rieseguiti sul sorgente finale.
 
-## Limiti e decisione
+## Limiti e decisione corrente
 
 - il percorso diretto senza cache esterna costruisce ora internamente la stessa
   cache deterministica a otto worker; non esiste più un fallback feature
   seriale implicito;
 - `thread_count=1` resta accessibile soltanto come oracle diagnostico esplicito;
-- K è configurabile per workload; AHK K=16 e TH K=128 impediscono un default
-  unico non supportato dai dati;
+- K resta configurabile per esperimenti/API, ma il percorso production non può
+  scegliere granularità per workload; AHK K=16 e TH K=128 sono evidenza locale,
+  non una qualifica del prodotto;
 - `.gtsd`, selettore GUI, cache binaria compressa/memory-mapped e preflop
   rappresentativo restano attività distinte; il resolver nativo corrente è
   single-frontier e non implementa ancora multi-root/continual resolving;
 - la parity GTO+ non deve reinterpretare Peak RSS come “Memory needed for
-  solving”.
+  solving” e non riparte sul percorso bucketed prima della scelta globale.
 
 ## Riproduzione
 

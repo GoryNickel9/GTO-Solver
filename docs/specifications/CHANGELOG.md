@@ -7,6 +7,13 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Corretto
 
+- Ritirata la precedente chiusura del gate card abstraction/subgame: AHK K=16
+  e TH K=128 sono point qualification per-fixture e non una configurazione di
+  prodotto condivisa.
+- Resa vincolante la selezione globale K16/K32 sulla stessa terna
+  AHKHQH/TH7D6S/TSTC9D, con otto thread e CFR+ Float64. K16 è REJECT globale
+  per il FAIL TH a 800 iterazioni; K32 resta PENDING. Parity e F11+ restano
+  congelati fino alla decisione comune.
 - Riclassificati `8 MB`, `399 MB` e `2.000 MB` come valori del campo GTO+
   “Memory needed for solving”, non come Peak RSS del processo.
 - Eliminata dalla documentazione normativa l'esistenza di un cap desktop
@@ -78,9 +85,10 @@ sostituisce la cronologia Git né i report di fase.
 - Aggiunto il test CLI end-to-end del resolver e un test nativo che attraversa
   un chance node, verifica il prior privato condizionato, il budget dello
   snapshot e la persistenza del checkpoint distribuito.
-- Chiuso il prerequisito abstraction/subgame del prodotto HU postflop e
-  riaperto il lavoro di parity GTO+. Il futuro solver preflop resta Fase 14 e
-  non viene presentato come già implementato.
+- Verificato il contratto funzionale abstraction/subgame del prodotto HU
+  postflop. La precedente dichiarazione di chiusura e ripresa parity è
+  superseded dalla correzione del gate globale sopra. Il futuro solver preflop
+  resta Fase 14 e non viene presentato come già implementato.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto

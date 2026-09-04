@@ -29,9 +29,10 @@ matematico esatto a iterazioni finite.
   test-only; non è node locking globale di prodotto.
 - Il run GTO+ a target 0,10% non ha raggiunto il target dopo circa 245 s.
 
-La parity è temporaneamente posposta mentre vengono qualificati granularità e
-workload commerciali del nuovo percorso bucketed/subgame. Il path exact resta
-l'oracolo e i risultati bucketed non possono essere chiamati exact strategy.
+La parity è posposta mentre viene qualificata una granularità globale del nuovo
+percorso bucketed/subgame. La precedente matrice AHK K=16 / TH K=128 non è un
+default di prodotto. Il path exact resta l'oracolo e i risultati bucketed non
+possono essere chiamati exact strategy.
 
 ## Vincolo permanente CPU/RAM
 
@@ -65,8 +66,9 @@ comunque essere contabilizzato e non può ridurre la metrica comparabile.
   atomico distinto, mentre path e decisione candidate/fallback sono nel report
   JSON sidecar; un resume successivo è un warm start, non trajectory parity;
 - generazione/qualificazione delle feature preflop;
-- qualifica di granularità su ulteriori fixture turn/preflop rappresentative;
-  AHK K=16 e TH K=128 dimostrano che non esiste ancora un default unico;
+- qualifica globale K16/K32 sulla terna AHK/TH/TST e, successivamente, su
+  ulteriori fixture turn/preflop rappresentative; K16 è già respinto dal FAIL
+  TH a 800 iterazioni, K32 è pending;
 - gadget safe scalabile con boundary counterfactual values quando la BR esatta
   full-game non è fattibile;
 - calcolo distribuito;

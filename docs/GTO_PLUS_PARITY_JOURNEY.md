@@ -4,15 +4,15 @@ Aggiornato: 2026-09-04
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
 Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
 
-> **Decisione di prodotto 2026-09-04.** Prima di riprendere questo journey
-> vengono integrati bucketing e subgame solving nel percorso production. I
-> moduli generici e il primo bridge HU postflop CFR+ Float64 con API/CLI
-> bucketed sono ora implementati e exact-certified. Restano da scegliere le
-> granularità commerciali e qualificare feature cache, `.gtsd`, GUI e frontier
-> merge nativo. Il solver non astratto resta oracle per correttezza e
-> regressione, ma non è più assunto come unica architettura commerciale. I
-> risultati storici sotto restano il baseline exact; non bloccano queste
-> attività.
+> **Correzione del gate bucketing 2026-09-04.** Prima di riprendere questo
+> journey devono essere integrati e qualificati bucketing e subgame solving
+> come politica del prodotto condiviso. Moduli, cache, bridge HU postflop CFR+
+> Float64 e frontier merge sono implementati e verificati, ma le prove AHK
+> K=16 / TH K=128 sono per-fixture e non selezionano un default globale. Il gate
+> è quindi `PROVISIONAL`: K16 è respinto globalmente dal FAIL TH a 800
+> iterazioni; K32 deve essere valutato con lo stesso contratto su
+> AHKHQH/TH7D6S/TSTC9D. La parity resta posposta. Il solver non astratto resta
+> oracle per correttezza e regressione.
 
 > **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
 > `8/399/2.000 MB` provengono dal campo UI “Memory needed for solving”. Gli
@@ -985,8 +985,8 @@ Prossimo esperimento singolo:
 
 ## 10. Condizione di promozione della parity
 
-Il freeze delle fasi successive è stato rimosso dalla decisione di prodotto
-2026-09-04. Questo journey resta posposto e potrà essere dichiarato superato
+Il freeze resta attivo fino alla selezione globale della granularità bucketed.
+Questo journey resta posposto e potrà essere dichiarato superato
 soltanto quando una voce del registro, sul percorso commerciale esplicitamente
 selezionato, dimostra contemporaneamente:
 
@@ -998,6 +998,7 @@ release_suite = PASS
 reproducibility = PASS
 ```
 
-Nel frattempo sono autorizzati bucketing, subgame decomposition, persistenza,
-GUI e preflop secondo la roadmap. Nessun benchmark può però sostituire l'oracolo
-exact o essere adattato per favorire una fixture specifica.
+Nel frattempo sono autorizzati soltanto il completamento e la qualifica del
+percorso bucketing/subgame. Persistenza, GUI, preflop e altra parity restano
+fuori dall'obiettivo corrente. Nessun benchmark può sostituire l'oracolo exact
+o essere adattato per favorire una fixture specifica.

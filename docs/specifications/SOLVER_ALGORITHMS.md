@@ -26,7 +26,7 @@ usa sampling, bucketing o astrazione del gioco. L'isomorfismo globale e il DAG
 canonico sono riduzioni lossless; lo stato cumulativo production usa il codec
 node-scaled uint16 dichiarato nella specifica di precisione.
 
-Il percorso commercial-scale iniziale è invece opt-in e usa CFR+ alternato con
+Il percorso commercial-scale provisional è opt-in e usa CFR+ alternato con
 stato Float64 bucketed. Chance, payoff, card removal, valori e best response
 restano combo-level exact; regret e average strategy sono condivisi nel bucket.
 I delta di tutte le combo membro vengono sommati con i rispettivi reach prima
@@ -53,7 +53,7 @@ dall'accumulatore reach-weighted.
 | Algoritmo | Regret | Averaging | Uso corrente |
 |---|---|---|---|
 | Vanilla CFR | somma integrale | uniforme | laboratorio |
-| CFR+ | cumulativo troncato a zero | con delay | postflop bucketed e abstraction/subgame production; oracle/fallback exact |
+| CFR+ | cumulativo troncato a zero | con delay | postflop bucketed e abstraction/subgame provisional; oracle/fallback exact |
 | Linear CFR | peso crescente con iterazione | lineare | laboratorio |
 | DCFR | discount separato positivo/negativo/strategy | parametrico `1.5/0/2` di default | laboratorio/comparator |
 | Production DCFR | DCFR signed, reset bounded e pesi cubici | contratto fisso `1.5/0/3` | postflop production |

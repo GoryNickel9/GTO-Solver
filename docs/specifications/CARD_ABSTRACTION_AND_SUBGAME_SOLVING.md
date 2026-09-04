@@ -171,7 +171,8 @@ vietato. Le partizioni board/player determinano la mappa combo→bucket; ogni
 decision node conserva comunque uno stato strategico distinto, quindi history
 e action schema non vengono fusi.
 
-La prima configurazione qualificata è intenzionalmente stretta:
+La prima configurazione implementata è intenzionalmente stretta; la selezione
+globale di K resta provisional:
 
 - CFR+ alternato;
 - stato `Float64` residente o out-of-core;
@@ -276,7 +277,7 @@ builder a otto worker completa 280.308 osservazioni in `169,398 s`, Peak RSS
 `314.556.416 B`, mentre il vecchio percorso seriale era ancora incompleto
 dopo oltre nove minuti.
 
-La qualifica K=16 AHKHQH flop esegue cinque processi indipendenti, ciascuno con
+La point qualification K=16 AHKHQH flop esegue cinque processi indipendenti, ciascuno con
 otto thread, cache condivisa, CFR+ Float64, delay zero e best response esatta
 combo-level. Tutti passano NashConv strettamente sotto 1% e RAM richiesta:
 NashConv deterministico `0,6029051267%`, wall mediano `9,936001 s`, Peak RSS
@@ -284,11 +285,14 @@ mediano `25.227.264 B`. L'oracolo seriale separato misura `0,6099145321%`; la
 differenza assoluta `7,0094e-5` in frazione è sotto il gate `1e-4`. Questa è
 equivalenza numerica quantificata, non identità bitwise sul fixture grande.
 
-TH7D6S richiede una granularità differente: K=16 resta a `5,924317%` dopo 800
+La prova locale TH7D6S mostra che K=16 resta a `5,924317%` dopo 800
 iterazioni, mentre K=128 raggiunge `0,8816749004%` a 400. Cinque processi a
 otto thread producono la stessa metrica, wall mediano `435,349473 s` e Peak RSS
 mediano `694.796.288 B`. L'oracolo seriale misura `0,8770330545%` in
-`1.493,513047 s`; delta `4,64185e-5` e speedup mediano `3,43x`.
+`1.493,513047 s`; delta `4,64185e-5` e speedup mediano `3,43x`. Non è lecito
+trasformare questa differenza in una selezione per workload: K16 è quindi
+respinto globalmente e K128 resta soltanto evidenza locale fuori dal confronto
+corrente K16/K32.
 
 ## Limiti aperti
 
@@ -307,7 +311,9 @@ mediano `694.796.288 B`. L'oracolo seriale misura `0,8770330545%` in
 - Lo stato risolto è persistito atomicamente nel checkpoint separato; storia,
   metriche e decisione candidate/fallback restano nel report JSON sidecar e non
   sono ancora incorporate in un chunk `.gtsd` firmato insieme allo stato.
-- Lo sweep multi-granularità ridotto è qualificato; servono fixture
-  ulteriori flop/turn e un layout preflop commercialmente rappresentativo prima
-  di scegliere default.
+- Lo sweep multi-granularità ridotto è qualificato; il gate di prodotto è
+  `PROVISIONAL` finché uno stesso K non supera AHKHQH, TH7D6S e TSTC9D. I
+  candidati correnti sono K16 (REJECT globale) e K32 (PENDING). Servono inoltre
+  fixture turn e un layout preflop commercialmente rappresentativo per le
+  estensioni successive.
   L'exact resta l'oracolo per questi gate e per la successiva parity GTO+.

@@ -153,13 +153,12 @@ report lo marca come limite anziché inventarlo.
 
 ## Criterio di avanzamento
 
-La decisione di prodotto 2026-09-04 sospende il vincolo che subordinava F11+
-alla parity exact GTO+. Card abstraction, safe subgame solving e il primo bridge
-HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Preflight
-astratto, cache a otto worker, AHK flop K=16 e TH flop K=128 a cinque processi
-sono qualificati. K=16 su TH è respinto, quindi non esiste ancora un K
-universale. Il frontier merge postflop nativo è ora implementato e protetto da
-exact full-game NashConv. Questo chiude il prerequisito abstraction/subgame per
-il prodotto HU postflop corrente e consente di riprendere la parity GTO+.
-Preflop resta una futura fase di prodotto separata; F10.4 non è una prova di
-tale integrazione.
+La decisione di prodotto 2026-09-04 mantiene F11+ subordinata alla qualifica
+globale del percorso astratto. Card abstraction, safe subgame solving e il
+primo bridge HU postflop CFR+ sono implementati; il path exact resta
+l'oracolo. Preflight, cache a otto worker e point qualification AHK K=16 / TH
+K=128 verificano l'infrastruttura ma non un default comune. K16 è respinto
+globalmente dal FAIL TH a 800 iterazioni; K32 è pending sul contratto unico
+AHK/TH/TST. Il frontier merge postflop nativo è protetto da exact full-game
+NashConv, ma non chiude da solo il gate di granularità. Parity, preflop e F11+
+restano congelati fino alla decisione globale.

@@ -50,7 +50,7 @@
 > ciascuno ma non sono simultanei. Questi numeri verificano l'accounting, non
 > costituiscono ancora confronto con gli `8 MB` mostrati da GTO+.
 
-> **Abstraction/subgame e feature-cache qualification — 2026-09-04.** Il
+> **Abstraction/subgame e feature-cache evidence — 2026-09-04.** Il
 > benchmark Release `gtosd_abstraction_subgame_benchmark` misura separatamente
 > CFR+ esatto, cache, clustering/traversal bucketed e resolving con guard
 > full-game. Sul computer di sviluppo (8 logical CPU a 3,6 GHz), cinque
@@ -67,7 +67,7 @@
 > `NashConv/pot=0,751763%` a 200 iterazioni. Flop/turn e preflop rappresentativi
 > restano gate distinti.
 
-> **Bucketing production a otto thread — 2026-09-04.** Il builder exact-feature
+> **Bucketing provisional a otto thread — 2026-09-04.** Il builder exact-feature
 > usa otto worker e merge canonico. AHKHQH flop conserva il fingerprint
 > `e0179a28bd72d999` e scende da circa `4,15 s` seriali a `1,57246 s`,
 > Peak RSS `23.076.864 B`. TH7D6S produce 280.308 osservazioni e
@@ -82,6 +82,10 @@
 > TH7D6S K=128 passa cinque processi a `0,8816749004%`, wall mediano
 > `435,349473 s`, RSS mediano `694.796.288 B`; l'oracolo seriale misura
 > `0,8770330545%` in `1.493,513047 s`, delta `4,64185e-5` e speedup `3,43x`.
+> AHK K=16 e TH K=128 non costituiscono una configurazione comune: sono point
+> qualification locali. Il gate di prodotto resta `PROVISIONAL`. K16 è
+> respinto globalmente dal FAIL TH a 800 iterazioni; K32 resta da qualificare
+> con un solo contratto AHK/TH/TST prima di riprendere la parity.
 
 > **Native frontier resolve — 2026-09-04.** Sul fixture Release fixed-river
 > uniforme, una blueprint K=8 a 100 iterazioni ha
@@ -462,10 +466,11 @@ iterazioni richieste dalla dinamica CFR/DCFR; non è lecito attribuire un
 miglioramento del kernel a una convergenza ottenuta con meno iterazioni.
 
 Lo stato corrente è pertanto: le ottimizzazioni lossless già mantenute sono
-globali al binario e non contengono branch per benchmark, ma la loro efficacia
-non è ancora stata dimostrata con una profilazione comparativa omogenea sui
-tre carichi. Il prossimo intervento prioritario è questa misura comparativa;
-non una nuova ottimizzazione mirata a TSTC9D.
+globali al binario e non contengono branch per benchmark. Anche la granularità
+bucketed production deve essere unica: la configurabilità dell'API non
+autorizza un K diverso per fixture. Il prossimo intervento prioritario è il
+gate comune K16/K32 sui tre carichi; non una nuova ottimizzazione mirata a una
+fixture.
 
 ## Piano prestazionale CPU/RAM-only
 
@@ -531,8 +536,9 @@ regressioni, ma non dimostrano parità GTO+ se fixture o timer differiscono.
 
 Il percorso root-lock diagnostico ha ridotto il mismatch downstream, ma non
 modifica i gate prestazionali del percorso standard. Questa priorità storica è
-superseded dalla decisione 2026-09-04: integrazione production di bucketing e
-subgame solving prima di riprendere la parity sui tre benchmark.
+superseded dalla decisione 2026-09-04: integrazione e qualifica globale di
+bucketing e subgame solving prima di riprendere la parity sui tre benchmark.
+Le point qualification con K differenti non chiudono il gate.
 
 ## Benchmark grande TH7D6S — checkpoint storico 2026-08-08
 

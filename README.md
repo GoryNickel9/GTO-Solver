@@ -144,7 +144,7 @@ Exact commands keep their original semantics. A local bucketed run uses:
 Reports declare the abstraction fingerprint, requested buckets, compression
 ratio, weighted feature MSE, cache fingerprint/reuse and separate feature and
 clustering time. The versioned exact-feature cache is independent of bucket
-count and uses atomic replacement. The qualified CLI bridge uses CFR+ Float64
+count and uses atomic replacement. The provisional CLI bridge uses CFR+ Float64
 with seven workers plus its calling thread. Feature-cache construction uses
 eight deterministic workers and the layout-only preflight accounts state,
 worker scratch, cache and atomic disk space before allocation. The native
@@ -154,7 +154,7 @@ NashConv guard. Compressed cache/state, GUI selection, `.gtsd` provenance,
 multi-root/continual resolving and the preflop layout remain explicit follow-up
 work.
 See `docs/specifications/CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`.
-Measured AHK/TH qualification and the TST preflight are recorded in
+Measured AHK/TH point qualifications and the open global K16/K32 gate are recorded in
 `docs/CARD_ABSTRACTION_SUBGAME_PRODUCTION_QUALIFICATION_2026-09-04.md`.
 
 Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
@@ -244,11 +244,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
-The prerequisite card-abstraction/subgame gate for the current HU postflop
-product is closed: reduced and AHK/TH workloads, cache/preflight, eight-thread
-CFR+ and native frontier composition are qualified. GTO+ parity work can now
-resume; preflop remains a separate Phase 14 product expansion. The exact path
-remains the oracle. The authoritative exact checkpoint is the
+The card-abstraction/subgame implementation is functional but its product gate
+is **PROVISIONAL**. Cache/preflight, eight-thread CFR+ and native frontier
+composition are verified; the previous AHK K=16 / TH K=128 matrix does not
+qualify a global product default. K16 is rejected globally by TH at 800
+iterations and K32 remains pending on the common AHK/TH/TST gate. GTO+ parity
+therefore remains paused; preflop remains a separate Phase 14 product
+expansion. The exact path remains the oracle. The authoritative exact checkpoint is the
 five-process production final-head dated
 2026-09-01 and recorded in
 `docs/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs
