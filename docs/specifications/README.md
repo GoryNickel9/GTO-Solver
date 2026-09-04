@@ -24,6 +24,8 @@ calcolo del solver.
 - [MATHEMATICAL_MODEL.md](MATHEMATICAL_MODEL.md): gioco estensivo, reach, utility ed EV.
 - [SHORT_DECK_RULES.md](SHORT_DECK_RULES.md): regole esplicite della variante.
 - [SOLVER_ALGORITHMS.md](SOLVER_ALGORITHMS.md): algoritmi, averaging e certificazione.
+- [CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md](CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md):
+  bucketing versionato, resolving e guard sul gioco esatto.
 - [NUMERICAL_PRECISION.md](NUMERICAL_PRECISION.md): unità, tipi e tolleranze.
 - [TREE_FORMAT.md](TREE_FORMAT.md): configurazione e identità dell'albero pubblico.
 - [SOLUTION_FORMAT.md](SOLUTION_FORMAT.md): checkpoint e contenitore `.gtsd`.

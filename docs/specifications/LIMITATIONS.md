@@ -3,10 +3,11 @@
 ## Stato prodotto corrente
 
 GTOSD supporta un workflow locale HU postflop exact con range pesati, tree
-configurabile, CFR+, best response, checkpoint, storage autenticato, CLI e GUI
-Qt. “Exact” significa enumerazione del gioco discretizzato configurato senza
-sampling o bucketing; non significa equilibrio matematico esatto a iterazioni
-finite.
+configurabile, CFR+/DCFR, best response, checkpoint, storage autenticato, CLI e
+GUI Qt. Supporta inoltre API installabili di card abstraction e subgame solving
+CFR+ con guard exact-NashConv. “Exact” significa enumerazione del gioco
+discretizzato configurato senza sampling o bucketing; non significa equilibrio
+matematico esatto a iterazioni finite.
 
 ## Limiti di parità
 
@@ -24,10 +25,11 @@ finite.
 - Gli EV BTN condizionali differiscono, ma i posteriori root non sono uguali;
   non sono quindi una prova isolata di errore downstream.
 - F10.4 controlled-posterior è implementata esclusivamente come diagnostica
-  test-only; non è node locking globale di prodotto e non sblocca F11+.
+  test-only; non è node locking globale di prodotto.
 - Il run GTO+ a target 0,10% non ha raggiunto il target dopo circa 245 s.
 
-Le fasi F11+ restano congelate dal parity journey.
+La parity è temporaneamente posposta mentre bucketing e subgame solving vengono
+integrati nel percorso postflop nativo.
 
 ## Vincolo permanente CPU/RAM
 
@@ -49,7 +51,10 @@ contabilizzato e non può ridurre la metrica comparabile.
 - albero HU preflop completo e workflow preflop-river;
 - multiway, side pot completi e metriche general-sum;
 - database di flop e trainer di prodotto;
-- abstraction/bucketing con errore misurato;
+- integrazione del bucketing nel `DenseLayout` e nel `.gtsd` postflop nativo;
+- generazione/qualificazione delle feature preflop;
+- gadget safe scalabile con boundary counterfactual values quando la BR esatta
+  full-game non è fattibile;
 - calcolo distribuito;
 - rake avanzato per stake/player count, jackpot drop e valute;
 - formati di soluzione preflop/multiway.

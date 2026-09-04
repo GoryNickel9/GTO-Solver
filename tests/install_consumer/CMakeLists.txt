@@ -1,8 +1,12 @@
 cmake_minimum_required(VERSION 3.25)
 project(gtosd_install_consumer LANGUAGES CXX)
 
-find_package(gtosd 0.9 CONFIG REQUIRED)
+find_package(gtosd 0.11 CONFIG REQUIRED)
 
 add_executable(gtosd_install_consumer main.cpp)
-target_link_libraries(gtosd_install_consumer PRIVATE gtosd::gui_prototype)
+target_link_libraries(gtosd_install_consumer
+  PRIVATE
+    gtosd::abstraction
+    gtosd::gui_prototype
+    gtosd::subgame)
 target_compile_features(gtosd_install_consumer PRIVATE cxx_std_20)

@@ -2,7 +2,13 @@
 
 Aggiornato: 2026-09-04
 Benchmark ID: `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`
-Stato del gate: **BLOCCANTE — NON SUPERATO**
+Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
+
+> **Decisione di prodotto 2026-09-04.** Prima di riprendere questo journey
+> vengono integrati bucketing e subgame solving nel percorso production. Il
+> solver non astratto resta oracle per correttezza e regressione, ma non è più
+> assunto come unica architettura commerciale. I risultati storici sotto
+> restano il baseline exact; non bloccano l'attività abstraction/subgame.
 
 > **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
 > `8/399/2.000 MB` provengono dal campo UI “Memory needed for solving”. Gli

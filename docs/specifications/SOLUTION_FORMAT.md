@@ -11,6 +11,19 @@ GTOSD distingue:
 Un checkpoint non sostituisce una soluzione verificata. Una soluzione conserva
 config, range, checkpoint e certificazione coerenti.
 
+## Manifest card abstraction e subgame
+
+`CardAbstraction` usa il formato testuale `GTOSD_CARD_ABSTRACTION 1 0`. Conserva
+kind, granularità, schema delle feature, information set, partizione, combo,
+board mask, reach weight e feature con bit IEEE esatti. Il reader ricostruisce
+l'astrazione e rifiuta un fingerprint divergente. L'identità del gioco CFR
+include il fingerprint dell'astrazione.
+
+Il checkpoint prodotto da un subgame conserva il fingerprint del gioco
+astratto e del frontier reach-weighted. La strategia distribuita e la metrica
+full-game appartengono al risultato di resolving: non è valido riaprire quel
+checkpoint contro un frontier, un blueprint o un'astrazione differenti.
+
 ## Checkpoint postflop
 
 `PostflopCheckpoint` contiene:
@@ -49,7 +62,9 @@ HEADER | CHUNK_INDEX | ENCRYPTED_CHUNKS | FOOTER
 ```
 
 I chunk tipizzati sono `CONFIG`, `TREE`, `ISOMORPHISM`, `STRATEGY`, `EV`,
-`RANGES`, `NODELOCKS`, `METRICS` e `DICTIONARY`. L'indice registra offset,
+`RANGES`, `NODELOCKS`, `METRICS` e `DICTIONARY`. Finché non esiste un chunk
+`ABSTRACTION` versionato nel container `.gtsd`, una soluzione postflop nativa
+bucketed non è persistibile come prodotto. L'indice registra offset,
 dimensione raw/compressa/cifrata e uso del dizionario. I feature bit dichiarano
 chunking, Zstandard, secretstream, random access e strategia exact o quantizzata.
 

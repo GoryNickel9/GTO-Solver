@@ -50,6 +50,15 @@
 > ciascuno ma non sono simultanei. Questi numeri verificano l'accounting, non
 > costituiscono ancora confronto con gli `8 MB` mostrati da GTO+.
 
+> **Abstraction/subgame baseline — 2026-09-04.** Il benchmark Release
+> `gtosd_abstraction_subgame_benchmark` misura separatamente CFR+ Kuhn esatto,
+> CFR+ Kuhn 2-bucket e resolving con guard full-game. Sul computer di sviluppo
+> 8 logical CPU a 3,6 GHz, smoke da 1.000 iterazioni: wall time
+> `12,9/10,8/1,63 ms` e CPU time `12,8/10,5/1,64 ms`.
+> È una baseline funzionale, non un claim di speedup o un gate del postflop
+> nativo. Il costo di feature generation e delle due exact BR va pubblicato
+> separatamente su workload reali.
+
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,
 > probes and counterexample oracles are retained for reproducibility; the two
@@ -486,10 +495,9 @@ regressioni, ma non dimostrano parità GTO+ se fixture o timer differiscono.
 - conservare report grezzi insieme al riepilogo.
 
 Il percorso root-lock diagnostico ha ridotto il mismatch downstream, ma non
-modifica i gate prestazionali del percorso standard. Il prossimo intervento è
-il fast path generale del fallback fisico descritto sopra, seguito dal
-differenziale sul chance tree asimmetrico; F11+ resta congelata finché tutti e tre i
-benchmark non superano i rispettivi gate.
+modifica i gate prestazionali del percorso standard. Questa priorità storica è
+superseded dalla decisione 2026-09-04: integrazione production di bucketing e
+subgame solving prima di riprendere la parity sui tre benchmark.
 
 ## Benchmark grande TH7D6S — checkpoint storico 2026-08-08
 

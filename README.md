@@ -1,6 +1,7 @@
 # GTOSD
 
-Exact Short Deck Heads-Up solver foundation following
+Short Deck Heads-Up solver foundation with an exact oracle and explicit
+card-abstraction/subgame-solving path, following
 `docs/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md`.
 
 I contratti tecnici correnti sono raccolti nell'indice

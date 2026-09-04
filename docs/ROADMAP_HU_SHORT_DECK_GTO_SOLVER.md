@@ -72,7 +72,7 @@ per il rendering, mai per solvare.
 | Stack asimmetrici nella GUI HU | La GUI espone un solo effective stack |
 | Side pot visibili | Richiesti soltanto quando inizierà il multiway |
 | Subgame preflop standalone | Il primo solver preflop parte dalla root completa |
-| Bucketing lossy | Prima si esauriscono le alternative exact |
+| Bucketing lossy | Opt-in versionato, errore misurato e oracle exact |
 | Sampling nella soluzione finale | Turn e river devono essere enumerati |
 | Protezione anti-reverse-engineering avanzata | Non prioritaria nel MVP |
 | Account utente | La prima licenza usa una chiave senza account |
@@ -431,20 +431,24 @@ Non è corretto assegnare uguale probabilità a tutti i rappresentanti canonici.
 | Decomposizione per street | Da prototipare |
 | Memory mapping | Da prototipare |
 | Quantizzazione della strategia finale | Da misurare |
-| Bucketing equity/EHS | Vietato nel percorso principale |
+| Bucketing equity/EHS | Autorizzato opt-in nel percorso production astratto |
 | Sampling chance finale | Vietato |
 
-Il codice deve esporre un’interfaccia `CardAbstraction`, ma l’implementazione predefinita sarà `ExactSuitIsomorphism`. Nessun bucket lossy potrà essere attivato senza una futura decisione di prodotto esplicita.
+La decisione di prodotto del 2026-09-04 autorizza il bucketing lossy come
+modalità production esplicita. `ExactSuitIsomorphism`/no-bucket resta oracle e
+modalità parity. Ogni soluzione astratta deve includere schema delle feature,
+granularità, fingerprint, compression ratio ed errore; nessun fallback
+automatico può trasformare una richiesta exact in bucketed.
 
 ### 9.2 Gate di fattibilità
 
-Se nessuno dei prototipi exact soddisfa i vincoli di RAM e storage:
+Per ogni configurazione che richiede bucketing:
 
 1. Pubblicare misure riproducibili.
 2. Identificare la parte dominante: albero, infoset, regret, best response o storage.
-3. Esaurire decomposizione, lazy tree, pruning, memory mapping e compressione.
-4. Fermare la milestone preflop.
-5. Richiedere una decisione separata prima di introdurre bucketing.
+3. Confrontare più granularità contro un oracle più fine o exact.
+4. Usare subgame decomposition e rendere visibile l'errore di astrazione.
+5. Rifiutare la promozione se card removal, resume o guard full-game falliscono.
 
 ## 10. Confronto degli algoritmi
 
@@ -2186,7 +2190,7 @@ Attività:
 7. Implementare preflop suit orbits.
 8. Collegare distribuzione flop.
 9. Propagare range condizionali.
-10. Collegare subgame postflop exact.
+10. Collegare subgame postflop bucketed, conservando l'exact come oracle.
 11. Implementare checkpoint gerarchico.
 12. Implementare BR full game.
 
@@ -2204,7 +2208,7 @@ Ogni linea non terminale raggiunge il postflop
 
 | Voce | Contenuto |
 |---|---|
-| Obiettivo | Stabilire la configurazione exact commercialmente eseguibile |
+| Obiettivo | Stabilire la configurazione commercialmente eseguibile e il suo errore |
 | Dipendenze | Fase 14 |
 
 Attività:
@@ -2230,13 +2234,15 @@ Output richiesto:
 Gate F15:
 
 ```text
-Almeno una configurazione preflop–river exact completata
+Almeno una configurazione preflop–river production completata
 Strategia recuperabile e navigabile
 NashConv calcolata
+Schema/granularità/errore di astrazione pubblicati
 Limiti hardware documentati
 ```
 
-Se il gate fallisce, non si etichetta alcuna approssimazione come full GTO. Si torna al gate bucketing della sezione 9.2.
+Se il gate fallisce, non si etichetta alcuna approssimazione come full GTO. Si
+torna al gate bucketing della sezione 9.2 o si restringe il gioco.
 
 ### Fase 16 — GUI HU preflop
 

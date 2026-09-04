@@ -10,9 +10,10 @@
 - Discounted CFR (DCFR);
 - External Sampling MCCFR.
 
-Questo laboratorio valida formule, checkpoint, averaging e best response su
-Kuhn, Leduc e giochi ridotti. Non implica che ogni algoritmo sia disponibile
-nel workflow postflop di prodotto.
+Questo framework valida formule, checkpoint, averaging e best response su Kuhn,
+Leduc e giochi ridotti. È inoltre il minimizer del percorso versionato di card
+abstraction e subgame solving; non implica che ogni algoritmo sia disponibile
+nel `DenseLayout` postflop.
 
 ## Percorso HU postflop production
 
@@ -43,7 +44,7 @@ dall'accumulatore reach-weighted.
 | Algoritmo | Regret | Averaging | Uso corrente |
 |---|---|---|---|
 | Vanilla CFR | somma integrale | uniforme | laboratorio |
-| CFR+ | cumulativo troncato a zero | con delay | oracle/fallback exact |
+| CFR+ | cumulativo troncato a zero | con delay | abstraction/subgame production; oracle/fallback exact |
 | Linear CFR | peso crescente con iterazione | lineare | laboratorio |
 | DCFR | discount separato positivo/negativo/strategy | parametrico `1.5/0/2` di default | laboratorio/comparator |
 | Production DCFR | DCFR signed, reset bounded e pesi cubici | contratto fisso `1.5/0/3` | postflop production |
@@ -90,13 +91,21 @@ aggiornato, le continuation restano libere e la certificazione riguarda il gioco
 vincolato. Questo percorso non deve essere presentato come equilibrio del gioco
 originale.
 
-## Algoritmi futuri
+## Abstraction e subgame solving
 
-Outcome Sampling, public chance sampling, safe subgame solving, continual
-resolving e depth-limited solving sono candidati, non capacità correnti.
-Preflop richiederà una decisione separata tra gioco non astratto, decomposizione
-e abstraction misurata. Multiway richiederà una nozione di soluzione e metriche
-separate; NashConv HU zero-sum non viene trasferita per assunzione.
+`gtosd::abstraction` applica bucketing deterministico per public
+state/history e pubblica compression ratio, MSE pesato e massimo errore L2.
+`gtosd::subgame` risolve frontier infoset-closed con CFR+ e offre sia
+`unsafe_isolated` sia `exact_nash_conv_guard`. Nel percorso composto il
+candidato bucketed viene rialzato e certificato sul gioco esatto: la metrica
+del gioco astratto non è un gate di deploy. Formule e limiti sono in
+[`CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`](CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md).
+
+Outcome Sampling, public chance sampling, continual resolving, depth-limited
+solving e gadget safe scalabili basati su boundary CFV restano candidati. Il
+guard exact-NashConv corrente è rigoroso ma richiede best response completa.
+Multiway richiederà una nozione di soluzione e metriche separate; NashConv HU
+zero-sum non viene trasferita per assunzione.
 
 ## Target memory-bounded approvato
 

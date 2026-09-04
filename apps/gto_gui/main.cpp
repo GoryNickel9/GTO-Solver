@@ -68,7 +68,7 @@ int run_e2e(gtosd::desktop::ProductWindow &window, const QString &output_path) {
 int main(int argc, char **argv) {
   QApplication application(argc, argv);
   application.setApplicationName(QStringLiteral("GTOSD"));
-  application.setApplicationVersion(QStringLiteral("0.10.0"));
+  application.setApplicationVersion(QStringLiteral("0.11.0"));
   application.setOrganizationName(QStringLiteral("GTOSD"));
   const auto arguments = application.arguments();
   const auto settings_root =

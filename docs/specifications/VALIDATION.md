@@ -26,6 +26,12 @@ in cui ogni livello controlla errori differenti:
 - Single-thread/parallel, `Float64`/`Float32` e resume/continuous sono confronti
   differenziali con tolleranze esplicite.
 - La somma dei payoff deve riflettere zero-sum o rake, mai una compensazione UI.
+- Il bucketing viene validato contro card removal, determinismo, serializzazione,
+  riduzione reale degli infoset e NashConv della strategia rialzata sul gioco
+  non astratto.
+- Un frontier subgame che taglia un information set viene rifiutato. Il guard
+  safe accetta il candidato soltanto dopo due best response full-game esatte;
+  il test di regressione verifica anche il fallback a blueprint invariato.
 - Le prove di prodotto devono usare il backend CPU/RAM-only. L'accelerazione
   GPU della GUI non può partecipare a tree building, traversal, best response
   o certificazione e non può essere inclusa in un risultato solver.
@@ -124,6 +130,8 @@ report lo marca come limite anziché inventarlo.
 
 ## Criterio di avanzamento
 
-F11 e le fasi successive restano bloccate finché tutti i tre time gate non
-passano insieme a dEV/root/RAM o il criterio viene modificato con una decisione
-documentata. F10.4 non sblocca il gate velocità.
+La decisione di prodotto 2026-09-04 sospende il vincolo che subordinava F11+
+alla parity exact GTO+: prima vengono integrati e qualificati bucketing e
+subgame solving, mantenendo il path exact come oracle. La parity riprenderà
+sul percorso di prodotto risultante. F10.4 non è una prova di tale
+integrazione.

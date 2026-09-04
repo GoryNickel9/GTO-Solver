@@ -31,6 +31,17 @@
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
 > [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
+> **Abstraction e subgame solving 2026-09-04 — nuova priorità di prodotto.**
+> Implementati `gtosd::abstraction` e `gtosd::subgame`: feature postflop W/T/L
+> exact-outcome, k-means deterministico per partizione, fingerprint/round-trip,
+> riscrittura reale degli infoset CFR+, lift al gioco esatto, frontier
+> reach-weighted e guard full-game exact-NashConv con fallback. Il test
+> end-to-end riduce Kuhn da 12 a 8 infoset e certifica la policy rialzata; il
+> resolving rifiuta un candidato sotto-allenato. L'integrazione nel
+> `DenseLayout` e nel container `.gtsd` postflop resta aperta, quindi il comando
+> postflop corrente continua correttamente a dichiarare no bucketing. La parity
+> GTO+ riprenderà dopo questa integrazione, non prima.
+
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano
 > `gto_plus_reference.solver_memory`; report e summary separano
 > `gto_plus_reference_memory`, `solver_memory_accounting` e `process_memory`.
@@ -205,9 +216,10 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes PASS; la memoria resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Full CTest corrente 28/28 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+; nessuna parità memoria è dichiarata |
+| GTO+ parity gate | **NON SUPERATO; temporaneamente posposto** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED` | Riprendere la parity sul percorso bucketing/subgame dopo integrazione postflop; exact resta oracle |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
-| F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
+| Abstraction/subgame core | **Implementato; integrazione nativa aperta** | Moduli versionati, CFR+ bucketed, exact lift/BR guard, fallback e benchmark smoke | Collegare `DenseLayout`, `.gtsd`, CLI/GUI e qualificare granularità reali |
+| F11+ | **Riattivata dalla decisione 2026-09-04** | Card abstraction e subgame core completati | Completare l'integrazione postflop prima di riprendere la parity |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -236,7 +248,7 @@ essere osservata solo dopo un push.
 | 8 | GitHub Actions Windows x64 Debug/Release | Completato | Matrice `windows-debug`/`windows-release`, bootstrap vcpkg pinned, build, test, CLI smoke, install e benchmark |
 | 9 | Sanitizer clang-cl dove supportato | Completato | Job Windows clang-cl ASan e job Linux UBSan; preset MSVC ASan locale; directory runtime del compilatore propagata ai test CTest |
 | 10 | Policy `Result<T, Error>` | Completato | `Result` è `[[nodiscard]]`; policy degli errori, eccezioni e diagnostiche documentata in `ERROR_AND_VERSIONING_POLICY.md` |
-| 11 | Semantic versioning file/API | Completato | API corrente `0.10.0` generata da CMake; major/minor espliciti per formati public tree, solution e checkpoint; incompatibilità major testata |
+| 11 | Semantic versioning file/API | Completato | API corrente `0.11.0` generata da CMake; major/minor espliciti per public tree, solution, checkpoint e card abstraction; incompatibilità major testata |
 | 12 | `THIRD_PARTY_NOTICES.md` | Completato | Baseline, versioni risolte, licenze e distinzione dipendenze production/development registrate |
 
 ### Dipendenze risolte
@@ -685,16 +697,13 @@ Il dettaglio, i limiti e i comandi di riproduzione sono in
 
 ## Prossimo ingresso
 
-F10.4 è completata come esperimento diagnostico e non è node locking di
-prodotto. Il prossimo lavoro autorizzato è ridurre il tempo dei tre benchmark
-intervenendo soltanto sul core generale e mantenendo dEV, root EV e RAM. Il
-profilo corrente indica che micro-ottimizzazioni isolate non coprono il gap.
-Prima si deve abilitare il fast path fisico generale quando il fallback non usa
-infoset isomorfi: action base dirette, layout `PlayerIndexed`, regret immediati
-e nessun workspace differito. Seguono DAG lossless per range asimmetrici con
-reach/molteplicità player-local e isomorfismo street-local. Ogni candidato deve
-passare il differenziale `1e-11` prima dei benchmark. Il solving resta
-permanentemente CPU/RAM-only e F11+ resta congelata.
+F10.4 resta un esperimento diagnostico, non node locking di prodotto. La
+decisione 2026-09-04 rende prioritario il percorso astratto: il prossimo
+ingresso è l'aggregazione reach-weighted dei regret per bucket nel
+`DenseLayout`, seguita da persistenza `.gtsd` e qualifica su granularità
+multiple. Il percorso exact resta oracle con differenziale e best response;
+la parity GTO+ riprenderà dopo questo gate. Il solving resta permanentemente
+CPU/RAM-only.
 
 ## Contratti poker già codificati
 

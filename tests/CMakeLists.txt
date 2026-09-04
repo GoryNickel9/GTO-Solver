@@ -183,6 +183,23 @@ add_test(NAME gtosd_solver_memory_ledger_tests COMMAND gtosd_solver_memory_ledge
 set_tests_properties(gtosd_solver_memory_ledger_tests
   PROPERTIES LABELS "postflop;memory;ledger;exact")
 
+add_executable(gtosd_card_abstraction_tests card_abstraction_tests.cpp)
+target_link_libraries(gtosd_card_abstraction_tests
+  PRIVATE
+    gtosd::abstraction
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_card_abstraction_tests)
+add_test(NAME gtosd_card_abstraction_tests COMMAND gtosd_card_abstraction_tests)
+set_tests_properties(gtosd_card_abstraction_tests
+  PROPERTIES LABELS "abstraction;bucketing;cfr-plus;production")
+
+add_executable(gtosd_subgame_solver_tests subgame_solver_tests.cpp)
+target_link_libraries(gtosd_subgame_solver_tests PRIVATE gtosd::subgame)
+gtosd_set_warnings(gtosd_subgame_solver_tests)
+add_test(NAME gtosd_subgame_solver_tests COMMAND gtosd_subgame_solver_tests)
+set_tests_properties(gtosd_subgame_solver_tests
+  PROPERTIES LABELS "subgame;resolving;cfr-plus;best-response;production")
+
 if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
   add_executable(gtosd_range_orbit_oracle_tests range_orbit_oracle_tests.cpp)
   target_link_libraries(gtosd_range_orbit_oracle_tests

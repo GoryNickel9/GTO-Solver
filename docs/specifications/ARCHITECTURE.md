@@ -25,7 +25,8 @@ prestazionali del solver devono quindi essere soddisfatti con CPU e RAM.
 core -> equity -> tree -> isomorphism
   \        \        \          \
    \        +--------+-----------+-> postflop -> storage
-    +-----------------> solver -> best_response       \
+    +-----------------> solver -> best_response
+                              \-> abstraction -> subgame
                          memory ------------------------+-> CLI / Qt GUI
 ```
 
@@ -39,6 +40,8 @@ Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
 | `gtosd_isomorphism` | permutazioni globali lossless dei semi |
 | `gtosd_solver` | giochi finiti di riferimento e varianti CFR |
 | `gtosd_best_response` | profile value, best response e NashConv |
+| `gtosd_abstraction` | feature exact postflop, bucketing deterministico e lift |
+| `gtosd_subgame` | frontier reach-weighted, resolving CFR+ e guard exact-game |
 | `gtosd_memory` | layout e backend di memoria |
 | `gtosd_postflop` | solver exact HU range-aware e analytics |
 | `gtosd_storage` | container `.gtsd`, cifratura, compressione e catalogo |
@@ -65,8 +68,9 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
    canonical chance tree senza unificare history arbitrarie.
 5. `prepare_postflop_tree` crea il layout infoset/action e, se richiesto, gli
    indici analytics.
-6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture production
-   usano `ProductionDcfr`, mentre CFR+ resta oracle/fallback.
+6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture parity
+   non astratte usano `ProductionDcfr`. CFR+ è il minimizer predefinito del
+   nuovo percorso abstraction/subgame e resta anche oracle/fallback exact.
 7. A intervalli espliciti la best response certifica il profilo medio.
 8. Checkpoint e soluzione possono essere salvati e ripresi solo con fingerprint
    compatibile.
@@ -96,7 +100,11 @@ esplicita e il report deve rendere visibile la residenza scelta.
 - `tree` contiene solo stato pubblico; le combo private entrano negli infoset.
 - `isomorphism` applica una permutazione globale, mai una canonicalizzazione
   board-only che rompa i blocker.
-- `postflop` non campiona e non bucketizza nel percorso exact.
+- `postflop` non campiona e non bucketizza nel percorso exact/parity corrente.
+- `abstraction` non raggruppa player, public state/history o action schema
+  incompatibili; il suo fingerprint entra nell'identità del gioco.
+- `subgame` non taglia un information set e non usa la metrica del solo gioco
+  astratto per autorizzare un deploy guardato.
 - `postflop`, `solver` e `best_response` non delegano calcolo a GPU o altri
   acceleratori: CPU e RAM sono l'unico backend autorizzato.
 - `storage` non modifica semantica o precisione del solve.
@@ -118,9 +126,11 @@ Node locking, preflop HU e multiway devono aggiungere moduli o contratti senza
 inserire dipendenze nella GUI. Il root lock F10.4 implementato è un esperimento
 diagnostico test-only e non costituisce l'API di node locking di prodotto.
 
-Il preflop richiederà action abstraction, decomposizione e stima risorse; il
-multiway richiederà utility e metriche differenti. Nessuna delle due estensioni
-può essere ottenuta reinterpretando silenziosamente il solver HU postflop.
+Il preflop userà action abstraction, `CardAbstraction`, decomposizione e stima
+risorse. L'API generica bucketing/resolving è implementata; l'integrazione con
+il layout nativo preflop/postflop resta esplicita e non reinterpreta
+silenziosamente il solver HU postflop. Il multiway richiederà utility e
+metriche differenti.
 
 ## Toolchain e distribuzione
 

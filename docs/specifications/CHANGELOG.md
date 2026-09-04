@@ -24,6 +24,20 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Implementato
 
+- Aggiunti i moduli installabili `gtosd::abstraction` e `gtosd::subgame`.
+  Il primo produce feature W/T/L/equity postflop con runout esatti, esegue
+  bucketing k-means deterministico per partizione, misura l'errore, serializza
+  e riscrive gli infoset realmente consumati da CFR+.
+- Aggiunto resolving su frontier reach-weighted e infoset-closed, con modalità
+  unsafe esplicita e guard full-game exact-NashConv. Un candidato peggiore
+  viene rifiutato mantenendo il blueprint invariato.
+- Nel percorso composto bucketed/subgame, candidato e blueprint vengono
+  rialzati e confrontati sul gioco esatto; il solo NashConv astratto non può
+  autorizzare il deploy.
+- Aggiornata la decisione di prodotto: bucketing e decomposizione precedono la
+  ripresa della parity; il percorso exact resta oracle, non requisito del
+  default commerciale per alberi grandi.
+
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
   `gto_plus_reference.solver_memory` tipizzato e validato.
@@ -55,8 +69,19 @@ sostituisce la cronologia Git né i report di fase.
 ### Verificato
 
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `29/29 PASS` in `228,77 s`, incluso il nuovo ledger,
-  i test esaustivi e l’oracolo GTO+.
+- CTest Release completo `31/31 PASS` in `185,16 s`, inclusi ledger,
+  CardAbstraction, SubgameSolver, CFR+, test esaustivi, oracle e riferimento
+  GTO+.
+- Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `12,9 ms`,
+  CFR+ Kuhn 2-bucket `10,8 ms`, subgame exact-guarded `1,63 ms`; valori
+  registrati come baseline funzionale, non come speedup qualificato.
+- Tutti i nuovi file C++ passano `clang-format --dry-run --Werror`. Il target
+  globale continua a segnalare debito di formato in sorgenti preesistenti e non
+  e' stato usato per produrre una riscrittura meccanica fuori scope.
+- Rimosso dal manifest di install il riferimento stantio ai quattro JSON Schema
+  eliminati in precedenza dal repository; install tree e consumer esterno 0.11
+  PASS verificano anche gli export CMake `gtosd::abstraction` e
+  `gtosd::subgame`.
 - Test manuali dei runner black-box e user-configured process-memory budget
   PASS; parsing di 14 fixture JSON e 22 script PowerShell PASS.
 - Smoke AHKHQH v4 a cinque processi completato a 80 iterazioni e dEV
