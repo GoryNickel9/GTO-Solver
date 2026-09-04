@@ -44,14 +44,99 @@ NashConv/pot: 4,598051  3,000406  2,788622  2,761909  2,771263  2,787935  2,8040
 Continuare a iterare non risolve il floor. Anche il miglioramento di circa
 `4,20%` del wall v2 contro v1 è insufficiente rispetto al prodotto exact.
 
+## Stato effettivo del subgame solving — audit 2026-09-05
+
+**Implementato come resolver locale; decomposizione production completa non
+ancora implementata né qualificata.** Non è corretto dichiararlo già equivalente
+alle architetture commerciali con solving a profondità limitata.
+
+| Capacità | Stato verificato | Evidenza |
+|---|---|---|
+| Estrazione di frontier senza tagliare information set, reach dal blueprint | Presente | `libs/subgame/src/subgame_solver.cpp` |
+| Solve locale CFR+, merge e fallback | Presente | `solve_subgame`, `solve_abstract_subgame` |
+| Resolver postflop nativo su frontier canonica, range condizionati, snapshot/rollback | Presente | `libs/postflop/src/postflop_solver.cpp`, CLI `postflop resolve-bucketed` |
+| Controllo della strategia composta con NashConv exact prima/dopo | Presente | modalità `ExactNashConvGuard`; certificazione full-game |
+| Trunk con boundary CFV, gadget di safe resolving e decomposizione CFR-D | Da implementare | non sostituito dal controllo ex post |
+| Scheduler di sottogiochi con stato caricato/scaricato entro budget | Da implementare | il resolver nativo opera sul layout/checkpoint completo esistente |
+| Depth-limited value model e gestione del suo errore | Da implementare | nessuna qualifica production disponibile |
+| Accelerazione della terna mediante decomposizione | Non dimostrata | i run K32 v1/v2 chiamano `solve_postflop_abstracted`, senza resolver |
+
+Il guard corrente accetta solo un candidato la cui NashConv full-game non
+supera quella del blueprint oltre la tolleranza numerica. Offre un controllo
+misurato sul risultato composto, ma richiede due certificazioni globali e non
+costituisce una garanzia locale tramite boundary CFV. Non assicura un
+miglioramento: può restituire integralmente il blueprint. Di conseguenza non
+abbiamo ancora misurato il risparmio di tempo/RAM di una decomposizione completa.
+
+### Confronto con le architetture commerciali
+
+Non esiste un'unica architettura commerciale. La documentazione tecnica di
+[PioSOLVER](https://piosolver.com/docs/technical_details/) descrive solving senza
+card abstraction; la pagina sul
+[salvataggio](https://piosolver.com/docs/viewer/saving_trees/) precisa che il
+full tree rimane in memoria durante il solve. GTO Wizard descrive invece
+[solving per street e dynamic depth-limited resolving](https://blog.gtowizard.com/gto-wizard-ai-custom-multiway-solving/)
+con reti neurali, dichiarando quel motore privo di card abstraction e blueprint.
+Sono descrizioni dei produttori: non provano equivalenza con il nostro solver
+Short Deck, CPU locale, né autorizzano confronti diretti dei tempi.
+
+Va quindi ritirata la precedente generalizzazione secondo cui tutti i solver
+commerciali usano bucketing e lo stesso tipo di subgame solving.
+
+## Possibilità di migliorare insieme le quattro metriche rispetto a DCFR
+
+**Possibile come obiettivo ingegneristico; non dimostrato dal candidato corrente
+e non garantito da CFR+, bucketing o subgame solving.** Algoritmo di aggiornamento,
+rappresentazione e decomposizione sono scelte distinte. Le ottimizzazioni di
+layout e memoria possono beneficiare anche DCFR: il confronto causale deve
+includere, quando tecnicamente supportato, entrambi gli algoritmi sulla stessa
+rappresentazione.
+
+| Metrica | Meccanismo possibile | Limite della conclusione attuale |
+|---|---|---|
+| Iterazioni alla stessa accuratezza | Averaging verificato, warm start con costo incluso, astrazione più fedele, boundary CFV accurati | CFR+ non domina DCFR; più bucket non garantiscono meno exploitability |
+| Solver mediano | Meno lavoro attivo, kernel contigui, parallelismo, certificazione riusabile | Il risparmio deve includere coordinamento, aggregazioni e guard |
+| Wall mediano | Miglioramento solver più preparazione/cache/layout efficienti | Su TH la sola cache v2 richiede 158,057 s, oltre il wall storico di 35,208170 s: cold-start attuale già incompatibile |
+| RAM | Stato astratto, sottogiochi residenti a richiesta, precisione qualificata | Contare anche cache, transizioni, blueprint, scratch e certificazione; lo stato compresso da solo non basta |
+
+La [ricerca su DCFR](https://arxiv.org/abs/1809.04040) riporta vantaggi rispetto
+a CFR+ nei giochi testati. Non prova quale vincerà nel nostro motore, ma esclude
+l'assunto che scegliere CFR+ basti a ridurre le iterazioni. La variante CFR+
+rimane il candidato richiesto; un eventuale mancato superamento va dichiarato.
+
+### Contratto a quattro assi
+
+Congelare una baseline verificata con stesso hardware, otto thread, albero,
+range, soglia e frequenza di certificazione. Registrare separatamente i dati
+storici e il replay contemporaneo per distinguere regressioni da variazioni
+della macchina. Il cap di 12 GB è un limite di fattibilità, non prova di un
+miglioramento RAM rispetto a DCFR.
+
+La promozione richiede non regressione in tutte e quattro le metriche; dichiarare
+un miglioramento simultaneo richiede riduzione misurata di ciascuna. Per RAM
+pubblicare Peak RSS per processo con mediana/p95/massimo e stato solver a parte.
+I massimi RSS storici disponibili sono 166.645.760 / 799.043.584 /
+1.969.860.608 B per AHK/TH/TST; non sono mediane né memoria visualizzata da GTO+.
+
+Con decomposizione, 80 iterazioni locali non equivalgono a 80 passate full-game.
+Riportare iterazioni trunk, iterazioni di ciascun subgame, cicli esterni,
+traversate e aggiornamenti totali, oltre al tempo fino alla certificazione
+globale. Qualsiasi numero equivalente deve avere una formula fissata prima del
+run. Non usare il reset dei contatori locali per rivendicare meno iterazioni.
+
+Prima della promozione serve un confronto controllato che separi algoritmo,
+precisione, astrazione e decomposizione. Le cause seguenti distinguono proprietà
+visibili nel codice da ipotesi ancora da quantificare con quel confronto.
+
 ## Cause radice
 
 ### C1 — Contratto algoritmico diverso
 
 La baseline usa DCFR alternato `1.5/0/2`; il percorso bucketed usa CFR+.
 L'iterazione è una traversata completa in entrambi i casi, ma discount e
-averaging producono velocità di convergenza diverse. Il passaggio a CFR+ spiega
-una parte dell'aumento da `80` a `200/400+` iterazioni.
+averaging possono produrre velocità di convergenza diverse. Il contributo del
+passaggio a CFR+ all'aumento da `80` a `200/400+` non è ancora isolato:
+sono cambiati anche astrazione, precisione e metrica di arresto.
 
 ### C2 — Metrica di arresto diversa
 
@@ -148,8 +233,10 @@ Queste azioni non rendono il solver più veloce da sole, ma sono prerequisite.
    versionata. Nessun valore per-fixture; il lavoro scartato prima del delay
    conta comunque nel totale.
 3. **Regret-based pruning CFR+.** Dopo un burn-in globale, saltare azioni con
-   regret negativo sotto una soglia matematica conservativa e riattivarle
-   periodicamente. Exact BR resta il guard.
+   un criterio di pruning dimostrato e riattivarle periodicamente. I regret
+   memorizzati da CFR+ sono troncati a zero: non si può usare una soglia negativa
+   direttamente su quel buffer. Occorrono bound o stato ausiliario, con costo
+   e garanzie espliciti. Exact BR finale non sostituisce la prova del criterio.
 4. **Warm start multi-risoluzione.** Risolvere una granularità più piccola,
    prolungare strategia/regret su quella più fine e continuare. Si contano tutte
    le traversate di entrambi i livelli.
@@ -179,6 +266,14 @@ Queste azioni non rendono il solver più veloce da sole, ma sono prerequisite.
     decisione dell'utente.
 
 ### C — Ridurre il costo di ogni iterazione
+
+Prerequisito matematico: matrici bucket→bucket statiche non preservano
+automaticamente i valori combo-level. La distribuzione interna ai bucket può
+cambiare con history, reach e blocker. Prima del kernel aggregato occorre
+dimostrare sufficienza della rappresentazione (inclusa memoria delle bucket
+history/perfect recall) oppure dichiarare e misurare l'ulteriore approssimazione.
+Enumerare esattamente le carte nella precomputazione non rende lossless il
+gioco astratto risultante. Questo è un gate preliminare, non un dettaglio SIMD.
 
 1. **Vera traversata del gioco astratto — priorità massima.** Precomputare e
    attraversare stati bucket-level invece di attraversare tutte le combo e
@@ -359,6 +454,8 @@ La configurazione production comune deve:
   `6,231883/35,208170/208,403423 s` nel contratto cold/warm corrispondente;
 - non peggiorare root EV, invarianti o correctness;
 - rispettare 12.000.000.000 B RAM e 10 GiB disco;
+- non peggiorare la RAM rispetto al replay DCFR comparabile, confrontando
+  mediana/p95/massimo del Peak RSS; il solo rispetto del cap non basta;
 - usare una sola policy globale e artefatti versionati;
 - superare cinque processi e la suite Release completa.
 
