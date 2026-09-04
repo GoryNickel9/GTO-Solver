@@ -16,6 +16,8 @@ La suite copre:
 - card abstraction, feature exact postflop, cache 1.0 atomica/corruption-safe,
   equivalenza diretta-cache, builder deterministico a otto worker, preflight
   statico, sweep multi-granularità, lift e CFR+ bucketed a otto thread;
+- contratto del runner globale: un solo K per tutte le fixture, CFR+ Float64,
+  otto thread, exact BR, commit/hash binario e nessuna selezione per benchmark;
 - subgame frontier, reach, infoset closure, default CFR+ a otto thread,
   guard/fallback e composizione bucketed con certificazione sul gioco esatto;
 - resolver `DenseLayout` card-conditioned, prior privato blueprint, chance

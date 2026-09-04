@@ -240,6 +240,23 @@ non sono cambiati. AHK, build e CTest sono stati rieseguiti sul sorgente finale.
 
 ## Riproduzione
 
+Il gate globale usa un solo K su tutta la suite e non ricostruisce la cache tra
+i candidati:
+
+```powershell
+& tools/run_global_card_abstraction_qualification.ps1 `
+  -GtoCli out/build/codex-release/apps/gto_cli/gto_cli.exe `
+  -Specifications @(
+    'benchmarks/fixtures/gto_plus_ahkhqh_101.json',
+    'benchmarks/fixtures/gto_plus_th7d6s_101.json',
+    'benchmarks/fixtures/gto_plus_tstc9d_101.json') `
+  -OutputDirectory out/qualification/global-k32 `
+  -Buckets 32
+```
+
+Il runner seguente resta disponibile per riprodurre una point qualification
+storica, ma non può promuovere un default production:
+
 ```powershell
 tools/run_card_abstraction_qualification.ps1 `
   -GtoCli out/build/codex-release/apps/gto_cli/gto_cli.exe `

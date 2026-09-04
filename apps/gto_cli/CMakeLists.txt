@@ -97,3 +97,10 @@ add_test(NAME gtosd_production_dcfr_contract
     -P ${PROJECT_SOURCE_DIR}/tests/verify_production_dcfr_contract.cmake)
 set_tests_properties(gtosd_production_dcfr_contract
   PROPERTIES LABELS "phase10;postflop;gto-plus;contract")
+
+add_test(NAME gtosd_global_card_abstraction_runner_contract
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_GLOBAL_ABSTRACTION_RUNNER=${PROJECT_SOURCE_DIR}/tools/run_global_card_abstraction_qualification.ps1
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_global_card_abstraction_runner.cmake)
+set_tests_properties(gtosd_global_card_abstraction_runner_contract
+  PROPERTIES LABELS "postflop;abstraction;bucketing;cfr-plus;production;contract")

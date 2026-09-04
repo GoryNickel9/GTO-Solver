@@ -61,6 +61,25 @@ gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>
 gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <report.json>
 ```
 
+La selezione production di K usa il runner comune, non il comando
+single-fixture direttamente:
+
+```powershell
+& tools/run_global_card_abstraction_qualification.ps1 `
+  -GtoCli out/build/codex-release/apps/gto_cli/gto_cli.exe `
+  -Specifications @(
+    'benchmarks/fixtures/gto_plus_ahkhqh_101.json',
+    'benchmarks/fixtures/gto_plus_th7d6s_101.json',
+    'benchmarks/fixtures/gto_plus_tstc9d_101.json') `
+  -OutputDirectory out/qualification/global-k32 `
+  -Buckets 32
+```
+
+Il runner richiede un worktree tracked pulito, registra commit e SHA-256 del
+binario, costruisce una sola cache exact per fixture e applica lo stesso K,
+CFR+ Float64, otto thread e orizzonte a tutta la suite. Un singolo FAIL
+produce `REJECTED_GLOBAL`; non esiste una mappa K-per-fixture.
+
 `solve` e `resume` producono checkpoint e report JSON/Markdown exact.
 `build-feature-cache` enumera una volta le feature postflop esatte per config e
 range uniformi CLI e salva atomicamente un manifest 1.0 indipendente dal numero
