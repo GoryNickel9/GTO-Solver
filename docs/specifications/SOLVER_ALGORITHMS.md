@@ -15,9 +15,9 @@ Leduc e giochi ridotti. È inoltre il minimizer del percorso versionato di card
 abstraction e subgame solving; non implica che ogni algoritmo sia disponibile
 nel `DenseLayout` postflop.
 
-## Percorso HU postflop production
+## Percorsi HU postflop production
 
-Il percorso production corrente usa `ProductionDcfr`, una schedule DCFR signed
+Il percorso exact/parity usa `ProductionDcfr`, una schedule DCFR signed
 exact-outcome con aggiornamenti alternati su tutte le combo e chance
 compatibili. Il contratto e' `alpha=1.5`, `beta=0`, `gamma=3`, regret signed e
 average immediato (`averaging_delay=0`). L'average viene azzerato alle
@@ -25,6 +25,15 @@ iterazioni one-based `1,2,5,17,65`; dopo 65 l'ultima epoca viene mantenuta. Non
 usa sampling, bucketing o astrazione del gioco. L'isomorfismo globale e il DAG
 canonico sono riduzioni lossless; lo stato cumulativo production usa il codec
 node-scaled uint16 dichiarato nella specifica di precisione.
+
+Il percorso commercial-scale iniziale è invece opt-in e usa CFR+ alternato con
+stato Float64 bucketed. Chance, payoff, card removal, valori e best response
+restano combo-level exact; regret e average strategy sono condivisi nel bucket.
+I delta di tutte le combo membro vengono sommati con i rispettivi reach prima
+di applicare una sola proiezione non-negativa CFR+. Il percorso rifiuta oggi
+parallel action update, DCFR, codec compressi, root lock e diagnostici non
+qualificati. `solve_postflop_exact` resta invariato e non abilita mai il
+bucketing.
 
 L'intero percorso, inclusi exact BR e certificazione, viene eseguito su CPU con
 stato e workspace in RAM. Un backend GPU non fa parte delle varianti ammesse e
@@ -44,7 +53,7 @@ dall'accumulatore reach-weighted.
 | Algoritmo | Regret | Averaging | Uso corrente |
 |---|---|---|---|
 | Vanilla CFR | somma integrale | uniforme | laboratorio |
-| CFR+ | cumulativo troncato a zero | con delay | abstraction/subgame production; oracle/fallback exact |
+| CFR+ | cumulativo troncato a zero | con delay | postflop bucketed e abstraction/subgame production; oracle/fallback exact |
 | Linear CFR | peso crescente con iterazione | lineare | laboratorio |
 | DCFR | discount separato positivo/negativo/strategy | parametrico `1.5/0/2` di default | laboratorio/comparator |
 | Production DCFR | DCFR signed, reset bounded e pesi cubici | contratto fisso `1.5/0/3` | postflop production |
@@ -100,6 +109,12 @@ state/history e pubblica compression ratio, MSE pesato e massimo errore L2.
 candidato bucketed viene rialzato e certificato sul gioco esatto: la metrica
 del gioco astratto non è un gate di deploy. Formule e limiti sono in
 [`CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`](CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md).
+
+Nel bridge postflop nativo ogni decision node conserva il proprio stato, ma la
+mappa combo→bucket è deterministica per board/player. La policy media viene
+rialzata alle combo per query e certificazione exact. Questo solve dalla root
+non equivale ancora al resolving di un frontier mid-tree: il relativo taglio e
+merge nel `DenseLayout` è lavoro separato.
 
 Outcome Sampling, public chance sampling, continual resolving, depth-limited
 solving e gadget safe scalabili basati su boundary CFV restano candidati. Il

@@ -52,6 +52,7 @@ add_executable(gtosd_abstraction_subgame_benchmark
   abstraction_subgame_benchmark.cpp)
 target_link_libraries(gtosd_abstraction_subgame_benchmark
   PRIVATE
+    gtosd::postflop
     gtosd::subgame
     benchmark::benchmark)
 gtosd_set_warnings(gtosd_abstraction_subgame_benchmark)

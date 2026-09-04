@@ -29,6 +29,13 @@ in cui ogni livello controlla errori differenti:
 - Il bucketing viene validato contro card removal, determinismo, serializzazione,
   riduzione reale degli infoset e NashConv della strategia rialzata sul gioco
   non astratto.
+- Il bridge HU postflop aggiunge range frazionari/asimmetrici, aggregazione
+  reach-weighted, API exact/abstracted non intercambiabili, checkpoint
+  Float64 round-trip, resume bit-identico, query combo→bucket e rifiuto di
+  precisione/algoritmo/parallelismo non qualificati.
+- Il test CLI risolve e riprende un fixed river bucketed, verifica il report di
+  astrazione e richiede query e certificazione combo-level exact; checkpoint
+  exact o granularità differente devono fallire per fingerprint mismatch.
 - Un frontier subgame che taglia un information set viene rifiutato. Il guard
   safe accetta il candidato soltanto dopo due best response full-game esatte;
   il test di regressione verifica anche il fallback a blueprint invariato.
@@ -131,7 +138,8 @@ report lo marca come limite anziché inventarlo.
 ## Criterio di avanzamento
 
 La decisione di prodotto 2026-09-04 sospende il vincolo che subordinava F11+
-alla parity exact GTO+: prima vengono integrati e qualificati bucketing e
-subgame solving, mantenendo il path exact come oracle. La parity riprenderà
-sul percorso di prodotto risultante. F10.4 non è una prova di tale
-integrazione.
+alla parity exact GTO+. Card abstraction, safe subgame solving e il primo bridge
+HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Prima di
+riprendere la parity servono granularità rappresentative, cache delle feature
+flop/turn e una decisione esplicita su quale percorso commerciale confrontare.
+F10.4 non è una prova di tale integrazione.

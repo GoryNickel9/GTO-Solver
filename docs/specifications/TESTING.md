@@ -42,13 +42,14 @@ codice: i gate Windows devono essere eseguiti nel developer environment.
 
 ## Suite corrente
 
-La suite Release corrente registra 31 test CTest: infrastruttura, core, fasi
+La suite Release corrente registra 33 test CTest: infrastruttura, core, fasi
 1-10, contratto `production_dcfr`, riferimento GTO+, ledger solver-owned,
 layout canonico, oracoli (incluso il recheck Pure/Sync-PCFR), CardAbstraction,
-SubgameSolver e benchmark smoke. Test GUI, sanitizer, nightly o altri preset
-sono prove separate e il report deve dire con precisione cosa è stato escluso.
+SubgameSolver, bridge postflop nativo, workflow CLI bucketed e benchmark smoke.
+Test GUI, sanitizer, nightly o altri preset sono prove separate e il report
+deve dire con precisione cosa è stato escluso.
 
-Ultima verifica completa (2026-09-04): Release `31/31 PASS` in `185,16 s`.
+Ultima verifica completa (2026-09-04): Release `33/33 PASS` in `222,29 s`.
 Sono inoltre passati il resume production byte-equivalent attraverso il reset
 finale, il contratto delle tre fixture e cinque processi final-head con `15/15`
 solve target-driven corretti. Questa evidenza non viene presentata come nuova
@@ -90,5 +91,5 @@ installato e CI remota sono prove diverse e non vanno fuse in un unico “PASS�
 I test Release coprono allocazione, update e certificazione dello stato core
 `ScaledUint16RegretStrategy`, validazione dei valori finiti, scale per decision
 node, resume continuo/segmentato byte-equivalent e persistenza autenticata con
-round-trip byte-for-byte. La suite corrente passa 31/31. I tre benchmark RAM
+round-trip byte-for-byte. La suite corrente passa 33/33. I tre benchmark RAM
 restano integration gate separati dalla suite e dai time gate.

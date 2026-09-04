@@ -8,5 +8,6 @@ target_link_libraries(gtosd_install_consumer
   PRIVATE
     gtosd::abstraction
     gtosd::gui_prototype
+    gtosd::postflop
     gtosd::subgame)
 target_compile_features(gtosd_install_consumer PRIVATE cxx_std_20)

@@ -43,7 +43,7 @@ Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
 | `gtosd_abstraction` | feature exact postflop, bucketing deterministico e lift |
 | `gtosd_subgame` | frontier reach-weighted, resolving CFR+ e guard exact-game |
 | `gtosd_memory` | layout e backend di memoria |
-| `gtosd_postflop` | solver exact HU range-aware e analytics |
+| `gtosd_postflop` | solver HU range-aware exact e bucketed opt-in, exact BR e analytics |
 | `gtosd_storage` | container `.gtsd`, cifratura, compressione e catalogo |
 | `gto_cli` | automazione, solve, inspect e benchmark |
 | `gto_gui` | workflow desktop Qt 6 Widgets |
@@ -66,11 +66,14 @@ Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
    può richiedere la materializzazione fisica completa.
 4. L'isomorfismo lossless riduce infoset duplicati; il target migrato usa un
    canonical chance tree senza unificare history arbitrarie.
-5. `prepare_postflop_tree` crea il layout infoset/action e, se richiesto, gli
-   indici analytics.
+5. `prepare_postflop_tree` crea il layout exact; l'API distinta
+   `prepare_postflop_abstracted_tree` calcola feature exact, mappa le combo nei
+   bucket e rialloca soltanto gli action slot del solver. Gli indici analytics
+   restano opt-in.
 6. L'algoritmo selezionato aggiorna regret e strategy sum; le fixture parity
-   non astratte usano `ProductionDcfr`. CFR+ è il minimizer predefinito del
-   nuovo percorso abstraction/subgame e resta anche oracle/fallback exact.
+   non astratte usano `ProductionDcfr`. Il percorso bucketed nativo usa CFR+
+   Float64 seriale e aggrega i delta combo reach-weighted prima della singola
+   proiezione per bucket.
 7. A intervalli espliciti la best response certifica il profilo medio.
 8. Checkpoint e soluzione possono essere salvati e ripresi solo con fingerprint
    compatibile.
@@ -100,7 +103,8 @@ esplicita e il report deve rendere visibile la residenza scelta.
 - `tree` contiene solo stato pubblico; le combo private entrano negli infoset.
 - `isomorphism` applica una permutazione globale, mai una canonicalizzazione
   board-only che rompa i blocker.
-- `postflop` non campiona e non bucketizza nel percorso exact/parity corrente.
+- `postflop` non campiona e non bucketizza nel percorso exact/parity; il
+  bucketing richiede API o comando CLI esplicitamente `abstracted/bucketed`.
 - `abstraction` non raggruppa player, public state/history o action schema
   incompatibili; il suo fingerprint entra nell'identità del gioco.
 - `subgame` non taglia un information set e non usa la metrica del solo gioco
@@ -127,10 +131,11 @@ inserire dipendenze nella GUI. Il root lock F10.4 implementato è un esperimento
 diagnostico test-only e non costituisce l'API di node locking di prodotto.
 
 Il preflop userà action abstraction, `CardAbstraction`, decomposizione e stima
-risorse. L'API generica bucketing/resolving è implementata; l'integrazione con
-il layout nativo preflop/postflop resta esplicita e non reinterpreta
-silenziosamente il solver HU postflop. Il multiway richiederà utility e
-metriche differenti.
+risorse. L'API generica bucketing/resolving e il bridge `DenseLayout` HU
+postflop sono implementati; restano da collegare il layout preflop e il merge
+di frontier postflop arbitrari. Nessuno di questi percorsi reinterpreta
+silenziosamente il solver exact. Il multiway richiederà utility e metriche
+differenti.
 
 ## Toolchain e distribuzione
 

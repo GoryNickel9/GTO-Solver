@@ -9,9 +9,11 @@ non è il default commerciale obbligatorio per alberi preflop o postflop grandi.
 
 `gtosd::abstraction` e `gtosd::subgame` sono librerie C++20 installabili e
 indipendenti dalla GUI. Sono integrate end-to-end con `FiniteGame`, CFR+,
-checkpoint, best response e NashConv. Il collegamento al `DenseLayout` nativo
-HU postflop è ancora un'attività distinta: finché non è completato, il comando
-`postflop solve` continua a dichiarare correttamente `uses_bucketing=false`.
+checkpoint, best response e NashConv. Il solver HU postflop dispone inoltre di
+un percorso nativo opt-in nel `DenseLayout`: `solve_postflop_abstracted` e i
+comandi CLI `solve-bucketed`, `resume-bucketed`, `query-bucketed` e
+`certify-bucketed`. Le API e i comandi exact esistenti non selezionano mai
+questo percorso implicitamente.
 
 Una soluzione bucketed è approssimata rispetto al gioco di carte originale.
 `exact outcomes` può ancora indicare l'enumerazione completa della chance nel
@@ -130,19 +132,67 @@ non scala ancora: servirà un gadget safe con boundary counterfactual values e
 un bound dichiarato. Una stima campionata non potrà essere chiamata garanzia
 esatta.
 
-## Gate di promozione al postflop nativo
+## Integrazione HU postflop nativa
 
-Prima di attivare bucketing nel `DenseLayout` HU postflop sono obbligatori:
+Il percorso nativo conserva chance, card removal, payoff terminali, valori per
+combo e best response sul gioco completo. Soltanto cumulative regret e average
+strategy sono indicizzate per bucket. Per ogni update CFR+:
 
-1. aggregazione reach-weighted dei regret per bucket, senza update collision;
-2. feature/fingerprint persistiti nella soluzione;
-3. query combo che esponga bucket e metrica di errore;
-4. confronto contro il percorso non astratto su giochi enumerabili;
-5. card removal e range asimmetrici;
-6. resume continuo/segmentato;
-7. benchmark RAM, tempo e NashConv su più granularità;
-8. UI/CLI che non abiliti bucketing implicitamente.
+1. calcola action value e current value per combo esatta;
+2. aggrega nel bucket il regret controfattuale pesato per il reach privato
+   iniziale della combo;
+3. aggrega l'average strategy con il reach corrente della combo;
+4. applica una sola proiezione CFR+ `max(0, R + delta)` per bucket/azione.
 
-Finché questi gate non sono verdi, i nuovi moduli sono il percorso di
-composizione production per giochi finiti e il fondamento preflop, non una
-reinterpretazione silenziosa dell'attuale solver postflop.
+Proiettare prima ogni delta combo e poi sommarlo cambierebbe l'algoritmo ed è
+vietato. Le partizioni board/player determinano la mappa combo→bucket; ogni
+decision node conserva comunque uno stato strategico distinto, quindi history
+e action schema non vengono fusi.
+
+La prima configurazione qualificata è intenzionalmente stretta:
+
+- CFR+ alternato;
+- stato `Float64` residente o out-of-core;
+- traversal seriale (`parallel_action_depth=0`);
+- canonical public DAG e isomorfismo lossless attivi;
+- nessun root lock, replay diagnostico, Pure-CFR o street decomposition.
+
+DCFR, `ScaledUint16RegretStrategy`, update paralleli e i diagnostici vengono
+rifiutati, non eseguiti con semantica non validata. Il fingerprint del layout
+include versione, feature schema, parametri e tutte le assegnazioni
+deterministiche; resume/query/certification con configurazione exact o bucket
+count differente falliscono con checkpoint mismatch. La query combo espone
+`abstraction_bucket` e `abstraction_bucket_size`; il report CLI persiste
+fingerprint, granularità, compression ratio e weighted MSE.
+
+## Evidenza di qualifica iniziale
+
+Il test nativo usa range frazionari e asimmetrici, card removal, confronto
+exact/abstracted, fingerprint ripetibile, round-trip checkpoint, resume
+continuo/segmentato bit-identico, lift combo-level e certificazione full-game
+exact-NashConv. Verifica inoltre che le API prepared exact e abstracted non
+siano intercambiabili.
+
+Sul fixture CLI river fixed-board a range uniformi, 8 bucket riducono 1.860
+infoset exact a 32 infoset solver (`58,125x`) e 200 iterazioni raggiungono
+`NashConv/pot = 0,751763%` sotto certificazione exact. Il microbenchmark
+end-to-end a 1.000 iterazioni riduce lo stato Float64 da 1.536 a 384 byte
+(`4x`), ma misura `13,323 ms` exact contro `14,781 ms` bucketed: su un gioco
+così piccolo il costo di feature, clustering e certificazione supera il
+risparmio di traversal. Non è una prova di speedup generale.
+
+## Limiti aperti
+
+- Le feature flop/turn enumerano oggi tutti i runout durante la preparazione;
+  manca una cache/manifest precomputato per alberi grandi.
+- Il container `.gtsd` non ha ancora un chunk `ABSTRACTION`; checkpoint e
+  report CLI sono persistibili, ma il packaging prodotto completo richiede
+  config/range/abstraction esterni identici e verificati dal fingerprint.
+- La GUI non espone ancora il selettore di granularità.
+- `SubgameSolver` safe è production-installabile sul contratto `FiniteGame`;
+  il taglio e merge arbitrario di un frontier nel `DenseLayout` postflop resta
+  da collegare. Un solve postflop bucketed dalla root non va chiamato resolving
+  mid-tree.
+- Servono sweep su più granularità e fixture flop/turn/preflop prima di
+  scegliere default commerciali. L'exact resta l'oracolo per questi gate e per
+  la successiva parity GTO+.

@@ -24,6 +24,13 @@ astratto e del frontier reach-weighted. La strategia distribuita e la metrica
 full-game appartengono al risultato di resolving: non è valido riaprire quel
 checkpoint contro un frontier, un blueprint o un'astrazione differenti.
 
+Nel postflop nativo il fingerprint del checkpoint include configurazione,
+feature schema e assegnazioni combo→bucket. Il report JSON/Markdown della CLI
+conserva inoltre kind, bucket richiesti, fingerprint, compression ratio e
+weighted MSE. Il resume richiede di nuovo lo stesso config, gli stessi range e
+la stessa configurazione di astrazione; un checkpoint exact o un bucket count
+diverso viene rifiutato prima del traversal.
+
 ## Checkpoint postflop
 
 `PostflopCheckpoint` contiene:
@@ -63,8 +70,10 @@ HEADER | CHUNK_INDEX | ENCRYPTED_CHUNKS | FOOTER
 
 I chunk tipizzati sono `CONFIG`, `TREE`, `ISOMORPHISM`, `STRATEGY`, `EV`,
 `RANGES`, `NODELOCKS`, `METRICS` e `DICTIONARY`. Finché non esiste un chunk
-`ABSTRACTION` versionato nel container `.gtsd`, una soluzione postflop nativa
-bucketed non è persistibile come prodotto. L'indice registra offset,
+`ABSTRACTION` versionato nel container `.gtsd`, un checkpoint postflop nativo
+bucketed resta riprendibile e verificabile tramite config/range/abstraction
+esterni e report, ma non è ancora impacchettabile come soluzione `.gtsd`
+autosufficiente. L'indice registra offset,
 dimensione raw/compressa/cifrata e uso del dizionario. I feature bit dichiarano
 chunking, Zstandard, secretstream, random access e strategia exact o quantizzata.
 

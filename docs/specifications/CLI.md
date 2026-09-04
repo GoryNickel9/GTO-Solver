@@ -41,9 +41,13 @@ gto_cli postflop validate <config.json>
 gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>
 gto_cli postflop solve <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> [cert_interval]
 gto_cli postflop resume <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> [cert_interval]
+gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]
+gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]
 gto_cli postflop pause|cancel <checkpoint>
 gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>
+gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> <buckets>
 gto_cli postflop certify <config.json> <checkpoint>
+gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets>
 gto_cli postflop compare-gto-plus <config.json> <checkpoint> <reference.json>
 gto_cli postflop benchmark-gto-plus <specification.json> <report.json>
 gto_cli postflop layout-gto-plus <specification.json> <report.json>
@@ -51,9 +55,23 @@ gto_cli postflop benchmark-config <pf-f1|pf-f2|pf-f3> <output.json>
 gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <report.json>
 ```
 
-`solve` e `resume` producono checkpoint e report JSON/Markdown. `certify`
-ricalcola best response e NashConv. `query` restituisce la strategia media per
-nodo/combo. `benchmark-gto-plus` usa lo schema e la fixture versionati; non va
+`solve` e `resume` producono checkpoint e report JSON/Markdown exact.
+I corrispondenti comandi `*-bucketed` selezionano esplicitamente k-means su
+feature W/T/L/equity exact e CFR+ Float64 seriale; non modificano il default
+dei comandi storici. Il parametro `buckets` è per partizione board/player.
+`certify-bucketed` rialza la policy e ricalcola best response/NashConv sul gioco
+combo-level completo. `query-bucketed` restituisce strategia media, bucket e
+numero di combo membro. Tutti i comandi bucketed ricostruiscono la stessa
+astrazione deterministica e il fingerprint del checkpoint rifiuta granularità
+o config differenti. La CLI corrente usa range uniformi, come il percorso
+postflop exact storico; range personalizzati sono disponibili nell'API C++.
+
+Il preflight CLI bucketed è conservativo: usa ancora la stima exact esistente,
+quindi non sottostima le risorse ma può rifiutare una configurazione che il solo
+stato astratto farebbe entrare in RAM. Il report dichiara sempre
+`uses_bucketing`, fingerprint, compression ratio e weighted MSE.
+
+`benchmark-gto-plus` usa lo schema e la fixture versionati; non va
 sostituito con un timing ad hoc. La specifica corrente è
 `gtosd.gto_plus_convergence_benchmark.v4`: parametrizza board, range, stack,
 sizing, profondità di raise, regola all-in, parametri di run, nodi di riferimento

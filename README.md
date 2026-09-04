@@ -116,6 +116,26 @@ The claim is scoped to the versioned PF-F1 configuration and is backed by
 exact best response, not profile EV alone. See
 `docs/PHASE_7_COMPLETION_REPORT.md`.
 
+Card abstraction and subgame solving are now production-installable modules.
+The HU postflop engine also exposes an explicit CFR+ Float64 bucketed path;
+chance, card removal, terminal values and certification remain combo-level.
+Exact commands keep their original semantics. A local bucketed run uses:
+
+```powershell
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop solve-bucketed .\config.json 200 .\solve.chk `
+  .\solve-report 16 16 8 200
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop certify-bucketed .\config.json .\solve.chk 8
+```
+
+Reports declare the abstraction fingerprint, requested buckets, compression
+ratio and weighted feature MSE. The current qualified bridge is serial CFR+
+Float64; compressed state, parallel bucket updates, GUI selection, `.gtsd`
+packaging and native mid-tree frontier merge remain explicit follow-up work.
+See `docs/specifications/CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`.
+
 Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
 container, per-chunk Zstandard compression, independent authenticated
 XChaCha20-Poly1305 secretstreams, bounded-memory random access, atomic save,
@@ -203,8 +223,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
-Further roadmap phases are frozen by the three-fixture GTO+ parity gate. The
-authoritative checkpoint is the five-process production final-head dated
+The three-fixture GTO+ parity gate is temporarily postponed while commercial
+bucketing granularities and native subgame composition are qualified; the
+exact path remains the oracle. The authoritative exact checkpoint is the
+five-process production final-head dated
 2026-09-01 and recorded in
 `docs/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs
 AHKHQH, TH7D6S and TSTC9D target-driven to strict `Target dEV < 1%`. The

@@ -25,7 +25,7 @@
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `28/28 PASS` (`105,46 s`, 2026-09-04).
+> `33/33 PASS` (`222,29 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
@@ -37,10 +37,14 @@
 > riscrittura reale degli infoset CFR+, lift al gioco esatto, frontier
 > reach-weighted e guard full-game exact-NashConv con fallback. Il test
 > end-to-end riduce Kuhn da 12 a 8 infoset e certifica la policy rialzata; il
-> resolving rifiuta un candidato sotto-allenato. L'integrazione nel
-> `DenseLayout` e nel container `.gtsd` postflop resta aperta, quindi il comando
-> postflop corrente continua correttamente a dichiarare no bucketing. La parity
-> GTO+ riprenderà dopo questa integrazione, non prima.
+> resolving rifiuta un candidato sotto-allenato. Il bridge `DenseLayout` HU
+> postflop è ora disponibile via API/CLI bucketed separate: CFR+ Float64
+> seriale, delta combo aggregati reach-weighted prima della proiezione, lift
+> combo-level, BR exact, checkpoint/resume e query bucket-aware. Il fixture CLI
+> 8-bucket comprime 1.860→32 infoset e raggiunge `0,751763%` NashConv/pot a 200
+> iterazioni. Restano aperti `.gtsd`, GUI, cache feature flop/turn, codec
+> compresso e frontier merge postflop nativo. La parity GTO+ riprenderà dopo la
+> scelta e qualifica delle granularità commerciali, non prima.
 
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano
 > `gto_plus_reference.solver_memory`; report e summary separano
@@ -218,8 +222,8 @@ riassume gate ed evidenza di implementazione.
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
 | GTO+ parity gate | **NON SUPERATO; temporaneamente posposto** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED` | Riprendere la parity sul percorso bucketing/subgame dopo integrazione postflop; exact resta oracle |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
-| Abstraction/subgame core | **Implementato; integrazione nativa aperta** | Moduli versionati, CFR+ bucketed, exact lift/BR guard, fallback e benchmark smoke | Collegare `DenseLayout`, `.gtsd`, CLI/GUI e qualificare granularità reali |
-| F11+ | **Riattivata dalla decisione 2026-09-04** | Card abstraction e subgame core completati | Completare l'integrazione postflop prima di riprendere la parity |
+| Abstraction/subgame core | **Implementato; bridge HU postflop iniziale qualificato** | Moduli versionati, `DenseLayout` CFR+ bucketed, CLI solve/resume/query/certify, exact lift/BR guard, fallback e benchmark | Collegare `.gtsd`, GUI e frontier mid-tree; qualificare granularità reali |
+| F11+ | **Riattivata dalla decisione 2026-09-04** | Card abstraction, safe subgame core e bridge postflop completati | Selezionare granularità commerciali e proseguire con persistenza/GUI prima della parity |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -698,12 +702,12 @@ Il dettaglio, i limiti e i comandi di riproduzione sono in
 ## Prossimo ingresso
 
 F10.4 resta un esperimento diagnostico, non node locking di prodotto. La
-decisione 2026-09-04 rende prioritario il percorso astratto: il prossimo
-ingresso è l'aggregazione reach-weighted dei regret per bucket nel
-`DenseLayout`, seguita da persistenza `.gtsd` e qualifica su granularità
-multiple. Il percorso exact resta oracle con differenziale e best response;
-la parity GTO+ riprenderà dopo questo gate. Il solving resta permanentemente
-CPU/RAM-only.
+decisione 2026-09-04 rende prioritario il percorso astratto: l'aggregazione
+reach-weighted nel `DenseLayout` e la CLI sono completate. Il prossimo ingresso
+è una cache/manifest delle feature flop/turn con sweep di granularità e costo
+separato; seguono persistenza `.gtsd`, GUI e frontier merge nativo. Il percorso
+exact resta oracle con differenziale e best response; la parity GTO+ riprenderà
+dopo questa qualifica. Il solving resta permanentemente CPU/RAM-only.
 
 ## Contratti poker già codificati
 

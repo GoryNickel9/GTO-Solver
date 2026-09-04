@@ -24,6 +24,19 @@ if(MSVC)
 endif()
 gtosd_set_warnings(gto_cli)
 
+add_test(NAME gtosd_bucketed_postflop_cli
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
+    -DGTOSD_FIXTURE=${PROJECT_SOURCE_DIR}/tests/fixtures/postflop_fixed_river_bet.json
+    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_bucketed_postflop_cli.cmake)
+set_tests_properties(gtosd_bucketed_postflop_cli
+  PROPERTIES LABELS "postflop;abstraction;bucketing;cfr-plus;cli;production;exact-br")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_bucketed_postflop_cli PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_test(NAME gtosd_gto_plus_action_catalog_smoke
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_CLI=$<TARGET_FILE:gto_cli>

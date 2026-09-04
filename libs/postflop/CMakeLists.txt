@@ -12,6 +12,7 @@ target_include_directories(gtosd_postflop
 target_compile_features(gtosd_postflop PUBLIC cxx_std_20)
 target_link_libraries(gtosd_postflop
   PUBLIC
+    gtosd::abstraction
     gtosd::memory
     gtosd::equity
     gtosd::isomorphism)
@@ -51,6 +52,7 @@ if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
     PRIVATE GTOSD_ENABLE_RANGE_ORBIT_ORACLE=1)
   target_link_libraries(gtosd_postflop_range_orbit_oracle
     PUBLIC
+      gtosd::abstraction
       gtosd::memory
       gtosd::equity
       gtosd::isomorphism)

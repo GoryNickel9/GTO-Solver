@@ -21,7 +21,7 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `28/28 PASS` (`105,46 s`, 2026-09-04). Il precedente
+> `33/33 PASS` (`222,29 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -55,9 +55,17 @@
 > CFR+ Kuhn 2-bucket e resolving con guard full-game. Sul computer di sviluppo
 > 8 logical CPU a 3,6 GHz, smoke da 1.000 iterazioni: wall time
 > `12,9/10,8/1,63 ms` e CPU time `12,8/10,5/1,64 ms`.
-> È una baseline funzionale, non un claim di speedup o un gate del postflop
-> nativo. Il costo di feature generation e delle due exact BR va pubblicato
-> separatamente su workload reali.
+> Il bridge HU postflop aggiunge due casi fixed-river da 1.000 iterazioni,
+> comprensivi di layout, feature/clustering, solve e certificazione exact:
+> exact `13,323 ms` wall / `11,285 ms` CPU / `1.536 B` di stato Float64;
+> 3-bucket `14,781 ms` wall / `12,153 ms` CPU / `384 B`, compression `4x`
+> (media di tre ripetizioni). È una prova della riduzione di stato, non uno
+> speedup: nel microcaso il costo preparatorio rende il bucketed circa `1,11x`
+> più lento end-to-end. Sul fixture CLI fixed-river uniforme, 8 bucket riducono
+> 1.860 a 32 infoset (`58,125x`) e raggiungono exact-certified
+> `NashConv/pot=0,751763%` a 200 iterazioni. Feature generation, traversal e BR
+> devono essere separati su flop/turn rappresentativi prima di qualsiasi claim
+> prestazionale commerciale.
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,

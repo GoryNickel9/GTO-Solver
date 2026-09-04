@@ -16,7 +16,7 @@ fonte per sequenza, dipendenze e gate.
 | Hardware consigliato | 6–8 core, 32 GB RAM |
 | Backend di solving | Esclusivamente CPU e RAM; nessuna GPU o acceleratore di calcolo |
 | Prima modalità | Heads-Up postflop |
-| Seconda modalità | Heads-Up preflop con albero completo fino al river |
+| Seconda modalità | Heads-Up preflop con bucketing e decomposizione fino al river |
 | Estensione futura | Preflop e postflop multiway, massimo 6 giocatori |
 | Lingua del documento | Italiano |
 | Stato | Roadmap canonica iniziale |
@@ -71,7 +71,7 @@ per il rendering, mai per solvare.
 | Multiway operativo | Il motore sarà predisposto, ma la correttezza HU viene prima |
 | Stack asimmetrici nella GUI HU | La GUI espone un solo effective stack |
 | Side pot visibili | Richiesti soltanto quando inizierà il multiway |
-| Subgame preflop standalone | Il primo solver preflop parte dalla root completa |
+| Full preflop exact come default commerciale | Resta oracle; il prodotto usa bucketing e decomposizione dichiarati |
 | Bucketing lossy | Opt-in versionato, errore misurato e oracle exact |
 | Sampling nella soluzione finale | Turn e river devono essere enumerati |
 | Protezione anti-reverse-engineering avanzata | Non prioritaria nel MVP |
@@ -439,6 +439,13 @@ modalità production esplicita. `ExactSuitIsomorphism`/no-bucket resta oracle e
 modalità parity. Ogni soluzione astratta deve includere schema delle feature,
 granularità, fingerprint, compression ratio ed errore; nessun fallback
 automatico può trasformare una richiesta exact in bucketed.
+
+Stato 2026-09-04: il contratto generico `CardAbstraction`/`SubgameSolver` e il
+bridge HU postflop `DenseLayout` CFR+ Float64 sono implementati. API e CLI
+bucketed sono separate dal percorso exact, aggregano i delta combo prima della
+proiezione CFR+ e certificano la policy rialzata con BR combo-level. Restano
+aperti cache feature flop/turn, `.gtsd`, GUI, codec compresso, granularità
+commerciali e cut/merge mid-tree nativo.
 
 ### 9.2 Gate di fattibilità
 
@@ -2059,7 +2066,7 @@ Progress continuo
 Nessun freeze UI durante solve
 ```
 
-### Gate bloccante post-F10 — parità GTO+
+### Gate post-F10 GTO+ — temporaneamente posposto
 
 Prima di F11 deve essere superata l'intera suite corrente
 `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`, con `101` AHK
@@ -2073,21 +2080,23 @@ Confronto memoria = NOT_EVALUATED finché lo scope GTO+ non è equivalente
 Target dEV strettamente < 1%, senza limite massimo di iterazioni
 EV del gioco al root nella stessa convenzione e tolleranza versionata
 EV/frequenze condizionali come gate solo con posteriori combo-per-combo uguali
-Exact/no bucketing/no sampling
+Modalità exact o bucketed dichiarata; exact resta oracle, nessun sampling chance
 Parità physical/canonical e suite Release PASS
 ```
 
-F11 e tutte le fasi successive restano congelate finché i tre benchmark non
-raggiungono almeno il 90% del riferimento temporale GTO+ e tutti i gate dEV e
-root EV non passano. Il gate memoria potrà contribuire allo sblocco soltanto
-dopo una definizione comparabile e versionata; nel frattempo non è né PASS né
-FAIL. Fixture e runner non possono essere adattati per ottenere il risultato:
-ogni correzione prestazionale deve appartenere al core generale.
+La decisione di prodotto del 2026-09-04 rimuove questo gate come blocco per
+F11+: bucketing e subgame solving devono essere implementati e qualificati
+prima di riprendere la parity. Il bridge postflop iniziale è ora presente, ma
+la parity non riparte finché non sono scelte granularità e fixture commerciali
+riproducibili. Il gate memoria potrà contribuire soltanto dopo una definizione
+comparabile e versionata; nel frattempo non è né PASS né FAIL. Fixture e runner
+non possono essere adattati per ottenere il risultato: ogni correzione deve
+appartenere al core generale.
 
-Al 2026-08-14 dEV, root EV e memoria passano su 3/3; il tempo fallisce su 3/3.
-F10.4 è completata come root lock esterno combo-per-combo test-only e non
-costituisce il node locking di prodotto della F11. La prossima attività è una
-riduzione architetturale del costo del core, preservando i tre gate già chiusi.
+Stato corrente: dEV, root EV, layout ed exact outcomes passano `15/15` sul
+final-head exact; i tempi TH/TST falliscono e la memoria è
+`NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. F10.4 resta un root lock esterno
+test-only e non costituisce il node locking di prodotto della F11.
 
 ### Fase 11 — Nodelock globale
 
@@ -2346,6 +2355,7 @@ L’algoritmo multiway è una decisione futura: il self-play CFR standard non ri
 | F7 | HU postflop CLI | Persistenza commerciale |
 | F8 | File robusti | UX |
 | F10 | MVP postflop GUI | Nodelock/database |
+| Card abstraction/subgame | Stato ridotto, lift e guard full-game | Granularità commerciale o preflop completo |
 | F11 | Nodelock globale | Preflop |
 | F13 | Database | Full preflop |
 | F15 | Fattibilità preflop–river | Multiway |
@@ -2368,7 +2378,7 @@ L’algoritmo multiway è una decisione futura: il self-play CFR standard non ri
 - salvataggio cifrato;
 - GUI navigabile;
 - soluzione verificata sotto 1% sul benchmark;
-- nessun bucketing.
+- modalità exact o bucketed sempre esplicita e certificata sul gioco combo-level.
 
 ### 27.2 HU postflop commerciale
 
@@ -2378,6 +2388,7 @@ L’algoritmo multiway è una decisione futura: il self-play CFR standard non ri
 - license token 7 giorni;
 - installer;
 - crash recovery;
+- card abstraction e subgame decomposition versionate con errore visibile;
 - obiettivo 250 MB misurato;
 - obiettivo 2 GB database misurato;
 - confronto GTO+ documentato.

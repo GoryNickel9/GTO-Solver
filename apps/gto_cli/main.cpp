@@ -151,6 +151,10 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
     return false;
   }
   const auto &final = result.convergence.back();
+  const bool uses_bucketing = result.card_abstraction.has_value();
+  const auto abstraction_kind =
+      uses_bucketing ? gtosd::card_abstraction_kind_name(result.card_abstraction->config.kind)
+                     : "none";
   {
     std::ofstream json(prefix + ".json", std::ios::binary | std::ios::trunc);
     json << "{\n"
@@ -158,7 +162,17 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
          << "  \"status\": \"" << postflop_stop_reason_name(result.stop_reason) << "\",\n"
          << "  \"backend\": \"" << backend << "\",\n"
          << "  \"exact_outcomes\": true,\n"
-         << "  \"uses_bucketing\": false,\n"
+         << "  \"uses_bucketing\": " << (uses_bucketing ? "true" : "false") << ",\n"
+         << "  \"abstraction_kind\": \"" << abstraction_kind << "\",\n"
+         << "  \"abstraction_fingerprint\": \""
+         << (uses_bucketing ? result.card_abstraction->fingerprint : std::string{}) << "\",\n"
+         << "  \"buckets_per_partition\": "
+         << (uses_bucketing ? result.card_abstraction->config.buckets_per_partition : 0U) << ",\n"
+         << "  \"abstraction_compression_ratio\": "
+         << (uses_bucketing ? result.card_abstraction->metrics.compression_ratio : 1.0) << ",\n"
+         << "  \"abstraction_weighted_mse\": "
+         << (uses_bucketing ? result.card_abstraction->metrics.weighted_mean_squared_error : 0.0)
+         << ",\n"
          << "  \"iterations\": " << result.checkpoint.completed_iterations << ",\n"
          << "  \"nodes\": " << result.public_tree.node_count << ",\n"
          << "  \"infosets\": " << result.information_sets << ",\n"
@@ -184,10 +198,12 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
              << "|---|---:|\n"
              << "| Stato | " << postflop_stop_reason_name(result.stop_reason) << " |\n"
              << "| Backend | " << backend << " |\n"
+             << "| Card abstraction | " << abstraction_kind << " |\n"
+             << "| Bucketing | " << (uses_bucketing ? "si" : "no") << " |\n"
              << "| Iterazioni | " << result.checkpoint.completed_iterations << " |\n"
              << "| Nodi pubblici | " << result.public_tree.node_count << " |\n"
-             << "| Infoset exact | " << result.information_sets << " |\n"
-             << "| Azioni exact | " << result.actions << " |\n"
+             << "| Infoset solver | " << result.information_sets << " |\n"
+             << "| Azioni solver | " << result.actions << " |\n"
              << "| EV CO (ante) | " << final.profile_value_antes[0] << " |\n"
              << "| EV BTN (ante) | " << final.profile_value_antes[1] << " |\n"
              << "| BR CO (ante) | " << final.best_response_value_antes[0] << " |\n"
@@ -197,8 +213,21 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
              << "| Errore massimo normalizzazione | " << result.maximum_normalization_error
              << " |\n"
              << "| Peak RSS (byte) | " << peak_rss_bytes << " |\n"
-             << "| Tempo (s) | " << elapsed_seconds << " |\n\n"
-             << "Turn e river sono enumerati esattamente. Nessun bucketing o sampling.\n";
+             << "| Tempo (s) | " << elapsed_seconds << " |\n";
+    if (uses_bucketing) {
+      markdown << "| Bucket per partizione richiesti | "
+               << result.card_abstraction->config.buckets_per_partition << " |\n"
+               << "| Compression ratio infoset | "
+               << result.card_abstraction->metrics.compression_ratio << " |\n"
+               << "| Weighted MSE astrazione | "
+               << result.card_abstraction->metrics.weighted_mean_squared_error << " |\n"
+               << "| Fingerprint astrazione | `" << result.card_abstraction->fingerprint
+               << "` |\n\n"
+               << "Gli outcome chance e la certificazione best-response sono combo-level exact; "
+                  "la strategia CFR+ e' condivisa per bucket e quindi approssimata.\n";
+    } else {
+      markdown << "\nTurn e river sono enumerati esattamente. Nessun bucketing o sampling.\n";
+    }
     if (!markdown) {
       return false;
     }
@@ -214,6 +243,7 @@ struct PostflopRunArguments {
   std::string_view ram_gib;
   std::string_view disk_gib;
   std::string_view certification_interval;
+  std::string_view abstraction_buckets;
   bool resume{false};
 };
 
@@ -224,9 +254,14 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
   const auto certification_interval = arguments.certification_interval.empty()
                                           ? std::optional<std::uint64_t>{1U}
                                           : parse_u64(arguments.certification_interval);
+  const bool uses_bucketing = !arguments.abstraction_buckets.empty();
+  const auto abstraction_buckets =
+      uses_bucketing ? parse_u64(arguments.abstraction_buckets) : std::optional<std::uint64_t>{0U};
   constexpr std::uint64_t gib = 1ULL << 30U;
   if (!iterations || *iterations == 0U || !ram_gib || *ram_gib == 0U || !disk_gib ||
-      !certification_interval || *certification_interval == 0U ||
+      !certification_interval || *certification_interval == 0U || !abstraction_buckets ||
+      (uses_bucketing && (*abstraction_buckets == 0U ||
+                          *abstraction_buckets > std::numeric_limits<std::uint32_t>::max())) ||
       *ram_gib > std::numeric_limits<std::uint64_t>::max() / gib ||
       *disk_gib > std::numeric_limits<std::uint64_t>::max() / gib) {
     std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
@@ -324,13 +359,25 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
     return gtosd::PostflopControlCommand::Continue;
   };
 
+  gtosd::CardAbstractionConfig abstraction;
+  if (uses_bucketing) {
+    abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+    abstraction.buckets_per_partition = static_cast<std::uint32_t>(*abstraction_buckets);
+  }
+
   std::cout << "GTOSD_POSTFLOP_SOLVE_1\n"
-            << "backend=" << backend_name << " exact_outcomes=true bucketing=false"
+            << "backend=" << backend_name
+            << " exact_outcomes=true bucketing=" << (uses_bucketing ? "true" : "false")
+            << " buckets_per_partition=" << *abstraction_buckets
             << " target_iterations=" << *iterations
             << " certification_interval=" << *certification_interval << std::endl;
   const auto started = std::chrono::steady_clock::now();
   const auto solved =
-      gtosd::solve_postflop_exact(*config, options, checkpoint ? &*checkpoint : nullptr);
+      uses_bucketing
+          ? gtosd::solve_postflop_abstracted(*config, gtosd::make_uniform_postflop_ranges(),
+                                             abstraction, options,
+                                             checkpoint ? &*checkpoint : nullptr)
+          : gtosd::solve_postflop_exact(*config, options, checkpoint ? &*checkpoint : nullptr);
   const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   if (!solved) {
@@ -375,25 +422,44 @@ int write_postflop_control(const char *const checkpoint_path, const std::string_
 }
 
 int run_postflop_query(const char *const config_path, const char *const checkpoint_path,
-                       const std::string_view node_text, const std::string_view combo_text) {
+                       const std::string_view node_text, const std::string_view combo_text,
+                       const std::string_view abstraction_buckets = {}) {
   const auto node = parse_u64(node_text);
   const auto combo = parse_u64(combo_text);
+  const bool uses_bucketing = !abstraction_buckets.empty();
+  const auto buckets =
+      uses_bucketing ? parse_u64(abstraction_buckets) : std::optional<std::uint64_t>{0U};
   std::string error;
   const auto config = load_postflop_config(config_path, error);
   const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
-  if (!config || !checkpoint || !node || !combo || *combo >= 630U) {
+  if (!config || !checkpoint || !node || !combo || *combo >= 630U || !buckets ||
+      (uses_bucketing &&
+       (*buckets == 0U || *buckets > std::numeric_limits<std::uint32_t>::max()))) {
     std::cerr << "postflop query failed: invalid_argument_or_checkpoint\n";
     return 1;
   }
-  const auto query = gtosd::query_postflop_strategy(*config, checkpoint.value(), *node,
-                                                    static_cast<gtosd::ComboId>(*combo));
+  gtosd::CardAbstractionConfig abstraction;
+  abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
+  const auto query = uses_bucketing
+                         ? gtosd::query_postflop_abstracted_strategy(
+                               *config, gtosd::make_uniform_postflop_ranges(), abstraction,
+                               checkpoint.value(), *node, static_cast<gtosd::ComboId>(*combo))
+                         : gtosd::query_postflop_strategy(*config, checkpoint.value(), *node,
+                                                          static_cast<gtosd::ComboId>(*combo));
   if (!query) {
     std::cerr << "postflop query failed: " << gtosd::postflop_solver_error_name(query.error())
               << '\n';
     return 1;
   }
   std::cout << "GTOSD_POSTFLOP_STRATEGY_1\n"
-            << "public_node=" << *node << " combo=" << *combo << '\n';
+            << "public_node=" << *node << " combo=" << *combo
+            << " bucketing=" << (uses_bucketing ? "true" : "false");
+  if (query.value().abstraction_bucket) {
+    std::cout << " abstraction_bucket=" << *query.value().abstraction_bucket
+              << " abstraction_bucket_size=" << *query.value().abstraction_bucket_size;
+  }
+  std::cout << '\n';
   for (std::size_t action = 0; action < query.value().actions.size(); ++action) {
     std::cout << "action=" << action_type_name(query.value().actions[action].type)
               << " amount_units=" << query.value().actions[action].amount.units()
@@ -402,15 +468,28 @@ int run_postflop_query(const char *const config_path, const char *const checkpoi
   return 0;
 }
 
-int run_postflop_certify(const char *const config_path, const char *const checkpoint_path) {
+int run_postflop_certify(const char *const config_path, const char *const checkpoint_path,
+                         const std::string_view abstraction_buckets = {}) {
+  const bool uses_bucketing = !abstraction_buckets.empty();
+  const auto buckets =
+      uses_bucketing ? parse_u64(abstraction_buckets) : std::optional<std::uint64_t>{0U};
   std::string error;
   const auto config = load_postflop_config(config_path, error);
   const auto checkpoint = gtosd::load_postflop_checkpoint(checkpoint_path);
-  if (!config || !checkpoint) {
+  if (!config || !checkpoint || !buckets ||
+      (uses_bucketing &&
+       (*buckets == 0U || *buckets > std::numeric_limits<std::uint32_t>::max()))) {
     std::cerr << "postflop certify failed: invalid_config_or_checkpoint\n";
     return 1;
   }
-  const auto certified = gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
+  gtosd::CardAbstractionConfig abstraction;
+  abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
+  const auto certified =
+      uses_bucketing
+          ? gtosd::certify_postflop_abstracted_checkpoint(
+                *config, gtosd::make_uniform_postflop_ranges(), abstraction, checkpoint.value())
+          : gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
   if (!certified) {
     std::cerr << "postflop certify failed: " << gtosd::postflop_solver_error_name(certified.error())
               << '\n';
@@ -418,7 +497,8 @@ int run_postflop_certify(const char *const config_path, const char *const checkp
   }
   std::cout << "GTOSD_POSTFLOP_CERTIFICATION_1\n"
             << "game_fingerprint=" << checkpoint.value().game_fingerprint
-            << " iteration=" << certified.value().iteration
+            << " bucketing=" << (uses_bucketing ? "true" : "false")
+            << " buckets_per_partition=" << *buckets << " iteration=" << certified.value().iteration
             << " ev_co_antes=" << certified.value().profile_value_antes[0]
             << " ev_btn_antes=" << certified.value().profile_value_antes[1]
             << " payoff_sum_antes=" << certified.value().expected_payoff_sum_antes << '\n'
@@ -4116,9 +4196,16 @@ void print_usage() {
                "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
             << "  gto_cli postflop resume <config.json> <iterations> <checkpoint> "
                "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
+            << "  gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> "
+               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]\n"
+            << "  gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> "
+               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]\n"
             << "  gto_cli postflop pause|cancel <checkpoint>\n"
             << "  gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>\n"
+            << "  gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> "
+               "<buckets>\n"
             << "  gto_cli postflop certify <config.json> <checkpoint>\n"
+            << "  gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets>\n"
             << "  gto_cli postflop compare-gto-plus <config.json> <checkpoint> "
                "<reference.json>\n"
             << "  gto_cli postflop benchmark-gto-plus <specification.json> <report.json>\n"
@@ -4187,7 +4274,14 @@ int run_cli(const int argc, const char *const argv[]) {
       (std::string_view(argv[2]) == "solve" || std::string_view(argv[2]) == "resume")) {
     return run_postflop_solve({argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],
                                argc == 10 ? std::string_view(argv[9]) : std::string_view{},
-                               std::string_view(argv[2]) == "resume"});
+                               std::string_view{}, std::string_view(argv[2]) == "resume"});
+  }
+  if ((argc == 10 || argc == 11) && std::string_view(argv[1]) == "postflop" &&
+      (std::string_view(argv[2]) == "solve-bucketed" ||
+       std::string_view(argv[2]) == "resume-bucketed")) {
+    return run_postflop_solve({argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],
+                               argc == 11 ? std::string_view(argv[10]) : std::string_view{},
+                               argv[9], std::string_view(argv[2]) == "resume-bucketed"});
   }
   if (argc == 4 && std::string_view(argv[1]) == "postflop" &&
       (std::string_view(argv[2]) == "pause" || std::string_view(argv[2]) == "cancel")) {
@@ -4197,9 +4291,17 @@ int run_cli(const int argc, const char *const argv[]) {
       std::string_view(argv[2]) == "query") {
     return run_postflop_query(argv[3], argv[4], argv[5], argv[6]);
   }
+  if (argc == 8 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "query-bucketed") {
+    return run_postflop_query(argv[3], argv[4], argv[5], argv[6], argv[7]);
+  }
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "certify") {
     return run_postflop_certify(argv[3], argv[4]);
+  }
+  if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "certify-bucketed") {
+    return run_postflop_certify(argv[3], argv[4], argv[5]);
   }
   if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "compare-gto-plus") {

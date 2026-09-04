@@ -5,7 +5,8 @@
 GTOSD supporta un workflow locale HU postflop exact con range pesati, tree
 configurabile, CFR+/DCFR, best response, checkpoint, storage autenticato, CLI e
 GUI Qt. Supporta inoltre API installabili di card abstraction e subgame solving
-CFR+ con guard exact-NashConv. “Exact” significa enumerazione del gioco
+CFR+ con guard exact-NashConv e un percorso HU postflop bucketed opt-in via API
+e CLI. “Exact” significa enumerazione del gioco
 discretizzato configurato senza sampling o bucketing; non significa equilibrio
 matematico esatto a iterazioni finite.
 
@@ -28,8 +29,9 @@ matematico esatto a iterazioni finite.
   test-only; non è node locking globale di prodotto.
 - Il run GTO+ a target 0,10% non ha raggiunto il target dopo circa 245 s.
 
-La parity è temporaneamente posposta mentre bucketing e subgame solving vengono
-integrati nel percorso postflop nativo.
+La parity è temporaneamente posposta mentre vengono qualificati granularità e
+workload commerciali del nuovo percorso bucketed/subgame. Il path exact resta
+l'oracolo e i risultati bucketed non possono essere chiamati exact strategy.
 
 ## Vincolo permanente CPU/RAM
 
@@ -39,11 +41,10 @@ architettura. Sono esclusi backend CUDA, ROCm, OpenCL, Vulkan Compute,
 DirectCompute e tecnologie equivalenti. La GPU può essere usata esclusivamente
 dal sistema grafico per renderizzare la GUI, senza partecipare ai calcoli.
 Il target di working set opzionale può affidare la residenza delle pagine al
-sistema operativo e quindi causare paging locale. Il wiring benchmark corrente
-lo deriva impropriamente dal riferimento GTO+ e deve essere rimosso. Se il
-backend resterà disponibile come funzione di prodotto, richiederà un budget
-utente esplicito; in ogni caso il backing logico completo deve essere
-contabilizzato e non può ridurre la metrica comparabile.
+sistema operativo e quindi causare paging locale. Il wiring storico che lo
+derivava impropriamente dal riferimento GTO+ è stato rimosso; il backend è ora
+solo opt-in tramite budget utente esplicito. Il backing logico completo deve
+comunque essere contabilizzato e non può ridurre la metrica comparabile.
 
 ## Funzioni non ancora supportate
 
@@ -51,7 +52,12 @@ contabilizzato e non può ridurre la metrica comparabile.
 - albero HU preflop completo e workflow preflop-river;
 - multiway, side pot completi e metriche general-sum;
 - database di flop e trainer di prodotto;
-- integrazione del bucketing nel `DenseLayout` e nel `.gtsd` postflop nativo;
+- chunk `ABSTRACTION` e packaging autosufficiente `.gtsd` del postflop bucketed;
+- selettore di granularità nella GUI;
+- cache/manifest delle feature exact flop/turn e preflight RAM specifico per il
+  layout astratto;
+- codec bucketed compresso, update paralleli e DCFR bucketed qualificati;
+- frontier cut/merge arbitrario del `SubgameSolver` nel `DenseLayout` nativo;
 - generazione/qualificazione delle feature preflop;
 - gadget safe scalabile con boundary counterfactual values quando la BR esatta
   full-game non è fattibile;

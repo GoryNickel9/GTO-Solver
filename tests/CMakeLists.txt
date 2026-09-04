@@ -200,6 +200,15 @@ add_test(NAME gtosd_subgame_solver_tests COMMAND gtosd_subgame_solver_tests)
 set_tests_properties(gtosd_subgame_solver_tests
   PROPERTIES LABELS "subgame;resolving;cfr-plus;best-response;production")
 
+add_executable(gtosd_native_postflop_abstraction_tests
+  native_postflop_abstraction_tests.cpp)
+target_link_libraries(gtosd_native_postflop_abstraction_tests PRIVATE gtosd::postflop)
+gtosd_set_warnings(gtosd_native_postflop_abstraction_tests)
+add_test(NAME gtosd_native_postflop_abstraction_tests
+  COMMAND gtosd_native_postflop_abstraction_tests)
+set_tests_properties(gtosd_native_postflop_abstraction_tests
+  PROPERTIES LABELS "postflop;abstraction;bucketing;cfr-plus;production;exact-br")
+
 if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
   add_executable(gtosd_range_orbit_oracle_tests range_orbit_oracle_tests.cpp)
   target_link_libraries(gtosd_range_orbit_oracle_tests
