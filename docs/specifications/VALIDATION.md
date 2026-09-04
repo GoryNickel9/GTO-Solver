@@ -159,6 +159,7 @@ HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Preflight
 astratto, cache a otto worker, AHK flop K=16 e TH flop K=128 a cinque processi
 sono qualificati. K=16 su TH è respinto, quindi non esiste ancora un K
 universale. Il frontier merge postflop nativo è ora implementato e protetto da
-exact full-game NashConv. Prima di riprendere la parity resta un workload
-preflop rappresentativo sopra un vero layout preflop. F10.4
-non è una prova di tale integrazione.
+exact full-game NashConv. Questo chiude il prerequisito abstraction/subgame per
+il prodotto HU postflop corrente e consente di riprendere la parity GTO+.
+Preflop resta una futura fase di prodotto separata; F10.4 non è una prova di
+tale integrazione.

@@ -78,6 +78,9 @@ sostituisce la cronologia Git né i report di fase.
 - Aggiunto il test CLI end-to-end del resolver e un test nativo che attraversa
   un chance node, verifica il prior privato condizionato, il budget dello
   snapshot e la persistenza del checkpoint distribuito.
+- Chiuso il prerequisito abstraction/subgame del prodotto HU postflop e
+  riaperto il lavoro di parity GTO+. Il futuro solver preflop resta Fase 14 e
+  non viene presentato come già implementato.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto

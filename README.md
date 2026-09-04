@@ -244,11 +244,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
-The three-fixture GTO+ parity gate is temporarily postponed while a
-representative preflop workload and commercial bucketing granularities are
-selected; the reduced multi-granularity cache path and native postflop frontier
-composition are qualified, and the exact path remains the oracle. The
-authoritative exact checkpoint is the
+The prerequisite card-abstraction/subgame gate for the current HU postflop
+product is closed: reduced and AHK/TH workloads, cache/preflight, eight-thread
+CFR+ and native frontier composition are qualified. GTO+ parity work can now
+resume; preflop remains a separate Phase 14 product expansion. The exact path
+remains the oracle. The authoritative exact checkpoint is the
 five-process production final-head dated
 2026-09-01 and recorded in
 `docs/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs

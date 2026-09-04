@@ -2091,8 +2091,10 @@ F11+: bucketing e subgame solving devono essere implementati e qualificati
 prima di riprendere la parity. Il bridge postflop, il preflight, la cache a otto
 worker e le qualifiche AHK K=16/TH K=128 a cinque processi e otto thread sono
 presenti; anche il frontier merge postflop nativo è ora collegato con CFR+ a
-otto thread e guard exact full-game. La parity non riparte finché il percorso
-non copre un vero workload preflop. Il gate memoria
+otto thread e guard exact full-game. Il prerequisito abstraction/subgame del
+prodotto HU postflop è quindi chiuso e la parity può riprendere. Il futuro
+solver preflop userà gli stessi contratti, ma resta la Fase 14 e non è un
+prerequisito retroattivo della parity postflop. Il gate memoria
 potrà contribuire soltanto dopo una definizione
 comparabile e versionata; nel frattempo non è né PASS né FAIL. Fixture e runner
 non possono essere adattati per ottenere il risultato: ogni correzione deve

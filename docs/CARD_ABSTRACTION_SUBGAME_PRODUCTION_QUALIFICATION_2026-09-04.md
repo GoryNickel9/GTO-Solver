@@ -155,6 +155,12 @@ verifica automorfismi, card removal, reach strettamente sotto uno, prior privato
 condizionato, budget prima dell'allocazione, fallback byte-identico oppure
 accept coerente col guard e round-trip del checkpoint risultante.
 
+Con questa prova il prerequisito card abstraction/subgame solving del prodotto
+HU postflop corrente è chiuso. La parity GTO+ può riprendere mantenendo il path
+exact come oracle. Il solver preflop completo resta Fase 14: beneficerà degli
+stessi moduli, ma non viene dichiarato implementato né usato come condizione
+retroattiva per la parity postflop.
+
 ## Benchmark ridotto abstraction
 
 Sul fixed-river da 48 infoset esatti, 1.000 iterazioni e cache riusata:
