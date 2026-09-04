@@ -25,7 +25,7 @@
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
 > `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `34/34 PASS` (`205,42 s`, 2026-09-04).
+> `35/35 PASS` (`208,99 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
@@ -55,9 +55,14 @@
 > confronto diagnostico seriale differisce di `7,0094e-5` NashConv ed è sotto
 > la tolleranza `1e-4`. TH flop K=128 passa cinque processi a `0,881675%`,
 > wall mediano `435,349473 s`, RSS mediana `694.796.288 B` e delta seriale
-> `4,64185e-5`; K=16 è respinto. CTest Release è `34/34 PASS` in `205,42 s`.
-> Restano aperti `.gtsd`, GUI, cache compressa/mmap, preflop rappresentativo e
-> frontier merge postflop nativo. La parity GTO+
+> `4,64185e-5`; K=16 è respinto. CTest Release è `35/35 PASS` in `208,99 s`.
+> Il frontier merge postflop nativo è ora collegato: path navigabile, range
+> blueprint condizionati, chance/isomorfismi, snapshot degli action slot entro
+> budget, CFR+ a otto thread e deploy/fallback governato da exact-NashConv
+> full-game. Sul fixed-river K=8 il candidato peggiore viene ripristinato
+> byte-per-byte (`512 B` di snapshot). Restano aperti `.gtsd`, GUI, cache
+> compressa/mmap, multi-root/continual resolving e soprattutto il vero layout
+> preflop rappresentativo. La parity GTO+
 > riprenderà dopo questi gate, non prima.
 
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti dichiarano

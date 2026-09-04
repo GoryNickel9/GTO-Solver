@@ -4,9 +4,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <deque>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -375,6 +377,135 @@ void test_turn_identity_abstraction_matches_exact_oracle() {
           "identity bucketing matches the exact combo oracle at certification");
 }
 
+std::vector<gtosd::PostflopSubgamePathStep>
+find_card_conditioned_decision_path(const gtosd::PostflopPreparedTree &prepared) {
+  struct Candidate {
+    gtosd::NodeId node{0};
+    std::vector<gtosd::PostflopSubgamePathStep> path;
+    bool crossed_chance{false};
+  };
+  std::deque<Candidate> pending{{0U, {}, false}};
+  std::set<std::pair<gtosd::NodeId, bool>> visited;
+  while (!pending.empty() && visited.size() < 100'000U) {
+    auto current = std::move(pending.front());
+    pending.pop_front();
+    if (!visited.emplace(current.node, current.crossed_chance).second) {
+      continue;
+    }
+    const auto edges = gtosd::prepared_postflop_edges(prepared, current.node);
+    if (!edges) {
+      return {};
+    }
+    const bool decision = !edges.value().empty() && edges.value().front().action.has_value();
+    if (current.crossed_chance && decision) {
+      return current.path;
+    }
+    for (std::size_t edge_index = 0U; edge_index < edges.value().size(); ++edge_index) {
+      const auto &edge = edges.value()[edge_index];
+      for (std::size_t outcome_index = 0U; outcome_index < edge.outcomes.size(); ++outcome_index) {
+        auto child = current;
+        child.node = edge.outcomes[outcome_index].child;
+        child.path.push_back(
+            {static_cast<std::uint32_t>(edge_index), static_cast<std::uint32_t>(outcome_index)});
+        child.crossed_chance = child.crossed_chance || !edge.action.has_value();
+        pending.push_back(std::move(child));
+      }
+    }
+  }
+  return {};
+}
+
+void test_card_conditioned_native_subgame_merge() {
+  auto config = make_river_config();
+  config.river.reset();
+  const auto ranges = make_narrow_ranges(config);
+  const auto abstraction = make_abstraction(4U);
+  const auto cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  require(cache.has_value(), "subgame fixture feature cache builds");
+  const auto prepared =
+      gtosd::prepare_postflop_abstracted_tree(config, ranges, abstraction, cache.value());
+  require(prepared.has_value(), "bucketed production tree for native subgame builds");
+  const auto path = find_card_conditioned_decision_path(*prepared.value());
+  require(!path.empty(), "canonical navigator finds a decision frontier after a chance card");
+
+  gtosd::PostflopSolveOptions blueprint_options;
+  blueprint_options.iterations = 30U;
+  blueprint_options.averaging_delay = 5U;
+  blueprint_options.certification_interval = 30U;
+  blueprint_options.parallel_action_depth = gtosd::production_postflop_parallel_workers;
+  const auto blueprint = gtosd::solve_postflop_abstracted(*prepared.value(), blueprint_options);
+  require(blueprint.has_value() && !blueprint.value().convergence.empty(),
+          "eight-thread CFR+ blueprint solves before native resolving");
+  auto checkpoint = blueprint.value().checkpoint;
+  const auto blueprint_regret = checkpoint.cumulative_regret;
+  const auto blueprint_strategy = checkpoint.cumulative_strategy;
+
+  gtosd::PostflopSubgameSolveConfig invalid;
+  invalid.iterations = 20U;
+  invalid.averaging_delay = 5U;
+  invalid.parallel_action_depth = gtosd::production_postflop_parallel_workers - 1U;
+  require(!gtosd::resolve_postflop_subgame(*prepared.value(), checkpoint, path, invalid) &&
+              checkpoint.cumulative_regret == blueprint_regret &&
+              checkpoint.cumulative_strategy == blueprint_strategy,
+          "native resolving rejects fewer than eight threads without mutating the blueprint");
+
+  invalid.parallel_action_depth = gtosd::production_postflop_parallel_workers;
+  invalid.snapshot_budget_bytes = 1U;
+  require(!gtosd::resolve_postflop_subgame(*prepared.value(), checkpoint, path, invalid) &&
+              checkpoint.cumulative_regret == blueprint_regret &&
+              checkpoint.cumulative_strategy == blueprint_strategy,
+          "native resolving enforces the explicit rollback-snapshot budget before allocation");
+
+  gtosd::PostflopSubgameSolveConfig resolving;
+  resolving.iterations = 60U;
+  resolving.averaging_delay = 10U;
+  resolving.safety_tolerance = 1.0e-12;
+  resolving.snapshot_budget_bytes = 1U << 20U;
+  const auto resolved =
+      gtosd::resolve_postflop_subgame(*prepared.value(), checkpoint, path, resolving);
+  require(resolved.has_value(),
+          std::string("card-conditioned native resolve completes: ") +
+              (resolved ? "ok" : gtosd::postflop_solver_error_name(resolved.error())));
+  const auto &result = resolved.value();
+  require(result.solver_thread_count == gtosd::maximum_postflop_solver_threads &&
+              result.local_iterations == resolving.iterations &&
+              result.public_reach_probability > 0.0 && result.public_reach_probability < 1.0 &&
+              result.board_mask != 0U && result.affected_decision_nodes > 0U &&
+              result.affected_action_entries > 0U &&
+              result.affected_action_entries < checkpoint.action_count &&
+              result.rollback_snapshot_bytes ==
+                  result.affected_action_entries * 2U * sizeof(double) &&
+              result.rollback_snapshot_bytes <= *resolving.snapshot_budget_bytes,
+          "native resolve reports an eight-thread proper card-conditioned frontier");
+  require(std::isfinite(result.baseline.normalized_nash_conv) &&
+              std::isfinite(result.candidate.normalized_nash_conv),
+          "native merge is measured by exact full-game NashConv before and after");
+  if (result.deployment == gtosd::PostflopSubgameDeployment::CandidateAccepted) {
+    require(result.candidate.normalized_nash_conv <=
+                    result.baseline.normalized_nash_conv + resolving.safety_tolerance &&
+                result.deployed.normalized_nash_conv == result.candidate.normalized_nash_conv &&
+                (checkpoint.cumulative_regret != blueprint_regret ||
+                 checkpoint.cumulative_strategy != blueprint_strategy),
+            "accepted native candidate replaces only guarded subgame state");
+  } else {
+    require(result.candidate.normalized_nash_conv >
+                    result.baseline.normalized_nash_conv + resolving.safety_tolerance &&
+                result.deployed.normalized_nash_conv == result.baseline.normalized_nash_conv &&
+                checkpoint.cumulative_regret == blueprint_regret &&
+                checkpoint.cumulative_strategy == blueprint_strategy,
+            "rejected native candidate restores the blueprint byte-for-byte");
+  }
+  const auto serialized = gtosd::serialize_postflop_checkpoint(checkpoint);
+  const auto round_trip = serialized
+                              ? gtosd::deserialize_postflop_checkpoint(serialized.value())
+                              : decltype(gtosd::deserialize_postflop_checkpoint(""))::failure(
+                                    gtosd::PostflopSolverError::InvalidCheckpoint);
+  require(round_trip.has_value() &&
+              round_trip.value().cumulative_regret == checkpoint.cumulative_regret &&
+              round_trip.value().cumulative_strategy == checkpoint.cumulative_strategy,
+          "deployed native subgame state survives checkpoint round-trip");
+}
+
 } // namespace
 
 int main() {
@@ -383,6 +514,7 @@ int main() {
     test_cfr_plus_solve_resume_certify_and_query();
     test_turn_cache_multi_granularity_sweep();
     test_turn_identity_abstraction_matches_exact_oracle();
+    test_card_conditioned_native_subgame_merge();
     std::cout << "Native postflop abstraction tests passed (" << assertions << " assertions).\n";
     return 0;
   } catch (const std::exception &error) {

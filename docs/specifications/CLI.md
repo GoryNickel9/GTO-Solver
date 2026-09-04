@@ -44,6 +44,8 @@ gto_cli postflop solve <config.json> <iterations> <checkpoint> <report_prefix> <
 gto_cli postflop resume <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> [cert_interval]
 gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]
 gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]
+gto_cli postflop edges-bucketed <config.json> <buckets> <node> [feature_cache]
+gto_cli postflop resolve-bucketed <config.json> <blueprint_checkpoint> <output_checkpoint> <buckets> <edge:outcome,...> <iterations> <ram_bytes> <disk_bytes> <snapshot_bytes> <report.json> [feature_cache]
 gto_cli postflop pause|cancel <checkpoint>
 gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>
 gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> <buckets> [feature_cache]
@@ -77,6 +79,17 @@ fingerprint e tempi separati. Percorso diretto e cache producono checkpoint
 bit-identici; granularità o config differenti sono rifiutate. La CLI corrente
 usa range uniformi, come il percorso
 postflop exact storico; range personalizzati sono disponibili nell'API C++.
+
+`edges-bucketed` restituisce JSON v1 con gli edge di un nodo canonico e, per
+ogni outcome, child, chance card, molteplicità fisica e automorfismo. Si parte
+dal nodo `0`; le coppie `edge_index:outcome_index` percorse formano il path per
+`resolve-bucketed`. Quest'ultimo non sovrascrive il blueprint: alloca entro il
+budget esplicito soltanto il rollback degli action slot del frontier, esegue
+CFR+ con sette worker più coordinatore e salva un checkpoint distinto. Il
+report `gtosd.postflop.bucketed-subgame-resolution.v1` conserva path, reach
+pubblico, byte dello snapshot, metriche exact full-game prima/dopo e decisione
+`candidate_accepted` o `blueprint_fallback`. Un frontier terminale, condiviso
+attraverso il confine o con più ingressi viene rifiutato.
 
 Il preflight CLI bucketed usa la forma canonica senza allocare lo stato e
 calcola upper bound specifici per ogni K: stato Float64 astratto, mapping,

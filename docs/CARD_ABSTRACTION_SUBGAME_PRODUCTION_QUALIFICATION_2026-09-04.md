@@ -18,10 +18,13 @@ guard full-game exact-NashConv e fallback. Il default production è otto thread.
 Il benchmark usa Leduc, la cui chance root ha abbastanza rami da occupare il
 pool completo.
 
-Questo esito non dichiara ancora completato il resolving di un frontier
-arbitrario nel `DenseLayout` postflop, né sceglie un singolo K universale o
-preflop. L'exact resta un oracle differenziale, non il percorso commerciale
-predefinito per alberi grandi.
+Il bridge successivo collega inoltre un singolo frontier canonico mid-tree al
+`DenseLayout` postflop, con range privati condizionati dal blueprint, card
+removal, snapshot limitato agli action slot del sottogioco e rollback governato
+da exact-NashConv sul gioco completo. Non sceglie un singolo K universale e non
+dichiara supporto preflop: il tree/layout preflop non esiste ancora. L'exact
+resta un oracle differenziale, non il percorso commerciale predefinito per
+alberi grandi.
 
 ## Contratto qualificato
 
@@ -123,6 +126,35 @@ ripetizioni, misura `2.645,542 ms` wall mediano nel run completo. È una
 baseline funzionale del percorso safe a otto thread, non una promessa di
 latenza per un subgame Short Deck commerciale.
 
+### Bridge nativo postflop
+
+Il nuovo comando `edges-bucketed` rende navigabile il DAG canonico e il comando
+`resolve-bucketed` applica una storia `edge:outcome` a un checkpoint blueprint
+senza sovrascriverlo. Il resolver rifiuta frontiere terminali, con più ingressi
+o con discendenti decisionali condivisi oltre il confine; richiede CFR+
+Float64, cache/config coerenti, sette worker più coordinatore e budget RAM,
+disco e snapshot espliciti.
+
+Sul fixed-river K=8 a 100 iterazioni:
+
+| Metrica | Valore |
+|---|---:|
+| Root frontier | nodo canonico 1, dopo root-check |
+| Reach pubblico blueprint | 0,6335648385 |
+| Decision node / action entry interessati | 2 / 32 |
+| Snapshot rollback | 512 B |
+| CFR+ locale, 100 iterazioni | 8,59 ms |
+| Ciclo totale con due BR exact | 11,66 ms |
+| Blueprint NashConv/pot | 0,7208569471% |
+| Candidate NashConv/pot | 0,7332005210% |
+| Deployment | `blueprint_fallback` |
+| Peak RSS diagnostico | 8.364.032 B |
+
+Il test nativo attraversa separatamente un vero chance node turn→river e
+verifica automorfismi, card removal, reach strettamente sotto uno, prior privato
+condizionato, budget prima dell'allocazione, fallback byte-identico oppure
+accept coerente col guard e round-trip del checkpoint risultante.
+
 ## Benchmark ridotto abstraction
 
 Sul fixed-river da 48 infoset esatti, 1.000 iterazioni e cache riusata:
@@ -145,7 +177,7 @@ grande.
 - build MSVC Release completa: PASS;
 - `clang-format --dry-run --Werror` sui file C++ modificati: PASS;
 - test mirati abstraction/subgame/preflight/CLI: `6/6 PASS`;
-- CTest Release completa: `34/34 PASS` in `205,42 s`;
+- CTest Release completa: `35/35 PASS` in `208,99 s`;
 - benchmark abstraction/subgame, cinque ripetizioni: PASS;
 - AHK suite finale, cinque processi più oracle: PASS;
 - TH suite, cinque processi più oracle: PASS.
@@ -163,9 +195,9 @@ non sono cambiati. AHK, build e CTest sono stati rieseguiti sul sorgente finale.
 - `thread_count=1` resta accessibile soltanto come oracle diagnostico esplicito;
 - K è configurabile per workload; AHK K=16 e TH K=128 impediscono un default
   unico non supportato dai dati;
-- `.gtsd`, selettore GUI, cache binaria compressa/memory-mapped, preflop
-  rappresentativo e frontier cut/merge nel `DenseLayout` restano attività
-  distinte;
+- `.gtsd`, selettore GUI, cache binaria compressa/memory-mapped e preflop
+  rappresentativo restano attività distinte; il resolver nativo corrente è
+  single-frontier e non implementa ancora multi-root/continual resolving;
 - la parity GTO+ non deve reinterpretare Peak RSS come “Memory needed for
   solving”.
 

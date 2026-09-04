@@ -192,6 +192,33 @@ della feature cache. Il fingerprint della cache è telemetria di provenienza,
 non parte dell'identità dell'astrazione: dati diretti e dati cache equivalenti
 devono restare semanticamente intercambiabili.
 
+### Resolving mid-tree sul `DenseLayout`
+
+`resolve_postflop_subgame` collega il resolver al DAG canonico realmente usato
+dal prodotto. Il chiamante seleziona una storia come coppie
+`edge_index:outcome_index`; `prepared_postflop_edges` e il comando
+`edges-bucketed` espongono azione, figlio, carta chance rappresentativa,
+molteplicità fisica e trasformazione di semi necessarie per costruirla senza
+dipendere dalla struttura privata del layout.
+
+Durante la discesa, il resolver propaga la strategia media del blueprint per
+entrambi i player, applica card removal e trasforma i range nelle coordinate
+canoniche del figlio. Il range privato così condizionato diventa il prior locale
+del CFR+: non viene sostituito dal range iniziale non condizionato. La
+probabilità pubblica riportata include anche
+`physical_outcome_count / (legal_outcomes - 4)` per ogni chance node.
+
+Il frontier deve avere un solo ingresso e possedere tutti i discendenti
+decisionali non terminali. Se il DAG condivide un discendente attraverso il
+confine, il taglio viene rifiutato. Il resolver calcola prima dell'allocazione
+gli action slot interessati e i byte esatti del rollback
+`2 * action_entries * sizeof(double)`. Snapshot e stato candidato riguardano
+solo quei segmenti; il resto del checkpoint rimane invariato. Dopo CFR+ locale
+a otto thread, una certificazione exact-NashConv del gioco combo-level completo
+decide fra `candidate_accepted` e ripristino byte-per-byte del blueprint. Il
+contatore globale del checkpoint non viene incrementato: `local_iterations` è
+un clock separato pubblicato nel report sidecar v1.
+
 ## Evidenza di qualifica iniziale
 
 Il test nativo usa range frazionari e asimmetrici, card removal, confronto
@@ -272,10 +299,15 @@ mediano `694.796.288 B`. L'oracolo seriale misura `0,8770330545%` in
   report CLI sono persistibili, ma il packaging prodotto completo richiede
   config/range/abstraction esterni identici e verificati dal fingerprint.
 - La GUI non espone ancora il selettore di granularità.
-- `SubgameSolver` safe è production-installabile sul contratto `FiniteGame`;
-  il taglio e merge arbitrario di un frontier nel `DenseLayout` postflop resta
-  da collegare. Un solve postflop bucketed dalla root non va chiamato resolving
-  mid-tree.
+- Il resolver `DenseLayout` copre un singolo frontier canonico con ingresso
+  univoco. Multi-root resolving, gadget con boundary counterfactual values e
+  continual resolving restano separati; l'attuale exact full-game guard è
+  sicuro rispetto alla metrica misurata ma non viene chiamato gadget teorico
+  safe.
+- Lo stato risolto è persistito atomicamente nel checkpoint separato; storia,
+  metriche e decisione candidate/fallback restano nel report JSON sidecar e non
+  sono ancora incorporate in un chunk `.gtsd` firmato insieme allo stato.
 - Lo sweep multi-granularità ridotto è qualificato; servono fixture
-  flop/turn/preflop commercialmente rappresentative prima di scegliere default.
+  ulteriori flop/turn e un layout preflop commercialmente rappresentativo prima
+  di scegliere default.
   L'exact resta l'oracolo per questi gate e per la successiva parity GTO+.

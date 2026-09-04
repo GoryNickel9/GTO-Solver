@@ -134,8 +134,9 @@ diagnostico test-only e non costituisce l'API di node locking di prodotto.
 
 Il preflop userà action abstraction, `CardAbstraction`, decomposizione e stima
 risorse. L'API generica bucketing/resolving e il bridge `DenseLayout` HU
-postflop sono implementati; restano da collegare il layout preflop e il merge
-di frontier postflop arbitrari. Nessuno di questi percorsi reinterpreta
+postflop sono implementati, incluso il merge di un frontier canonico a ingresso
+univoco; restano da collegare il layout preflop e, separatamente, multi-root e
+continual resolving. Nessuno di questi percorsi reinterpreta
 silenziosamente il solver exact. Il multiway richiederà utility e metriche
 differenti.
 

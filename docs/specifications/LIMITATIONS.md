@@ -58,7 +58,12 @@ comunque essere contabilizzato e non può ridurre la metrica comparabile.
   preflight RAM/disco specifico per cache/layout astratto sono disponibili;
 - codec bucketed compresso e DCFR bucketed qualificato; gli update CFR+
   Float64 a otto thread sono supportati;
-- frontier cut/merge arbitrario del `SubgameSolver` nel `DenseLayout` nativo;
+- multi-root, continual resolving e gadget teorico safe con boundary
+  counterfactual values; il resolver `DenseLayout` corrente accetta un singolo
+  frontier canonico a ingresso univoco e usa un guard exact full-game;
+- provenance del resolving incorporata nel container: lo stato è nel checkpoint
+  atomico distinto, mentre path e decisione candidate/fallback sono nel report
+  JSON sidecar; un resume successivo è un warm start, non trajectory parity;
 - generazione/qualificazione delle feature preflop;
 - qualifica di granularità su ulteriori fixture turn/preflop rappresentative;
   AHK K=16 e TH K=128 dimostrano che non esiste ancora un default unico;

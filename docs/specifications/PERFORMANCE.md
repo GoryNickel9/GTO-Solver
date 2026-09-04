@@ -21,7 +21,7 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `34/34 PASS` (`205,42 s`, 2026-09-04). Il precedente
+> `35/35 PASS` (`208,99 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -82,6 +82,17 @@
 > TH7D6S K=128 passa cinque processi a `0,8816749004%`, wall mediano
 > `435,349473 s`, RSS mediano `694.796.288 B`; l'oracolo seriale misura
 > `0,8770330545%` in `1.493,513047 s`, delta `4,64185e-5` e speedup `3,43x`.
+
+> **Native frontier resolve — 2026-09-04.** Sul fixture Release fixed-river
+> uniforme, una blueprint K=8 a 100 iterazioni ha
+> `NashConv/pot=0,7208569471%`. Il frontier dopo root-check contiene 2 decision
+> node e 32 action entry; il rollback è esattamente `512 B`. Cento iterazioni
+> CFR+ locali a otto thread richiedono `8,59 ms`; il ciclo completo con due
+> certificazioni exact e report richiede `11,66 ms`, Peak RSS diagnostico
+> `8.364.032 B`. Il candidato sale a `0,7332005210%` e viene quindi respinto:
+> il checkpoint distribuito conserva il blueprint a `0,7208569471%`. Questa è
+> evidenza funzionale e di rollback su un caso ridotto, non una previsione di
+> latenza per un frontier commerciale.
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,

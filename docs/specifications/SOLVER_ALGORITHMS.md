@@ -112,9 +112,11 @@ del gioco astratto non è un gate di deploy. Formule e limiti sono in
 
 Nel bridge postflop nativo ogni decision node conserva il proprio stato, ma la
 mappa combo→bucket è deterministica per board/player. La policy media viene
-rialzata alle combo per query e certificazione exact. Questo solve dalla root
-non equivale ancora al resolving di un frontier mid-tree: il relativo taglio e
-merge nel `DenseLayout` è lavoro separato.
+rialzata alle combo per query e certificazione exact. Il resolver mid-tree
+propaga il range blueprint attraverso azioni e chance, azzera soltanto lo stato
+del frontier, esegue CFR+ locale e distribuisce il candidato solo se la
+NashConv full-game non peggiora. Questo è un guard misurato, non un gadget safe
+con bound teorico indipendente dalla best response completa.
 
 Outcome Sampling, public chance sampling, continual resolving, depth-limited
 solving e gadget safe scalabili basati su boundary CFV restano candidati. Il

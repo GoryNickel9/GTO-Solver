@@ -48,6 +48,13 @@ in cui ogni livello controlla errori differenti:
 - Un frontier subgame che taglia un information set viene rifiutato. Il guard
   safe accetta il candidato soltanto dopo due best response full-game esatte;
   il test di regressione verifica anche il fallback a blueprint invariato.
+- Il resolver nativo percorre anche un frontier successivo a una chance card:
+  verifica card removal, automorfismo, prior privato condizionato dal blueprint,
+  reach pubblico strettamente tra zero e uno, proprietà esclusiva dei segmenti
+  di stato e round-trip del checkpoint distribuito. Configurazioni diverse da
+  sette worker più coordinatore e snapshot oltre budget falliscono senza
+  mutare il blueprint. Il test CLI copre inoltre navigazione JSON, preflight,
+  report candidate/fallback e rifiuto della sovrascrittura della sorgente.
 - Le prove di prodotto devono usare il backend CPU/RAM-only. L'accelerazione
   GPU della GUI non può partecipare a tree building, traversal, best response
   o certificazione e non può essere inclusa in un risultato solver.
@@ -151,6 +158,7 @@ alla parity exact GTO+. Card abstraction, safe subgame solving e il primo bridge
 HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Preflight
 astratto, cache a otto worker, AHK flop K=16 e TH flop K=128 a cinque processi
 sono qualificati. K=16 su TH è respinto, quindi non esiste ancora un K
-universale. Prima di riprendere la parity restano un workload preflop
-rappresentativo e il frontier merge postflop nativo. F10.4
+universale. Il frontier merge postflop nativo è ora implementato e protetto da
+exact full-game NashConv. Prima di riprendere la parity resta un workload
+preflop rappresentativo sopra un vero layout preflop. F10.4
 non è una prova di tale integrazione.

@@ -67,6 +67,17 @@ sostituisce la cronologia Git né i report di fase.
 - Aggiunti i comandi GTO+ di preflight/cache/qualification e il runner a cinque
   processi con oracle seriale separato. Il gate richiede exact BR, NashConv
   `<1%`, RAM esplicita, determinismo e delta parallelo/seriale `<=1e-4`.
+- Collegato il resolving mid-tree al `DenseLayout` postflop bucketed. Il path
+  propaga range blueprint, chance/card removal e automorfismi; solo gli action
+  slot del frontier sono resettati e sottoposti a snapshot entro budget.
+- Aggiunti `prepared_postflop_edges`, `resolve_postflop_subgame` e i comandi
+  CLI `edges-bucketed`/`resolve-bucketed`. Il solve locale usa CFR+ a otto
+  thread e il deploy è autorizzato soltanto da exact-NashConv full-game; il
+  fallback ripristina il blueprint byte-per-byte e l'output non sovrascrive la
+  sorgente.
+- Aggiunto il test CLI end-to-end del resolver e un test nativo che attraversa
+  un chance node, verifica il prior privato condizionato, il budget dello
+  snapshot e la persistenza del checkpoint distribuito.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
@@ -99,7 +110,7 @@ sostituisce la cronologia Git né i report di fase.
 ### Verificato
 
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `34/34 PASS` in `205,42 s`, inclusi ledger,
+- CTest Release completo `35/35 PASS` in `208,99 s`, inclusi ledger,
   CardAbstraction, SubgameSolver, bridge/CLI postflop bucketed, CFR+, test
   esaustivi, oracle e riferimento GTO+.
 - Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `78,045 ms`,

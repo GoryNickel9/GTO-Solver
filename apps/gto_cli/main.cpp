@@ -4241,6 +4241,283 @@ int run_postflop_build_feature_cache(const char *const config_path, const char *
   return 0;
 }
 
+int run_postflop_edges_bucketed(const char *const config_path, const std::string_view bucket_text,
+                                const std::string_view node_text,
+                                const std::string_view feature_cache_path) {
+  const auto buckets = parse_u64(bucket_text);
+  const auto node = parse_u64(node_text);
+  if (!buckets || *buckets == 0U || *buckets > std::numeric_limits<std::uint32_t>::max() || !node) {
+    std::cerr << "postflop edges-bucketed failed: invalid_argument\n";
+    return 2;
+  }
+  std::string config_error;
+  const auto config = load_postflop_config(config_path, config_error);
+  if (!config) {
+    std::cerr << "postflop edges-bucketed failed: invalid_config\n";
+    return 1;
+  }
+  gtosd::CardAbstractionConfig abstraction;
+  abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
+  std::optional<gtosd::CardAbstractionFeatureCache> feature_cache;
+  if (!feature_cache_path.empty()) {
+    const auto loaded = gtosd::load_card_abstraction_feature_cache(std::string(feature_cache_path));
+    if (!loaded) {
+      std::cerr << "postflop edges-bucketed failed: feature_cache_"
+                << gtosd::card_abstraction_error_name(loaded.error()) << '\n';
+      return 1;
+    }
+    feature_cache = loaded.value();
+  }
+  const auto uniform_ranges = gtosd::make_uniform_postflop_ranges();
+  const auto prepared =
+      feature_cache ? gtosd::prepare_postflop_abstracted_tree(*config, uniform_ranges, abstraction,
+                                                              *feature_cache)
+                    : gtosd::prepare_postflop_abstracted_tree(*config, uniform_ranges, abstraction);
+  if (!prepared) {
+    std::cerr << "postflop edges-bucketed failed: "
+              << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
+    return 1;
+  }
+  const auto edges = gtosd::prepared_postflop_edges(*prepared.value(), *node);
+  if (!edges) {
+    std::cerr << "postflop edges-bucketed failed: "
+              << gtosd::postflop_solver_error_name(edges.error()) << '\n';
+    return 1;
+  }
+  nlohmann::json edge_rows = nlohmann::json::array();
+  for (std::size_t edge_index = 0U; edge_index < edges.value().size(); ++edge_index) {
+    const auto &edge = edges.value()[edge_index];
+    nlohmann::json outcomes = nlohmann::json::array();
+    for (std::size_t outcome_index = 0U; outcome_index < edge.outcomes.size(); ++outcome_index) {
+      const auto &outcome = edge.outcomes[outcome_index];
+      nlohmann::json outcome_row{
+          {"outcome_index", outcome_index},
+          {"child", outcome.child},
+          {"physical_outcome_count", outcome.physical_outcome_count},
+          {"physical_to_child_automorphism", outcome.physical_to_child_automorphism}};
+      outcome_row["chance_card"] = edge.action
+                                       ? nlohmann::json(nullptr)
+                                       : nlohmann::json(gtosd::format_card(outcome.chance_card));
+      outcomes.push_back(std::move(outcome_row));
+    }
+    nlohmann::json row{{"edge_index", edge_index}, {"outcomes", std::move(outcomes)}};
+    if (edge.action) {
+      row["action"] = {{"label", action_label(*edge.action)},
+                       {"type", action_type_name(edge.action->type)},
+                       {"amount_units", edge.action->amount.units()}};
+    } else {
+      row["action"] = nullptr;
+    }
+    edge_rows.push_back(std::move(row));
+  }
+  const nlohmann::json report{{"schema", "gtosd.postflop.bucketed-edges.v1"},
+                              {"node", *node},
+                              {"buckets_per_partition", *buckets},
+                              {"terminal", edges.value().empty()},
+                              {"edges", std::move(edge_rows)}};
+  std::cout << report.dump(2) << '\n';
+  return 0;
+}
+
+std::optional<std::vector<gtosd::PostflopSubgamePathStep>>
+parse_postflop_subgame_path(const std::string_view text) {
+  if (text.empty()) {
+    return std::nullopt;
+  }
+  std::vector<gtosd::PostflopSubgamePathStep> path;
+  std::size_t begin = 0U;
+  while (begin < text.size()) {
+    const auto end = text.find(',', begin);
+    const auto token =
+        text.substr(begin, end == std::string_view::npos ? text.size() - begin : end - begin);
+    const auto separator = token.find(':');
+    if (separator == std::string_view::npos || separator == 0U || separator + 1U == token.size()) {
+      return std::nullopt;
+    }
+    const auto edge = parse_u64(token.substr(0U, separator));
+    const auto outcome = parse_u64(token.substr(separator + 1U));
+    if (!edge || !outcome || *edge > std::numeric_limits<std::uint32_t>::max() ||
+        *outcome > std::numeric_limits<std::uint32_t>::max()) {
+      return std::nullopt;
+    }
+    path.push_back({static_cast<std::uint32_t>(*edge), static_cast<std::uint32_t>(*outcome)});
+    if (end == std::string_view::npos) {
+      break;
+    }
+    begin = end + 1U;
+  }
+  return path.empty() ? std::nullopt
+                      : std::optional<std::vector<gtosd::PostflopSubgamePathStep>>{std::move(path)};
+}
+
+int run_postflop_resolve_bucketed(
+    const char *const config_path, const char *const blueprint_path,
+    const char *const output_checkpoint_path, const std::string_view bucket_text,
+    const std::string_view path_text, const std::string_view iterations_text,
+    const std::string_view ram_budget_text, const std::string_view disk_budget_text,
+    const std::string_view snapshot_budget_text, const char *const report_path,
+    const std::string_view feature_cache_path) {
+  const auto buckets = parse_u64(bucket_text);
+  const auto path = parse_postflop_subgame_path(path_text);
+  const auto iterations = parse_u64(iterations_text);
+  const auto ram_budget = parse_u64(ram_budget_text);
+  const auto disk_budget = parse_u64(disk_budget_text);
+  const auto snapshot_budget = parse_u64(snapshot_budget_text);
+  if (!buckets || *buckets == 0U || *buckets > std::numeric_limits<std::uint32_t>::max() || !path ||
+      !iterations || *iterations == 0U || !ram_budget || *ram_budget == 0U || !disk_budget ||
+      *disk_budget == 0U || !snapshot_budget || *snapshot_budget == 0U ||
+      std::string_view(blueprint_path) == std::string_view(output_checkpoint_path) ||
+      std::string_view(report_path).empty()) {
+    std::cerr << "postflop resolve-bucketed failed: invalid_argument\n";
+    return 2;
+  }
+  std::string config_error;
+  const auto config = load_postflop_config(config_path, config_error);
+  const auto loaded_checkpoint = gtosd::load_postflop_checkpoint(blueprint_path);
+  if (!config || !loaded_checkpoint) {
+    std::cerr << "postflop resolve-bucketed failed: invalid_config_or_checkpoint\n";
+    return 1;
+  }
+  gtosd::CanonicalLayoutOptions preflight_options;
+  preflight_options.card_abstraction_buckets = {static_cast<std::uint32_t>(*buckets)};
+  preflight_options.requested_budget =
+      gtosd::CanonicalLayoutBudget{*ram_budget, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  preflight_options.requested_feature_cache_disk_budget = gtosd::CanonicalLayoutBudget{
+      *disk_budget, gtosd::CanonicalLayoutBudgetSource::UserConfigured};
+  const auto uniform_ranges = gtosd::make_uniform_postflop_ranges();
+  const auto preflight =
+      gtosd::estimate_canonical_chance_layout(*config, uniform_ranges, preflight_options);
+  if (!preflight || !preflight.value().card_abstraction_preflight ||
+      preflight.value().card_abstraction_preflight->candidates.size() != 1U) {
+    std::cerr << "postflop resolve-bucketed failed: preflight_failure\n";
+    return 1;
+  }
+  const auto &cache_preflight = *preflight.value().card_abstraction_preflight;
+  const auto &candidate_preflight = cache_preflight.candidates.front();
+  if (!cache_preflight.feature_cache_format_limit_ok ||
+      !cache_preflight.feature_cache_atomic_write_meets_requested_budget.value_or(false) ||
+      *snapshot_budget > *ram_budget ||
+      candidate_preflight.estimated_in_ram_peak_bytes > *ram_budget - *snapshot_budget) {
+    std::cerr << "postflop resolve-bucketed failed: insufficient_ram_or_cache_disk\n";
+    return 3;
+  }
+  if (candidate_preflight.solver_state_bytes_upper_bound >
+          std::numeric_limits<std::uint64_t>::max() / 2U ||
+      cache_preflight.feature_cache_atomic_write_bytes_upper_bound > *disk_budget ||
+      candidate_preflight.solver_state_bytes_upper_bound * 2U >
+          *disk_budget - cache_preflight.feature_cache_atomic_write_bytes_upper_bound) {
+    std::cerr << "postflop resolve-bucketed failed: insufficient_checkpoint_disk\n";
+    return 3;
+  }
+
+  gtosd::CardAbstractionConfig abstraction;
+  abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
+  std::optional<gtosd::CardAbstractionFeatureCache> feature_cache;
+  if (!feature_cache_path.empty()) {
+    const auto loaded = gtosd::load_card_abstraction_feature_cache(std::string(feature_cache_path));
+    if (!loaded) {
+      std::cerr << "postflop resolve-bucketed failed: feature_cache_"
+                << gtosd::card_abstraction_error_name(loaded.error()) << '\n';
+      return 1;
+    }
+    feature_cache = loaded.value();
+  }
+  const auto prepared =
+      feature_cache ? gtosd::prepare_postflop_abstracted_tree(*config, uniform_ranges, abstraction,
+                                                              *feature_cache)
+                    : gtosd::prepare_postflop_abstracted_tree(*config, uniform_ranges, abstraction);
+  if (!prepared) {
+    std::cerr << "postflop resolve-bucketed failed: "
+              << gtosd::postflop_solver_error_name(prepared.error()) << '\n';
+    return 1;
+  }
+  auto checkpoint = loaded_checkpoint.value();
+  gtosd::PostflopSubgameSolveConfig resolve_config;
+  resolve_config.iterations = *iterations;
+  resolve_config.averaging_delay = std::min<std::uint64_t>(100U, *iterations / 10U);
+  resolve_config.snapshot_budget_bytes = *snapshot_budget;
+  const auto started = std::chrono::steady_clock::now();
+  const auto resolved =
+      gtosd::resolve_postflop_subgame(*prepared.value(), checkpoint, *path, resolve_config);
+  const double elapsed_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (!resolved) {
+    std::cerr << "postflop resolve-bucketed failed: "
+              << gtosd::postflop_solver_error_name(resolved.error()) << '\n';
+    return 1;
+  }
+  const auto saved = gtosd::save_postflop_checkpoint(checkpoint, output_checkpoint_path);
+  if (!saved) {
+    std::cerr << "postflop resolve-bucketed failed: "
+              << gtosd::postflop_solver_error_name(saved.error()) << '\n';
+    return 1;
+  }
+  const auto deployment =
+      resolved.value().deployment == gtosd::PostflopSubgameDeployment::CandidateAccepted
+          ? "candidate_accepted"
+          : "blueprint_fallback";
+  nlohmann::json path_json = nlohmann::json::array();
+  for (const auto step : *path) {
+    path_json.push_back({{"edge", step.edge_index}, {"outcome", step.outcome_index}});
+  }
+  const auto certification_json = [](const gtosd::PostflopCertification &value) {
+    return nlohmann::json{{"iteration", value.iteration},
+                          {"profile_value_antes", value.profile_value_antes},
+                          {"best_response_value_antes", value.best_response_value_antes},
+                          {"nash_conv_antes", value.nash_conv_antes},
+                          {"normalized_nash_conv", value.normalized_nash_conv}};
+  };
+  const nlohmann::json report{
+      {"schema", "gtosd.postflop.bucketed-subgame-resolution.v1"},
+      {"algorithm", "cfr_plus"},
+      {"solver_threads", resolved.value().solver_thread_count},
+      {"buckets_per_partition", *buckets},
+      {"path", std::move(path_json)},
+      {"canonical_root", resolved.value().canonical_root},
+      {"board_mask", resolved.value().board_mask},
+      {"public_reach_probability", resolved.value().public_reach_probability},
+      {"affected_decision_nodes", resolved.value().affected_decision_nodes},
+      {"affected_action_entries", resolved.value().affected_action_entries},
+      {"rollback_snapshot_bytes", resolved.value().rollback_snapshot_bytes},
+      {"local_iterations", resolved.value().local_iterations},
+      {"deployment", deployment},
+      {"baseline", certification_json(resolved.value().baseline)},
+      {"candidate", certification_json(resolved.value().candidate)},
+      {"deployed", certification_json(resolved.value().deployed)},
+      {"resolve_seconds", resolved.value().solve_seconds},
+      {"total_elapsed_seconds", elapsed_seconds},
+      {"peak_rss_bytes", gtosd::process_peak_rss_bytes()},
+      {"ram_budget_bytes", *ram_budget},
+      {"disk_budget_bytes", *disk_budget},
+      {"snapshot_budget_bytes", *snapshot_budget},
+      {"blueprint_checkpoint", blueprint_path},
+      {"output_checkpoint", output_checkpoint_path}};
+  std::ofstream output(report_path, std::ios::binary | std::ios::trunc);
+  output << report.dump(2) << '\n';
+  output.flush();
+  if (!output) {
+    std::cerr << "postflop resolve-bucketed failed: report_io_failure\n";
+    return 1;
+  }
+  std::cout << "GTOSD_POSTFLOP_BUCKETED_SUBGAME_1\n"
+            << "deployment=" << deployment
+            << " solver_threads=" << static_cast<unsigned>(resolved.value().solver_thread_count)
+            << " canonical_root=" << resolved.value().canonical_root
+            << " public_reach_probability=" << resolved.value().public_reach_probability << '\n'
+            << "baseline_normalized_nash_conv=" << resolved.value().baseline.normalized_nash_conv
+            << " candidate_normalized_nash_conv=" << resolved.value().candidate.normalized_nash_conv
+            << " deployed_normalized_nash_conv=" << resolved.value().deployed.normalized_nash_conv
+            << '\n'
+            << "affected_decision_nodes=" << resolved.value().affected_decision_nodes
+            << " affected_action_entries=" << resolved.value().affected_action_entries
+            << " rollback_snapshot_bytes=" << resolved.value().rollback_snapshot_bytes << '\n'
+            << "checkpoint=" << output_checkpoint_path << " report=" << report_path
+            << " elapsed_seconds=" << elapsed_seconds << '\n';
+  return 0;
+}
+
 int run_postflop_estimate(const char *const path, const std::string_view ram_gib_text,
                           const std::string_view disk_gib_text) {
   const auto ram_gib = parse_u64(ram_gib_text);
@@ -4785,6 +5062,10 @@ void print_usage() {
                "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]\n"
             << "  gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> "
                "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]\n"
+            << "  gto_cli postflop edges-bucketed <config.json> <buckets> <node> [feature_cache]\n"
+            << "  gto_cli postflop resolve-bucketed <config.json> <blueprint_checkpoint> "
+               "<output_checkpoint> <buckets> <edge:outcome,...> <iterations> <ram_bytes> "
+               "<disk_bytes> <snapshot_bytes> <report.json> [feature_cache]\n"
             << "  gto_cli postflop pause|cancel <checkpoint>\n"
             << "  gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>\n"
             << "  gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> "
@@ -4885,6 +5166,17 @@ int run_cli(const int argc, const char *const argv[]) {
                                argv[9],
                                argc == 12 ? std::string_view(argv[11]) : std::string_view{},
                                std::string_view(argv[2]) == "resume-bucketed"});
+  }
+  if ((argc == 6 || argc == 7) && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "edges-bucketed") {
+    return run_postflop_edges_bucketed(argv[3], argv[4], argv[5],
+                                       argc == 7 ? std::string_view(argv[6]) : std::string_view{});
+  }
+  if ((argc == 13 || argc == 14) && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "resolve-bucketed") {
+    return run_postflop_resolve_bucketed(
+        argv[3], argv[4], argv[5], argv[6], argv[7], argv[8], argv[9], argv[10], argv[11], argv[12],
+        argc == 14 ? std::string_view(argv[13]) : std::string_view{});
   }
   if (argc == 4 && std::string_view(argv[1]) == "postflop" &&
       (std::string_view(argv[2]) == "pause" || std::string_view(argv[2]) == "cancel")) {

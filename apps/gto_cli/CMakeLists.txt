@@ -37,6 +37,19 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_test(NAME gtosd_bucketed_subgame_cli
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
+    -DGTOSD_FIXTURE=${PROJECT_SOURCE_DIR}/tests/fixtures/postflop_fixed_river_bet.json
+    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_bucketed_subgame_cli.cmake)
+set_tests_properties(gtosd_bucketed_subgame_cli
+  PROPERTIES LABELS "postflop;abstraction;bucketing;subgame;cfr-plus;cli;production;exact-br")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_bucketed_subgame_cli PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_test(NAME gtosd_gto_plus_action_catalog_smoke
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_CLI=$<TARGET_FILE:gto_cli>

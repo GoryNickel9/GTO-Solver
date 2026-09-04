@@ -2090,8 +2090,9 @@ La decisione di prodotto del 2026-09-04 rimuove questo gate come blocco per
 F11+: bucketing e subgame solving devono essere implementati e qualificati
 prima di riprendere la parity. Il bridge postflop, il preflight, la cache a otto
 worker e le qualifiche AHK K=16/TH K=128 a cinque processi e otto thread sono
-presenti, ma la parity non riparte finché il percorso non copre un workload
-preflop e il frontier merge postflop nativo non è collegato. Il gate memoria
+presenti; anche il frontier merge postflop nativo è ora collegato con CFR+ a
+otto thread e guard exact full-game. La parity non riparte finché il percorso
+non copre un vero workload preflop. Il gate memoria
 potrà contribuire soltanto dopo una definizione
 comparabile e versionata; nel frattempo non è né PASS né FAIL. Fixture e runner
 non possono essere adattati per ottenere il risultato: ogni correzione deve
@@ -2227,7 +2228,7 @@ Ogni linea non terminale raggiunge il postflop
 Attività:
 
 1. Eseguire PRE-TINY.
-2. Eseguire PRE-FULL con un solo thread.
+2. Eseguire PRE-FULL con otto thread (sette worker più coordinatore).
 3. Profilare memory dominator.
 4. Integrare decomposizione CFR-D.
 5. Testare memory mapping.
@@ -2236,6 +2237,10 @@ Attività:
 8. Verificare BR end-to-end.
 9. Confrontare con benchmark GTO+ disponibili.
 10. Pubblicare matrice hardware/configurazioni.
+
+Il seriale è ammesso soltanto come oracle differenziale su PRE-TINY o su un
+sottoinsieme bounded; non è una configurazione production né un gate di
+scalabilità PRE-FULL.
 
 Output richiesto:
 
@@ -2359,7 +2364,7 @@ L’algoritmo multiway è una decisione futura: il self-play CFR standard non ri
 | F7 | HU postflop CLI | Persistenza commerciale |
 | F8 | File robusti | UX |
 | F10 | MVP postflop GUI | Nodelock/database |
-| Card abstraction/subgame | Stato ridotto, preflight 8-thread, lift e guard full-game | Granularità cross-fixture, preflop e frontier merge nativo |
+| Card abstraction/subgame | Stato ridotto, preflight 8-thread, lift, frontier merge postflop e guard full-game | Granularità cross-fixture e preflop |
 | F11 | Nodelock globale | Preflop |
 | F13 | Database | Full preflop |
 | F15 | Fattibilità preflop–river | Multiway |

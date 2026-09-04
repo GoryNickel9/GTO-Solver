@@ -481,6 +481,67 @@ struct PostflopPreparedActionEdge {
   NodeId child{0};
 };
 
+// Lossless navigation row for the production canonical public graph. Decision
+// edges expose one action and one outcome; chance edges expose every retained
+// canonical outcome, including the representative card, physical
+// multiplicity and the exact child-coordinate suit transform.
+struct PostflopPreparedOutcome {
+  NodeId child{0};
+  CardId chance_card{};
+  std::uint32_t physical_outcome_count{1};
+  std::uint8_t physical_to_child_automorphism{0};
+};
+
+struct PostflopPreparedEdge {
+  std::optional<Action> action;
+  std::vector<PostflopPreparedOutcome> outcomes;
+};
+
+struct PostflopSubgamePathStep {
+  std::uint32_t edge_index{0};
+  std::uint32_t outcome_index{0};
+
+  friend bool operator==(const PostflopSubgamePathStep &,
+                         const PostflopSubgamePathStep &) = default;
+};
+
+enum class PostflopSubgameDeployment : std::uint8_t { CandidateAccepted, BlueprintFallback };
+
+// Production resolving is deliberately narrower than the general FiniteGame
+// API: it is CFR+, uses one coordinator plus seven workers, and always guards
+// a candidate with exact full-game NashConv before mutating the deployed
+// checkpoint. The iteration clock is local to the selected subgame.
+struct PostflopSubgameSolveConfig {
+  static constexpr std::uint32_t format_major = 1;
+  static constexpr std::uint32_t format_minor = 0;
+
+  std::uint32_t major{format_major};
+  std::uint32_t minor{format_minor};
+  std::uint64_t iterations{1'000};
+  std::uint64_t averaging_delay{0};
+  double safety_tolerance{0.0};
+  std::uint8_t parallel_action_depth{production_postflop_parallel_workers};
+  // Optional caller-owned cap for the byte-exact rollback snapshot. No
+  // product or external-solver memory value is inferred when it is absent.
+  std::optional<std::uint64_t> snapshot_budget_bytes;
+};
+
+struct PostflopSubgameSolveResult {
+  NodeId canonical_root{0};
+  std::uint64_t board_mask{0};
+  double public_reach_probability{0.0};
+  std::uint64_t affected_decision_nodes{0};
+  std::uint64_t affected_action_entries{0};
+  std::uint64_t rollback_snapshot_bytes{0};
+  std::uint64_t local_iterations{0};
+  std::uint8_t solver_thread_count{maximum_postflop_solver_threads};
+  double solve_seconds{0.0};
+  PostflopCertification baseline;
+  PostflopCertification candidate;
+  PostflopCertification deployed;
+  PostflopSubgameDeployment deployment{PostflopSubgameDeployment::BlueprintFallback};
+};
+
 struct PostflopLayoutEstimate {
   PublicTreeStats physical_public_tree;
   std::uint64_t canonical_public_nodes{0};
@@ -663,6 +724,12 @@ private:
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
   friend Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
   prepared_postflop_action_edges(const PostflopPreparedTree &, NodeId);
+  friend Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>
+  prepared_postflop_edges(const PostflopPreparedTree &, NodeId);
+  friend Result<PostflopSubgameSolveResult, PostflopSolverError>
+  resolve_postflop_subgame(PostflopPreparedTree &, PostflopCheckpoint &,
+                           std::span<const PostflopSubgamePathStep>,
+                           const PostflopSubgameSolveConfig &);
   friend Result<PostflopArchitecturalTopology, PostflopSolverError>
   inspect_postflop_architectural_topology(const PostflopPreparedTree &);
   friend Result<PostflopArchitecturalShadowReport, PostflopSolverError>
@@ -694,6 +761,18 @@ prepared_postflop_layout_estimate(const PostflopPreparedTree &prepared);
 
 [[nodiscard]] Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
 prepared_postflop_action_edges(const PostflopPreparedTree &prepared, NodeId node);
+
+[[nodiscard]] Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>
+prepared_postflop_edges(const PostflopPreparedTree &prepared, NodeId node);
+
+// Resolves one infoset-closed canonical frontier in place. The input
+// checkpoint is the blueprint. Only action-state slices reachable from the
+// selected root are snapshotted and reset; an exact full-game NashConv guard
+// either deploys the CFR+ candidate or restores the blueprint byte-for-byte.
+[[nodiscard]] Result<PostflopSubgameSolveResult, PostflopSolverError>
+resolve_postflop_subgame(PostflopPreparedTree &prepared, PostflopCheckpoint &checkpoint,
+                         std::span<const PostflopSubgamePathStep> path,
+                         const PostflopSubgameSolveConfig &config = {});
 
 // Explicit external inspector used by architecture tooling. It does not
 // participate in traversal and its temporary rows are released by the caller.

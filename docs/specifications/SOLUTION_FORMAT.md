@@ -47,6 +47,17 @@ richiede di nuovo lo stesso config, gli stessi range e
 la stessa configurazione di astrazione; un checkpoint exact o un bucket count
 diverso viene rifiutato prima del traversal.
 
+`resolve-bucketed` scrive sempre un checkpoint di destinazione distinto con lo
+stesso fingerprint del blueprint e con i soli segmenti accettati aggiornati.
+Il report sidecar `gtosd.postflop.bucketed-subgame-resolution.v1` conserva path,
+root canonica, reach, iterazioni locali, byte del rollback, certificazioni e
+decisione candidate/fallback. Il clock globale del checkpoint non incorpora le
+iterazioni locali. Il sidecar non è ancora autenticato insieme al checkpoint:
+per audit e packaging `.gtsd` va conservato come artefatto associato esplicito.
+Un successivo `resume-bucketed` è quindi un warm start CFR+ dal profilo
+distribuito, non la continuazione bit-identica della traiettoria full-game
+precedente; questa distinzione va mantenuta nel report di sessione.
+
 ## Checkpoint postflop
 
 `PostflopCheckpoint` contiene:

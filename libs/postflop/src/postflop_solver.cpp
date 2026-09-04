@@ -4669,14 +4669,16 @@ public:
   DenseTraversal(DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta = nullptr,
                  const std::uint8_t parallel_action_depth = 0U,
-                 const PreparedRootLock *root_lock = nullptr, const bool pin_worker_threads = false
+                 const PreparedRootLock *root_lock = nullptr, const bool pin_worker_threads = false,
+                 const std::array<DenseComboVector, 2> *private_hand_weights = nullptr
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
                  ,
                  std::shared_ptr<RealNodeReplayCollector> replay_collector = nullptr
 #endif
                  )
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
-        root_lock_(root_lock), pin_worker_threads_(pin_worker_threads)
+        root_lock_(root_lock), private_hand_weights_(private_hand_weights),
+        pin_worker_threads_(pin_worker_threads)
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
         ,
         replay_collector_(std::move(replay_collector))
@@ -4701,7 +4703,7 @@ public:
           for (std::size_t index = 0U; index < worker_count; ++index) {
             parallel_workers_.push_back(std::make_unique<DenseTraversal>(
                 LeafWorkerTag{}, layout_, buffers_, nullptr, root_lock_, parallel_shared_,
-                static_cast<std::uint8_t>(index + 1U), pin_worker_threads_
+                static_cast<std::uint8_t>(index + 1U), pin_worker_threads_, private_hand_weights_
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
                 ,
                 replay_collector_
@@ -4712,14 +4714,15 @@ public:
         }
         parallel_regret_delta_.resize(deferred_regret_delta_->size(), 0.0);
         parallel_shared_ = std::make_shared<ParallelTaskQueue>();
-        parallel_worker_ = std::make_unique<DenseTraversal>(
-            layout_, buffers_, &parallel_regret_delta_,
-            static_cast<std::uint8_t>(parallel_action_depth - 1U), root_lock_, pin_worker_threads_
+        parallel_worker_ =
+            std::make_unique<DenseTraversal>(layout_, buffers_, &parallel_regret_delta_,
+                                             static_cast<std::uint8_t>(parallel_action_depth - 1U),
+                                             root_lock_, pin_worker_threads_, private_hand_weights_
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
-            ,
-            replay_collector_
+                                             ,
+                                             replay_collector_
 #endif
-        );
+            );
         parallel_thread_ = std::jthread([this] { run_worker_loop(); });
       } else {
         // Physical tree: a pool of independent workers, each with its own
@@ -4741,7 +4744,7 @@ public:
           parallel_workers_.push_back(std::make_unique<DenseTraversal>(
               LeafWorkerTag{}, layout_, buffers_,
               has_deltas ? &parallel_worker_deltas_[index] : nullptr, root_lock_, parallel_shared_,
-              static_cast<std::uint8_t>(index + 1U), pin_worker_threads_
+              static_cast<std::uint8_t>(index + 1U), pin_worker_threads_, private_hand_weights_
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
               ,
               replay_collector_
@@ -4757,14 +4760,16 @@ public:
   DenseTraversal(LeafWorkerTag, DenseLayout &layout, const ActionBuffers buffers,
                  std::vector<double> *deferred_regret_delta, const PreparedRootLock *root_lock,
                  std::shared_ptr<ParallelTaskQueue> shared_queue,
-                 const std::uint8_t worker_logical_processor, const bool pin_worker_threads
+                 const std::uint8_t worker_logical_processor, const bool pin_worker_threads,
+                 const std::array<DenseComboVector, 2> *private_hand_weights
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
                  ,
                  std::shared_ptr<RealNodeReplayCollector> replay_collector
 #endif
                  )
       : layout_(layout), buffers_(buffers), deferred_regret_delta_(deferred_regret_delta),
-        root_lock_(root_lock), parallel_shared_(std::move(shared_queue)),
+        root_lock_(root_lock), private_hand_weights_(private_hand_weights),
+        parallel_shared_(std::move(shared_queue)),
         worker_logical_processor_(worker_logical_processor), pin_worker_threads_(pin_worker_threads)
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
         ,
@@ -5823,7 +5828,7 @@ public:
       parallel_worker_->negative_regret_discount_ = negative_regret_discount;
     }
     if (layout_.uses_canonical_public_dag) {
-      return cfr_canonical_parallel_entry(layout_.canonical_public_graph.root, updating_player,
+      return cfr_canonical_parallel_entry(static_cast<std::uint32_t>(node_id), updating_player,
                                           reach, strategy_weight);
     }
     // The physical tree is parallelized at chance nodes (coarse grained), not
@@ -5866,7 +5871,7 @@ public:
                                                   const std::uint8_t updating_player,
                                                   const ReachRef &reach, const bool best_response) {
     if (layout_.uses_canonical_public_dag) {
-      return policy_canonical(layout_.canonical_public_graph.root, updating_player, reach,
+      return policy_canonical(static_cast<std::uint32_t>(node_id), updating_player, reach,
                               best_response);
     }
     return policy_physical(node_id, updating_player, reach, best_response);
@@ -11128,7 +11133,13 @@ private:
                                         strategies[action][local] * action_values[action][slot]);
         }
         values[slot] = current;
-        const double private_chance_weight = layout_.initial_reach[updating_player][combo];
+        // A standalone subgame promotes its blueprint-conditioned root range
+        // to the local private-card chance prior. Full-tree solves retain the
+        // original game prior. Own actions below that root remain excluded
+        // from counterfactual reach, as required by CFR.
+        const double private_chance_weight = private_hand_weights_ == nullptr
+                                                 ? layout_.initial_reach[updating_player][combo]
+                                                 : (*private_hand_weights_)[updating_player][combo];
         const double average_reach_weight =
             strategy_weight * static_cast<double>((*reach[updating_player])[slot]);
         for (std::size_t action = 0U; action < action_count; ++action) {
@@ -15912,6 +15923,7 @@ private:
   ActionBuffers buffers_;
   std::vector<double> *deferred_regret_delta_{nullptr};
   const PreparedRootLock *root_lock_{nullptr};
+  const std::array<DenseComboVector, 2> *private_hand_weights_{nullptr};
   std::vector<std::size_t> deferred_regret_touched_;
   std::vector<std::uint8_t> deferred_regret_touched_flags_;
   std::vector<double> parallel_regret_delta_;
@@ -15983,6 +15995,29 @@ std::array<std::array<Scalar, Capacity>, 2> initial_reach(const DenseLayout &lay
   return reach;
 }
 
+template <std::size_t Capacity, bool PlayerIndexed, typename Scalar = TraversalScalar<Capacity>>
+std::array<std::array<Scalar, Capacity>, 2>
+seeded_reach(const DenseLayout &layout, const std::array<DenseComboVector, 2> &combo_reach) {
+  std::array<std::array<Scalar, Capacity>, 2> reach{};
+  if constexpr (PlayerIndexed) {
+    for (std::uint8_t player = 0U; player < 2U; ++player) {
+      for (std::size_t slot = 0U; slot < layout.player_flop_count[player]; ++slot) {
+        const auto combo = layout.player_flop_combos[player][slot];
+        reach[player][slot] = static_cast<Scalar>(combo_reach[player][combo]);
+      }
+    }
+  } else {
+    for (const ComboId combo : layout.active_combos) {
+      const auto slot = Capacity == combo_count
+                            ? static_cast<std::size_t>(combo)
+                            : static_cast<std::size_t>(layout.active_combo_index[combo]);
+      reach[0][slot] = static_cast<Scalar>(combo_reach[0][combo]);
+      reach[1][slot] = static_cast<Scalar>(combo_reach[1][combo]);
+    }
+  }
+  return reach;
+}
+
 class DenseTraversalRunner {
 public:
   virtual ~DenseTraversalRunner() = default;
@@ -16020,20 +16055,29 @@ public:
   TypedDenseTraversalRunner(DenseLayout &layout, const ActionBuffers buffers,
                             std::vector<double> *deferred_regret_delta,
                             const std::uint8_t parallel_action_depth,
-                            const PreparedRootLock *root_lock
+                            const PreparedRootLock *root_lock,
+                            const NodeId root = std::numeric_limits<NodeId>::max(),
+                            const std::array<DenseComboVector, 2> *const root_reach = nullptr
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
                             ,
                             std::shared_ptr<RealNodeReplayCollector> replay_collector = nullptr
 #endif
                             )
-      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock, false
+      : traversal_(layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock, false,
+                   root_reach
 #if defined(GTOSD_ENABLE_REAL_NODE_REPLAY)
                    ,
                    std::move(replay_collector)
 #endif
                        ),
-        reach_(initial_reach<Capacity, PlayerIndexed, ComputeScalar>(layout)),
-        root_(layout.tree.root),
+        reach_(root_reach == nullptr
+                   ? initial_reach<Capacity, PlayerIndexed, ComputeScalar>(layout)
+                   : seeded_reach<Capacity, PlayerIndexed, ComputeScalar>(layout, *root_reach)),
+        root_(root == std::numeric_limits<NodeId>::max()
+                  ? (layout.uses_canonical_public_dag
+                         ? static_cast<NodeId>(layout.canonical_public_graph.root)
+                         : layout.tree.root)
+                  : root),
         physical_node_count_(layout.uses_canonical_public_dag ? 0U : layout.tree.stats.node_count) {
   }
 
@@ -16214,6 +16258,39 @@ std::unique_ptr<DenseTraversalRunner> make_dense_traversal_runner(
   }
   return std::make_unique<TypedDenseTraversalRunner<combo_count, false>>(
       layout, buffers, deferred_regret_delta, parallel_action_depth, root_lock);
+}
+
+std::unique_ptr<DenseTraversalRunner>
+make_dense_subgame_traversal_runner(DenseLayout &layout, const ActionBuffers buffers,
+                                    const std::uint8_t parallel_action_depth, const NodeId root,
+                                    const std::array<DenseComboVector, 2> &root_reach) {
+  if (!layout.uses_canonical_public_dag || !layout.uses_direct_action_bases) {
+    return nullptr;
+  }
+  const auto maximum_player_combos =
+      std::max(layout.player_flop_count[0], layout.player_flop_count[1]);
+  if (maximum_player_combos <= compact_combo_capacity) {
+    return std::make_unique<TypedDenseTraversalRunner<compact_combo_capacity, true>>(
+        layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
+  }
+  if (maximum_player_combos <= medium_combo_capacity) {
+    return std::make_unique<TypedDenseTraversalRunner<medium_combo_capacity, true>>(
+        layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
+  }
+  if (maximum_player_combos <= short_deck_range_capacity) {
+    return std::make_unique<TypedDenseTraversalRunner<short_deck_range_capacity, true>>(
+        layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
+  }
+  if (maximum_player_combos <= compact_player_combo_capacity) {
+    return std::make_unique<TypedDenseTraversalRunner<compact_player_combo_capacity, true>>(
+        layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
+  }
+  if (maximum_player_combos <= large_range_capacity) {
+    return std::make_unique<TypedDenseTraversalRunner<large_range_capacity, true>>(
+        layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
+  }
+  return std::make_unique<TypedDenseTraversalRunner<combo_count, true>>(
+      layout, buffers, nullptr, parallel_action_depth, nullptr, root, &root_reach);
 }
 
 Result<double, PostflopSolverError>
@@ -17493,6 +17570,389 @@ prepared_postflop_action_edges(const PostflopPreparedTree &prepared, const NodeI
   }
   return Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>::success(
       std::move(result));
+}
+
+Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>
+prepared_postflop_edges(const PostflopPreparedTree &prepared, const NodeId node) {
+  if (!prepared.implementation_) {
+    return Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &layout = prepared.implementation_->layout;
+  const auto &graph = layout.canonical_public_graph;
+  if (!layout.uses_canonical_public_dag || node >= graph.nodes.size()) {
+    return Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &source = graph.nodes[static_cast<std::size_t>(node)];
+  if (source.node_kind() == PublicNodeKind::TerminalFold ||
+      source.node_kind() == PublicNodeKind::TerminalShowdown) {
+    return Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>::success({});
+  }
+  std::vector<PostflopPreparedEdge> result;
+  const auto source_edges = canonical_edges(graph, source);
+  result.reserve(source_edges.size());
+  for (const auto &edge : source_edges) {
+    PostflopPreparedEdge public_edge;
+    if (source.node_kind() == PublicNodeKind::Decision) {
+      const auto *const action = canonical_action(graph, edge);
+      if (action == nullptr || edge.outcomes.size() != 1U) {
+        return Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      public_edge.action = *action;
+    }
+    public_edge.outcomes.reserve(edge.outcomes.size());
+    for (const auto &outcome : edge.outcomes) {
+      public_edge.outcomes.push_back(
+          {static_cast<NodeId>(outcome.child), outcome.chance_card,
+           source.node_kind() == PublicNodeKind::Chance
+               ? static_cast<std::uint32_t>(outcome.physical_outcome_count)
+               : 1U,
+           outcome.physical_to_child_automorphism});
+    }
+    result.push_back(std::move(public_edge));
+  }
+  return Result<std::vector<PostflopPreparedEdge>, PostflopSolverError>::success(std::move(result));
+}
+
+Result<PostflopSubgameSolveResult, PostflopSolverError>
+resolve_postflop_subgame(PostflopPreparedTree &prepared, PostflopCheckpoint &checkpoint,
+                         const std::span<const PostflopSubgamePathStep> path,
+                         const PostflopSubgameSolveConfig &config) {
+  if (!prepared.implementation_ || path.empty() ||
+      config.major != PostflopSubgameSolveConfig::format_major ||
+      config.minor > PostflopSubgameSolveConfig::format_minor || config.iterations == 0U ||
+      config.averaging_delay >= config.iterations || !std::isfinite(config.safety_tolerance) ||
+      config.safety_tolerance < 0.0 ||
+      (config.snapshot_budget_bytes && *config.snapshot_budget_bytes == 0U) ||
+      config.parallel_action_depth != production_postflop_parallel_workers) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  auto &layout = prepared.implementation_->layout;
+  const auto &graph = layout.canonical_public_graph;
+  if (!layout.uses_canonical_public_dag || !layout.uses_direct_action_bases ||
+      graph.nodes.empty() || checkpoint.game_fingerprint != layout.fingerprint ||
+      checkpoint.action_count != layout.actions ||
+      checkpoint.state_precision != PostflopStatePrecision::Float64 ||
+      checkpoint.algorithm != PostflopAlgorithm::CfrPlus ||
+      !checkpoint.external_buffer_file.empty() || checkpoint.runtime_state != nullptr ||
+      checkpoint.cumulative_regret.size() != layout.actions ||
+      checkpoint.cumulative_strategy.size() != layout.actions ||
+      !finite_vector(checkpoint.cumulative_regret) ||
+      !finite_vector(checkpoint.cumulative_strategy)) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+  const auto buffers_result = in_memory_checkpoint_buffers(checkpoint);
+  if (!buffers_result) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(buffers_result.error());
+  }
+  const auto buffers = buffers_result.value();
+
+  std::array<DenseComboVector, 2> root_reach = layout.initial_reach;
+  NodeId root = graph.root;
+  double selected_chance_probability_weight = 1.0;
+  const auto transform_reach = [&layout](const std::array<DenseComboVector, 2> &source,
+                                         const std::uint8_t automorphism) {
+    if (automorphism >= layout.automorphisms.size()) {
+      return std::optional<std::array<DenseComboVector, 2>>{};
+    }
+    if (layout.automorphisms.size() == 1U ||
+        (automorphism < layout.active_automorphism_is_identity.size() &&
+         layout.active_automorphism_is_identity[automorphism] != 0U)) {
+      return std::optional<std::array<DenseComboVector, 2>>{source};
+    }
+    std::array<DenseComboVector, 2> transformed{};
+    const auto &mapping = layout.automorphisms[automorphism].combos;
+    for (const ComboId combo : layout.active_combos) {
+      transformed[0][mapping[combo]] = source[0][combo];
+      transformed[1][mapping[combo]] = source[1][combo];
+    }
+    return std::optional<std::array<DenseComboVector, 2>>{std::move(transformed)};
+  };
+
+  for (const auto step : path) {
+    if (root >= graph.nodes.size()) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    const auto &node = graph.nodes[static_cast<std::size_t>(root)];
+    const auto edges = canonical_edges(graph, node);
+    if (step.edge_index >= edges.size() ||
+        step.outcome_index >= edges[step.edge_index].outcomes.size()) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    const auto &edge = edges[step.edge_index];
+    const auto &outcome = *(edge.outcomes.begin() + step.outcome_index);
+    if (node.node_kind() == PublicNodeKind::Decision) {
+      if (step.outcome_index != 0U || step.edge_index >= node.decision.action_count) {
+        return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      const auto &board = layout.boards[node.board_index()];
+      for (const ComboId combo : board.player_combos[node.decision.player]) {
+        const auto strategy = query_strategy_from_layout(layout, buffers, root, combo);
+        if (!strategy || step.edge_index >= strategy.value().probabilities.size()) {
+          return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+        root_reach[node.decision.player][combo] *= strategy.value().probabilities[step.edge_index];
+      }
+    } else if (node.node_kind() == PublicNodeKind::Chance) {
+      if (node.total_legal_outcome_count() <= 4U) {
+        return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+            PostflopSolverError::InvalidConfiguration);
+      }
+      selected_chance_probability_weight *=
+          static_cast<double>(outcome.physical_outcome_count) /
+          static_cast<double>(node.total_legal_outcome_count() - 4U);
+      const auto card_mask = outcome.chance_card.mask();
+      for (const ComboId combo : layout.active_combos) {
+        if ((layout.combo_masks[combo] & card_mask) != 0U) {
+          root_reach[0][combo] = 0.0;
+          root_reach[1][combo] = 0.0;
+        }
+      }
+    } else {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    auto transformed = transform_reach(root_reach, outcome.physical_to_child_automorphism);
+    if (!transformed) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    root_reach = std::move(*transformed);
+    root = outcome.child;
+  }
+  if (root >= graph.nodes.size()) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &root_node = graph.nodes[static_cast<std::size_t>(root)];
+  if (root_node.node_kind() == PublicNodeKind::TerminalFold ||
+      root_node.node_kind() == PublicNodeKind::TerminalShowdown) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+
+  const auto &root_board = layout.boards[root_node.board_index()];
+  long double compatible_pair_mass = 0.0L;
+  for (const ComboId first : root_board.legal_combos) {
+    if (!(root_reach[0][first] > 0.0)) {
+      continue;
+    }
+    for (const ComboId second : root_board.legal_combos) {
+      if ((layout.combo_masks[first] & layout.combo_masks[second]) == 0U) {
+        compatible_pair_mass += root_reach[0][first] * root_reach[1][second];
+      }
+    }
+  }
+  const double public_reach_probability =
+      layout.initial_normalization > 0.0
+          ? static_cast<double>(compatible_pair_mass / layout.initial_normalization) *
+                selected_chance_probability_weight
+          : 0.0;
+  if (!(public_reach_probability > 0.0) || !std::isfinite(public_reach_probability)) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::NumericalFailure);
+  }
+
+  std::vector<std::uint8_t> inside(graph.nodes.size(), 0U);
+  std::vector<std::uint32_t> pending{static_cast<std::uint32_t>(root)};
+  while (!pending.empty()) {
+    const auto node_id = pending.back();
+    pending.pop_back();
+    if (inside[node_id] != 0U) {
+      continue;
+    }
+    inside[node_id] = 1U;
+    for (const auto &edge : canonical_edges(graph, graph.nodes[node_id])) {
+      for (const auto &outcome : edge.outcomes) {
+        if (outcome.child <= node_id || outcome.child >= graph.nodes.size()) {
+          return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+        pending.push_back(outcome.child);
+      }
+    }
+  }
+  // A nonterminal node shared with a parent outside the selected frontier
+  // would make its CFR state cross the boundary. Reject it instead of
+  // silently changing policy in an unrelated public history.
+  for (std::size_t parent = 0U; parent < graph.nodes.size(); ++parent) {
+    if (inside[parent] != 0U) {
+      continue;
+    }
+    for (const auto &edge : canonical_edges(graph, graph.nodes[parent])) {
+      for (const auto &outcome : edge.outcomes) {
+        if (outcome.child == root || inside[outcome.child] == 0U) {
+          continue;
+        }
+        const auto kind = graph.nodes[outcome.child].node_kind();
+        if (kind == PublicNodeKind::Decision || kind == PublicNodeKind::Chance) {
+          return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+              PostflopSolverError::InvalidConfiguration);
+        }
+      }
+    }
+  }
+  std::uint64_t root_incoming_outcomes = 0U;
+  for (std::size_t parent = 0U; parent < graph.nodes.size(); ++parent) {
+    for (const auto &edge : canonical_edges(graph, graph.nodes[parent])) {
+      root_incoming_outcomes += static_cast<std::uint64_t>(std::ranges::count_if(
+          edge.outcomes, [root](const auto &outcome) { return outcome.child == root; }));
+    }
+  }
+  if (root_incoming_outcomes != 1U) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+
+  struct StateSlice {
+    std::size_t base{0U};
+    std::size_t count{0U};
+    std::vector<double> regret;
+    std::vector<double> strategy;
+  };
+  std::vector<StateSlice> slices;
+  std::uint64_t affected_actions = 0U;
+  for (std::size_t node_id = 0U; node_id < graph.nodes.size(); ++node_id) {
+    const auto &node = graph.nodes[node_id];
+    if (inside[node_id] == 0U || node.node_kind() != PublicNodeKind::Decision) {
+      continue;
+    }
+    const auto base = static_cast<std::size_t>(node.decision.action_base);
+    const auto count = static_cast<std::size_t>(canonical_local_action_count(layout, node));
+    if (count == 0U || base > checkpoint.cumulative_regret.size() ||
+        count > checkpoint.cumulative_regret.size() - base) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+    StateSlice slice;
+    slice.base = base;
+    slice.count = count;
+    slices.push_back(std::move(slice));
+    if (count > std::numeric_limits<std::uint64_t>::max() - affected_actions) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::MemoryFailure);
+    }
+    affected_actions += count;
+  }
+  if (slices.empty()) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  std::ranges::sort(slices, {}, &StateSlice::base);
+  for (std::size_t index = 1U; index < slices.size(); ++index) {
+    if (slices[index - 1U].base + slices[index - 1U].count > slices[index].base) {
+      return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+          PostflopSolverError::InvalidConfiguration);
+    }
+  }
+  if (affected_actions > std::numeric_limits<std::uint64_t>::max() / (2U * sizeof(double))) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  const auto rollback_snapshot_bytes = affected_actions * 2U * sizeof(double);
+  if (config.snapshot_budget_bytes && rollback_snapshot_bytes > *config.snapshot_budget_bytes) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  for (auto &slice : slices) {
+    slice.regret.assign(checkpoint.cumulative_regret.begin() +
+                            static_cast<std::ptrdiff_t>(slice.base),
+                        checkpoint.cumulative_regret.begin() +
+                            static_cast<std::ptrdiff_t>(slice.base + slice.count));
+    slice.strategy.assign(checkpoint.cumulative_strategy.begin() +
+                              static_cast<std::ptrdiff_t>(slice.base),
+                          checkpoint.cumulative_strategy.begin() +
+                              static_cast<std::ptrdiff_t>(slice.base + slice.count));
+  }
+
+  const auto baseline = certify(layout, buffers, checkpoint.completed_iterations, nullptr);
+  if (!baseline) {
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(baseline.error());
+  }
+  const auto restore_blueprint = [&checkpoint, &slices] {
+    for (const auto &slice : slices) {
+      std::copy(slice.regret.begin(), slice.regret.end(),
+                checkpoint.cumulative_regret.begin() + static_cast<std::ptrdiff_t>(slice.base));
+      std::copy(slice.strategy.begin(), slice.strategy.end(),
+                checkpoint.cumulative_strategy.begin() + static_cast<std::ptrdiff_t>(slice.base));
+    }
+  };
+  for (const auto &slice : slices) {
+    std::fill_n(checkpoint.cumulative_regret.begin() + static_cast<std::ptrdiff_t>(slice.base),
+                slice.count, 0.0);
+    std::fill_n(checkpoint.cumulative_strategy.begin() + static_cast<std::ptrdiff_t>(slice.base),
+                slice.count, 0.0);
+  }
+
+  const auto started = std::chrono::steady_clock::now();
+  auto traversal = make_dense_subgame_traversal_runner(
+      layout, buffers, config.parallel_action_depth, root, root_reach);
+  if (!traversal) {
+    restore_blueprint();
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  for (std::uint64_t iteration = 1U; iteration <= config.iterations; ++iteration) {
+    const double strategy_weight = iteration > config.averaging_delay
+                                       ? static_cast<double>(iteration - config.averaging_delay)
+                                       : 0.0;
+    for (std::uint8_t player = 0U; player < 2U; ++player) {
+      const auto traversed = traversal->cfr(player, strategy_weight, 1.0, 1.0, 1.0);
+      if (!traversed) {
+        restore_blueprint();
+        return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(traversed.error());
+      }
+      const auto applied = traversal->apply_deferred_regrets();
+      if (!applied) {
+        restore_blueprint();
+        return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(applied.error());
+      }
+    }
+  }
+  traversal->release_transient_scratch();
+  const double solve_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (!finite_vector(checkpoint.cumulative_regret) ||
+      !finite_vector(checkpoint.cumulative_strategy)) {
+    restore_blueprint();
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(
+        PostflopSolverError::NumericalFailure);
+  }
+  const auto candidate = certify(layout, buffers, checkpoint.completed_iterations, nullptr);
+  if (!candidate) {
+    restore_blueprint();
+    return Result<PostflopSubgameSolveResult, PostflopSolverError>::failure(candidate.error());
+  }
+
+  PostflopSubgameSolveResult result;
+  result.canonical_root = root;
+  result.board_mask = root_board.mask;
+  result.public_reach_probability = public_reach_probability;
+  result.affected_decision_nodes = slices.size();
+  result.affected_action_entries = affected_actions;
+  result.rollback_snapshot_bytes = rollback_snapshot_bytes;
+  result.local_iterations = config.iterations;
+  result.solve_seconds = solve_seconds;
+  result.baseline = baseline.value();
+  result.candidate = candidate.value();
+  if (candidate.value().normalized_nash_conv <=
+      baseline.value().normalized_nash_conv + config.safety_tolerance) {
+    result.deployment = PostflopSubgameDeployment::CandidateAccepted;
+    result.deployed = candidate.value();
+  } else {
+    restore_blueprint();
+    result.deployment = PostflopSubgameDeployment::BlueprintFallback;
+    result.deployed = baseline.value();
+  }
+  return Result<PostflopSubgameSolveResult, PostflopSolverError>::success(std::move(result));
 }
 
 Result<PostflopArchitecturalTopology, PostflopSolverError>
