@@ -67,8 +67,8 @@ comunque essere contabilizzato e non può ridurre la metrica comparabile.
   JSON sidecar; un resume successivo è un warm start, non trajectory parity;
 - generazione/qualificazione delle feature preflop;
 - qualifica globale K16/K32 sulla terna AHK/TH/TST e, successivamente, su
-  ulteriori fixture turn/preflop rappresentative; K16 è già respinto dal FAIL
-  TH a 800 iterazioni, K32 è pending;
+  ulteriori fixture turn/preflop rappresentative; K16 e K32 sono entrambi
+  respinti dal FAIL TH a 800 iterazioni, TST K32 è skipped dall'early reject;
 - gadget safe scalabile con boundary counterfactual values quando la BR esatta
   full-game non è fattibile;
 - calcolo distribuito;

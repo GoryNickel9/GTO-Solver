@@ -157,8 +157,8 @@ La decisione di prodotto 2026-09-04 mantiene F11+ subordinata alla qualifica
 globale del percorso astratto. Card abstraction, safe subgame solving e il
 primo bridge HU postflop CFR+ sono implementati; il path exact resta
 l'oracolo. Preflight, cache a otto worker e point qualification AHK K=16 / TH
-K=128 verificano l'infrastruttura ma non un default comune. K16 è respinto
-globalmente dal FAIL TH a 800 iterazioni; K32 è pending sul contratto unico
-AHK/TH/TST. Il frontier merge postflop nativo è protetto da exact full-game
+K=128 verificano l'infrastruttura ma non un default comune. K16 e K32 sono
+entrambi respinti globalmente dal FAIL TH a 800 iterazioni (`5,924317%` e
+`2,859595%`); TST K32 è skipped dall'early reject. Il frontier merge postflop nativo è protetto da exact full-game
 NashConv, ma non chiude da solo il gate di granularità. Parity, preflop e F11+
 restano congelati fino alla decisione globale.

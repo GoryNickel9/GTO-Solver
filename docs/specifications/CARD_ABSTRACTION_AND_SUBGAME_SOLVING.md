@@ -172,7 +172,7 @@ decision node conserva comunque uno stato strategico distinto, quindi history
 e action schema non vengono fusi.
 
 La prima configurazione implementata è intenzionalmente stretta; la selezione
-globale di K resta provisional:
+globale di K è bloccata dopo il REJECT di K16 e K32:
 
 - CFR+ alternato;
 - stato `Float64` residente o out-of-core;
@@ -312,8 +312,9 @@ corrente K16/K32.
   metriche e decisione candidate/fallback restano nel report JSON sidecar e non
   sono ancora incorporate in un chunk `.gtsd` firmato insieme allo stato.
 - Lo sweep multi-granularità ridotto è qualificato; il gate di prodotto è
-  `PROVISIONAL` finché uno stesso K non supera AHKHQH, TH7D6S e TSTC9D. I
-  candidati correnti sono K16 (REJECT globale) e K32 (PENDING). Servono inoltre
+  `BLOCKED`: nessuno fra K16 e K32 supera AHKHQH, TH7D6S e TSTC9D. I
+  candidati K16 e K32 sono entrambi REJECT globali per il FAIL TH a 800
+  iterazioni; TST K32 è skipped dall'early reject. Servono inoltre
   fixture turn e un layout preflop commercialmente rappresentativo per le
   estensioni successive.
   L'exact resta l'oracolo per questi gate e per la successiva parity GTO+.

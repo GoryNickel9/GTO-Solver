@@ -64,8 +64,9 @@
 > full-game. Sul fixed-river K=8 il candidato peggiore viene ripristinato
 > byte-per-byte (`512 B` di snapshot). Il contratto funzionale del resolver è
 > verificato, ma il gate abstraction/subgame del prodotto HU postflop resta
-> **PROVISIONAL**: K16 è globalmente respinto dal FAIL TH a 800 iterazioni e
-> K32 deve ancora superare lo stesso contratto AHK/TH/TST. La parity GTO+ resta
+> **BLOCKED**: K16 e K32 sono entrambi respinti dal FAIL TH a 800 iterazioni,
+> rispettivamente `5,924317%` e `2,859595%` NashConv/pot. AHK K32 passa a
+> `0,499452%`; TST è skipped dopo il REJECT globale TH. La parity GTO+ resta
 > posposta. `.gtsd`, GUI, cache compressa/mmap e multi-root/continual resolving
 > restano miglioramenti; il vero layout preflop appartiene alla Fase 14 separata.
 
@@ -243,10 +244,10 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; POSPOSTO** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; il prerequisito globale abstraction/subgame è ancora provisional | Non riprendere la parity prima della decisione globale K16/K32 |
+| GTO+ parity gate | **NON SUPERATO; POSPOSTO** | Production final-head exact conserva `15/15` correctness solve; TH/TST restano sopra i time gate e la memoria è `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`; K16/K32 sono entrambi REJECT globali | Non riprendere la parity senza una nuova decisione globale di prodotto |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
-| Abstraction/subgame core | **Implementato; gate prodotto PROVISIONAL** | Moduli versionati, `DenseLayout` CFR+ bucketed, preflight/cache, exact lift/BR guard e frontier mid-tree con rollback; AHK K=16 e TH K=128 sono point qualification non uniformi | Qualificare un solo K globale su AHK/TH/TST; K16 REJECT, K32 PENDING |
-| F11+ | **CONGELATA** | Il core necessario esiste, ma manca una granularità globale qualificata | Completare esclusivamente il gate globale K16/K32 |
+| Abstraction/subgame core | **Implementato; gate prodotto BLOCKED** | Moduli versionati, `DenseLayout` CFR+ bucketed, preflight/cache, exact lift/BR guard e frontier mid-tree con rollback; K16/K32 falliscono entrambi TH a 800 iterazioni | Nessuna granularità globale qualificata nell'insieme autorizzato |
+| F11+ | **CONGELATA** | Il core necessario esiste, ma K16 e K32 sono REJECT globali | Richiede una nuova decisione di prodotto sullo spazio dei candidati |
 
 ## Fase 0 — Fondazioni del repository
 
@@ -729,9 +730,10 @@ decisione 2026-09-04 rende prioritario il percorso astratto: aggregazione
 reach-weighted, CLI, preflight e cache/manifest exact a otto worker sono
 completati; AHK flop K=16 e TH flop K=128 passano soltanto qualifiche locali a
 cinque processi. Anche il frontier merge nativo con rollback exact-guarded è
-funzionalmente verificato. Il prossimo e unico ingresso è la qualifica globale
-K16/K32 sulla terna AHK/TH/TST. Preflop, parity, persistenza `.gtsd` e GUI
-dell'astrazione restano congelati.
+funzionalmente verificato. Il gate globale K16/K32 è ora concluso con entrambi
+i candidati REJECT per il FAIL TH a 800 iterazioni; TST K32 è stato skipped
+dopo il verdetto globale. Preflop, parity, persistenza `.gtsd` e GUI
+dell'astrazione restano congelati in attesa di una nuova decisione di prodotto.
 Il percorso exact resta oracle con differenziale e best response. Il solving resta
 permanentemente CPU/RAM-only.
 

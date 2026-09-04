@@ -1,8 +1,8 @@
-# Qualifica provisional card abstraction e subgame solving — 2026-09-04
+# Qualifica globale card abstraction e subgame solving — 2026-09-04
 
 ## Esito corretto
 
-**PROVISIONAL — NON QUALIFICATO COME DEFAULT DI PRODOTTO.**
+**BLOCKED — NESSUN DEFAULT GLOBALE QUALIFICATO TRA K16 E K32.**
 
 Il percorso HU postflop bucketed dispone di due qualifiche locali distinte:
 
@@ -18,7 +18,8 @@ Questi risultati non selezionano un default commerciale: usare `K=16` per
 AHKHQH e `K=128` per TH7D6S è una matrice per-fixture e non soddisfa la policy
 del prodotto condiviso. I benchmark devono validare una sola configurazione,
 non determinarla. Finché un unico `K` non supera la suite comune
-AHKHQH/TH7D6S/TSTC9D, il bucketing resta opt-in/provisional e la parity non
+AHKHQH/TH7D6S/TSTC9D, il bucketing resta opt-in e il gate di prodotto resta
+bloccato; la parity non
 riparte sul percorso bucketed.
 
 Il `SubgameSolver` safe è qualificato sul contratto installabile `FiniteGame`:
@@ -35,7 +36,7 @@ e non dichiara supporto preflop: il tree/layout preflop non esiste ancora. L'exa
 resta un oracle differenziale, non il percorso commerciale predefinito per
 alberi grandi.
 
-## Gate globale di prodotto aperto
+## Esito del gate globale di prodotto
 
 I soli candidati correnti sono `K=16` e `K=32`. La selezione deve rispettare
 un unico contratto:
@@ -50,11 +51,37 @@ un unico contratto:
   seriale soltanto dopo che tutta la terna ha superato il pre-gate;
 - decisione sul caso peggiore: un solo FAIL respinge il K globalmente.
 
-K16 è già **REJECT globale** perché TH7D6S resta a
-`NashConv/pot=5,924317%` dopo 800 iterazioni. K32 è `PENDING`: il risultato TH
-a 100 iterazioni (`4,623514%`) è soltanto un punto di curva e non decide il
-gate. Nessuna selezione o fallback può dipendere dal benchmark ID, dal board o
-dal nome della fixture.
+K16 è **REJECT globale** perché TH7D6S resta a
+`NashConv/pot=5,924317%` dopo 800 iterazioni. K32 è anch'esso **REJECT
+globale**: sul gate finale TH a 800 iterazioni resta a `2,8595946893%`.
+Nessuna selezione o fallback può dipendere dal benchmark ID, dal board o dal
+nome della fixture.
+
+### Risultato del gate globale K32
+
+Commit sorgente `b3b1a1d8815a8bbfc587297d6e8f8510b373f44d`, eseguibile SHA-256
+`86E8F446B954588DBE13CE0E07CFCCCF19190C1D54535E687F0C9CF4EE36124F`.
+
+| Fixture | Iterazioni | NashConv/pot | Weighted MSE | Wall | Peak RSS | Esito |
+|---|---:|---:|---:|---:|---:|---|
+| AHKHQH | 800 | 0,4994523166% | 0 | 15,550082 s | 34.787.328 B | PASS |
+| TH7D6S | 800 | 2,8595946893% | 0,0000615135 | 752,519128 s | 265.687.040 B | FAIL |
+| TSTC9D | non eseguito | — | — | — | — | SKIPPED dopo REJECT globale TH |
+
+La curva TH K32 si appiattisce a
+`4,623514/3,073163/2,861689/2,828140/2,830521/2,839221/2,849348/2,859595%`
+alle iterazioni `100/200/300/400/500/600/700/800`. Il minimo osservato è
+`2,828140%` a 400, quindi proseguire fino a 800 non recupera il gate `<1%`.
+Il FAIL è di qualità dell'astrazione/strategia rialzata, non di RAM: il
+preflight TST K32 stima `1.302.740.760 B`, entro il soft budget da
+12.000.000.000 B, e la cache TST è stata costruita con otto worker in
+`150,881 s` (`38.950.977 B`).
+
+Il runner applica l'early reject definito dal protocollo: dopo il FAIL TH non
+esegue TST né le cinque ripetizioni/oracle, perché nessuno di quei run potrebbe
+rendere K32 un default globale. Il summary autorevole è
+`out/qualification/global-k32-20260904-b3b1a1d/global-card-abstraction-summary.json`
+(SHA-256 `15A5053250A105E75367D342F28432F62BE4E7D2AADDC2DC6E3161C004108E3E`).
 
 ## Contratto infrastrutturale verificato
 
@@ -79,7 +106,7 @@ esplicito. La comparabilità della memoria con GTO+ resta irrisolta.
 |---|---:|---:|---:|---:|---:|---:|
 | AHKHQH flop | 404 | 12.984 | 2.788.551 B | 3.142.291 B | 1,57246 s | 23.076.864 B |
 | TH7D6S flop | 1.124 | 280.308 | 59.982.478 B | 66.237.265 B | 169,398 s | 314.556.416 B |
-| TSTC9D flop | 780 | 180.760 | non costruita | 42.667.422 B | non eseguita | non misurato |
+| TSTC9D flop | 780 | 180.760 | 38.950.977 B | 42.667.422 B | 150,881 s | 244.506.624 B |
 
 Il builder assegna una partizione per job, usa fino a otto worker e unisce i
 risultati nell'ordine canonico. Due build dello stesso input sono bit-identiche.
@@ -186,8 +213,8 @@ condizionato, budget prima dell'allocazione, fallback byte-identico oppure
 accept coerente col guard e round-trip del checkpoint risultante.
 
 Questa prova chiude il contratto funzionale del resolver, non il gate globale
-di granularità del prodotto HU postflop. La parity GTO+ resta posposta finché
-K16/K32 non ricevono una decisione comune sulla terna. Il solver preflop
+di granularità del prodotto HU postflop. La parity GTO+ resta posposta perché
+K16 e K32 sono entrambi respinti globalmente. Il solver preflop
 completo resta Fase 14: beneficerà degli stessi moduli, ma non viene dichiarato
 implementato.
 
@@ -236,7 +263,8 @@ non sono cambiati. AHK, build e CTest sono stati rieseguiti sul sorgente finale.
   rappresentativo restano attività distinte; il resolver nativo corrente è
   single-frontier e non implementa ancora multi-root/continual resolving;
 - la parity GTO+ non deve reinterpretare Peak RSS come “Memory needed for
-  solving” e non riparte sul percorso bucketed prima della scelta globale.
+  solving” e non riparte sul percorso bucketed senza una nuova decisione
+  globale di prodotto.
 
 ## Riproduzione
 

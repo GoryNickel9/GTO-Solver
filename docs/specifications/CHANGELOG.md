@@ -11,9 +11,9 @@ sostituisce la cronologia Git né i report di fase.
   e TH K=128 sono point qualification per-fixture e non una configurazione di
   prodotto condivisa.
 - Resa vincolante la selezione globale K16/K32 sulla stessa terna
-  AHKHQH/TH7D6S/TSTC9D, con otto thread e CFR+ Float64. K16 è REJECT globale
-  per il FAIL TH a 800 iterazioni; K32 resta PENDING. Parity e F11+ restano
-  congelati fino alla decisione comune.
+  AHKHQH/TH7D6S/TSTC9D, con otto thread e CFR+ Float64. K16 e K32 sono REJECT
+  globali per il FAIL TH a 800 iterazioni (`5,924317%` e `2,859595%`). TST K32
+  è skipped dopo il verdetto globale; parity e F11+ restano congelati.
 - Riclassificati `8 MB`, `399 MB` e `2.000 MB` come valori del campo GTO+
   “Memory needed for solving”, non come Peak RSS del processo.
 - Eliminata dalla documentazione normativa l'esistenza di un cap desktop
@@ -120,6 +120,9 @@ sostituisce la cronologia Git né i report di fase.
 
 ### Verificato
 
+- Runner globale K32 sul commit `b3b1a1d`: AHK PASS a `0,499452%`, TH FAIL a
+  `2,859595%` dopo 800 iterazioni; TST preflight/cache PASS ma solve skipped
+  dall'early reject. Esito `NO_GLOBAL_K_QUALIFIED`.
 - Build MSVC Release dei target modificati completata senza errori.
 - CTest Release completo `35/35 PASS` in `208,99 s`, inclusi ledger,
   CardAbstraction, SubgameSolver, bridge/CLI postflop bucketed, CFR+, test

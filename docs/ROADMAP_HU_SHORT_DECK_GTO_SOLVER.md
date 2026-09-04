@@ -442,12 +442,13 @@ automatico può trasformare una richiesta exact in bucketed.
 
 Stato 2026-09-04: il contratto generico `CardAbstraction`/`SubgameSolver` e il
 bridge HU postflop `DenseLayout` CFR+ Float64 sono implementati, ma il gate di
-granularità del prodotto è `PROVISIONAL`. API e CLI
+granularità del prodotto è `BLOCKED`. API e CLI
 bucketed sono separate dal percorso exact, aggregano i delta combo prima della
 proiezione CFR+ e certificano la policy rialzata con BR combo-level. Il manifest
 exact-feature 1.0 atomico è riusabile tra granularità; equivalenza diretta/cache
-e sweep ridotto K=1/2/3/6/12 sono qualificati. K16 è respinto globalmente dal
-FAIL TH a 800 iterazioni; K32 è pending sulla stessa terna AHK/TH/TST. Restano
+e sweep ridotto K=1/2/3/6/12 sono qualificati. K16 e K32 sono entrambi respinti
+globalmente dal FAIL TH a 800 iterazioni (`5,924317%` e `2,859595%`); TST K32
+è skipped dall'early reject comune. Restano
 aperti cache compressa/mmap, `.gtsd`, GUI, codec compresso e le estensioni
 multi-root/continual resolving.
 
@@ -2094,8 +2095,9 @@ globalmente prima di riprendere la parity. Il bridge postflop, il preflight, la
 cache a otto worker e le point qualification AHK K=16/TH K=128 sono presenti;
 anche il frontier merge postflop nativo è collegato con CFR+ a otto thread e
 guard exact full-game. Poiché i due K differiscono, il prerequisito di prodotto
-non è chiuso. K16 è REJECT globale; K32 resta PENDING sul contratto comune
-AHK/TH/TST. Il futuro solver preflop userà gli stessi contratti, ma resta la
+non è chiuso. K16 e K32 sono entrambi REJECT globali per il FAIL TH a 800
+iterazioni; serve una nuova decisione di prodotto prima di ampliare lo spazio
+dei candidati. Il futuro solver preflop userà gli stessi contratti, ma resta la
 Fase 14. Il gate memoria
 potrà contribuire soltanto dopo una definizione
 comparabile e versionata; nel frattempo non è né PASS né FAIL. Fixture e runner

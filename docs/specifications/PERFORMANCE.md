@@ -83,9 +83,10 @@
 > `435,349473 s`, RSS mediano `694.796.288 B`; l'oracolo seriale misura
 > `0,8770330545%` in `1.493,513047 s`, delta `4,64185e-5` e speedup `3,43x`.
 > AHK K=16 e TH K=128 non costituiscono una configurazione comune: sono point
-> qualification locali. Il gate di prodotto resta `PROVISIONAL`. K16 è
-> respinto globalmente dal FAIL TH a 800 iterazioni; K32 resta da qualificare
-> con un solo contratto AHK/TH/TST prima di riprendere la parity.
+> qualification locali. Il gate di prodotto è `BLOCKED`: K16 e K32 sono
+> entrambi respinti globalmente dal FAIL TH a 800 iterazioni, rispettivamente
+> `5,924317%` e `2,859595%` NashConv/pot. AHK K32 passa a `0,499452%`; TST K32
+> è skipped dall'early reject comune. La parity non riparte.
 
 > **Native frontier resolve — 2026-09-04.** Sul fixture Release fixed-river
 > uniforme, una blueprint K=8 a 100 iterazioni ha
@@ -469,8 +470,9 @@ Lo stato corrente è pertanto: le ottimizzazioni lossless già mantenute sono
 globali al binario e non contengono branch per benchmark. Anche la granularità
 bucketed production deve essere unica: la configurabilità dell'API non
 autorizza un K diverso per fixture. Il prossimo intervento prioritario è il
-gate comune K16/K32 sui tre carichi; non una nuova ottimizzazione mirata a una
-fixture.
+gate comune K16/K32 sui tre carichi. Quel gate è ora concluso con entrambi i
+candidati REJECT per il FAIL TH; ampliare lo spazio dei candidati richiede una
+nuova decisione di prodotto, non un'ottimizzazione mirata a una fixture.
 
 ## Piano prestazionale CPU/RAM-only
 

@@ -9,10 +9,11 @@ Stato del gate: **NON SUPERATO — LAVORO POSPOSTO**
 > come politica del prodotto condiviso. Moduli, cache, bridge HU postflop CFR+
 > Float64 e frontier merge sono implementati e verificati, ma le prove AHK
 > K=16 / TH K=128 sono per-fixture e non selezionano un default globale. Il gate
-> è quindi `PROVISIONAL`: K16 è respinto globalmente dal FAIL TH a 800
-> iterazioni; K32 deve essere valutato con lo stesso contratto su
-> AHKHQH/TH7D6S/TSTC9D. La parity resta posposta. Il solver non astratto resta
-> oracle per correttezza e regressione.
+> è quindi `BLOCKED`: K16 e K32 sono entrambi respinti globalmente dal FAIL TH
+> a 800 iterazioni (`5,924317%` e `2,859595%` NashConv/pot). Il pre-gate K32
+> passa AHK (`0,499452%`) e interrompe correttamente TST dopo il FAIL TH. La
+> parity resta posposta. Il solver non astratto resta oracle per correttezza e
+> regressione.
 
 > **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
 > `8/399/2.000 MB` provengono dal campo UI “Memory needed for solving”. Gli
@@ -985,7 +986,7 @@ Prossimo esperimento singolo:
 
 ## 10. Condizione di promozione della parity
 
-Il freeze resta attivo fino alla selezione globale della granularità bucketed.
+Il freeze resta attivo: nessun K globale tra 16 e 32 ha superato il gate.
 Questo journey resta posposto e potrà essere dichiarato superato
 soltanto quando una voce del registro, sul percorso commerciale esplicitamente
 selezionato, dimostra contemporaneamente:
