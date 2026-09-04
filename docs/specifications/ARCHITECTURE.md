@@ -40,7 +40,7 @@ Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
 | `gtosd_isomorphism` | permutazioni globali lossless dei semi |
 | `gtosd_solver` | giochi finiti di riferimento e varianti CFR |
 | `gtosd_best_response` | profile value, best response e NashConv |
-| `gtosd_abstraction` | feature exact postflop, bucketing deterministico e lift |
+| `gtosd_abstraction` | feature exact postflop, cache/manifest 1.0, bucketing deterministico e lift |
 | `gtosd_subgame` | frontier reach-weighted, resolving CFR+ e guard exact-game |
 | `gtosd_memory` | layout e backend di memoria |
 | `gtosd_postflop` | solver HU range-aware exact e bucketed opt-in, exact BR e analytics |
@@ -106,7 +106,9 @@ esplicita e il report deve rendere visibile la residenza scelta.
 - `postflop` non campiona e non bucketizza nel percorso exact/parity; il
   bucketing richiede API o comando CLI esplicitamente `abstracted/bucketed`.
 - `abstraction` non raggruppa player, public state/history o action schema
-  incompatibili; il suo fingerprint entra nell'identità del gioco.
+  incompatibili; il suo fingerprint entra nell'identità del gioco. La cache
+  exact è separata dalla granularità e viene validata contro la sorgente prima
+  di alimentare il clustering.
 - `subgame` non taglia un information set e non usa la metrica del solo gioco
   astratto per autorizzare un deploy guardato.
 - `postflop`, `solver` e `best_response` non delegano calcolo a GPU o altri

@@ -34,9 +34,7 @@
 #include <immintrin.h>
 #include <iomanip>
 #include <limits>
-#if defined(GTOSD_ENABLE_HOTPATH_PROFILE)
 #include <map>
-#endif
 #include <memory>
 #include <mutex>
 #include <numeric>
@@ -1655,6 +1653,8 @@ dense_layout_memory_breakdown(const DenseLayout &layout) noexcept {
   if (layout.card_abstraction) {
     result.auxiliary_heap_bytes += layout.card_abstraction->fingerprint.capacity() + 1U;
     result.auxiliary_heap_bytes +=
+        layout.card_abstraction->feature_cache_fingerprint.capacity() + 1U;
+    result.auxiliary_heap_bytes +=
         layout.card_abstraction->config.feature_schema_id.capacity() + 1U;
   }
   return result;
@@ -1718,6 +1718,7 @@ dense_layout_memory_payload_breakdown(const DenseLayout &layout) noexcept {
   result.auxiliary_heap_bytes += layout.fingerprint.size() + 1U;
   if (layout.card_abstraction) {
     result.auxiliary_heap_bytes += layout.card_abstraction->fingerprint.size() + 1U;
+    result.auxiliary_heap_bytes += layout.card_abstraction->feature_cache_fingerprint.size() + 1U;
     result.auxiliary_heap_bytes += layout.card_abstraction->config.feature_schema_id.size() + 1U;
   }
   return result;
@@ -3557,10 +3558,71 @@ build_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                          direct_canonical_tree, preserve_physical_tree, physical_tree_stats);
 }
 
+[[nodiscard]] std::string native_feature_partition(const std::uint64_t board_mask,
+                                                   const std::uint8_t player) {
+  return "native-postflop-v1:board=" + std::to_string(board_mask) +
+         ":player=" + std::to_string(player);
+}
+
+[[nodiscard]] std::vector<std::array<std::uint64_t, 2>>
+native_decision_counts(const DenseLayout &layout) {
+  std::vector<std::array<std::uint64_t, 2>> counts(layout.boards.size());
+  for (const auto &node : layout.canonical_public_graph.nodes) {
+    if (node.node_kind() == PublicNodeKind::Decision && node.board_index() < layout.boards.size() &&
+        node.decision.player <= 1U) {
+      ++counts[node.board_index()][node.decision.player];
+    }
+  }
+  return counts;
+}
+
+[[nodiscard]] Result<CardAbstractionFeatureCache, PostflopSolverError>
+build_native_feature_cache(const DenseLayout &layout, const PostflopRanges &ranges,
+                           const std::string &feature_schema_id) {
+  if (feature_schema_id != "equity-features-l2-v1" || !layout.uses_canonical_public_dag ||
+      layout.fingerprint.empty()) {
+    return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto decision_counts = native_decision_counts(layout);
+  std::vector<CardAbstractionObservation> observations;
+  for (std::size_t board_index = 0U; board_index < layout.boards.size(); ++board_index) {
+    const auto &board = layout.boards[board_index];
+    const auto board_cards = cards_from_mask(board.mask);
+    for (std::uint8_t player = 0U; player < 2U; ++player) {
+      if (decision_counts[board_index][player] == 0U) {
+        continue;
+      }
+      const auto partition = native_feature_partition(board.mask, player);
+      auto built = build_exact_postflop_equity_observations(board_cards, ranges, player, partition,
+                                                            partition);
+      if (!built || built.value().size() != board.player_combos[player].size()) {
+        return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
+            built && built.value().size() != board.player_combos[player].size()
+                ? PostflopSolverError::InvalidConfiguration
+                : PostflopSolverError::EquityFailure);
+      }
+      observations.insert(observations.end(), std::make_move_iterator(built.value().begin()),
+                          std::make_move_iterator(built.value().end()));
+    }
+  }
+  const auto cache =
+      build_card_abstraction_feature_cache(observations, feature_schema_id, layout.fingerprint);
+  if (!cache) {
+    return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
+        cache.error() == CardAbstractionError::NumericalFailure
+            ? PostflopSolverError::NumericalFailure
+            : PostflopSolverError::InvalidConfiguration);
+  }
+  return Result<CardAbstractionFeatureCache, PostflopSolverError>::success(
+      std::move(cache.value()));
+}
+
 Result<DenseLayout, PostflopSolverError>
 build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                         const CardAbstractionConfig &abstraction,
-                        const bool preserve_physical_tree = false) {
+                        const bool preserve_physical_tree = false,
+                        const CardAbstractionFeatureCache *const feature_cache = nullptr) {
   if (abstraction.major != CardAbstractionConfig::format_major ||
       abstraction.minor > CardAbstractionConfig::format_minor ||
       abstraction.kind != CardAbstractionKind::EquityFeatureKMeans ||
@@ -3580,13 +3642,36 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
         PostflopSolverError::InvalidConfiguration);
   }
 
-  std::vector<std::array<std::uint64_t, 2>> decision_counts(layout.boards.size());
-  for (const auto &node : layout.canonical_public_graph.nodes) {
-    if (node.node_kind() != PublicNodeKind::Decision ||
-        node.board_index() >= layout.boards.size() || node.decision.player > 1U) {
-      continue;
+  const auto decision_counts = native_decision_counts(layout);
+  std::map<std::string, std::pair<std::size_t, std::size_t>> cached_partitions;
+  const auto feature_preparation_started = std::chrono::steady_clock::now();
+  double cache_validation_seconds = 0.0;
+  if (feature_cache != nullptr) {
+    const auto validated = validate_card_abstraction_feature_cache(*feature_cache);
+    if (!validated || feature_cache->source_fingerprint != layout.fingerprint ||
+        feature_cache->feature_schema_id != abstraction.feature_schema_id) {
+      return Result<DenseLayout, PostflopSolverError>::failure(
+          PostflopSolverError::CheckpointMismatch);
     }
-    ++decision_counts[node.board_index()][node.decision.player];
+    for (std::size_t begin = 0U; begin < feature_cache->observations.size();) {
+      std::size_t end = begin + 1U;
+      while (end < feature_cache->observations.size() &&
+             feature_cache->observations[end].partition ==
+                 feature_cache->observations[begin].partition) {
+        ++end;
+      }
+      if (!cached_partitions
+               .emplace(feature_cache->observations[begin].partition,
+                        std::pair<std::size_t, std::size_t>{begin, end})
+               .second) {
+        return Result<DenseLayout, PostflopSolverError>::failure(
+            PostflopSolverError::CheckpointMismatch);
+      }
+      begin = end;
+    }
+    cache_validation_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                                             feature_preparation_started)
+                                   .count();
   }
 
   std::ostringstream abstraction_identity;
@@ -3599,6 +3684,9 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
   double total_weight = 0.0;
   double maximum_l2_error = 0.0;
   bool uses_lossy_bucketing = false;
+  double feature_preparation_seconds = cache_validation_seconds;
+  double clustering_seconds = 0.0;
+  std::size_t consumed_cached_partitions = 0U;
 
   for (std::size_t board_index = 0U; board_index < layout.boards.size(); ++board_index) {
     auto &board = layout.boards[board_index];
@@ -3608,10 +3696,30 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
       if (decision_count == 0U) {
         continue;
       }
-      const std::string partition = "native-postflop-v1:board=" + std::to_string(board.mask) +
-                                    ":player=" + std::to_string(player);
-      auto observations = build_exact_postflop_equity_observations(board_cards, ranges, player,
-                                                                   partition, partition);
+      const std::string partition = native_feature_partition(board.mask, player);
+      Result<std::vector<CardAbstractionObservation>, CardAbstractionError> observations =
+          Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::failure(
+              CardAbstractionError::InvalidObservation);
+      const auto feature_started = std::chrono::steady_clock::now();
+      if (feature_cache == nullptr) {
+        observations = build_exact_postflop_equity_observations(board_cards, ranges, player,
+                                                                partition, partition);
+      } else {
+        const auto cached = cached_partitions.find(partition);
+        if (cached == cached_partitions.end()) {
+          return Result<DenseLayout, PostflopSolverError>::failure(
+              PostflopSolverError::CheckpointMismatch);
+        }
+        const auto [begin, end] = cached->second;
+        observations =
+            Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::success(
+                std::vector<CardAbstractionObservation>(
+                    feature_cache->observations.begin() + static_cast<std::ptrdiff_t>(begin),
+                    feature_cache->observations.begin() + static_cast<std::ptrdiff_t>(end)));
+        ++consumed_cached_partitions;
+      }
+      feature_preparation_seconds +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - feature_started).count();
       if (!observations) {
         return Result<DenseLayout, PostflopSolverError>::failure(
             observations.error() == CardAbstractionError::NumericalFailure
@@ -3622,7 +3730,28 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
         return Result<DenseLayout, PostflopSolverError>::failure(
             PostflopSolverError::InvalidConfiguration);
       }
+      for (std::size_t local = 0U; local < observations.value().size(); ++local) {
+        const auto &observation = observations.value()[local];
+        const auto expected_weight =
+            static_cast<double>(ranges.players[player][observation.combo].basis_points()) /
+            10'000.0;
+        if (observation.partition != partition ||
+            observation.information_set !=
+                partition + ":combo=" + std::to_string(observation.combo) ||
+            observation.player != player || observation.public_card_mask != board.mask ||
+            observation.combo != board.player_combos[player][local] ||
+            observation.reach_weight != expected_weight ||
+            observation.equity_features.size() != 4U) {
+          return Result<DenseLayout, PostflopSolverError>::failure(
+              feature_cache == nullptr ? PostflopSolverError::InvalidConfiguration
+                                       : PostflopSolverError::CheckpointMismatch);
+        }
+      }
+      const auto clustering_started = std::chrono::steady_clock::now();
       auto built = build_card_abstraction(observations.value(), abstraction);
+      clustering_seconds +=
+          std::chrono::duration<double>(std::chrono::steady_clock::now() - clustering_started)
+              .count();
       if (!built || built.value().assignments.size() != observations.value().size() ||
           built.value().buckets.empty() ||
           built.value().buckets.size() > std::numeric_limits<std::uint16_t>::max()) {
@@ -3663,6 +3792,11 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
           std::ranges::any_of(bucket_sizes, [](const std::uint16_t size) { return size > 1U; });
     }
   }
+  if (feature_cache != nullptr && (consumed_cached_partitions != cached_partitions.size() ||
+                                   consumed_cached_partitions != feature_cache->partition_count)) {
+    return Result<DenseLayout, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
   std::ranges::sort(partition_identities,
                     [](const auto &left, const auto &right) { return left.first < right.first; });
   for (const auto &[key, identity] : partition_identities) {
@@ -3701,6 +3835,11 @@ build_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &
   PostflopCardAbstractionSummary summary;
   summary.config = abstraction;
   summary.fingerprint = fingerprint_text(abstraction_identity.str());
+  summary.feature_cache_fingerprint =
+      feature_cache == nullptr ? std::string{} : feature_cache->fingerprint;
+  summary.feature_preparation_seconds = feature_preparation_seconds;
+  summary.clustering_seconds = clustering_seconds;
+  summary.reused_feature_cache = feature_cache != nullptr;
   summary.metrics.exact_information_sets = 0U;
   for (std::size_t board_index = 0U; board_index < layout.boards.size(); ++board_index) {
     for (std::uint8_t player = 0U; player < 2U; ++player) {
@@ -17140,6 +17279,21 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
       std::shared_ptr<PostflopPreparedTree>(new PostflopPreparedTree(std::move(implementation))));
 }
 
+Result<CardAbstractionFeatureCache, PostflopSolverError>
+build_postflop_card_abstraction_feature_cache(const PostflopTreeConfig &config,
+                                              const PostflopRanges &ranges,
+                                              const std::string &feature_schema_id) {
+  if (!validate_postflop_ranges(config, ranges) || feature_schema_id != "equity-features-l2-v1") {
+    return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  auto layout = build_layout(config, ranges, true, true);
+  if (!layout) {
+    return Result<CardAbstractionFeatureCache, PostflopSolverError>::failure(layout.error());
+  }
+  return build_native_feature_cache(layout.value(), ranges, feature_schema_id);
+}
+
 Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
 prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                                  const CardAbstractionConfig &abstraction,
@@ -17167,6 +17321,44 @@ prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const Postflo
     }
     implementation->analysis_layout = std::move(analysis_layout.value());
     report_dense_layout_memory("analysis_abstracted", *implementation->analysis_layout);
+  }
+  implementation->lossless_isomorphism_enabled = true;
+  implementation->canonical_public_dag_enabled = true;
+  implementation->preparation_seconds =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  return Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>::success(
+      std::shared_ptr<PostflopPreparedTree>(new PostflopPreparedTree(std::move(implementation))));
+}
+
+Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
+prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                                 const CardAbstractionConfig &abstraction,
+                                 const CardAbstractionFeatureCache &feature_cache,
+                                 const bool prepare_analysis) {
+  if (!validate_postflop_ranges(config, ranges)) {
+    return Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  const auto started = std::chrono::steady_clock::now();
+  auto layout = build_abstracted_layout(config, ranges, abstraction, false, &feature_cache);
+  if (!layout) {
+    return Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>::failure(
+        layout.error());
+  }
+  auto implementation = std::make_unique<PostflopPreparedTree::Impl>();
+  implementation->config = config;
+  implementation->ranges = ranges;
+  implementation->layout = std::move(layout.value());
+  report_dense_layout_memory("production_abstracted_cached", implementation->layout);
+  if (prepare_analysis && implementation->layout.tree.nodes.empty()) {
+    auto analysis_layout =
+        build_abstracted_layout(config, ranges, abstraction, true, &feature_cache);
+    if (!analysis_layout) {
+      return Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>::failure(
+          analysis_layout.error());
+    }
+    implementation->analysis_layout = std::move(analysis_layout.value());
+    report_dense_layout_memory("analysis_abstracted_cached", *implementation->analysis_layout);
   }
   implementation->lossless_isomorphism_enabled = true;
   implementation->canonical_public_dag_enabled = true;
@@ -17788,6 +17980,26 @@ solve_postflop_abstracted(const PostflopTreeConfig &config, const PostflopRanges
                           const PostflopCheckpoint *resume_from) {
   const auto solve_started = std::chrono::steady_clock::now();
   auto prepared = prepare_postflop_abstracted_tree(config, ranges, abstraction);
+  if (!prepared) {
+    return Result<PostflopSolveResult, PostflopSolverError>::failure(prepared.error());
+  }
+  auto result = solve_postflop_abstracted(*prepared.value(), options, resume_from);
+  if (result) {
+    const double total_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - solve_started).count();
+    result.value().timings.layout_seconds =
+        std::max(0.0, total_seconds - result.value().timings.run_solver_seconds);
+    result.value().timings.total_seconds = total_seconds;
+  }
+  return result;
+}
+
+Result<PostflopSolveResult, PostflopSolverError> solve_postflop_abstracted(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
+    const PostflopSolveOptions &options, const PostflopCheckpoint *resume_from) {
+  const auto solve_started = std::chrono::steady_clock::now();
+  auto prepared = prepare_postflop_abstracted_tree(config, ranges, abstraction, feature_cache);
   if (!prepared) {
     return Result<PostflopSolveResult, PostflopSolverError>::failure(prepared.error());
   }
@@ -19055,6 +19267,35 @@ Result<PostflopCertification, PostflopSolverError> certify_postflop_abstracted_c
   return certify(layout.value(), buffers.value(), checkpoint.completed_iterations, nullptr);
 }
 
+Result<PostflopCertification, PostflopSolverError> certify_postflop_abstracted_checkpoint(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
+    const PostflopCheckpoint &checkpoint) {
+  auto layout = build_abstracted_layout(config, ranges, abstraction, false, &feature_cache);
+  if (!layout) {
+    return Result<PostflopCertification, PostflopSolverError>::failure(layout.error());
+  }
+  if (checkpoint.game_fingerprint != layout.value().fingerprint ||
+      checkpoint.action_count != layout.value().actions) {
+    return Result<PostflopCertification, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+  if (!checkpoint.external_buffer_file.empty()) {
+    PagedActionFile mapped(checkpoint.external_buffer_file,
+                           static_cast<std::size_t>(checkpoint.action_count), false);
+    if (!mapped.valid()) {
+      return Result<PostflopCertification, PostflopSolverError>::failure(
+          PostflopSolverError::IoFailure);
+    }
+    return certify(layout.value(), mapped.buffers(), checkpoint.completed_iterations, nullptr);
+  }
+  const auto buffers = in_memory_checkpoint_buffers(checkpoint);
+  if (!buffers) {
+    return Result<PostflopCertification, PostflopSolverError>::failure(buffers.error());
+  }
+  return certify(layout.value(), buffers.value(), checkpoint.completed_iterations, nullptr);
+}
+
 Result<PostflopStrategyQuery, PostflopSolverError>
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint,
                         const NodeId public_node, const ComboId combo) {
@@ -19106,6 +19347,41 @@ query_postflop_abstracted_strategy(const PostflopTreeConfig &config, const Postf
   if (!layout || public_node >= layout.value().tree.nodes.size() || combo >= combo_count) {
     return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
         PostflopSolverError::InvalidConfiguration);
+  }
+  const auto &decision = layout.value().decisions[static_cast<std::size_t>(public_node)];
+  if (!decision.present || checkpoint.game_fingerprint != layout.value().fingerprint ||
+      checkpoint.action_count != layout.value().actions) {
+    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+        PostflopSolverError::CheckpointMismatch);
+  }
+  std::unique_ptr<PagedActionFile> mapped;
+  ActionBuffers query_buffers;
+  if (!checkpoint.external_buffer_file.empty()) {
+    mapped = std::make_unique<PagedActionFile>(
+        checkpoint.external_buffer_file, static_cast<std::size_t>(checkpoint.action_count), false);
+    if (!mapped->valid()) {
+      return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+          PostflopSolverError::IoFailure);
+    }
+    query_buffers = mapped->buffers();
+  } else {
+    const auto in_memory = in_memory_checkpoint_buffers(checkpoint);
+    if (!in_memory) {
+      return Result<PostflopStrategyQuery, PostflopSolverError>::failure(in_memory.error());
+    }
+    query_buffers = in_memory.value();
+  }
+  return query_strategy_from_layout(layout.value(), query_buffers, public_node, combo);
+}
+
+Result<PostflopStrategyQuery, PostflopSolverError> query_postflop_abstracted_strategy(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
+    const PostflopCheckpoint &checkpoint, const NodeId public_node, const ComboId combo) {
+  auto layout = build_abstracted_layout(config, ranges, abstraction, true, &feature_cache);
+  if (!layout || public_node >= layout.value().tree.nodes.size() || combo >= combo_count) {
+    return Result<PostflopStrategyQuery, PostflopSolverError>::failure(
+        layout ? PostflopSolverError::InvalidConfiguration : layout.error());
   }
   const auto &decision = layout.value().decisions[static_cast<std::size_t>(public_node)];
   if (!decision.present || checkpoint.game_fingerprint != layout.value().fingerprint ||
@@ -19212,6 +19488,33 @@ estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const Post
         PostflopSolverError::InvalidConfiguration);
   }
   auto layout = build_abstracted_layout(config, ranges, abstraction);
+  if (!layout) {
+    return Result<PostflopLayoutEstimate, PostflopSolverError>::failure(layout.error());
+  }
+  PostflopLayoutEstimate estimate;
+  estimate.physical_public_tree = layout.value().tree.stats;
+  estimate.canonical_public_nodes = layout.value().canonical_public_graph.nodes.size();
+  estimate.information_sets = layout.value().information_sets;
+  estimate.actions = layout.value().actions;
+  if (estimate.actions > std::numeric_limits<std::uint64_t>::max() / sizeof(double)) {
+    return Result<PostflopLayoutEstimate, PostflopSolverError>::failure(
+        PostflopSolverError::MemoryFailure);
+  }
+  estimate.regret_bytes = estimate.actions * sizeof(double);
+  estimate.strategy_bytes = estimate.actions * sizeof(double);
+  estimate.card_abstraction = layout.value().card_abstraction;
+  return Result<PostflopLayoutEstimate, PostflopSolverError>::success(std::move(estimate));
+}
+
+Result<PostflopLayoutEstimate, PostflopSolverError>
+estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                                    const CardAbstractionConfig &abstraction,
+                                    const CardAbstractionFeatureCache &feature_cache) {
+  if (!validate_postflop_ranges(config, ranges)) {
+    return Result<PostflopLayoutEstimate, PostflopSolverError>::failure(
+        PostflopSolverError::InvalidConfiguration);
+  }
+  auto layout = build_abstracted_layout(config, ranges, abstraction, false, &feature_cache);
   if (!layout) {
     return Result<PostflopLayoutEstimate, PostflopSolverError>::failure(layout.error());
   }

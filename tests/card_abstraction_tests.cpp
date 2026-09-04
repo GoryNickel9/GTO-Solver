@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -184,6 +186,60 @@ void test_deterministic_weighted_bucketing() {
           "one partition cannot mix acting players");
 }
 
+void test_feature_cache_manifest_round_trip_and_integrity() {
+  const auto observations = simple_observations();
+  const auto cache = gtosd::build_card_abstraction_feature_cache(
+      observations, "test-equity-vector-l2-v1", "exact-game-and-ranges-v1");
+  require(cache.has_value() && cache.value().partition_count == 1U &&
+              cache.value().observations.size() == observations.size() &&
+              !cache.value().fingerprint.empty(),
+          "feature cache builds a versioned canonical manifest");
+
+  auto reordered = observations;
+  std::ranges::reverse(reordered);
+  const auto repeated = gtosd::build_card_abstraction_feature_cache(
+      reordered, "test-equity-vector-l2-v1", "exact-game-and-ranges-v1");
+  require(repeated.has_value() && repeated.value() == cache.value(),
+          "feature cache identity and order are independent of producer order");
+
+  const auto serialized = gtosd::serialize_card_abstraction_feature_cache(cache.value());
+  require(serialized.has_value(), "feature cache serializes");
+  const auto restored = gtosd::deserialize_card_abstraction_feature_cache(serialized.value());
+  require(restored.has_value() && restored.value() == cache.value(),
+          "feature cache text manifest round-trips bit exactly");
+
+  auto future = cache.value();
+  future.major = gtosd::CardAbstractionFeatureCache::format_major + 1U;
+  const auto rejected_future = gtosd::serialize_card_abstraction_feature_cache(future);
+  require(!rejected_future &&
+              rejected_future.error() == gtosd::CardAbstractionError::UnsupportedVersion,
+          "feature cache rejects unsupported future major versions");
+
+  auto noncanonical = cache.value();
+  std::ranges::reverse(noncanonical.observations);
+  const auto rejected_noncanonical = gtosd::validate_card_abstraction_feature_cache(noncanonical);
+  require(!rejected_noncanonical &&
+              rejected_noncanonical.error() == gtosd::CardAbstractionError::InvalidSerializedData,
+          "feature cache rejects noncanonical in-memory observation order");
+
+  auto corrupted_text = serialized.value();
+  const auto feature = corrupted_text.rfind(' ');
+  require(feature != std::string::npos, "serialized feature cache contains feature bits");
+  corrupted_text[feature + 1U] = corrupted_text[feature + 1U] == '0' ? '1' : '0';
+  const auto corrupted = gtosd::deserialize_card_abstraction_feature_cache(corrupted_text);
+  require(!corrupted && corrupted.error() == gtosd::CardAbstractionError::InvalidSerializedData,
+          "feature cache fingerprint detects a changed feature bit");
+
+  const auto path = std::filesystem::current_path() / "gtosd_card_feature_cache_test.cache";
+  const auto saved = gtosd::save_card_abstraction_feature_cache(cache.value(), path.string());
+  const auto loaded = gtosd::load_card_abstraction_feature_cache(path.string());
+  require(saved.has_value() && loaded.has_value() && loaded.value() == cache.value(),
+          "feature cache file save is atomic and load validates the manifest");
+  std::error_code remove_error;
+  std::filesystem::remove(path, remove_error);
+  require(!remove_error, "feature cache test artifact is removed");
+}
+
 std::vector<gtosd::CardAbstractionObservation> kuhn_observations() {
   std::vector<gtosd::CardAbstractionObservation> observations;
   const std::vector<std::string> ranks{"J", "Q", "K"};
@@ -268,6 +324,7 @@ int main() {
     test_exact_identity_and_card_removal();
     test_exact_postflop_feature_generation();
     test_deterministic_weighted_bucketing();
+    test_feature_cache_manifest_round_trip_and_integrity();
     test_cfr_plus_consumes_abstract_information_sets();
     std::cout << "CARD_ABSTRACTION_TESTS=PASS\n"
               << "assertions=" << assertions << '\n'

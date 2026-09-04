@@ -48,6 +48,14 @@ sostituisce la cronologia Git né i report di fase.
 - Limitato esplicitamente il primo bridge nativo qualificato a CFR+ Float64,
   traversal seriale e canonical DAG lossless. DCFR, codec compressi,
   parallelismo e diagnostici incompatibili vengono rifiutati.
+- Aggiunto il manifest `GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0`: ordine
+  canonico, bit IEEE esatti, fingerprint sorgente/cache, load validato e
+  scrittura atomica. È indipendente dal bucket count e riusabile tra sweep.
+- Aggiunti API e CLI `postflop build-feature-cache`; solve/resume/query/certify
+  bucketed accettano la cache opzionale e pubblicano fingerprint, flag di riuso
+  e tempi separati di feature preparation e clustering.
+- Qualificata l'equivalenza bit-identica tra percorso diretto e cache, il
+  rifiuto di sorgenti stale e lo sweep K=1/2/3/6/12 con errore non crescente.
 
 - Migrati template e fixture correnti a
   `gtosd.gto_plus_convergence_benchmark.v4`, con oggetto
@@ -80,24 +88,27 @@ sostituisce la cronologia Git né i report di fase.
 ### Verificato
 
 - Build MSVC Release dei target modificati completata senza errori.
-- CTest Release completo `33/33 PASS` in `222,29 s`, inclusi ledger,
+- CTest Release completo `33/33 PASS` in `217,44 s`, inclusi ledger,
   CardAbstraction, SubgameSolver, bridge/CLI postflop bucketed, CFR+, test
   esaustivi, oracle e riferimento GTO+.
 - Benchmark Release dedicato a 1.000 iterazioni: CFR+ Kuhn exact `12,9 ms`,
   CFR+ Kuhn 2-bucket `10,8 ms`, subgame exact-guarded `1,63 ms`; valori
   registrati come baseline funzionale, non come speedup qualificato.
-- Benchmark nativo end-to-end a 1.000 iterazioni: fixed-river exact
-  `13,323 ms` e `1.536 B` stato; 3-bucket `14,781 ms` e `384 B`, compression
-  `4x`. Il costo preparatorio domina il microcaso, quindi non è dichiarato uno
-  speedup wall-clock.
+- Benchmark nativo Release, cinque ripetizioni: cache turn `52,873 ms` mediana
+  per 66 partizioni/744 osservazioni; fixed-river a 1.000 iterazioni da K=1 a
+  K=12 usa `128/256/384/768/1.536 B`, compression `12/6/4/2/1x`, weighted MSE
+  `0,294077/0,069559/0,026860/0,002066/0` e wall mediano
+  `7,619/8,667/8,768/8,906/9,720 ms`. Exact misura `9,514 ms` e `1.536 B`.
+  La fixture ridotta qualifica il trade-off, non uno speedup commerciale.
 - Tutti i nuovi file C++ passano `clang-format --dry-run --Werror`. Il target
   globale continua a segnalare debito di formato in sorgenti preesistenti e non
   e' stato usato per produrre una riscrittura meccanica fuori scope.
 - Rimosso dal manifest di install il riferimento stantio ai quattro JSON Schema
   eliminati in precedenza dal repository; install tree e consumer esterno 0.11
   PASS verificano anche gli export CMake `gtosd::abstraction` e
-  `gtosd::subgame`. Il consumer ora collega anche `gtosd::postflop` e verifica
-  la nuova dipendenza pubblica dall'astrazione.
+  `gtosd::subgame`. Il consumer collega anche `gtosd::postflop`, verifica la
+  dipendenza pubblica dall'astrazione e invoca build/validation della feature
+  cache dall'install tree.
 - Test manuali dei runner black-box e user-configured process-memory budget
   PASS; parsing di 14 fixture JSON e 22 script PowerShell PASS.
 - Smoke AHKHQH v4 a cinque processi completato a 80 iterazioni e dEV

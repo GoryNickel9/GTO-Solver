@@ -29,13 +29,20 @@ in cui ogni livello controlla errori differenti:
 - Il bucketing viene validato contro card removal, determinismo, serializzazione,
   riduzione reale degli infoset e NashConv della strategia rialzata sul gioco
   non astratto.
+- La feature cache 1.0 viene validata con ordine d'input differente,
+  round-trip bit-exact, corruzione rilevata e replace atomico. Nel bridge nativo
+  il percorso diretto e quello cache devono avere fingerprint di gioco e
+  checkpoint bit-identici; una cache da config/range differenti viene rifiutata.
+- Lo sweep turn `K={1,2,3,6,12}` riusa la stessa cache, richiede stato solver
+  non decrescente e weighted MSE non crescente fino all'identità senza errore.
 - Il bridge HU postflop aggiunge range frazionari/asimmetrici, aggregazione
   reach-weighted, API exact/abstracted non intercambiabili, checkpoint
   Float64 round-trip, resume bit-identico, query combo→bucket e rifiuto di
   precisione/algoritmo/parallelismo non qualificati.
-- Il test CLI risolve e riprende un fixed river bucketed, verifica il report di
-  astrazione e richiede query e certificazione combo-level exact; checkpoint
-  exact o granularità differente devono fallire per fingerprint mismatch.
+- Il test CLI costruisce atomicamente il manifest, risolve e riprende un fixed
+  river bucketed riusando la cache, verifica fingerprint e tempi nel report e
+  richiede query e certificazione combo-level exact; checkpoint exact o
+  granularità differente devono fallire per fingerprint mismatch.
 - Un frontier subgame che taglia un information set viene rifiutato. Il guard
   safe accetta il candidato soltanto dopo due best response full-game esatte;
   il test di regressione verifica anche il fallback a blueprint invariato.
@@ -139,7 +146,7 @@ report lo marca come limite anziché inventarlo.
 
 La decisione di prodotto 2026-09-04 sospende il vincolo che subordinava F11+
 alla parity exact GTO+. Card abstraction, safe subgame solving e il primo bridge
-HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Prima di
-riprendere la parity servono granularità rappresentative, cache delle feature
-flop/turn e una decisione esplicita su quale percorso commerciale confrontare.
-F10.4 non è una prova di tale integrazione.
+HU postflop CFR+ sono ora implementati; il path exact resta l'oracolo. Cache e
+sweep ridotto sono ora qualificati, ma prima di riprendere la parity servono
+fixture flop/turn/preflop rappresentative e una decisione esplicita su quale
+percorso commerciale confrontare. F10.4 non è una prova di tale integrazione.

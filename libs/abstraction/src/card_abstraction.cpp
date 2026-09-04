@@ -1,3 +1,10 @@
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
 #include "gtosd/abstraction/card_abstraction.hpp"
 
 #include "gtosd/equity/evaluator.hpp"
@@ -7,6 +14,8 @@
 #include <bit>
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <limits>
@@ -14,6 +23,7 @@
 #include <set>
 #include <sstream>
 #include <string_view>
+#include <tuple>
 #include <utility>
 
 namespace gtosd {
@@ -21,6 +31,8 @@ namespace {
 
 constexpr std::uint64_t short_deck_mask = (std::uint64_t{1} << 36U) - 1U;
 constexpr double distance_tolerance = 1.0e-15;
+constexpr std::uint64_t maximum_feature_cache_observations = 2'000'000U;
+constexpr std::size_t maximum_feature_dimensions = 64U;
 
 struct PartitionDefinition {
   std::uint8_t player{0};
@@ -210,6 +222,144 @@ std::string abstraction_fingerprint(const CardAbstractionConfig &config,
   return hex_hash(hash);
 }
 
+bool canonical_observation_less(const CardAbstractionObservation &left,
+                                const CardAbstractionObservation &right) {
+  return std::tie(left.partition, left.player, left.public_card_mask, left.combo,
+                  left.information_set) < std::tie(right.partition, right.player,
+                                                   right.public_card_mask, right.combo,
+                                                   right.information_set);
+}
+
+void hash_observation(std::uint64_t &hash, const CardAbstractionObservation &observation) {
+  hash_string(hash, observation.information_set);
+  hash_string(hash, observation.partition);
+  hash_integer(hash, observation.player);
+  hash_integer(hash, observation.combo);
+  hash_integer(hash, observation.public_card_mask);
+  hash_integer(hash, std::bit_cast<std::uint64_t>(observation.reach_weight));
+  hash_integer(hash, static_cast<std::uint64_t>(observation.equity_features.size()));
+  for (const double feature : observation.equity_features) {
+    hash_integer(hash, std::bit_cast<std::uint64_t>(feature));
+  }
+}
+
+std::string feature_cache_fingerprint(const CardAbstractionFeatureCache &cache) {
+  std::uint64_t hash = 14'695'981'039'346'656'037ULL;
+  hash_integer(hash, cache.major);
+  hash_integer(hash, cache.minor);
+  hash_string(hash, cache.feature_schema_id);
+  hash_string(hash, cache.source_fingerprint);
+  hash_integer(hash, cache.partition_count);
+  hash_integer(hash, static_cast<std::uint64_t>(cache.observations.size()));
+  for (const auto &observation : cache.observations) {
+    hash_observation(hash, observation);
+  }
+  return hex_hash(hash);
+}
+
+bool write_feature_cache_stream(std::ostream &stream, const CardAbstractionFeatureCache &cache) {
+  stream << "GTOSD_CARD_ABSTRACTION_FEATURE_CACHE " << cache.major << ' ' << cache.minor << '\n';
+  stream << "SCHEMA " << std::quoted(cache.feature_schema_id) << '\n';
+  stream << "SOURCE " << std::quoted(cache.source_fingerprint) << '\n';
+  stream << "FINGERPRINT " << std::quoted(cache.fingerprint) << '\n';
+  stream << "PARTITIONS " << cache.partition_count << '\n';
+  stream << "OBSERVATIONS " << cache.observations.size() << '\n';
+  for (const auto &observation : cache.observations) {
+    stream << "O " << std::quoted(observation.information_set) << ' '
+           << std::quoted(observation.partition) << ' ' << static_cast<unsigned>(observation.player)
+           << ' ' << observation.combo << ' ' << observation.public_card_mask << ' '
+           << std::bit_cast<std::uint64_t>(observation.reach_weight) << ' '
+           << observation.equity_features.size();
+    for (const double value : observation.equity_features) {
+      stream << ' ' << std::bit_cast<std::uint64_t>(value);
+    }
+    stream << '\n';
+  }
+  return static_cast<bool>(stream);
+}
+
+Result<CardAbstractionFeatureCache, CardAbstractionError>
+read_feature_cache_stream(std::istream &stream) {
+  std::string token;
+  CardAbstractionFeatureCache cache;
+  if (!(stream >> token >> cache.major >> cache.minor) ||
+      token != "GTOSD_CARD_ABSTRACTION_FEATURE_CACHE") {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidSerializedData);
+  }
+  if (cache.major != CardAbstractionFeatureCache::format_major ||
+      cache.minor > CardAbstractionFeatureCache::format_minor) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::UnsupportedVersion);
+  }
+  std::string expected_fingerprint;
+  std::uint64_t observation_count = 0U;
+  if (!(stream >> token >> std::quoted(cache.feature_schema_id)) || token != "SCHEMA" ||
+      !(stream >> token >> std::quoted(cache.source_fingerprint)) || token != "SOURCE" ||
+      !(stream >> token >> std::quoted(expected_fingerprint)) || token != "FINGERPRINT" ||
+      !(stream >> token >> cache.partition_count) || token != "PARTITIONS" ||
+      !(stream >> token >> observation_count) || token != "OBSERVATIONS" ||
+      cache.feature_schema_id.empty() || cache.source_fingerprint.empty() ||
+      cache.partition_count == 0U || observation_count == 0U ||
+      observation_count > maximum_feature_cache_observations ||
+      observation_count > std::numeric_limits<std::size_t>::max()) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidSerializedData);
+  }
+  cache.observations.reserve(static_cast<std::size_t>(observation_count));
+  for (std::uint64_t index = 0U; index < observation_count; ++index) {
+    CardAbstractionObservation observation;
+    unsigned player = 0U;
+    std::uint64_t weight_bits = 0U;
+    std::uint64_t dimensions = 0U;
+    if (!(stream >> token >> std::quoted(observation.information_set) >>
+          std::quoted(observation.partition) >> player >> observation.combo >>
+          observation.public_card_mask >> weight_bits >> dimensions) ||
+        token != "O" || player > 1U || dimensions == 0U ||
+        dimensions > maximum_feature_dimensions ||
+        dimensions > std::numeric_limits<std::size_t>::max()) {
+      return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+          CardAbstractionError::InvalidSerializedData);
+    }
+    observation.player = static_cast<std::uint8_t>(player);
+    observation.reach_weight = std::bit_cast<double>(weight_bits);
+    observation.equity_features.resize(static_cast<std::size_t>(dimensions));
+    for (double &value : observation.equity_features) {
+      std::uint64_t bits = 0U;
+      if (!(stream >> bits)) {
+        return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+            CardAbstractionError::InvalidSerializedData);
+      }
+      value = std::bit_cast<double>(bits);
+    }
+    cache.observations.push_back(std::move(observation));
+  }
+  stream >> std::ws;
+  if (!stream.eof()) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidSerializedData);
+  }
+  cache.fingerprint = std::move(expected_fingerprint);
+  const auto validated = validate_card_abstraction_feature_cache(cache);
+  if (!validated) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidSerializedData);
+  }
+  return Result<CardAbstractionFeatureCache, CardAbstractionError>::success(std::move(cache));
+}
+
+bool atomic_replace(const std::filesystem::path &temporary,
+                    const std::filesystem::path &destination) {
+#ifdef _WIN32
+  return MoveFileExW(temporary.c_str(), destination.c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+  std::error_code error;
+  std::filesystem::rename(temporary, destination, error);
+  return !error;
+#endif
+}
+
 std::map<std::string, std::string> assignment_map(const CardAbstraction &abstraction) {
   std::map<std::string, std::string> result;
   for (const auto &assignment : abstraction.assignments) {
@@ -363,6 +513,136 @@ build_exact_postflop_equity_observations(const std::vector<CardId> &board,
   }
   return Result<std::vector<CardAbstractionObservation>, CardAbstractionError>::success(
       std::move(observations));
+}
+
+Result<CardAbstractionFeatureCache, CardAbstractionError>
+build_card_abstraction_feature_cache(const std::vector<CardAbstractionObservation> &observations,
+                                     const std::string &feature_schema_id,
+                                     const std::string &source_fingerprint) {
+  if (feature_schema_id.empty() || source_fingerprint.empty() || observations.empty() ||
+      observations.size() > maximum_feature_cache_observations) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidConfiguration);
+  }
+  CardAbstractionConfig validation_config;
+  validation_config.kind = CardAbstractionKind::ExactIdentity;
+  validation_config.maximum_iterations = 1U;
+  validation_config.feature_schema_id = feature_schema_id;
+  const auto partitions = validate_observations(observations, validation_config);
+  if (!partitions) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(partitions.error());
+  }
+  if (std::ranges::any_of(observations, [](const CardAbstractionObservation &observation) {
+        return observation.equity_features.size() > maximum_feature_dimensions;
+      })) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidObservation);
+  }
+
+  CardAbstractionFeatureCache cache;
+  cache.feature_schema_id = feature_schema_id;
+  cache.source_fingerprint = source_fingerprint;
+  cache.partition_count = partitions.value().size();
+  cache.observations = observations;
+  std::ranges::sort(cache.observations, canonical_observation_less);
+  cache.fingerprint = feature_cache_fingerprint(cache);
+  return Result<CardAbstractionFeatureCache, CardAbstractionError>::success(std::move(cache));
+}
+
+Result<bool, CardAbstractionError>
+validate_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache) {
+  if (cache.major != CardAbstractionFeatureCache::format_major ||
+      cache.minor > CardAbstractionFeatureCache::format_minor) {
+    return Result<bool, CardAbstractionError>::failure(CardAbstractionError::UnsupportedVersion);
+  }
+  if (cache.feature_schema_id.empty() || cache.source_fingerprint.empty() ||
+      cache.observations.empty() ||
+      cache.observations.size() > maximum_feature_cache_observations ||
+      !std::ranges::is_sorted(cache.observations, canonical_observation_less) ||
+      std::ranges::any_of(cache.observations, [](const CardAbstractionObservation &observation) {
+        return observation.equity_features.size() > maximum_feature_dimensions;
+      })) {
+    return Result<bool, CardAbstractionError>::failure(CardAbstractionError::InvalidSerializedData);
+  }
+  CardAbstractionConfig validation_config;
+  validation_config.kind = CardAbstractionKind::ExactIdentity;
+  validation_config.maximum_iterations = 1U;
+  validation_config.feature_schema_id = cache.feature_schema_id;
+  const auto partitions = validate_observations(cache.observations, validation_config);
+  if (!partitions || cache.partition_count != partitions.value().size() ||
+      cache.fingerprint != feature_cache_fingerprint(cache)) {
+    return Result<bool, CardAbstractionError>::failure(CardAbstractionError::InvalidSerializedData);
+  }
+  return Result<bool, CardAbstractionError>::success(true);
+}
+
+Result<std::string, CardAbstractionError>
+serialize_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache) {
+  const auto validated = validate_card_abstraction_feature_cache(cache);
+  if (!validated) {
+    return Result<std::string, CardAbstractionError>::failure(validated.error());
+  }
+  std::ostringstream stream;
+  if (!write_feature_cache_stream(stream, cache)) {
+    return Result<std::string, CardAbstractionError>::failure(CardAbstractionError::IoFailure);
+  }
+  return Result<std::string, CardAbstractionError>::success(stream.str());
+}
+
+Result<CardAbstractionFeatureCache, CardAbstractionError>
+deserialize_card_abstraction_feature_cache(const std::string &serialized) {
+  std::istringstream stream(serialized);
+  return read_feature_cache_stream(stream);
+}
+
+Result<bool, CardAbstractionError>
+save_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache,
+                                    const std::string &path) {
+  if (path.empty()) {
+    return Result<bool, CardAbstractionError>::failure(CardAbstractionError::InvalidConfiguration);
+  }
+  const auto validated = validate_card_abstraction_feature_cache(cache);
+  if (!validated) {
+    return Result<bool, CardAbstractionError>::failure(validated.error());
+  }
+  const std::filesystem::path destination(path);
+  const auto temporary = std::filesystem::path(path + ".tmp");
+  {
+    std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+    if (!output || !write_feature_cache_stream(output, cache)) {
+      output.close();
+      std::error_code ignored;
+      std::filesystem::remove(temporary, ignored);
+      return Result<bool, CardAbstractionError>::failure(CardAbstractionError::IoFailure);
+    }
+    output.flush();
+    if (!output) {
+      output.close();
+      std::error_code ignored;
+      std::filesystem::remove(temporary, ignored);
+      return Result<bool, CardAbstractionError>::failure(CardAbstractionError::IoFailure);
+    }
+  }
+  if (!atomic_replace(temporary, destination)) {
+    std::error_code ignored;
+    std::filesystem::remove(temporary, ignored);
+    return Result<bool, CardAbstractionError>::failure(CardAbstractionError::IoFailure);
+  }
+  return Result<bool, CardAbstractionError>::success(true);
+}
+
+Result<CardAbstractionFeatureCache, CardAbstractionError>
+load_card_abstraction_feature_cache(const std::string &path) {
+  if (path.empty()) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::InvalidConfiguration);
+  }
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    return Result<CardAbstractionFeatureCache, CardAbstractionError>::failure(
+        CardAbstractionError::IoFailure);
+  }
+  return read_feature_cache_stream(input);
 }
 
 Result<CardAbstraction, CardAbstractionError>
@@ -702,6 +982,8 @@ const char *card_abstraction_error_name(const CardAbstractionError error) noexce
     return "invalid_serialized_data";
   case CardAbstractionError::UnsupportedVersion:
     return "unsupported_version";
+  case CardAbstractionError::IoFailure:
+    return "io_failure";
   }
   return "unknown_card_abstraction_error";
 }

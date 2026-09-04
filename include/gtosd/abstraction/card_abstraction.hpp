@@ -21,7 +21,8 @@ enum class CardAbstractionError : std::uint8_t {
   InvalidStrategy,
   NumericalFailure,
   InvalidSerializedData,
-  UnsupportedVersion
+  UnsupportedVersion,
+  IoFailure
 };
 
 struct CardAbstractionConfig {
@@ -103,6 +104,27 @@ struct CardAbstraction {
   friend bool operator==(const CardAbstraction &, const CardAbstraction &) = default;
 };
 
+// Reusable exact-feature artifact. It deliberately excludes clustering
+// parameters so one expensive flop/turn enumeration can feed multiple
+// bucket-granularity candidates. `source_fingerprint` binds the observations
+// to the exact game/ranges that produced them; `fingerprint` authenticates the
+// canonicalized manifest content.
+struct CardAbstractionFeatureCache {
+  static constexpr std::uint32_t format_major = 1;
+  static constexpr std::uint32_t format_minor = 0;
+
+  std::uint32_t major{format_major};
+  std::uint32_t minor{format_minor};
+  std::string feature_schema_id{"equity-features-l2-v1"};
+  std::string source_fingerprint;
+  std::string fingerprint;
+  std::uint64_t partition_count{0};
+  std::vector<CardAbstractionObservation> observations;
+
+  friend bool operator==(const CardAbstractionFeatureCache &,
+                         const CardAbstractionFeatureCache &) = default;
+};
+
 // Exact postflop W/T/L + equity feature generation against the configured
 // weighted opponent range. Flop and turn runouts are fully enumerated; river
 // uses the single complete board. This is preparation work, not chance
@@ -112,6 +134,27 @@ build_exact_postflop_equity_observations(const std::vector<CardId> &board,
                                          const PostflopRanges &ranges, std::uint8_t player,
                                          const std::string &partition,
                                          const std::string &information_set_prefix);
+
+[[nodiscard]] Result<CardAbstractionFeatureCache, CardAbstractionError>
+build_card_abstraction_feature_cache(const std::vector<CardAbstractionObservation> &observations,
+                                     const std::string &feature_schema_id,
+                                     const std::string &source_fingerprint);
+
+[[nodiscard]] Result<bool, CardAbstractionError>
+validate_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache);
+
+[[nodiscard]] Result<std::string, CardAbstractionError>
+serialize_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache);
+
+[[nodiscard]] Result<CardAbstractionFeatureCache, CardAbstractionError>
+deserialize_card_abstraction_feature_cache(const std::string &serialized);
+
+[[nodiscard]] Result<bool, CardAbstractionError>
+save_card_abstraction_feature_cache(const CardAbstractionFeatureCache &cache,
+                                    const std::string &path);
+
+[[nodiscard]] Result<CardAbstractionFeatureCache, CardAbstractionError>
+load_card_abstraction_feature_cache(const std::string &path);
 
 [[nodiscard]] Result<CardAbstraction, CardAbstractionError>
 build_card_abstraction(const std::vector<CardAbstractionObservation> &observations,

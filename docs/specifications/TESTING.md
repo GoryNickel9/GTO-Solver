@@ -13,7 +13,8 @@ La suite copre:
 - tree builder, chance, hash e serialization;
 - isomorfismo globale lossless;
 - solver laboratory, best response e checkpoint;
-- card abstraction, feature exact postflop, lift e CFR+ bucketed;
+- card abstraction, feature exact postflop, cache 1.0 atomica/corruption-safe,
+  equivalenza diretta-cache, sweep multi-granularità, lift e CFR+ bucketed;
 - subgame frontier, reach, infoset closure, guard/fallback e composizione
   bucketed con certificazione sul gioco esatto;
 - memoria e postflop exact;
@@ -45,11 +46,12 @@ codice: i gate Windows devono essere eseguiti nel developer environment.
 La suite Release corrente registra 33 test CTest: infrastruttura, core, fasi
 1-10, contratto `production_dcfr`, riferimento GTO+, ledger solver-owned,
 layout canonico, oracoli (incluso il recheck Pure/Sync-PCFR), CardAbstraction,
-SubgameSolver, bridge postflop nativo, workflow CLI bucketed e benchmark smoke.
+feature cache, SubgameSolver, bridge postflop nativo, workflow CLI bucketed con
+cache e benchmark smoke.
 Test GUI, sanitizer, nightly o altri preset sono prove separate e il report
 deve dire con precisione cosa è stato escluso.
 
-Ultima verifica completa (2026-09-04): Release `33/33 PASS` in `222,29 s`.
+Ultima verifica completa (2026-09-04): Release `33/33 PASS` in `217,44 s`.
 Sono inoltre passati il resume production byte-equivalent attraverso il reset
 finale, il contratto delle tre fixture e cinque processi final-head con `15/15`
 solve target-driven corretti. Questa evidenza non viene presentata come nuova

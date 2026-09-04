@@ -21,7 +21,7 @@
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
 > diagnostico senza cap normativo; full CTest Release corrente
-> `33/33 PASS` (`222,29 s`, 2026-09-04). Il precedente
+> `33/33 PASS` (`217,44 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -50,22 +50,23 @@
 > ciascuno ma non sono simultanei. Questi numeri verificano l'accounting, non
 > costituiscono ancora confronto con gli `8 MB` mostrati da GTO+.
 
-> **Abstraction/subgame baseline — 2026-09-04.** Il benchmark Release
-> `gtosd_abstraction_subgame_benchmark` misura separatamente CFR+ Kuhn esatto,
-> CFR+ Kuhn 2-bucket e resolving con guard full-game. Sul computer di sviluppo
-> 8 logical CPU a 3,6 GHz, smoke da 1.000 iterazioni: wall time
-> `12,9/10,8/1,63 ms` e CPU time `12,8/10,5/1,64 ms`.
-> Il bridge HU postflop aggiunge due casi fixed-river da 1.000 iterazioni,
-> comprensivi di layout, feature/clustering, solve e certificazione exact:
-> exact `13,323 ms` wall / `11,285 ms` CPU / `1.536 B` di stato Float64;
-> 3-bucket `14,781 ms` wall / `12,153 ms` CPU / `384 B`, compression `4x`
-> (media di tre ripetizioni). È una prova della riduzione di stato, non uno
-> speedup: nel microcaso il costo preparatorio rende il bucketed circa `1,11x`
-> più lento end-to-end. Sul fixture CLI fixed-river uniforme, 8 bucket riducono
+> **Abstraction/subgame e feature-cache qualification — 2026-09-04.** Il
+> benchmark Release `gtosd_abstraction_subgame_benchmark` misura separatamente
+> CFR+ esatto, cache, clustering/traversal bucketed e resolving con guard
+> full-game. Sul computer di sviluppo (8 logical CPU a 3,6 GHz), cinque
+> ripetizioni, la mediana della cache turn è `52,873 ms` wall / `48,438 ms` CPU
+> per 66 partizioni e 744 osservazioni. Sul fixture fixed-river da 48 infoset e
+> 1.000 iterazioni, exact usa `1.536 B` e `9,514 ms`; il percorso con cache
+> riusata produce: K=1 `128 B`, `12x`, MSE `0,294077`, `7,619 ms`; K=2 `256 B`,
+> `6x`, MSE `0,069559`, `8,667 ms`; K=3 `384 B`, `4x`, MSE `0,026860`,
+> `8,768 ms`; K=6 `768 B`, `2x`, MSE `0,002066`, `8,906 ms`; K=12 `1.536 B`,
+> `1x`, MSE `0`, `9,720 ms`. Il costo di validazione cache per solve è circa
+> `0,024–0,025 ms` mediano e il clustering `0,041–0,057 ms`. I numeri provano
+> riuso e trade-off memoria/errore su una fixture ridotta, non uno speedup o un
+> default commerciale. Sul fixture CLI fixed-river uniforme, 8 bucket riducono
 > 1.860 a 32 infoset (`58,125x`) e raggiungono exact-certified
-> `NashConv/pot=0,751763%` a 200 iterazioni. Feature generation, traversal e BR
-> devono essere separati su flop/turn rappresentativi prima di qualsiasi claim
-> prestazionale commerciale.
+> `NashConv/pot=0,751763%` a 200 iterazioni. Flop/turn e preflop rappresentativi
+> restano gate distinti.
 
 > **Research paths imported — 2026-09-02.** S6, Pure/Sync-PCFR and
 > range-aware physical-orbit remain rejected for production. Their runners,

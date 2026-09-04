@@ -123,17 +123,23 @@ Exact commands keep their original semantics. A local bucketed run uses:
 
 ```powershell
 .\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  postflop solve-bucketed .\config.json 200 .\solve.chk `
-  .\solve-report 16 16 8 200
+  postflop build-feature-cache .\config.json .\features.cache
 
 .\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  postflop certify-bucketed .\config.json .\solve.chk 8
+  postflop solve-bucketed .\config.json 200 .\solve.chk `
+  .\solve-report 16 16 8 200 .\features.cache
+
+.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
+  postflop certify-bucketed .\config.json .\solve.chk 8 .\features.cache
 ```
 
 Reports declare the abstraction fingerprint, requested buckets, compression
-ratio and weighted feature MSE. The current qualified bridge is serial CFR+
-Float64; compressed state, parallel bucket updates, GUI selection, `.gtsd`
-packaging and native mid-tree frontier merge remain explicit follow-up work.
+ratio, weighted feature MSE, cache fingerprint/reuse and separate feature and
+clustering time. The versioned exact-feature cache is independent of bucket
+count and uses atomic replacement. The current qualified bridge is serial CFR+
+Float64; compressed cache/state, parallel bucket updates, GUI selection,
+`.gtsd` packaging and native mid-tree frontier merge remain explicit follow-up
+work.
 See `docs/specifications/CARD_ABSTRACTION_AND_SUBGAME_SOLVING.md`.
 
 Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
@@ -223,9 +229,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 The versioned per-run JSON and aggregate mediana/p95 report are described in
 `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
 
-The three-fixture GTO+ parity gate is temporarily postponed while commercial
-bucketing granularities and native subgame composition are qualified; the
-exact path remains the oracle. The authoritative exact checkpoint is the
+The three-fixture GTO+ parity gate is temporarily postponed while representative
+flop/turn/preflop workloads and commercial bucketing granularities are selected;
+the reduced multi-granularity cache path and native subgame composition are
+qualified, and the exact path remains the oracle. The authoritative exact checkpoint is the
 five-process production final-head dated
 2026-09-01 and recorded in
 `docs/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs

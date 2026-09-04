@@ -38,16 +38,17 @@ Giochi: `matching`, `kuhn`, `leduc`, `short-deck-toy`,
 
 ```text
 gto_cli postflop validate <config.json>
+gto_cli postflop build-feature-cache <config.json> <feature_cache>
 gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>
 gto_cli postflop solve <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> [cert_interval]
 gto_cli postflop resume <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> [cert_interval]
-gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]
-gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]
+gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]
+gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> <report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]
 gto_cli postflop pause|cancel <checkpoint>
 gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>
-gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> <buckets>
+gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> <buckets> [feature_cache]
 gto_cli postflop certify <config.json> <checkpoint>
-gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets>
+gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets> [feature_cache]
 gto_cli postflop compare-gto-plus <config.json> <checkpoint> <reference.json>
 gto_cli postflop benchmark-gto-plus <specification.json> <report.json>
 gto_cli postflop layout-gto-plus <specification.json> <report.json>
@@ -56,14 +57,22 @@ gto_cli postflop root-lock-diagnostic <config.json> <lock.json> <iterations> <re
 ```
 
 `solve` e `resume` producono checkpoint e report JSON/Markdown exact.
+`build-feature-cache` enumera una volta le feature postflop esatte per config e
+range uniformi CLI e salva atomicamente un manifest 1.0 indipendente dal numero
+di bucket. Stampa schema, fingerprint sorgente/cache, partizioni, osservazioni,
+byte e tempo di costruzione.
+
 I corrispondenti comandi `*-bucketed` selezionano esplicitamente k-means su
 feature W/T/L/equity exact e CFR+ Float64 seriale; non modificano il default
 dei comandi storici. Il parametro `buckets` è per partizione board/player.
 `certify-bucketed` rialza la policy e ricalcola best response/NashConv sul gioco
 combo-level completo. `query-bucketed` restituisce strategia media, bucket e
-numero di combo membro. Tutti i comandi bucketed ricostruiscono la stessa
-astrazione deterministica e il fingerprint del checkpoint rifiuta granularità
-o config differenti. La CLI corrente usa range uniformi, come il percorso
+numero di combo membro. Senza `feature_cache`, i comandi ricostruiscono le
+feature; con il manifest opzionale riusano l'enumerazione e verificano schema,
+sorgente e fingerprint prima del clustering. Il report pubblica flag di riuso,
+fingerprint e tempi separati. Percorso diretto e cache producono checkpoint
+bit-identici; granularità o config differenti sono rifiutate. La CLI corrente
+usa range uniformi, come il percorso
 postflop exact storico; range personalizzati sono disponibili nell'API C++.
 
 Il preflight CLI bucketed è conservativo: usa ancora la stima exact esistente,

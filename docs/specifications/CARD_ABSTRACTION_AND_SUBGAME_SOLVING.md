@@ -55,6 +55,23 @@ misurato separatamente dal traversal CFR. Preflop e feature più ricche possono
 essere fornite tramite lo stesso contratto versionato, con uno
 `feature_schema_id` differente.
 
+### Cache delle feature esatte
+
+La generazione delle feature è separata dal clustering. Il manifest
+`GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0` conserva osservazioni canoniche,
+schema, fingerprint della sorgente e fingerprint semantico proprio. Il
+fingerprint della sorgente lega la cache a config, range e layout combo-level;
+il load rifiuta versione, schema, contenuto corrotto o sorgente differente.
+Scrittura e sostituzione del file sono atomiche.
+
+La cache non contiene il numero di bucket: la stessa enumerazione esatta può
+quindi alimentare sweep `K=1..N` senza rieseguire i runout. Percorso diretto e
+percorso cache devono produrre la stessa astrazione, lo stesso fingerprint di
+gioco e checkpoint bit-identici. I report separano
+`feature_preparation_seconds`, `abstraction_clustering_seconds`, fingerprint e
+flag di riuso; il tempo di costruzione iniziale della cache non viene nascosto
+nel traversal CFR+.
+
 ### Clustering e metrica
 
 Per ogni partizione il k-means deterministico minimizza:
@@ -163,7 +180,10 @@ include versione, feature schema, parametri e tutte le assegnazioni
 deterministiche; resume/query/certification con configurazione exact o bucket
 count differente falliscono con checkpoint mismatch. La query combo espone
 `abstraction_bucket` e `abstraction_bucket_size`; il report CLI persiste
-fingerprint, granularità, compression ratio e weighted MSE.
+fingerprint, granularità, compression ratio, weighted MSE e provenienza/tempi
+della feature cache. Il fingerprint della cache è telemetria di provenienza,
+non parte dell'identità dell'astrazione: dati diretti e dati cache equivalenti
+devono restare semanticamente intercambiabili.
 
 ## Evidenza di qualifica iniziale
 
@@ -181,10 +201,29 @@ end-to-end a 1.000 iterazioni riduce lo stato Float64 da 1.536 a 384 byte
 così piccolo il costo di feature, clustering e certificazione supera il
 risparmio di traversal. Non è una prova di speedup generale.
 
+La qualifica Release multi-granularità usa cinque ripetizioni e mediana su 8
+logical CPU a 3,6 GHz. La cache turn (66 partizioni, 744 osservazioni) richiede
+`52,873 ms` wall. Sul fixture fixed-river da 48 infoset esatti, lo sweep CFR+
+da 1.000 iterazioni riusa una sola cache e produce:
+
+| Bucket/partizione | Infoset astratti | Stato Float64 | Compressione | Weighted MSE | Max L2 | Wall mediano | NashConv/pot |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 4 | 128 B | 12x | 0,294077 | 0,869201 | 7,619 ms | 15,151551% |
+| 2 | 8 | 256 B | 6x | 0,069559 | 0,395394 | 8,667 ms | 10,315783% |
+| 3 | 12 | 384 B | 4x | 0,026860 | 0,236189 | 8,768 ms | 5,339393% |
+| 6 | 24 | 768 B | 2x | 0,002066 | 0,078730 | 8,906 ms | 0,001636% |
+| 12 | 48 | 1.536 B | 1x | 0 | 0 | 9,720 ms | 0,001968% |
+
+L'errore delle feature è monotono su questo sweep ed è nullo alla granularità
+identità; NashConv a iterazioni fisse non è invece una metrica monotona di
+errore di astrazione. La fixture è ridotta e qualifica i contratti, non sceglie
+una granularità commerciale universale.
+
 ## Limiti aperti
 
-- Le feature flop/turn enumerano oggi tutti i runout durante la preparazione;
-  manca una cache/manifest precomputato per alberi grandi.
+- La cache esatta evita di rigenerare i runout tra granularità, ma il formato
+  testuale non è ancora compresso o memory-mapped e il preflight non ne stima
+  ancora picco transiente e spazio disco su alberi grandi.
 - Il container `.gtsd` non ha ancora un chunk `ABSTRACTION`; checkpoint e
   report CLI sono persistibili, ma il packaging prodotto completo richiede
   config/range/abstraction esterni identici e verificati dal fingerprint.
@@ -193,6 +232,6 @@ risparmio di traversal. Non è una prova di speedup generale.
   il taglio e merge arbitrario di un frontier nel `DenseLayout` postflop resta
   da collegare. Un solve postflop bucketed dalla root non va chiamato resolving
   mid-tree.
-- Servono sweep su più granularità e fixture flop/turn/preflop prima di
-  scegliere default commerciali. L'exact resta l'oracolo per questi gate e per
-  la successiva parity GTO+.
+- Lo sweep multi-granularità ridotto è qualificato; servono fixture
+  flop/turn/preflop commercialmente rappresentative prima di scegliere default.
+  L'exact resta l'oracolo per questi gate e per la successiva parity GTO+.

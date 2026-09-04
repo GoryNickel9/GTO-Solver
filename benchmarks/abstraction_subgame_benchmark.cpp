@@ -91,7 +91,8 @@ gtosd::PostflopRanges native_river_ranges(const gtosd::PostflopTreeConfig &confi
     range.fill(zero);
   }
   const auto board_mask = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask() |
-                          config.turn->mask() | config.river->mask();
+                          (config.turn ? config.turn->mask() : 0U) |
+                          (config.river ? config.river->mask() : 0U);
   std::vector<gtosd::CardId> available;
   for (const auto card : gtosd::short_deck()) {
     if ((card.mask() & board_mask) == 0U) {
@@ -198,17 +199,43 @@ void BM_NativePostflopCfrPlusExact(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * state.range(0));
 }
 
+void BM_NativePostflopTurnFeatureCacheBuild(benchmark::State &state) {
+  auto config = native_river_config();
+  config.river.reset();
+  const auto ranges = native_river_ranges(config);
+  for (auto _ : state) {
+    static_cast<void>(_);
+    const auto cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+    if (!cache) {
+      state.SkipWithError("native turn feature cache build failed");
+      break;
+    }
+    state.counters["partitions"] =
+        benchmark::Counter(static_cast<double>(cache.value().partition_count));
+    state.counters["observations"] =
+        benchmark::Counter(static_cast<double>(cache.value().observations.size()));
+    auto fingerprint = cache.value().fingerprint;
+    benchmark::DoNotOptimize(fingerprint);
+  }
+}
+
 void BM_NativePostflopCfrPlusBucketed(benchmark::State &state) {
   const auto config = native_river_config();
   const auto ranges = native_river_ranges(config);
   const auto options = native_cfr_plus_options(static_cast<std::uint64_t>(state.range(0)));
+  const auto feature_cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  if (!feature_cache) {
+    state.SkipWithError("native feature cache setup failed");
+    return;
+  }
   gtosd::CardAbstractionConfig abstraction;
   abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
-  abstraction.buckets_per_partition = 3U;
+  abstraction.buckets_per_partition = static_cast<std::uint32_t>(state.range(1));
   abstraction.maximum_iterations = 50U;
   for (auto _ : state) {
     static_cast<void>(_);
-    const auto solved = gtosd::solve_postflop_abstracted(config, ranges, abstraction, options);
+    const auto solved = gtosd::solve_postflop_abstracted(config, ranges, abstraction,
+                                                         feature_cache.value(), options);
     if (!solved || !solved.value().card_abstraction.has_value()) {
       state.SkipWithError("native bucketed postflop solve failed");
       break;
@@ -217,6 +244,20 @@ void BM_NativePostflopCfrPlusBucketed(benchmark::State &state) {
         benchmark::Counter(static_cast<double>(solved.value().actions * 2U * sizeof(double)));
     state.counters["compression"] =
         benchmark::Counter(solved.value().card_abstraction->metrics.compression_ratio);
+    state.counters["exact_infosets"] = benchmark::Counter(
+        static_cast<double>(solved.value().card_abstraction->metrics.exact_information_sets));
+    state.counters["abstract_infosets"] = benchmark::Counter(
+        static_cast<double>(solved.value().card_abstraction->metrics.abstract_information_sets));
+    state.counters["weighted_mse"] =
+        benchmark::Counter(solved.value().card_abstraction->metrics.weighted_mean_squared_error);
+    state.counters["maximum_l2"] =
+        benchmark::Counter(solved.value().card_abstraction->metrics.maximum_l2_error);
+    state.counters["feature_ms"] =
+        benchmark::Counter(solved.value().card_abstraction->feature_preparation_seconds * 1'000.0);
+    state.counters["cluster_ms"] =
+        benchmark::Counter(solved.value().card_abstraction->clustering_seconds * 1'000.0);
+    state.counters["nash_conv_pct"] =
+        benchmark::Counter(solved.value().convergence.back().normalized_nash_conv * 100.0);
     auto normalized_nash_conv = solved.value().convergence.back().normalized_nash_conv;
     benchmark::DoNotOptimize(normalized_nash_conv);
   }
@@ -227,7 +268,14 @@ BENCHMARK(BM_CfrPlusKuhnExact)->Arg(1'000)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_CfrPlusKuhnBucketed)->Arg(1'000)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_ExactGuardedSubgame)->Arg(1'000)->Unit(benchmark::kMillisecond);
 BENCHMARK(BM_NativePostflopCfrPlusExact)->Arg(1'000)->Unit(benchmark::kMillisecond);
-BENCHMARK(BM_NativePostflopCfrPlusBucketed)->Arg(1'000)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_NativePostflopTurnFeatureCacheBuild)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_NativePostflopCfrPlusBucketed)
+    ->Args({1'000, 1})
+    ->Args({1'000, 2})
+    ->Args({1'000, 3})
+    ->Args({1'000, 6})
+    ->Args({1'000, 12})
+    ->Unit(benchmark::kMillisecond);
 
 } // namespace
 

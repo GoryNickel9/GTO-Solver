@@ -19,6 +19,21 @@ board mask, reach weight e feature con bit IEEE esatti. Il reader ricostruisce
 l'astrazione e rifiuta un fingerprint divergente. L'identità del gioco CFR
 include il fingerprint dell'astrazione.
 
+Le feature preparatorie possono essere persistite separatamente nel manifest
+`GTOSD_CARD_ABSTRACTION_FEATURE_CACHE 1 0`. L'header dichiara schema,
+fingerprint della sorgente, fingerprint della cache, numero di partizioni e
+osservazioni; ogni osservazione conserva player, combo, board mask, reach
+weight e feature tramite bit IEEE esatti. Le righe sono in ordine canonico e
+il reader impone limiti prima dell'allocazione, ricalcola il fingerprint e
+rifiuta trailing data o contenuto corrotto. Il salvataggio usa temporary
+sibling e replace atomico.
+
+Il manifest è intenzionalmente indipendente da `buckets_per_partition`: più
+configurazioni k-means possono riusare gli stessi dati esatti. Il fingerprint
+della cache documenta la provenienza nel report, ma non cambia il fingerprint
+del gioco quando le osservazioni sono semanticamente identiche a quelle
+generate direttamente.
+
 Il checkpoint prodotto da un subgame conserva il fingerprint del gioco
 astratto e del frontier reach-weighted. La strategia distribuita e la metrica
 full-game appartengono al risultato di resolving: non è valido riaprire quel
@@ -26,8 +41,9 @@ checkpoint contro un frontier, un blueprint o un'astrazione differenti.
 
 Nel postflop nativo il fingerprint del checkpoint include configurazione,
 feature schema e assegnazioni combo→bucket. Il report JSON/Markdown della CLI
-conserva inoltre kind, bucket richiesti, fingerprint, compression ratio e
-weighted MSE. Il resume richiede di nuovo lo stesso config, gli stessi range e
+conserva inoltre kind, bucket richiesti, fingerprint, compression ratio,
+weighted MSE, cache riusata e tempi separati di feature/clustering. Il resume
+richiede di nuovo lo stesso config, gli stessi range e
 la stessa configurazione di astrazione; un checkpoint exact o un bucket count
 diverso viene rifiutato prima del traversal.
 

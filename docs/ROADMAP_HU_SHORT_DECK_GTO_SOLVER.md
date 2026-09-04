@@ -443,9 +443,11 @@ automatico può trasformare una richiesta exact in bucketed.
 Stato 2026-09-04: il contratto generico `CardAbstraction`/`SubgameSolver` e il
 bridge HU postflop `DenseLayout` CFR+ Float64 sono implementati. API e CLI
 bucketed sono separate dal percorso exact, aggregano i delta combo prima della
-proiezione CFR+ e certificano la policy rialzata con BR combo-level. Restano
-aperti cache feature flop/turn, `.gtsd`, GUI, codec compresso, granularità
-commerciali e cut/merge mid-tree nativo.
+proiezione CFR+ e certificano la policy rialzata con BR combo-level. Il manifest
+exact-feature 1.0 atomico è riusabile tra granularità; equivalenza diretta/cache
+e sweep ridotto K=1/2/3/6/12 sono qualificati. Restano aperti preflight e cache
+compressa/mmap su alberi grandi, `.gtsd`, GUI, codec compresso, granularità
+commerciali su fixture rappresentative e cut/merge mid-tree nativo.
 
 ### 9.2 Gate di fattibilità
 

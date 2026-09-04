@@ -173,6 +173,16 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
          << "  \"abstraction_weighted_mse\": "
          << (uses_bucketing ? result.card_abstraction->metrics.weighted_mean_squared_error : 0.0)
          << ",\n"
+         << "  \"feature_cache_reused\": "
+         << (uses_bucketing && result.card_abstraction->reused_feature_cache ? "true" : "false")
+         << ",\n"
+         << "  \"feature_cache_fingerprint\": \""
+         << (uses_bucketing ? result.card_abstraction->feature_cache_fingerprint : std::string{})
+         << "\",\n"
+         << "  \"feature_preparation_seconds\": "
+         << (uses_bucketing ? result.card_abstraction->feature_preparation_seconds : 0.0) << ",\n"
+         << "  \"abstraction_clustering_seconds\": "
+         << (uses_bucketing ? result.card_abstraction->clustering_seconds : 0.0) << ",\n"
          << "  \"iterations\": " << result.checkpoint.completed_iterations << ",\n"
          << "  \"nodes\": " << result.public_tree.node_count << ",\n"
          << "  \"infosets\": " << result.information_sets << ",\n"
@@ -221,6 +231,13 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
                << result.card_abstraction->metrics.compression_ratio << " |\n"
                << "| Weighted MSE astrazione | "
                << result.card_abstraction->metrics.weighted_mean_squared_error << " |\n"
+               << "| Feature cache riutilizzata | "
+               << (result.card_abstraction->reused_feature_cache ? "si" : "no") << " |\n"
+               << "| Feature preparation (s) | "
+               << result.card_abstraction->feature_preparation_seconds << " |\n"
+               << "| Clustering (s) | " << result.card_abstraction->clustering_seconds << " |\n"
+               << "| Fingerprint feature cache | `"
+               << result.card_abstraction->feature_cache_fingerprint << "` |\n"
                << "| Fingerprint astrazione | `" << result.card_abstraction->fingerprint
                << "` |\n\n"
                << "Gli outcome chance e la certificazione best-response sono combo-level exact; "
@@ -244,6 +261,7 @@ struct PostflopRunArguments {
   std::string_view disk_gib;
   std::string_view certification_interval;
   std::string_view abstraction_buckets;
+  std::string_view feature_cache_path;
   bool resume{false};
 };
 
@@ -360,9 +378,21 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
   };
 
   gtosd::CardAbstractionConfig abstraction;
+  std::optional<gtosd::CardAbstractionFeatureCache> feature_cache;
   if (uses_bucketing) {
     abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
     abstraction.buckets_per_partition = static_cast<std::uint32_t>(*abstraction_buckets);
+    if (!arguments.feature_cache_path.empty()) {
+      const auto loaded =
+          gtosd::load_card_abstraction_feature_cache(std::string(arguments.feature_cache_path));
+      if (!loaded) {
+        std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
+                  << " failed: feature_cache_" << gtosd::card_abstraction_error_name(loaded.error())
+                  << '\n';
+        return 1;
+      }
+      feature_cache = loaded.value();
+    }
   }
 
   std::cout << "GTOSD_POSTFLOP_SOLVE_1\n"
@@ -372,11 +402,15 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
             << " target_iterations=" << *iterations
             << " certification_interval=" << *certification_interval << std::endl;
   const auto started = std::chrono::steady_clock::now();
+  const auto uniform_ranges = gtosd::make_uniform_postflop_ranges();
   const auto solved =
       uses_bucketing
-          ? gtosd::solve_postflop_abstracted(*config, gtosd::make_uniform_postflop_ranges(),
-                                             abstraction, options,
-                                             checkpoint ? &*checkpoint : nullptr)
+          ? (feature_cache
+                 ? gtosd::solve_postflop_abstracted(*config, uniform_ranges, abstraction,
+                                                    *feature_cache, options,
+                                                    checkpoint ? &*checkpoint : nullptr)
+                 : gtosd::solve_postflop_abstracted(*config, uniform_ranges, abstraction, options,
+                                                    checkpoint ? &*checkpoint : nullptr))
           : gtosd::solve_postflop_exact(*config, options, checkpoint ? &*checkpoint : nullptr);
   const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
@@ -423,7 +457,8 @@ int write_postflop_control(const char *const checkpoint_path, const std::string_
 
 int run_postflop_query(const char *const config_path, const char *const checkpoint_path,
                        const std::string_view node_text, const std::string_view combo_text,
-                       const std::string_view abstraction_buckets = {}) {
+                       const std::string_view abstraction_buckets = {},
+                       const std::string_view feature_cache_path = {}) {
   const auto node = parse_u64(node_text);
   const auto combo = parse_u64(combo_text);
   const bool uses_bucketing = !abstraction_buckets.empty();
@@ -441,12 +476,27 @@ int run_postflop_query(const char *const config_path, const char *const checkpoi
   gtosd::CardAbstractionConfig abstraction;
   abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
   abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
-  const auto query = uses_bucketing
-                         ? gtosd::query_postflop_abstracted_strategy(
-                               *config, gtosd::make_uniform_postflop_ranges(), abstraction,
-                               checkpoint.value(), *node, static_cast<gtosd::ComboId>(*combo))
-                         : gtosd::query_postflop_strategy(*config, checkpoint.value(), *node,
-                                                          static_cast<gtosd::ComboId>(*combo));
+  std::optional<gtosd::CardAbstractionFeatureCache> feature_cache;
+  if (!feature_cache_path.empty()) {
+    const auto loaded = gtosd::load_card_abstraction_feature_cache(std::string(feature_cache_path));
+    if (!loaded) {
+      std::cerr << "postflop query failed: feature_cache_"
+                << gtosd::card_abstraction_error_name(loaded.error()) << '\n';
+      return 1;
+    }
+    feature_cache = loaded.value();
+  }
+  const auto uniform_ranges = gtosd::make_uniform_postflop_ranges();
+  const auto query =
+      uses_bucketing
+          ? (feature_cache ? gtosd::query_postflop_abstracted_strategy(
+                                 *config, uniform_ranges, abstraction, *feature_cache,
+                                 checkpoint.value(), *node, static_cast<gtosd::ComboId>(*combo))
+                           : gtosd::query_postflop_abstracted_strategy(
+                                 *config, uniform_ranges, abstraction, checkpoint.value(), *node,
+                                 static_cast<gtosd::ComboId>(*combo)))
+          : gtosd::query_postflop_strategy(*config, checkpoint.value(), *node,
+                                           static_cast<gtosd::ComboId>(*combo));
   if (!query) {
     std::cerr << "postflop query failed: " << gtosd::postflop_solver_error_name(query.error())
               << '\n';
@@ -469,7 +519,8 @@ int run_postflop_query(const char *const config_path, const char *const checkpoi
 }
 
 int run_postflop_certify(const char *const config_path, const char *const checkpoint_path,
-                         const std::string_view abstraction_buckets = {}) {
+                         const std::string_view abstraction_buckets = {},
+                         const std::string_view feature_cache_path = {}) {
   const bool uses_bucketing = !abstraction_buckets.empty();
   const auto buckets =
       uses_bucketing ? parse_u64(abstraction_buckets) : std::optional<std::uint64_t>{0U};
@@ -485,10 +536,24 @@ int run_postflop_certify(const char *const config_path, const char *const checkp
   gtosd::CardAbstractionConfig abstraction;
   abstraction.kind = gtosd::CardAbstractionKind::EquityFeatureKMeans;
   abstraction.buckets_per_partition = static_cast<std::uint32_t>(*buckets);
+  std::optional<gtosd::CardAbstractionFeatureCache> feature_cache;
+  if (!feature_cache_path.empty()) {
+    const auto loaded = gtosd::load_card_abstraction_feature_cache(std::string(feature_cache_path));
+    if (!loaded) {
+      std::cerr << "postflop certify failed: feature_cache_"
+                << gtosd::card_abstraction_error_name(loaded.error()) << '\n';
+      return 1;
+    }
+    feature_cache = loaded.value();
+  }
+  const auto uniform_ranges = gtosd::make_uniform_postflop_ranges();
   const auto certified =
       uses_bucketing
-          ? gtosd::certify_postflop_abstracted_checkpoint(
-                *config, gtosd::make_uniform_postflop_ranges(), abstraction, checkpoint.value())
+          ? (feature_cache
+                 ? gtosd::certify_postflop_abstracted_checkpoint(
+                       *config, uniform_ranges, abstraction, *feature_cache, checkpoint.value())
+                 : gtosd::certify_postflop_abstracted_checkpoint(*config, uniform_ranges,
+                                                                 abstraction, checkpoint.value()))
           : gtosd::certify_postflop_checkpoint(*config, checkpoint.value());
   if (!certified) {
     std::cerr << "postflop certify failed: " << gtosd::postflop_solver_error_name(certified.error())
@@ -3659,6 +3724,45 @@ int run_postflop_validate(const char *const path) {
   return 0;
 }
 
+int run_postflop_build_feature_cache(const char *const config_path, const char *const cache_path) {
+  std::string error;
+  const auto config = load_postflop_config(config_path, error);
+  if (!config) {
+    std::cerr << "postflop build-feature-cache failed: " << error << '\n';
+    return 1;
+  }
+  const auto started = std::chrono::steady_clock::now();
+  const auto cache = gtosd::build_postflop_card_abstraction_feature_cache(
+      *config, gtosd::make_uniform_postflop_ranges());
+  if (!cache) {
+    std::cerr << "postflop build-feature-cache failed: "
+              << gtosd::postflop_solver_error_name(cache.error()) << '\n';
+    return 1;
+  }
+  const auto saved = gtosd::save_card_abstraction_feature_cache(cache.value(), cache_path);
+  if (!saved) {
+    std::cerr << "postflop build-feature-cache failed: "
+              << gtosd::card_abstraction_error_name(saved.error()) << '\n';
+    return 1;
+  }
+  std::error_code size_error;
+  const auto bytes = std::filesystem::file_size(cache_path, size_error);
+  if (size_error) {
+    std::cerr << "postflop build-feature-cache failed: io_failure\n";
+    return 1;
+  }
+  const double elapsed =
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  std::cout << "GTOSD_POSTFLOP_FEATURE_CACHE_1\n"
+            << "schema=" << cache.value().feature_schema_id
+            << " source_fingerprint=" << cache.value().source_fingerprint
+            << " cache_fingerprint=" << cache.value().fingerprint << '\n'
+            << "partitions=" << cache.value().partition_count
+            << " observations=" << cache.value().observations.size() << " bytes=" << bytes
+            << " elapsed_seconds=" << elapsed << '\n';
+  return 0;
+}
+
 int run_postflop_estimate(const char *const path, const std::string_view ram_gib_text,
                           const std::string_view disk_gib_text) {
   const auto ram_gib = parse_u64(ram_gib_text);
@@ -4191,21 +4295,23 @@ void print_usage() {
                "<lazy|street|out-of-core> [resident_pages]\n"
             << "  gto_cli memory-probe <pf-f1|pf-f2|pf-f3> <backing_file>\n"
             << "  gto_cli postflop validate <config.json>\n"
+            << "  gto_cli postflop build-feature-cache <config.json> <feature_cache>\n"
             << "  gto_cli postflop estimate <config.json> <ram_gib> <disk_gib>\n"
             << "  gto_cli postflop solve <config.json> <iterations> <checkpoint> "
                "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
             << "  gto_cli postflop resume <config.json> <iterations> <checkpoint> "
                "<report_prefix> <ram_gib> <disk_gib> [cert_interval]\n"
             << "  gto_cli postflop solve-bucketed <config.json> <iterations> <checkpoint> "
-               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]\n"
+               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]\n"
             << "  gto_cli postflop resume-bucketed <config.json> <iterations> <checkpoint> "
-               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval]\n"
+               "<report_prefix> <ram_gib> <disk_gib> <buckets> [cert_interval] [feature_cache]\n"
             << "  gto_cli postflop pause|cancel <checkpoint>\n"
             << "  gto_cli postflop query <config.json> <checkpoint> <node> <combo_id>\n"
             << "  gto_cli postflop query-bucketed <config.json> <checkpoint> <node> <combo_id> "
-               "<buckets>\n"
+               "<buckets> [feature_cache]\n"
             << "  gto_cli postflop certify <config.json> <checkpoint>\n"
-            << "  gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets>\n"
+            << "  gto_cli postflop certify-bucketed <config.json> <checkpoint> <buckets> "
+               "[feature_cache]\n"
             << "  gto_cli postflop compare-gto-plus <config.json> <checkpoint> "
                "<reference.json>\n"
             << "  gto_cli postflop benchmark-gto-plus <specification.json> <report.json>\n"
@@ -4266,6 +4372,10 @@ int run_cli(const int argc, const char *const argv[]) {
       std::string_view(argv[2]) == "validate") {
     return run_postflop_validate(argv[3]);
   }
+  if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
+      std::string_view(argv[2]) == "build-feature-cache") {
+    return run_postflop_build_feature_cache(argv[3], argv[4]);
+  }
   if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "estimate") {
     return run_postflop_estimate(argv[3], argv[4], argv[5]);
@@ -4274,14 +4384,17 @@ int run_cli(const int argc, const char *const argv[]) {
       (std::string_view(argv[2]) == "solve" || std::string_view(argv[2]) == "resume")) {
     return run_postflop_solve({argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],
                                argc == 10 ? std::string_view(argv[9]) : std::string_view{},
-                               std::string_view{}, std::string_view(argv[2]) == "resume"});
+                               std::string_view{}, std::string_view{},
+                               std::string_view(argv[2]) == "resume"});
   }
-  if ((argc == 10 || argc == 11) && std::string_view(argv[1]) == "postflop" &&
+  if ((argc == 10 || argc == 11 || argc == 12) && std::string_view(argv[1]) == "postflop" &&
       (std::string_view(argv[2]) == "solve-bucketed" ||
        std::string_view(argv[2]) == "resume-bucketed")) {
     return run_postflop_solve({argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],
-                               argc == 11 ? std::string_view(argv[10]) : std::string_view{},
-                               argv[9], std::string_view(argv[2]) == "resume-bucketed"});
+                               argc >= 11 ? std::string_view(argv[10]) : std::string_view{},
+                               argv[9],
+                               argc == 12 ? std::string_view(argv[11]) : std::string_view{},
+                               std::string_view(argv[2]) == "resume-bucketed"});
   }
   if (argc == 4 && std::string_view(argv[1]) == "postflop" &&
       (std::string_view(argv[2]) == "pause" || std::string_view(argv[2]) == "cancel")) {
@@ -4291,17 +4404,19 @@ int run_cli(const int argc, const char *const argv[]) {
       std::string_view(argv[2]) == "query") {
     return run_postflop_query(argv[3], argv[4], argv[5], argv[6]);
   }
-  if (argc == 8 && std::string_view(argv[1]) == "postflop" &&
+  if ((argc == 8 || argc == 9) && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "query-bucketed") {
-    return run_postflop_query(argv[3], argv[4], argv[5], argv[6], argv[7]);
+    return run_postflop_query(argv[3], argv[4], argv[5], argv[6], argv[7],
+                              argc == 9 ? std::string_view(argv[8]) : std::string_view{});
   }
   if (argc == 5 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "certify") {
     return run_postflop_certify(argv[3], argv[4]);
   }
-  if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
+  if ((argc == 6 || argc == 7) && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "certify-bucketed") {
-    return run_postflop_certify(argv[3], argv[4], argv[5]);
+    return run_postflop_certify(argv[3], argv[4], argv[5],
+                                argc == 7 ? std::string_view(argv[6]) : std::string_view{});
   }
   if (argc == 6 && std::string_view(argv[1]) == "postflop" &&
       std::string_view(argv[2]) == "compare-gto-plus") {

@@ -1,8 +1,10 @@
 #include "gtosd/postflop/postflop_solver.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
@@ -55,7 +57,8 @@ gtosd::PostflopRanges make_narrow_ranges(const gtosd::PostflopTreeConfig &config
     range.fill(zero);
   }
   const auto board_mask = config.flop[0].mask() | config.flop[1].mask() | config.flop[2].mask() |
-                          config.turn->mask() | config.river->mask();
+                          (config.turn ? config.turn->mask() : 0U) |
+                          (config.river ? config.river->mask() : 0U);
   const auto combos = gtosd::all_combos();
   std::vector<gtosd::CardId> available;
   for (const auto card : gtosd::short_deck()) {
@@ -153,6 +156,9 @@ void test_cfr_plus_solve_resume_certify_and_query() {
   const auto config = make_river_config();
   const auto ranges = make_narrow_ranges(config);
   const auto abstraction = make_abstraction();
+  const auto feature_cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  require(feature_cache.has_value() && feature_cache.value().partition_count > 0U,
+          "native exact feature cache builds independently of bucket count");
   gtosd::PostflopSolveOptions options;
   options.iterations = 40U;
   options.certification_interval = 40U;
@@ -164,6 +170,19 @@ void test_cfr_plus_solve_resume_certify_and_query() {
   require(solved.has_value() && solved.value().card_abstraction.has_value() &&
               solved.value().convergence.size() == 1U,
           "native bucketed CFR+ solve completes and certifies");
+  const auto cached_solved =
+      gtosd::solve_postflop_abstracted(config, ranges, abstraction, feature_cache.value(), options);
+  require(cached_solved.has_value() && cached_solved.value().card_abstraction.has_value() &&
+              cached_solved.value().card_abstraction->reused_feature_cache &&
+              cached_solved.value().card_abstraction->feature_cache_fingerprint ==
+                  feature_cache.value().fingerprint &&
+              cached_solved.value().checkpoint.game_fingerprint ==
+                  solved.value().checkpoint.game_fingerprint &&
+              cached_solved.value().checkpoint.cumulative_regret ==
+                  solved.value().checkpoint.cumulative_regret &&
+              cached_solved.value().checkpoint.cumulative_strategy ==
+                  solved.value().checkpoint.cumulative_strategy,
+          "cached and direct feature paths produce bit-identical CFR+ state");
   const auto &certification = solved.value().convergence.back();
   require(std::isfinite(certification.normalized_nash_conv) &&
               certification.normalized_nash_conv >= 0.0,
@@ -253,6 +272,39 @@ void test_cfr_plus_solve_resume_certify_and_query() {
   unsupported.parallel_action_depth = 1U;
   require(!gtosd::solve_postflop_abstracted(config, ranges, abstraction, unsupported),
           "native bucketed path rejects unqualified parallel updates");
+
+  auto stale_cache = feature_cache.value();
+  stale_cache.source_fingerprint += ":stale";
+  require(!gtosd::estimate_postflop_abstracted_layout(config, ranges, abstraction, stale_cache),
+          "native layout rejects a cache not bound to the exact game and ranges");
+}
+
+void test_turn_cache_multi_granularity_sweep() {
+  auto config = make_river_config();
+  config.river.reset();
+  const auto ranges = make_narrow_ranges(config);
+  const auto cache = gtosd::build_postflop_card_abstraction_feature_cache(config, ranges);
+  require(cache.has_value() && cache.value().partition_count > 2U &&
+              cache.value().observations.size() > 12U,
+          "turn cache covers the turn root and exact river partitions");
+
+  std::uint64_t previous_actions = 0U;
+  double previous_error = std::numeric_limits<double>::infinity();
+  for (const std::uint32_t buckets : std::array<std::uint32_t, 5>{1U, 2U, 3U, 6U, 12U}) {
+    const auto estimate = gtosd::estimate_postflop_abstracted_layout(
+        config, ranges, make_abstraction(buckets), cache.value());
+    require(estimate.has_value() && estimate.value().card_abstraction.has_value() &&
+                estimate.value().card_abstraction->reused_feature_cache &&
+                estimate.value().card_abstraction->config.buckets_per_partition == buckets,
+            "each turn granularity consumes the shared exact feature cache");
+    require(estimate.value().actions >= previous_actions,
+            "abstract state size is monotone across the configured bucket sweep");
+    require(estimate.value().card_abstraction->metrics.weighted_mean_squared_error <=
+                previous_error + 1.0e-15,
+            "weighted feature error does not increase at finer qualified granularity");
+    previous_actions = estimate.value().actions;
+    previous_error = estimate.value().card_abstraction->metrics.weighted_mean_squared_error;
+  }
 }
 
 } // namespace
@@ -261,6 +313,7 @@ int main() {
   try {
     test_layout_and_exact_boundary();
     test_cfr_plus_solve_resume_certify_and_query();
+    test_turn_cache_multi_granularity_sweep();
     std::cout << "Native postflop abstraction tests passed (" << assertions << " assertions).\n";
     return 0;
   } catch (const std::exception &error) {

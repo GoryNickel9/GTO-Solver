@@ -415,7 +415,11 @@ struct PostflopSolveTimings {
 struct PostflopCardAbstractionSummary {
   CardAbstractionConfig config{};
   std::string fingerprint;
+  std::string feature_cache_fingerprint;
   CardAbstractionMetrics metrics{};
+  double feature_preparation_seconds{0.0};
+  double clustering_seconds{0.0};
+  bool reused_feature_cache{false};
 };
 
 struct PostflopPureCfrTrajectoryPoint {
@@ -584,6 +588,14 @@ struct PostflopNodeAnalysis {
 [[nodiscard]] Result<bool, PostflopSolverError>
 validate_postflop_ranges(const PostflopTreeConfig &config, const PostflopRanges &ranges);
 
+// Enumerates the exact W/T/L/equity observations for every decision-bearing
+// board/player partition once. The resulting cache is independent of bucket
+// count and is bound to the exact layout/ranges by source_fingerprint.
+[[nodiscard]] Result<CardAbstractionFeatureCache, PostflopSolverError>
+build_postflop_card_abstraction_feature_cache(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const std::string &feature_schema_id = "equity-features-l2-v1");
+
 [[nodiscard]] Result<PostflopSolveResult, PostflopSolverError>
 solve_postflop_exact(const PostflopTreeConfig &config, const PostflopSolveOptions &options,
                      const PostflopCheckpoint *resume_from = nullptr);
@@ -602,6 +614,11 @@ solve_postflop_abstracted(const PostflopTreeConfig &config, const PostflopRanges
                           const CardAbstractionConfig &abstraction,
                           const PostflopSolveOptions &options,
                           const PostflopCheckpoint *resume_from = nullptr);
+
+[[nodiscard]] Result<PostflopSolveResult, PostflopSolverError> solve_postflop_abstracted(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
+    const PostflopSolveOptions &options, const PostflopCheckpoint *resume_from = nullptr);
 
 class PostflopPreparedTree final {
 public:
@@ -623,6 +640,10 @@ private:
   friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
   prepare_postflop_abstracted_tree(const PostflopTreeConfig &, const PostflopRanges &,
                                    const CardAbstractionConfig &, bool);
+  friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
+  prepare_postflop_abstracted_tree(const PostflopTreeConfig &, const PostflopRanges &,
+                                   const CardAbstractionConfig &,
+                                   const CardAbstractionFeatureCache &, bool);
   friend Result<PostflopSolveResult, PostflopSolverError>
   solve_postflop_exact(PostflopPreparedTree &, const PostflopSolveOptions &,
                        const PostflopCheckpoint *);
@@ -652,6 +673,12 @@ prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ra
 [[nodiscard]] Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
 prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                                  const CardAbstractionConfig &abstraction,
+                                 bool prepare_analysis = false);
+
+[[nodiscard]] Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
+prepare_postflop_abstracted_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                                 const CardAbstractionConfig &abstraction,
+                                 const CardAbstractionFeatureCache &feature_cache,
                                  bool prepare_analysis = false);
 
 [[nodiscard]] PostflopLayoutEstimate
@@ -705,6 +732,13 @@ certify_postflop_abstracted_checkpoint(const PostflopTreeConfig &config,
                                        const CardAbstractionConfig &abstraction,
                                        const PostflopCheckpoint &checkpoint);
 
+[[nodiscard]] Result<PostflopCertification, PostflopSolverError>
+certify_postflop_abstracted_checkpoint(const PostflopTreeConfig &config,
+                                       const PostflopRanges &ranges,
+                                       const CardAbstractionConfig &abstraction,
+                                       const CardAbstractionFeatureCache &feature_cache,
+                                       const PostflopCheckpoint &checkpoint);
+
 [[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError>
 query_postflop_strategy(const PostflopTreeConfig &config, const PostflopCheckpoint &checkpoint,
                         NodeId public_node, ComboId combo);
@@ -719,6 +753,11 @@ query_postflop_abstracted_strategy(const PostflopTreeConfig &config, const Postf
                                    const PostflopCheckpoint &checkpoint, NodeId public_node,
                                    ComboId combo);
 
+[[nodiscard]] Result<PostflopStrategyQuery, PostflopSolverError> query_postflop_abstracted_strategy(
+    const PostflopTreeConfig &config, const PostflopRanges &ranges,
+    const CardAbstractionConfig &abstraction, const CardAbstractionFeatureCache &feature_cache,
+    const PostflopCheckpoint &checkpoint, NodeId public_node, ComboId combo);
+
 [[nodiscard]] Result<std::vector<PostflopStrategyQuery>, PostflopSolverError>
 query_postflop_strategies(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                           const PostflopCheckpoint &checkpoint, NodeId public_node);
@@ -729,6 +768,11 @@ estimate_postflop_layout(const PostflopTreeConfig &config, const PostflopRanges 
 [[nodiscard]] Result<PostflopLayoutEstimate, PostflopSolverError>
 estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                                     const CardAbstractionConfig &abstraction);
+
+[[nodiscard]] Result<PostflopLayoutEstimate, PostflopSolverError>
+estimate_postflop_abstracted_layout(const PostflopTreeConfig &config, const PostflopRanges &ranges,
+                                    const CardAbstractionConfig &abstraction,
+                                    const CardAbstractionFeatureCache &feature_cache);
 
 [[nodiscard]] Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node(const PostflopTreeConfig &config, const PostflopRanges &ranges,

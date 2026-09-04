@@ -54,11 +54,13 @@ comunque essere contabilizzato e non può ridurre la metrica comparabile.
 - database di flop e trainer di prodotto;
 - chunk `ABSTRACTION` e packaging autosufficiente `.gtsd` del postflop bucketed;
 - selettore di granularità nella GUI;
-- cache/manifest delle feature exact flop/turn e preflight RAM specifico per il
-  layout astratto;
+- cache feature compressa/memory-mapped e preflight RAM/disco specifico per
+  cache e layout astratto; il manifest testuale exact 1.0 è disponibile;
 - codec bucketed compresso, update paralleli e DCFR bucketed qualificati;
 - frontier cut/merge arbitrario del `SubgameSolver` nel `DenseLayout` nativo;
 - generazione/qualificazione delle feature preflop;
+- qualifica di granularità su fixture flop/turn/preflop rappresentative; lo
+  sweep ridotto 1/2/3/6/12 non definisce un default commerciale;
 - gadget safe scalabile con boundary counterfactual values quando la BR esatta
   full-game non è fattibile;
 - calcolo distribuito;
