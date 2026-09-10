@@ -1,0 +1,33 @@
+{
+  "schema": "gtosd.hu_preflop_r0_frequency_comparison.v1",
+  "reference_id": "GTP-HU-PREFLOP-CO40-001",
+  "source_unit": "integer_percent",
+  "source_rounding": "class totals of 100 or 101 are preserved",
+  "normalization": "divide each class row by its reported total; never rewrite the source values",
+  "physical_combo_masses": {
+    "pair": 6,
+    "suited": 4,
+    "offsuit": 12
+  },
+  "class_count": 81,
+  "physical_combo_count": 630,
+  "rounded_101_rows": ["JJ", "TT", "88", "77", "K9s", "K8s", "K7s", "QJs", "Q9s", "Q8s", "J8s", "T7s", "QTo", "98o"],
+  "root_marginals_percent": {
+    "all_in": 40.7789,
+    "raise_6": 2.40789,
+    "raise_10": 4.71957,
+    "call": 7.56675,
+    "fold": 44.5269
+  },
+  "root_marginals_sum_percent_from_displayed_values": 100.00001,
+  "root_marginals_sum_percent_mathematical": 100.0,
+  "acceptance_limits": {
+    "weighted_mean_absolute_action_error_percentage_points_max": 1.0,
+    "weighted_mean_class_total_variation_percentage_points_max": 2.0,
+    "root_action_frequency_max_absolute_error_percentage_points_max": 1.0,
+    "class_total_variation_p95_percentage_points_max": 5.0,
+    "root_ev_absolute_error_ante_max": 0.05,
+    "candidate_normalized_nashconv_max": 0.01
+  },
+  "status": "CONTRACT_DEFINED_NO_CANDIDATE_COMPARED"
+}

@@ -1,0 +1,62 @@
+{
+  "schema": "gtosd.hu_preflop_r0_gate_register.v1",
+  "gate": "R0",
+  "status": "PASS",
+  "checks": [
+    {
+      "id": "R0-SNAPSHOT",
+      "status": "PASS",
+      "evidence": "manifest.json",
+      "note": "Dirty tracked and untracked state recorded; no reset or clean performed."
+    },
+    {
+      "id": "R0-CONFIG",
+      "status": "PASS",
+      "evidence": "node tools/validate_hu_preflop_r0.mjs ...",
+      "note": "Game and reference contracts match the frozen CO40 values."
+    },
+    {
+      "id": "R0-REFERENCE-PREFLIGHT",
+      "status": "PASS",
+      "evidence": "gtosd_hu_preflop_reference --preflight-only",
+      "note": "81 classes, 630 physical combos, 5 root actions, rake disabled."
+    },
+    {
+      "id": "R0-FREQUENCY-COMPARISON",
+      "status": "PASS",
+      "evidence": "frequency_comparison.json",
+      "note": "Integer source percentages are preserved; rows are normalized by reported totals."
+    },
+    {
+      "id": "R0-RELEASE-BUILD",
+      "status": "PASS",
+      "evidence": "manifest.json",
+      "note": "Reference and tree targets rebuilt with the x64 MSVC environment."
+    },
+    {
+      "id": "R0-PROTECTED-DATA",
+      "status": "PASS",
+      "evidence": "manifest.json protected_paths",
+      "note": "Existing evidence, dirty fixtures, postflop code and legacy results remain untouched."
+    },
+    {
+      "id": "R0-CTEST-DISCOVERY",
+      "status": "NOT_AVAILABLE",
+      "evidence": "ctest --test-dir out/build/codex-release-20260907 -R gtosd_hu_preflop_reference_preflight|gtosd_hu_preflop_tree",
+      "note": "The configured build reports no registered tests; the two executables were run directly and passed."
+    },
+    {
+      "id": "R0-HISTORICAL-FINGERPRINT",
+      "status": "INFORMATIONAL",
+      "evidence": "README.md",
+      "note": "The current tree fingerprint differs from the historical benchmark document; current output is frozen and the documentation mismatch remains explicit."
+    }
+  ],
+  "not_claimed": [
+    "No two-hour qualification",
+    "No convergence claim",
+    "No NashConv or exploitability claim",
+    "No R1 isolation claim",
+    "No production default change"
+  ]
+}
