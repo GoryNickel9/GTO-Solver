@@ -252,6 +252,14 @@ const char *solver_error_name(const SolverError error) noexcept {
     return "invalid_checkpoint";
   case SolverError::UnsupportedCheckpointVersion:
     return "unsupported_checkpoint_version";
+  case SolverError::InvalidAbstraction:
+    return "invalid_abstraction";
+  case SolverError::UnsupportedAbstractionVersion:
+    return "unsupported_abstraction_version";
+  case SolverError::InvalidSubgame:
+    return "invalid_subgame";
+  case SolverError::UnsupportedSubgameVersion:
+    return "unsupported_subgame_version";
   case SolverError::IoFailure:
     return "io_failure";
   }

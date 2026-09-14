@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gtosd.local/schemas/hu_preflop_game.schema.json",
+  "title": "GTOSD HU preflop game configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "monetary_contract_revision",
+    "ante_accounting",
+    "preflop_target_basis",
+    "effective_stack_units",
+    "ante_units",
+    "open_target_units",
+    "response_target_units",
+    "allow_configured_incomplete_raise",
+    "postflop_sizes_basis_points",
+    "postflop_minimum_bet_units",
+    "include_all_in",
+    "raise_termination",
+    "rake_mode"
+  ],
+  "properties": {
+    "schema": {"const": "gtosd.hu_preflop_game.v1"},
+    "id": {"type": "string", "minLength": 1},
+    "monetary_contract_revision": {"const": 2},
+    "ante_accounting": {"const": "dead_initial_pot_contribution"},
+    "preflop_target_basis": {"const": "live_commitment_excluding_dead_ante"},
+    "effective_stack_units": {"type": "integer", "minimum": 1},
+    "ante_units": {"type": "integer", "minimum": 1},
+    "open_target_units": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1}
+      ],
+      "items": false
+    },
+    "response_target_units": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1},
+        {"type": "integer", "minimum": 1}
+      ],
+      "items": false
+    },
+    "allow_configured_incomplete_raise": {"type": "boolean"},
+    "postflop_sizes_basis_points": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 1, "maximum": 100000},
+        {"type": "integer", "minimum": 1, "maximum": 100000},
+        {"type": "integer", "minimum": 1, "maximum": 100000}
+      ],
+      "items": false
+    },
+    "postflop_minimum_bet_units": {"type": "integer", "minimum": 1},
+    "include_all_in": {"const": true},
+    "raise_termination": {"const": "natural_stack"},
+    "rake_mode": {"const": "disabled"}
+  }
+}

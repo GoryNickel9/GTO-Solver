@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "source_and_library_hashes_unchanged": 12,
+  "recorded_training_processes": 16,
+  "deterministic_root_comparison": "PASS",
+  "local_links_checked": 16,
+  "distinct_web_source_links": 27,
+  "python_syntax": "PASS",
+  "report_word_count": 5600,
+  "scope": "artifact checks only; no whole-game certificate, no production test suite"
+}

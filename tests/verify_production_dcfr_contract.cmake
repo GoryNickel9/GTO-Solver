@@ -7,6 +7,9 @@ foreach(token
     "Measure-Object -Maximum"
     "$gtoPlusSolverMemoryReferenceBytes"
     "gtosd.gto_plus_convergence_summary.v4"
+    "gtosd.product_timing.v1"
+    "GetSystemTimes"
+    "performed_before_each_run"
     "gto_plus_metric_semantics_unresolved"
     "active_gate_passed")
   string(FIND "${runner}" "${token}" token_index)

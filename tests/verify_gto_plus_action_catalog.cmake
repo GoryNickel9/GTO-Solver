@@ -64,6 +64,19 @@ string(JSON legacy_desktop_gate_type ERROR_VARIABLE legacy_desktop_gate_error
   TYPE "${report_json}" desktop_memory_gate)
 string(JSON legacy_peak_type ERROR_VARIABLE legacy_peak_error
   TYPE "${report_json}" peak_rss_bytes)
+string(JSON product_timing_contract GET "${report_json}" product_timing contract)
+string(JSON product_startup_included GET "${report_json}"
+  product_timing process_startup_included)
+string(JSON product_parsing_included GET "${report_json}"
+  product_timing configuration_parsing_included)
+string(JSON build_to_ready_seconds GET "${report_json}"
+  product_timing build_to_ready_seconds)
+string(JSON solve_to_consultable_seconds GET "${report_json}"
+  product_timing solve_to_consultable_seconds)
+string(JSON build_to_consultable_seconds GET "${report_json}"
+  product_timing build_to_consultable_seconds)
+string(JSON legacy_product_wall_seconds GET "${report_json}"
+  wall_elapsed_seconds_including_tree_preparation)
 if(NOT report_schema STREQUAL "gtosd.gto_plus_convergence_run.v4" OR
    NOT source_fixture_schema STREQUAL "gtosd.gto_plus_convergence_benchmark.v4" OR
    NOT state_accounting_schema STREQUAL "gtosd.solver_memory_accounting.v2" OR
@@ -91,6 +104,13 @@ if(NOT report_schema STREQUAL "gtosd.gto_plus_convergence_run.v4" OR
    NOT state_residency STREQUAL "resident_vectors" OR
    NOT working_set_budget_type STREQUAL "NULL" OR
    materialization_required OR
+   NOT product_timing_contract STREQUAL "gtosd.product_timing.v1" OR
+   product_startup_included OR
+   product_parsing_included OR
+   build_to_ready_seconds LESS_EQUAL 0 OR
+   solve_to_consultable_seconds LESS_EQUAL 0 OR
+   build_to_consultable_seconds LESS_EQUAL build_to_ready_seconds OR
+   NOT legacy_product_wall_seconds EQUAL build_to_consultable_seconds OR
    NOT legacy_state_gate_error OR
    NOT legacy_memory_gate_error OR
    NOT legacy_desktop_gate_error OR

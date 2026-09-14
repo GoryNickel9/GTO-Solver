@@ -1,5 +1,15 @@
 /out/
 /.cache/
+/.reasonix/
+/.tmp/
+/benchmarks/results/
+/benchmark GTO+/
+/HU Chart/
+/tools/hu_preflop_chart_viewer/
+*.obj
+*.bin
+*.pyc
+__pycache__/
 *.user
 *.suo
 *.VC.db

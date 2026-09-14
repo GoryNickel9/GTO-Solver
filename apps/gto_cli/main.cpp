@@ -145,8 +145,10 @@ const char *action_type_name(const gtosd::ActionType type) {
 }
 
 bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolveResult &result,
-                            const double elapsed_seconds, const std::uint64_t peak_rss_bytes,
-                            const std::string_view backend) {
+                            const double elapsed_seconds, const double build_to_ready_seconds,
+                            const double solve_to_consultable_seconds,
+                            const double build_to_consultable_seconds,
+                            const std::uint64_t peak_rss_bytes, const std::string_view backend) {
   if (prefix.empty()) {
     return false;
   }
@@ -154,8 +156,21 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
   {
     std::ofstream json(prefix + ".json", std::ios::binary | std::ios::trunc);
     json << "{\n"
-         << "  \"schema_version\": 1,\n"
+         << "  \"schema_version\": 2,\n"
          << "  \"status\": \"" << postflop_stop_reason_name(result.stop_reason) << "\",\n"
+         << "  \"production_profile\": {\"major\": "
+         << gtosd::PostflopProductionSolveRequest::profile_major
+         << ", \"minor\": " << gtosd::PostflopProductionSolveRequest::profile_minor << "},\n"
+         << "  \"algorithm\": \"" << gtosd::postflop_algorithm_name(result.checkpoint.algorithm)
+         << "\",\n"
+         << "  \"state_precision\": \""
+         << gtosd::postflop_state_precision_name(result.checkpoint.state_precision) << "\",\n"
+         << "  \"averaging_delay\": " << result.checkpoint.averaging_delay << ",\n"
+         << "  \"certification_interval\": "
+         << gtosd::PostflopProductionSolveRequest::certification_interval << ",\n"
+         << "  \"parallel_action_depth\": "
+         << static_cast<unsigned>(gtosd::PostflopProductionSolveRequest::parallel_action_depth)
+         << ",\n"
          << "  \"backend\": \"" << backend << "\",\n"
          << "  \"exact_outcomes\": true,\n"
          << "  \"uses_bucketing\": false,\n"
@@ -171,7 +186,16 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
          << "  \"normalized_nash_conv\": " << final.normalized_nash_conv << ",\n"
          << "  \"maximum_normalization_error\": " << result.maximum_normalization_error << ",\n"
          << "  \"peak_rss_bytes\": " << peak_rss_bytes << ",\n"
-         << "  \"elapsed_seconds\": " << elapsed_seconds << "\n"
+         << "  \"elapsed_seconds\": " << elapsed_seconds << ",\n"
+         << "  \"timer_scope\": {\"process_startup\": false, \"game_specific_work\": true},\n"
+         << "  \"phase_seconds\": {\"layout\": " << result.timings.layout_seconds
+         << ", \"initialization\": " << result.timings.initialization_seconds
+         << ", \"traversal\": " << result.timings.traversal_seconds
+         << ", \"certification\": " << result.timings.certification_seconds
+         << ", \"finalization\": " << result.timings.finalization_seconds << "},\n"
+         << "  \"build_to_ready_seconds\": " << build_to_ready_seconds << ",\n"
+         << "  \"solve_to_consultable_seconds\": " << solve_to_consultable_seconds << ",\n"
+         << "  \"build_to_consultable_seconds\": " << build_to_consultable_seconds << "\n"
          << "}\n";
     if (!json) {
       return false;
@@ -183,6 +207,12 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
              << "| Metrica | Valore |\n"
              << "|---|---:|\n"
              << "| Stato | " << postflop_stop_reason_name(result.stop_reason) << " |\n"
+             << "| Profilo | production-v" << gtosd::PostflopProductionSolveRequest::profile_major
+             << '.' << gtosd::PostflopProductionSolveRequest::profile_minor << " |\n"
+             << "| Algoritmo | " << gtosd::postflop_algorithm_name(result.checkpoint.algorithm)
+             << " |\n"
+             << "| Precisione stato | "
+             << gtosd::postflop_state_precision_name(result.checkpoint.state_precision) << " |\n"
              << "| Backend | " << backend << " |\n"
              << "| Iterazioni | " << result.checkpoint.completed_iterations << " |\n"
              << "| Nodi pubblici | " << result.public_tree.node_count << " |\n"
@@ -197,7 +227,10 @@ bool write_postflop_reports(const std::string &prefix, const gtosd::PostflopSolv
              << "| Errore massimo normalizzazione | " << result.maximum_normalization_error
              << " |\n"
              << "| Peak RSS (byte) | " << peak_rss_bytes << " |\n"
-             << "| Tempo (s) | " << elapsed_seconds << " |\n\n"
+             << "| Solver call (s) | " << elapsed_seconds << " |\n"
+             << "| Build-to-ready (s) | " << build_to_ready_seconds << " |\n"
+             << "| Solve-to-consultable (s) | " << solve_to_consultable_seconds << " |\n"
+             << "| Build-to-consultable (s) | " << build_to_consultable_seconds << " |\n\n"
              << "Turn e river sono enumerati esattamente. Nessun bucketing o sampling.\n";
     if (!markdown) {
       return false;
@@ -221,12 +254,15 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
   const auto iterations = parse_u64(arguments.iterations);
   const auto ram_gib = parse_u64(arguments.ram_gib);
   const auto disk_gib = parse_u64(arguments.disk_gib);
-  const auto certification_interval = arguments.certification_interval.empty()
-                                          ? std::optional<std::uint64_t>{1U}
-                                          : parse_u64(arguments.certification_interval);
+  const auto certification_interval =
+      arguments.certification_interval.empty()
+          ? std::optional<
+                std::uint64_t>{gtosd::PostflopProductionSolveRequest::certification_interval}
+          : parse_u64(arguments.certification_interval);
   constexpr std::uint64_t gib = 1ULL << 30U;
   if (!iterations || *iterations == 0U || !ram_gib || *ram_gib == 0U || !disk_gib ||
-      !certification_interval || *certification_interval == 0U ||
+      !certification_interval ||
+      *certification_interval != gtosd::PostflopProductionSolveRequest::certification_interval ||
       *ram_gib > std::numeric_limits<std::uint64_t>::max() / gib ||
       *disk_gib > std::numeric_limits<std::uint64_t>::max() / gib) {
     std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
@@ -239,22 +275,14 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
     std::cerr << "postflop solve failed: " << config_error << '\n';
     return 1;
   }
+  const auto product_build_started = std::chrono::steady_clock::now();
   const auto lazy = gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::LazyInRam);
-  const auto out_of_core =
-      gtosd::analyze_postflop_config(*config, gtosd::MemoryPrototype::OutOfCore);
-  if (!lazy || !out_of_core) {
+  if (!lazy) {
     std::cerr << "postflop solve failed: preflight_failure\n";
     return 1;
   }
   const std::uint64_t ram_bytes = *ram_gib * gib;
-  const std::uint64_t disk_bytes = *disk_gib * gib;
   const bool lazy_fits = lazy.value().memory.peak_resident_bytes <= ram_bytes;
-  const bool out_of_core_fits = out_of_core.value().memory.peak_resident_bytes <= ram_bytes &&
-                                out_of_core.value().memory.backing_store_bytes <= disk_bytes;
-  if (!lazy_fits && !out_of_core_fits) {
-    std::cerr << "postflop solve failed: insufficient_ram_or_disk\n";
-    return 3;
-  }
 
   std::optional<gtosd::PostflopCheckpoint> checkpoint;
   if (arguments.resume) {
@@ -265,32 +293,35 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
       return 1;
     }
     checkpoint = loaded.value();
-  }
-  gtosd::MemoryPrototype backend =
-      lazy_fits ? gtosd::MemoryPrototype::LazyInRam : gtosd::MemoryPrototype::OutOfCore;
-  if (checkpoint && !checkpoint->external_buffer_file.empty()) {
-    if (!out_of_core_fits) {
-      std::cerr << "postflop resume failed: insufficient_ram_or_disk\n";
-      return 3;
+    if (checkpoint->algorithm != gtosd::PostflopAlgorithm::ProductionDcfr ||
+        checkpoint->state_precision != gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy) {
+      std::cerr << "postflop resume failed: checkpoint_algorithm_incompatible\n";
+      return 4;
     }
-    backend = gtosd::MemoryPrototype::OutOfCore;
-  } else if (checkpoint && backend == gtosd::MemoryPrototype::OutOfCore) {
-    std::cerr << "postflop resume failed: checkpoint_backend_mismatch\n";
+  }
+  if (!lazy_fits) {
+    std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
+              << " failed: production_profile_backend_unsupported\n";
     return 3;
   }
+  constexpr gtosd::MemoryPrototype backend = gtosd::MemoryPrototype::LazyInRam;
   const std::string_view backend_name =
       backend == gtosd::MemoryPrototype::LazyInRam ? "lazy-in-ram" : "out-of-core";
   const std::filesystem::path control_path = std::string(arguments.checkpoint_path) + ".control";
   std::error_code stale_control_error;
   std::filesystem::remove(control_path, stale_control_error);
 
-  gtosd::PostflopSolveOptions options;
-  options.iterations = *iterations;
-  options.averaging_delay =
-      checkpoint ? checkpoint->averaging_delay : std::min<std::uint64_t>(100U, *iterations / 10U);
-  options.certification_interval = *certification_interval;
-  options.memory_backend = backend;
-  options.backing_file = std::string(arguments.checkpoint_path) + ".buffers";
+  gtosd::PostflopProductionSolveRequest production_request;
+  production_request.iterations = *iterations;
+  production_request.memory_backend = backend;
+  const auto resolved = gtosd::resolve_postflop_production_options(
+      production_request, checkpoint ? &*checkpoint : nullptr);
+  if (!resolved) {
+    std::cerr << "postflop " << (arguments.resume ? "resume" : "solve")
+              << " failed: " << gtosd::postflop_solver_error_name(resolved.error()) << '\n';
+    return 4;
+  }
+  auto options = resolved.value();
   options.progress_callback = [](const gtosd::PostflopCertification &point) {
     std::cout << "progress iteration=" << point.iteration
               << " ev_co_antes=" << point.profile_value_antes[0]
@@ -324,13 +355,29 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
     return gtosd::PostflopControlCommand::Continue;
   };
 
+  const auto prepared = gtosd::prepare_postflop_tree(*config, gtosd::make_uniform_postflop_ranges(),
+                                                     options.enable_lossless_isomorphism,
+                                                     options.enable_canonical_public_dag, false);
+  if (!prepared) {
+    std::cerr << "postflop solve failed: " << gtosd::postflop_solver_error_name(prepared.error())
+              << '\n';
+    return 1;
+  }
+  const auto product_ready = std::chrono::steady_clock::now();
+
   std::cout << "GTOSD_POSTFLOP_SOLVE_1\n"
             << "backend=" << backend_name << " exact_outcomes=true bucketing=false"
+            << " production_profile=" << gtosd::PostflopProductionSolveRequest::profile_major << '.'
+            << gtosd::PostflopProductionSolveRequest::profile_minor
+            << " algorithm=" << gtosd::postflop_algorithm_name(options.algorithm)
+            << " state_precision=" << gtosd::postflop_state_precision_name(options.state_precision)
             << " target_iterations=" << *iterations
-            << " certification_interval=" << *certification_interval << std::endl;
-  const auto started = std::chrono::steady_clock::now();
+            << " certification_interval=" << options.certification_interval
+            << " parallel_action_depth=" << static_cast<unsigned>(options.parallel_action_depth)
+            << std::endl;
+  const auto started = product_ready;
   const auto solved =
-      gtosd::solve_postflop_exact(*config, options, checkpoint ? &*checkpoint : nullptr);
+      gtosd::solve_postflop_exact(*prepared.value(), options, checkpoint ? &*checkpoint : nullptr);
   const double elapsed =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   if (!solved) {
@@ -345,10 +392,18 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
               << '\n';
     return 1;
   }
+  const auto product_consultable = std::chrono::steady_clock::now();
+  const double build_to_ready_seconds =
+      std::chrono::duration<double>(product_ready - product_build_started).count();
+  const double solve_to_consultable_seconds =
+      std::chrono::duration<double>(product_consultable - product_ready).count();
+  const double build_to_consultable_seconds =
+      std::chrono::duration<double>(product_consultable - product_build_started).count();
   const auto peak_rss_bytes = gtosd::process_peak_rss_bytes();
   if (solved.value().convergence.empty() ||
-      !write_postflop_reports(arguments.report_prefix, solved.value(), elapsed, peak_rss_bytes,
-                              backend_name)) {
+      !write_postflop_reports(arguments.report_prefix, solved.value(), elapsed,
+                              build_to_ready_seconds, solve_to_consultable_seconds,
+                              build_to_consultable_seconds, peak_rss_bytes, backend_name)) {
     std::cerr << "postflop solve failed: report_io_failure\n";
     return 1;
   }
@@ -357,7 +412,10 @@ int run_postflop_solve(const PostflopRunArguments &arguments) {
             << " checkpoint=" << arguments.checkpoint_path
             << " report_json=" << arguments.report_prefix << ".json"
             << " report_markdown=" << arguments.report_prefix << ".md"
-            << " peak_rss_bytes=" << peak_rss_bytes << " elapsed_seconds=" << elapsed << std::endl;
+            << " peak_rss_bytes=" << peak_rss_bytes << " elapsed_seconds=" << elapsed
+            << " build_to_ready_seconds=" << build_to_ready_seconds
+            << " solve_to_consultable_seconds=" << solve_to_consultable_seconds
+            << " build_to_consultable_seconds=" << build_to_consultable_seconds << std::endl;
   return 0;
 }
 
@@ -951,10 +1009,8 @@ bool valid_gto_plus_solver_memory_v4(const nlohmann::json &memory) {
       memory.value("display_unit", std::string{}) != "MB" ||
       !memory.contains("normalized_reference_bytes") ||
       !memory["normalized_reference_bytes"].is_number_unsigned() ||
-      memory.value("normalization_rule", std::string{}) !=
-          "decimal_mb_fixture_convention" ||
-      memory.value("semantic_class", std::string{}) !=
-          "gto_plus_internal_pre_solve_estimate" ||
+      memory.value("normalization_rule", std::string{}) != "decimal_mb_fixture_convention" ||
+      memory.value("semantic_class", std::string{}) != "gto_plus_internal_pre_solve_estimate" ||
       memory.value("comparability_status", std::string{}) != "unresolved") {
     return false;
   }
@@ -1102,22 +1158,54 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   gtosd::RbpReadOnlyTelemetry rbp_telemetry;
   std::vector<gtosd::RbpReadOnlySnapshot> rbp_snapshots;
   double solver_cpu_started = 0.0;
-  gtosd::PostflopSolveOptions options;
   gtosd::PostflopRealNodeReplayCapture replay_capture;
-  options.iterations = spec.diagnostic_iteration_limit;
-  options.averaging_delay = spec.averaging_delay;
-  options.certification_interval = spec.certification_interval;
-  if (!spec.diagnostic_fixed_iterations) {
-    options.target_normalized_max_deviation = spec.target_percent / 100.0;
+  gtosd::PostflopSolveOptions options;
+  if (gtosd::is_production_dcfr_algorithm(spec.algorithm)) {
+    const bool profile_matches =
+        spec.averaging_delay == 0U &&
+        spec.state_precision == gtosd::PostflopStatePrecision::ScaledUint16RegretStrategy &&
+        spec.parallel_action_depth ==
+            gtosd::PostflopProductionSolveRequest::parallel_action_depth &&
+        spec.enable_lossless_isomorphism && spec.enable_canonical_public_dag &&
+        spec.dcfr_positive_regret_exponent == 1.5 && spec.dcfr_average_exponent == 3.0 &&
+        (spec.diagnostic_fixed_iterations ||
+         spec.certification_interval ==
+             gtosd::PostflopProductionSolveRequest::certification_interval);
+    if (!profile_matches) {
+      std::cerr << "postflop benchmark-gto-plus failed: production_profile_mismatch\n";
+      return 2;
+    }
+    gtosd::PostflopProductionSolveRequest request;
+    request.iterations = spec.diagnostic_iteration_limit;
+    if (!spec.diagnostic_fixed_iterations) {
+      request.target_normalized_max_deviation = spec.target_percent / 100.0;
+    }
+    const auto resolved = gtosd::resolve_postflop_production_options(request);
+    if (!resolved) {
+      std::cerr << "postflop benchmark-gto-plus failed: "
+                << gtosd::postflop_solver_error_name(resolved.error()) << '\n';
+      return 2;
+    }
+    options = resolved.value();
+    if (spec.diagnostic_fixed_iterations) {
+      options.certification_interval = spec.certification_interval;
+    }
+  } else {
+    options.iterations = spec.diagnostic_iteration_limit;
+    options.averaging_delay = spec.averaging_delay;
+    options.certification_interval = spec.certification_interval;
+    if (!spec.diagnostic_fixed_iterations) {
+      options.target_normalized_max_deviation = spec.target_percent / 100.0;
+    }
+    options.strict_target = true;
+    options.state_precision = spec.state_precision;
+    options.algorithm = spec.algorithm;
+    options.dcfr_positive_regret_exponent = spec.dcfr_positive_regret_exponent;
+    options.dcfr_average_exponent = spec.dcfr_average_exponent;
+    options.parallel_action_depth = spec.parallel_action_depth;
+    options.enable_lossless_isomorphism = spec.enable_lossless_isomorphism;
+    options.enable_canonical_public_dag = spec.enable_canonical_public_dag;
   }
-  options.strict_target = true;
-  options.state_precision = spec.state_precision;
-  options.algorithm = spec.algorithm;
-  options.dcfr_positive_regret_exponent = spec.dcfr_positive_regret_exponent;
-  options.dcfr_average_exponent = spec.dcfr_average_exponent;
-  options.parallel_action_depth = spec.parallel_action_depth;
-  options.enable_lossless_isomorphism = spec.enable_lossless_isomorphism;
-  options.enable_canonical_public_dag = spec.enable_canonical_public_dag;
   const bool pure_cfr_trajectory_enabled =
       environment_value("GTOSD_DIAGNOSTIC_PURE_CFR_TRAJECTORY").has_value();
   options.diagnostic_pure_cfr_trajectory = pure_cfr_trajectory_enabled;
@@ -1171,7 +1259,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
     }
   };
 
-  const auto started = std::chrono::steady_clock::now();
+  const auto product_build_started = std::chrono::steady_clock::now();
   std::cerr << "benchmark_phase=prepare_start peak_rss_bytes=" << gtosd::process_peak_rss_bytes()
             << '\n';
   const auto prepared =
@@ -1196,10 +1284,16 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
   }
   std::cerr << "benchmark_phase=prepare_complete peak_rss_bytes=" << gtosd::process_peak_rss_bytes()
             << '\n';
+  const auto product_ready = std::chrono::steady_clock::now();
   solver_cpu_started = gtosd::process_cpu_seconds();
   auto solved = gtosd::solve_postflop_exact(*prepared.value(), options);
-  const double wall_elapsed_seconds =
-      std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  const auto product_consultable = std::chrono::steady_clock::now();
+  const double build_to_ready_seconds =
+      std::chrono::duration<double>(product_ready - product_build_started).count();
+  const double solve_to_consultable_seconds =
+      std::chrono::duration<double>(product_consultable - product_ready).count();
+  const double build_to_consultable_seconds =
+      std::chrono::duration<double>(product_consultable - product_build_started).count();
   if (!solved || solved.value().convergence.empty()) {
     std::cerr << "postflop benchmark-gto-plus failed: "
               << (solved ? "missing_certification"
@@ -1826,8 +1920,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
                                        : "no_difference_expected_for_preallocated_category"},
            {"first_allocation_phase",
             category.first_allocation_phase
-                ? nlohmann::json(gtosd::solver_memory_phase_name(
-                      *category.first_allocation_phase))
+                ? nlohmann::json(gtosd::solver_memory_phase_name(*category.first_allocation_phase))
                 : nlohmann::json(nullptr)},
            {"release_phase",
             category.release_phase
@@ -1842,10 +1935,8 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
         snapshot.candidate_maximum_allocated_bytes;
     solver_memory_accounting["current_payload_bytes"] = snapshot.current_logical_bytes;
     solver_memory_accounting["current_allocated_bytes"] = snapshot.current_allocated_bytes;
-    solver_memory_accounting["final_phase"] =
-        gtosd::solver_memory_phase_name(snapshot.phase);
-    solver_memory_accounting["accounting_complete"] =
-        result.solver_memory_accounting_complete;
+    solver_memory_accounting["final_phase"] = gtosd::solver_memory_phase_name(snapshot.phase);
+    solver_memory_accounting["accounting_complete"] = result.solver_memory_accounting_complete;
     solver_memory_accounting["categories"] = std::move(memory_categories);
   }
   nlohmann::json report = {
@@ -1880,8 +1971,7 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
            ? "float24_regret_float16_strategy_float64_compute"
            : "float32_state_float64_compute"},
       {"solver_state_residency",
-       result.checkpoint.runtime_state != nullptr ? "budgeted_os_page_backed"
-                                                  : "resident_vectors"},
+       result.checkpoint.runtime_state != nullptr ? "budgeted_os_page_backed" : "resident_vectors"},
       {"resident_working_set_budget",
        options.resident_working_set_budget_bytes == 0U
            ? nlohmann::json(nullptr)
@@ -1915,7 +2005,16 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
        {{"measured_seconds", elapsed_seconds},
         {"reference_seconds", spec.reference_seconds},
         {"passed", elapsed_seconds <= spec.reference_seconds}}},
-      {"wall_elapsed_seconds_including_tree_preparation", wall_elapsed_seconds},
+      {"wall_elapsed_seconds_including_tree_preparation", build_to_consultable_seconds},
+      {"product_timing",
+       {{"contract", "gtosd.product_timing.v1"},
+        {"process_startup_included", false},
+        {"configuration_parsing_included", false},
+        {"build_to_ready_seconds", build_to_ready_seconds},
+        {"solve_to_consultable_seconds", solve_to_consultable_seconds},
+        {"build_to_consultable_seconds", build_to_consultable_seconds},
+        {"consultable_state",
+         "prepared tree retained; checkpoint and final certification available for node queries"}}},
       {"phase_seconds",
        {{"layout", result.timings.layout_seconds},
         {"initialization", result.timings.initialization_seconds},
@@ -2024,6 +2123,9 @@ int run_convergence_benchmark_core(const ConvergenceBenchmarkSpec &spec,
             << " final_dev_percent=" << final_deviation.value() * 100.0
             << " normalized_nash_conv=" << final.normalized_nash_conv
             << " elapsed_seconds=" << elapsed_seconds
+            << " build_to_ready_seconds=" << build_to_ready_seconds
+            << " solve_to_consultable_seconds=" << solve_to_consultable_seconds
+            << " build_to_consultable_seconds=" << build_to_consultable_seconds
             << " correctness=" << (correctness_passed ? "pass" : "fail") << '\n';
   return correctness_passed ? 0 : 4;
 }
@@ -2179,10 +2281,8 @@ int run_gto_plus_convergence_benchmark_v2_to_v4(const char *const specification_
   const auto &run = specification["gtosd_run"];
   const auto &expected = specification["expected_layout"];
   const auto specification_schema = specification.value("schema", std::string{});
-  const bool specification_v3 =
-      specification_schema == "gtosd.gto_plus_convergence_benchmark.v3";
-  const bool specification_v4 =
-      specification_schema == "gtosd.gto_plus_convergence_benchmark.v4";
+  const bool specification_v3 = specification_schema == "gtosd.gto_plus_convergence_benchmark.v3";
+  const bool specification_v4 = specification_schema == "gtosd.gto_plus_convergence_benchmark.v4";
 
   if (specification_v3 &&
       (!reference.contains("peak_rss_bytes") || !reference["peak_rss_bytes"].is_number_unsigned() ||
@@ -2366,8 +2466,7 @@ int run_gto_plus_convergence_benchmark_v2_to_v4(const char *const specification_
       spec.gto_plus_solver_memory_reference_bytes == 0 ||
       ((specification_v3 || specification_v4) &&
        (run.contains("peak_rss_cap_bytes") || run.contains("peak_rss_cap_unit") ||
-        run.contains("peak_rss_gate") ||
-        run.contains("resident_working_set_budget_bytes"))) ||
+        run.contains("peak_rss_gate") || run.contains("resident_working_set_budget_bytes"))) ||
       spec.target_definition.empty() || !std::isfinite(spec.ev_tolerance) ||
       spec.ev_tolerance <= 0.0 || !std::isfinite(spec.frequency_tolerance) ||
       spec.frequency_tolerance <= 0.0 || !std::isfinite(spec.display_precision_percent) ||
@@ -2657,10 +2756,9 @@ int run_gto_plus_layout_preflight(const char *const specification_path,
                       {"runtime_bytes", value.runtime_bytes},
                       {"reserve_bytes", value.reserve_bytes},
                       {"estimated_peak_bytes", value.estimated_peak_bytes},
-                      {"meets_requested_budget",
-                       value.meets_requested_budget
-                           ? nlohmann::json(*value.meets_requested_budget)
-                           : nlohmann::json(nullptr)}});
+                      {"meets_requested_budget", value.meets_requested_budget
+                                                     ? nlohmann::json(*value.meets_requested_budget)
+                                                     : nlohmann::json(nullptr)}});
   }
   const auto expected_physical_nodes =
       specification.value("expected_layout", nlohmann::json::object())

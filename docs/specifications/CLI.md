@@ -74,6 +74,78 @@ Nel campo `gtosd_run.algorithm` della specifica v4, `production_dcfr` seleziona
 il contratto comune qualificato `1.5/0/3` con reset `1,2,5,17,65`. `dcfr`
 rimane la variante parametrica/comparator e non e' un alias della production.
 
+I comandi operativi `postflop solve` e `postflop resume` risolvono sempre il
+profilo production versionato `1.0`: `ProductionDcfr`, stato
+`ScaledUint16RegretStrategy`, averaging delay 0, certificazione ogni 20
+iterazioni, target stretto e profondità parallela 7. L'intervallo CLI diverso
+da 20 viene rifiutato. Il backend production è `LazyInRam`; un preflight RAM
+insufficiente produce un errore esplicito e non attiva un fallback Float64
+out-of-core. `resume` rifiuta checkpoint CFR+ o privi di identità algoritmica
+ricostruibile. Il riepilogo iniziale stampa profilo, algoritmo, precisione,
+delay, intervallo e profondità risolti.
+
+Il report solve schema 2 conserva `elapsed_seconds` e aggiunge
+`build_to_ready_seconds`, `solve_to_consultable_seconds` e
+`build_to_consultable_seconds`. Il comando carica la configurazione, avvia il
+timer product, esegue preflight e preparazione, poi risolve sull'albero preparato.
+Il secondo intervallo termina dopo la scrittura del checkpoint finale; startup e
+parsing sono esclusi. `phase_seconds` separa layout,
+inizializzazione, traversal, certificazione e finalizzazione; `timer_scope`
+dichiara che startup è escluso e il lavoro specifico del gioco è incluso.
+
+`benchmark-gto-plus` espone inoltre `product_timing` con contratto
+`gtosd.product_timing.v1`: build-to-ready, solve-to-consultable e totale
+build-to-consultable sono misurati sulla fixture con i range reali. Il wrapper
+multiprocesso aggrega mediana e p95 dei tre intervalli dopo un preflight CPU/RAM
+prima di ogni processo.
+
+## HU preflop research
+
+Il runner locale `benchmarks/gtosd_hu_preflop_solve` accetta il fixture CO40 e
+supporta la telemetria V19 senza cambiare il training:
+
+```text
+gtosd_hu_preflop_solve --config <config.json> --output <result.json>
+gtosd_hu_preflop_solve --config <config.json> --output <result.json> \
+  --action-conditioned-telemetry \
+  --action-conditioned-telemetry-output <telemetry.json>
+gtosd_hu_preflop_solve --config <config.json> --output <result.json> \
+  --global-common-random-numbers \
+  --maximum-action-conditioned-telemetry-entries <N>
+gtosd_hu_preflop_solve --config <config.json> --output <result.json> \
+  --root-decision-trace-classes JTo,QJo,J9s \
+  --root-decision-trace-deals-per-class 2000 \
+  --root-decision-trace-output <trace.json>
+```
+
+`--action-conditioned-telemetry` abilita le osservazioni in memoria;
+`--action-conditioned-telemetry-output` abilita anche l'export
+`gtosd.hu_preflop_action_conditioned_telemetry.v1`. Il canale è diagnostico,
+opt-in e non può essere usato per promuovere WMAE/TV su smoke brevi. La
+classificazione dei terminali, la semantica della massa osservata e il gate
+V19 sono documentati in
+[`V19_FASE_A_AUDIT_2026-09-13.md`](../research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md).
+
+`--global-common-random-numbers` è un percorso di ricerca per la modalità
+batched: ripristina lo stato RNG all'ingresso di ogni confronto d'azione del
+traverser e aggiunge il suffisso `global_common_random_numbers_v1` all'identità
+dell'algoritmo. Non è un default di produzione e richiede
+`--training-batch-iterations`. Il limite telemetry è esplicito; quando viene
+raggiunto, le nuove chiavi vengono scartate e il report espone
+`action_conditioned_telemetry_dropped`, quindi un export troncato non può
+essere usato come gate di qualità.
+
+La root decision trace è opt-in e viene eseguita dopo il training sulla policy
+congelata. Per ogni classe richiesta forza le cinque azioni CO sugli stessi deal
+fisici condizionati e usa lo stesso seed iniziale delle continuation. Esporta EV,
+errori standard paired, rami preflop, terminali, reach per street e contributi dei
+bucket. Non modifica regret o strategy sum. Il formato
+`gtosd.hu_preflop_root_decision_trace.v1` accetta al massimo 16 classi e 10.000
+deal per classe, con un limite aggregato di 20.000 class-deal per contenere RAM
+e dimensione dell'export. `tools/analyze_hu_preflop_root_decision_trace.py`
+trasforma il sidecar in un report leggibile; il risultato resta una diagnostica
+campionata, non una NashConv.
+
 ## Storage
 
 ```text

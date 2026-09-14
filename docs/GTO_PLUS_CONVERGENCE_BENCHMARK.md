@@ -89,7 +89,8 @@ per il run sorgente da `1,71 s`.
 - `gto_cli postflop benchmark-gto-plus`: un singolo processo indipendente e un
   report atomico `gtosd.gto_plus_convergence_run.v4`;
 - `tools/run_gto_plus_convergence_benchmark.ps1`: almeno cinque processi,
-  mediana, p95 nearest-rank e gate attivi separati dalla memoria non valutata.
+  preflight CPU/RAM prima di ogni run, mediana, p95 nearest-rank e gate attivi
+  separati dalla memoria non valutata.
 
 ## Specifica v4: benchmark di convergenza generici
 
@@ -132,6 +133,10 @@ restano `null` fino alla Fase C. `memory_comparison` ha stato `not_evaluated`,
 `memory_gate`, `solver_state_gate` o `desktop_memory_gate`; il benchmark usa
 `solver_state_residency: resident_vectors` e
 `resident_working_set_budget: null`.
+`product_timing` usa il contratto `gtosd.product_timing.v1`: esclude startup e
+parsing, misura la preparazione fino all'albero pronto, il solve fino a checkpoint
+e certificazione interrogabili, e il totale operativo. Il wrapper pubblica
+campioni ordinati, mediana e p95 per ciascuno dei tre intervalli.
 Le chiavi applicative restano stabili;
 le chiavi di `gto_plus_ev_checks`, `gto_plus_action_frequency_checks` e
 `reference_node_action_frequencies` sono gli `id` dichiarati nella specifica

@@ -1,0 +1,91 @@
+{
+  "checkpoints": [
+    {
+      "best_response_ev": [
+        1.9999999999999998,
+        -1.998523451350278
+      ],
+      "checkpoint_fingerprint": "fnv1a64:d76a3778ed0b51b6",
+      "deviation_gain": [
+        0.0013466764295890776,
+        0.00012987222013260968
+      ],
+      "expected_payoff_sum": 0.0,
+      "iteration": 20000,
+      "nashconv": 0.0014765486497216873,
+      "normalized_nashconv": 0.0004921828832405625,
+      "profile_ev": [
+        1.9986533235704107,
+        -1.9986533235704107
+      ],
+      "zero_sum_exploitability": 0.0007382743248608437
+    },
+    {
+      "best_response_ev": [
+        2.0,
+        -1.999628390114534
+      ],
+      "checkpoint_fingerprint": "fnv1a64:ff663972ec5c4606",
+      "deviation_gain": [
+        0.0003363571312360314,
+        3.525275422999741e-05
+      ],
+      "expected_payoff_sum": 0.0,
+      "iteration": 40000,
+      "nashconv": 0.0003716098854660288,
+      "normalized_nashconv": 0.0001238699618220096,
+      "profile_ev": [
+        1.999663642868764,
+        -1.999663642868764
+      ],
+      "zero_sum_exploitability": 0.0001858049427330144
+    },
+    {
+      "best_response_ev": [
+        2.0,
+        -1.9998345811604572
+      ],
+      "checkpoint_fingerprint": "fnv1a64:943f7c83d5a515a9",
+      "deviation_gain": [
+        0.00014861218374084828,
+        1.6806655801948622e-05
+      ],
+      "expected_payoff_sum": 0.0,
+      "iteration": 60000,
+      "nashconv": 0.0001654188395427969,
+      "normalized_nashconv": 5.51396131809323e-05,
+      "profile_ev": [
+        1.9998513878162592,
+        -1.9998513878162592
+      ],
+      "zero_sum_exploitability": 8.270941977139845e-05
+    }
+  ],
+  "elapsed_seconds": 5.9855476,
+  "game": {
+    "chance_nodes": 149,
+    "decision_nodes": 300,
+    "fingerprint": "fnv1a64:c5550b399fed070a",
+    "id": "short_deck_four_street_toy_v1_rake_0.000000",
+    "information_sets": 150,
+    "initial_pot_antes": 3.0,
+    "nodes": 789
+  },
+  "limitations": [
+    "This certifies the reduced calibration game only.",
+    "It does not certify a V17, V18, V20 or V21 CO40 checkpoint."
+  ],
+  "maximum_strategy_normalization_error": 1.1102230246251565e-16,
+  "nashconv_certified": true,
+  "schema": "gtosd.mccfr_nashconv_validation.v1",
+  "scope": "exact_enumerated_reduced_four_street_short_deck",
+  "solver": {
+    "algorithm": "linear_mccfr",
+    "certification_interval": 20000,
+    "iterations": 60000,
+    "seed": 5922868298731635015,
+    "strategy": "average"
+  },
+  "status": "PASS",
+  "traversed_nodes": 1915446
+}

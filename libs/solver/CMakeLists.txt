@@ -1,6 +1,8 @@
 add_library(gtosd_solver
+  src/card_abstraction.cpp
   src/finite_game.cpp
   src/reference_games.cpp
+  src/subgame.cpp
   src/solver.cpp)
 add_library(gtosd::solver ALIAS gtosd_solver)
 

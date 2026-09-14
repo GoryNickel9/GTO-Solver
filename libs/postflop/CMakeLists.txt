@@ -18,6 +18,26 @@ target_link_libraries(gtosd_postflop
 set_target_properties(gtosd_postflop PROPERTIES EXPORT_NAME postflop)
 gtosd_set_warnings(gtosd_postflop)
 
+if(GTOSD_BUILD_BENCHMARKS)
+  add_library(gtosd_postflop_preflop_experimental
+    src/canonical_layout.cpp
+    src/postflop_solver.cpp
+    src/solver_memory_ledger.cpp)
+  target_include_directories(gtosd_postflop_preflop_experimental
+    PUBLIC
+      $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+      $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>)
+  target_compile_features(gtosd_postflop_preflop_experimental PUBLIC cxx_std_20)
+  target_compile_definitions(gtosd_postflop_preflop_experimental
+    PRIVATE GTOSD_ENABLE_WIDE_CANONICAL_LAYOUT=1)
+  target_link_libraries(gtosd_postflop_preflop_experimental
+    PUBLIC
+      gtosd::memory
+      gtosd::equity
+      gtosd::isomorphism)
+  gtosd_set_warnings(gtosd_postflop_preflop_experimental)
+endif()
+
 option(GTOSD_ENABLE_HOTPATH_PROFILE
   "Compile detailed postflop hot-path instrumentation" OFF)
 if(GTOSD_ENABLE_HOTPATH_PROFILE)
@@ -65,6 +85,12 @@ if(MSVC)
     $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2 /favor:INTEL64>)
   target_link_options(gtosd_postflop INTERFACE
     $<$<CONFIG:Release>:/LTCG>)
+  if(GTOSD_BUILD_BENCHMARKS)
+    target_compile_options(gtosd_postflop_preflop_experimental PRIVATE
+      $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2 /favor:INTEL64>)
+    target_link_options(gtosd_postflop_preflop_experimental INTERFACE
+      $<$<CONFIG:Release>:/LTCG>)
+  endif()
   if(GTOSD_BUILD_RANGE_ORBIT_ORACLE)
     target_compile_options(gtosd_postflop_range_orbit_oracle PRIVATE
       $<$<CONFIG:Release>:/Ob3 /Oi /Ot /GL /arch:AVX2 /favor:INTEL64>)

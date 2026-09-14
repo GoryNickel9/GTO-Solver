@@ -1,0 +1,51 @@
+{
+  "schema": "gtosd.production_dcfr_product_corpus.v1",
+  "frozen_at": "2026-09-05",
+  "seed": 1305092026,
+  "selection_rule": "Cases are selected before R2 timing. A case cannot move between partitions after results are inspected.",
+  "development": [
+    {
+      "id": "D-RIVER-CHECK-001",
+      "config": "tests/fixtures/postflop_check_only.json",
+      "sha256": "A7F2FA07A3200EE12C28DFB4493BA7BD6F11A882E8963EBF35F27DAF641FBFDB",
+      "purpose": "minimal exact outcome and checkpoint diagnostics"
+    },
+    {
+      "id": "D-AHKHQH-CONFIG-001",
+      "config": "benchmarks/fixtures/postflop_config_ahkhqh_003.json",
+      "sha256": "D1110D53D075FE9E194E068FF50E1A31EB9D3A8A469C1A8A367DA7143F57E433",
+      "purpose": "profiling only; not eligible as independent confirmation"
+    }
+  ],
+  "validation": [
+    {
+      "id": "V-RIVER-BET-001",
+      "config": "tests/fixtures/postflop_river_bet.json",
+      "sha256": "7213C678E4A0FF4372F39EE43A87622868BEE211AEA6DB5A3AC0710864A6EB4A",
+      "purpose": "independent small-game solve and persistence validation"
+    }
+  ],
+  "holdout": [],
+  "regressions": [
+    {
+      "id": "GTP-AHKHQH-003",
+      "specification": "benchmarks/fixtures/gto_plus_ahkhqh_101.json",
+      "sha256": "1184481BEE759CDAC55F1FF8C8332566A801C63C1AE7DCC5C20ACEE81BE1143A"
+    },
+    {
+      "id": "GTP-TH7D6S-101",
+      "specification": "benchmarks/fixtures/gto_plus_th7d6s_101.json",
+      "sha256": "0CDE44A6D0FD15A4AD7FBE8C9E0636099F00C47A0B1447E2EE79745F905EBAB3"
+    },
+    {
+      "id": "GTP-TSTC9D-101",
+      "specification": "benchmarks/fixtures/gto_plus_tstc9d_101.json",
+      "sha256": "7CC678B1F8AE1D66AAF5AE6AA361751359E7942D526BA940338825871FB54FB0"
+    }
+  ],
+  "limits": [
+    "The current repository has no independent representative large holdout configuration.",
+    "R2 baseline regression may run, but R2-S parameter selection cannot start until H is materialized and frozen in a new manifest version.",
+    "GTO+ regressions are correctness and parity evidence, never tuning cases."
+  ]
+}

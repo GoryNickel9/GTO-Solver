@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gtosd.local/schemas/hu_preflop_candidate.schema.json",
+  "title": "GTOSD HU preflop benchmark candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "benchmark_id",
+    "tree_fingerprint",
+    "rake_mode",
+    "root_ev_ante",
+    "normalized_nashconv",
+    "nashconv_certified",
+    "strategy"
+  ],
+  "properties": {
+    "schema": {"const": "gtosd.hu_preflop_candidate.v1"},
+    "benchmark_id": {"const": "GTP-HU-PREFLOP-CO40-001"},
+    "tree_fingerprint": {"type": "string", "minLength": 1},
+    "rake_mode": {"type": "string", "minLength": 1},
+    "root_ev_ante": {"type": "number"},
+    "normalized_nashconv": {"type": "number", "minimum": 0},
+    "nashconv_certified": {"type": "boolean"},
+    "game_config": {"type": "string", "minLength": 1},
+    "algorithm": {"type": "string", "minLength": 1},
+    "abstraction": {"type": "string", "minLength": 1},
+    "iterations": {"type": "integer", "minimum": 1},
+    "seed": {"type": "integer", "minimum": 1},
+    "information_sets": {"type": "integer", "minimum": 1},
+    "best_response_information_sets": {"type": "integer", "minimum": 1},
+    "bytes_per_information_set_payload": {"type": "integer", "minimum": 1},
+    "minimum_blueprint_payload_bytes": {"type": "integer", "minimum": 1},
+    "minimum_best_response_payload_bytes": {"type": "integer", "minimum": 1},
+    "allocator_overhead_included": {"const": false},
+    "solve_seconds": {"type": "number", "minimum": 0},
+    "root_ev_standard_error_ante": {"type": "number", "minimum": 0},
+    "abstract_nashconv_ante": {"type": "number", "minimum": 0},
+    "best_response_co_ev_ante": {"type": "number"},
+    "best_response_btn_ev_ante": {"type": "number"},
+    "nashconv_scope": {"const": "sampled_response_lower_bound_not_certified"},
+    "strategy": {
+      "type": "object",
+      "minProperties": 81,
+      "maxProperties": 81,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["all_in", "raise_6", "raise_10", "call", "fold"],
+        "properties": {
+          "all_in": {"type": "number", "minimum": 0, "maximum": 1},
+          "raise_6": {"type": "number", "minimum": 0, "maximum": 1},
+          "raise_10": {"type": "number", "minimum": 0, "maximum": 1},
+          "call": {"type": "number", "minimum": 0, "maximum": 1},
+          "fold": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+      }
+    }
+  }
+}

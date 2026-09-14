@@ -8,6 +8,7 @@
 - CFR+;
 - Linear CFR;
 - Discounted CFR (DCFR);
+- ProductionDcfr con schedule bounded `1.5/0/3`;
 - External Sampling MCCFR.
 
 Questo laboratorio valida formule, checkpoint, averaging e best response su
@@ -21,7 +22,10 @@ exact-outcome con aggiornamenti alternati su tutte le combo e chance
 compatibili. Il contratto e' `alpha=1.5`, `beta=0`, `gamma=3`, regret signed e
 average immediato (`averaging_delay=0`). L'average viene azzerato alle
 iterazioni one-based `1,2,5,17,65`; dopo 65 l'ultima epoca viene mantenuta. Non
-usa sampling, bucketing o astrazione del gioco. L'isomorfismo globale e il DAG
+usa sampling o bucketing nel percorso product. Espone `exact_identity` 1.0,
+che nomina il mapping identità senza cambiare il gioco o allocare stato, e
+`made_hand_value` 1.0 come mapping sperimentale risolvibile soltanto dal probe
+R2-S `float64`, con checkpoint separato. L'isomorfismo globale e il DAG
 canonico sono riduzioni lossless; lo stato cumulativo production usa il codec
 node-scaled uint16 dichiarato nella specifica di precisione.
 
@@ -50,11 +54,20 @@ dall'accumulatore reach-weighted.
 | External Sampling MCCFR | stima campionata | dipende dal campione | laboratorio |
 
 DCFR continua a esporre `alpha=1.5`, `beta=0`, `gamma=2` come variante
-parametrica versionata. `ProductionDcfr` ha identita' checkpoint distinta
-(`11`) e non accetta una gamma alternativa. MCCFR registra seed e non può
-essere chiamato exact.
+parametrica versionata. `ProductionDcfr` ha identità distinta sia nel checkpoint
+postflop (`11`) sia nel laboratorio `FiniteGame`; non accetta una gamma
+alternativa. Il resume generico attraverso il confine d'epoca è byte-identico
+al run continuo. MCCFR registra seed e non può essere chiamato exact.
 
 ## Parallelismo
+
+`resolve_postflop_production_options` è l'unico confine autorizzato per nuovi
+solve e resume di prodotto. Il profilo versionato 1.0 risolve algoritmo,
+precisione, delay, target stretto, certificazione, isomorfismo, canonical DAG e
+policy di parallelismo. I caller possono scegliere target, limite iterazioni e
+numero di thread entro il massimo di otto; non possono sostituire schedule,
+codec o backend. Un resume eredita lo stato ProductionDcfr compatibile e viene
+rifiutato se identifica CFR+ o metadati ambigui.
 
 Il postflop può parallelizzare action subtree fino a una profondità configurata.
 I worker producono buffer separati e una riduzione deterministica. Thread count,
@@ -71,9 +84,34 @@ value, best-response value, NashConv, NashConv/pot e payoff sum. Il criterio di
 arresto viene valutato solo a intervalli di certificazione dichiarati; una
 certificazione finale è obbligatoria.
 
+Nel percorso HU preflop decomposto, la BR globale identifica anche il profilo
+composito delle boundary postflop. Un fingerprint basato sul solo blueprint
+preflop non è sufficiente: il certificatore rifiuta una BR calcolata contro
+continuazioni diverse, anche se tree e strategia preflop coincidono.
+
+La riduzione canonica delle boundary River trasforma insieme board e combo
+privata. Per ogni runout rappresentante enumera l'orbita che stabilizza il
+Flop, rimappa la combo nelle coordinate del public root e applica una sola
+volta la molteplicità del Flop. Moltiplicare una CFV per-combo per la sola
+dimensione dell'orbita senza questa rimappatura non è un quoziente lossless.
+
+Le reach che alimentano una root River vengono ottenute riproducendo l'intera
+history Flop/Turn. A ogni azione si moltiplica soltanto la reach del player che
+agisce per la probabilità della strategia media della sua combo; chance e
+blocker vengono applicati quando la street avanza. Il provider della strategia
+è separato da questo propagatore e deve restituire probabilità finite in
+`[0,1]`.
+
 La frequenza della certificazione cambia il tempo osservato e deve essere
 pubblicata. Non è lecito confrontare il solo traversal GTOSD con il tempo
 end-to-end GTO+.
+
+`RbpReadOnlyTelemetry` può osservare checkpoint DCFR legacy e ProductionDcfr,
+ma non cambia la traversata. Sul profilo product D/V alle iterazioni 20 e 32 non
+trova candidati che superino neppure il proxy CFR originale per una singola
+iterazione. Quel proxy non costituisce comunque un bound valido per gli sconti
+signed, i clock e i reset della media ProductionDcfr. R6 non ha quindi introdotto
+pruning o lazy update nel percorso product.
 
 ## Checkpoint e resume
 
@@ -92,11 +130,54 @@ originale.
 
 ## Algoritmi futuri
 
-Outcome Sampling, public chance sampling, safe subgame solving, continual
-resolving e depth-limited solving sono candidati, non capacità correnti.
-Preflop richiederà una decisione separata tra gioco non astratto, decomposizione
-e abstraction misurata. Multiway richiederà una nozione di soluzione e metriche
-separate; NashConv HU zero-sum non viene trasferita per assunzione.
+### Common Random Numbers root sperimentale
+
+Il trainer HU preflop espone `root_common_random_numbers` come controllo di varianza opzionale e
+disattivato per default. Nei batch congelati, le azioni del traverser alla root usano lo stesso
+seed di continuazione. Ogni valore d'azione conserva la propria distribuzione marginale; cambia
+soltanto la correlazione fra valori stimati nello stesso update.
+
+La modalità non aggiunge rollout e non altera pesi, reach o regret matching. L'ID algoritmo la
+registra separatamente. Il suo beneficio non è garantito: una covarianza positiva riduce la
+varianza delle differenze fra azioni, mentre una covarianza negativa può peggiorarla. Per questo
+resta una modalità di ricerca soggetta a replica su due seed, gate temporale e diagnostiche
+pairwise.
+
+Outcome Sampling, continual resolving e depth-limited solving non sono capacità
+production correnti. R2-S fornisce due primitive di laboratorio: traversal
+postflop bucketizzato con lift/certificazione originale e resolving safe con
+boundary CFV. Il bridge river postflop materializza esattamente ogni deal
+privato pesato entro limiti espliciti, importa il blueprint ProductionDcfr e
+verifica il gadget opt-out con BR globale. S3 combina le primitive e certifica
+il risultato nel gioco fisico. Queste capacità restano bounded e sperimentali:
+A0 è più lenta su D/V, V perde qualità e il prodotto resta exact/no bucketing.
+Il percorso HU preflop selezionato usa una decomposizione exact per root
+pubblica Flop. I subgame River sono risolti con `ProductionDcfr`; boundary CFV,
+terminali anticipati e reach delle azioni vengono ridotti verso una boundary
+Flop task-local. Il livello superiore riusa queste continuation durante gli
+update preflop/Flop/Turn. Non è MCCFR: carte, blocker, fold e showdown sono
+enumerati. La qualifica finale richiede best response e NashConv globali exact.
+Il loop convergente delle street superiori e la BR globale sono ancora da
+implementare, quindi la decomposizione corrente non è ancora un solver HU
+preflop qualificato.
+
+Il motore postflop espone separatamente CFV root per combo sotto strategia
+media e sotto best response exact. Entrambi i report ricompongono il valore
+autorevole del checkpoint entro `1e-9`. Il bridge applica a entrambi lo stesso
+lift orbitale blocker-aware e li accumula in canali River task-local distinti.
+Il tag di modalità entra nei fingerprint e impedisce di usare una BR come
+boundary della strategia media. Questo chiude le foglie River del futuro
+calcolo BR globale decomposto; non costituisce ancora la scelta ottima alle
+decisioni Flop/Turn o preflop.
+
+La futura ricorsione upper-street usa una vista Turn-major del catalogo River.
+Per ogni task Flop raggruppa i runout per Turn canonico e, dentro il gruppo,
+espone uno span per ciascuna history River. Il valore viene quindi ridotto e
+massimizzato separatamente dopo ogni osservazione Turn; sommare prima tutti i
+Turn e scegliere poi l'azione non sarebbe una best response valida.
+
+Multiway richiederà una nozione di soluzione e metriche separate; NashConv HU
+zero-sum non viene trasferita per assunzione.
 
 ## Target memory-bounded approvato
 
@@ -110,3 +191,43 @@ memory-bounded, non l'autorita' della schedule corrente. Le tre fixture
 AHKHQH, TH7D6S e TSTC9D applicano lo stesso contratto e non esiste selezione per
 benchmark. `DcfrPlus` conserva una proiezione non-negativa custom e un
 identificatore distinto.
+
+## ProductionDcfr river bucket-native sperimentale
+
+Il kernel river-native riusa la schedule ProductionDcfr `1.5/0/3` ma cambia il
+gioco risolto. La chance iniziale seleziona una coppia di bucket con massa
+derivata dai deal fisici compatibili; il traversal alternato percorre soltanto
+l'albero pubblico. Regret e strategy sum sono `float64` e indicizzati per
+decisione e bucket del player attivo.
+
+La modalità è enumerata, non MCCFR: non campiona chance outcome. È però
+astratta, perché tutte le combo con lo stesso `HandValue` finale condividono la
+strategia. Il lift sul gioco fisico rende misurabile questa perdita tramite BR
+e NashConv originale. Il solver accetta un solo thread e checkpoint 1.0
+separati; non è un backend production e non cambia il contratto exact.
+
+### Variante exact-blocker v2
+
+Il kernel supporta anche `exact_blocker_signature_v2`. La chance resta
+enumerata e ProductionDcfr conserva formula e schedule; cambia soltanto la
+partizione delle mani. Due combo condividono stato strategico quando hanno lo
+stesso valore finale e la stessa compatibilità contro tutte le combo avversarie
+attive.
+
+Questa partizione è lossless per il River costruito, ma sul corpus qualificante
+degenera nell'identità: una classe per combo e una coppia per deal in 12/12
+fixture. Il candidato non riduce quindi traversate o stato strategico utile e
+viene respinto per fattibilità. Non è un algoritmo production alternativo e non
+autorizza un'estensione a street precedenti.
+
+### Analizzatore weighted-equitable
+
+L'analizzatore successivo non è un solver. Calcola la partizione stabile più
+grossolana ottenibile conservando `HandValue` e massa avversaria compatibile
+per classe. In questo modo valuta una famiglia più ampia di quozienti lossless
+rispetto alla firma v2 con etichette fisiche fisse.
+
+Il full range uniforme ammette 45 classi per player; i 12 range pesati del
+corpus v2 non ammettono fusioni. Il pre-gate chiude quindi il candidato prima
+dell'allocazione di regret e strategy sum. ProductionDcfr e la sua traiettoria
+numerica non sono stati modificati.

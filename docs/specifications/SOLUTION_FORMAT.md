@@ -11,6 +11,12 @@ GTOSD distingue:
 Un checkpoint non sostituisce una soluzione verificata. Una soluzione conserva
 config, range, checkpoint e certificazione coerenti.
 
+Il laboratorio `FiniteGame` usa `GTOSD_CFR_CHECKPOINT 1.1`. La minor 1 aggiunge
+l'identità `ProductionDcfr` senza cambiare il payload; i checkpoint 1.0 dei
+cinque algoritmi precedenti restano leggibili. Minor future e configurazioni
+ProductionDcfr diverse da `1.5/0/3`, single-thread e averaging immediato sono
+rifiutate.
+
 ## Checkpoint postflop
 
 `PostflopCheckpoint` contiene:
@@ -32,13 +38,92 @@ schedule e' coperta da resume continuo/segmentato byte-equivalent. Lo stato non
 contiene una strategia root esterna implicita: F10.4 resta un percorso
 diagnostico esplicito e non può essere riaperto come equilibrio standard.
 
-Un solve con target di working set esplicito può conservare temporaneamente lo
-stesso payload scaled-uint16 in una mapping OS-page-backed. L'owner runtime non
-fa parte dell'identità serializzata e le API di query lo leggono senza cambiare
-codec. Prima di scrivere checkpoint o `.gtsd`, il chiamante deve invocare la
-materializzazione esplicita: i quattro array risultanti devono essere
-byte-identici al backend residente e l'operazione può aumentare il working set
-dell'intera dimensione logica dello stato.
+Il writer checkpoint nativo usa il payload binario v2. Oltre ai campi legacy,
+serializza algoritmo, precisione, esponenti DCFR, conteggio decision node,
+scale e codici uint16, tutti coperti dal checksum. Il reader continua a leggere
+il payload v1 come dato legacy; la leggibilità non autorizza il resume nel
+prodotto se l'identità risolta non è ProductionDcfr scaled. Il chunk `METRICS`
+dell'archivio `.gtsd` usa lo schema interno v4 per conservare gli stessi campi;
+i reader mantengono la compatibilità con v1-v3.
+
+Il formato conserva il supporto di lettura per payload materializzati da
+backend storici. Il profilo operativo 1.0 non usa mapping OS-page-backed: il
+backend ammesso è `LazyInRam`, così il budget e il codec non cambiano durante
+solve, checkpoint o resume.
+
+## Checkpoint della certificazione HU preflop
+
+Il formato JSON `gtosd.hu_preflop_whole_game_coverage.v1` conserva lo stato
+streaming della copertura Flop. Contiene fingerprint di tree, blueprint e piano
+di decomposizione, target NashConv, un mask CO/BTN e una probabilità per ogni
+task canonico, contatori, massa coperta, hash incrementale dello stato e catena
+ordinata dei contributi. Dalla minor 1.3 conserva inoltre
+`continuation_checkpoint_fingerprint`, identità globale del checkpoint
+postflop condivisa da tutti i task e un hash locale per task, usato per
+verificare che i due resolver provengano dallo stesso assemblaggio. Un hash
+separato delle boundary produce l'identità del profilo completa, indipendente
+dall'ordine di arrivo.
+
+L'envelope su disco usa il marker
+`GTOSD_HU_PREFLOP_WHOLE_GAME_COVERAGE_FILE`, lunghezza e checksum. La scrittura
+usa un file sibling temporaneo e sostituzione atomica. Il caricamento controlla
+schema, limiti, finitezza, fingerprint e coerenza interna; prima di riprendere o
+finalizzare, il solver ricontrolla il checkpoint contro il tree e il catalogo
+dei 5.157 task.
+
+Questo checkpoint prova quali boundary sono state validate. Non contiene le
+boundary CFV già consumate e non certifica la strategia senza una best response
+globale exact entro il target dichiarato. L'evidenza BR 1.2 deve identificare lo
+stesso profilo di continuazione; tree e blueprint da soli non bastano.
+
+Le boundary Flop usano `gtosd.hu_preflop_flop_boundary.v2`. Separano il
+fingerprint locale dell'assemblaggio del task dall'identità globale del
+checkpoint postflop. Il ledger confronta la seconda; task diversi possono e
+devono avere fingerprint locali diversi.
+
+Gli accumulatori task-local River usano
+`gtosd.hu_preflop_river_task_accumulator.v5`; gli aggregati usano
+`gtosd.hu_preflop_river_task_aggregate.v5`. La versione v5 conserva sia il tag
+obbligatorio `AverageStrategy` o `ExactBestResponse`, sia l'identità del
+checkpoint ricevuta dalla prima boundary River. Ogni boundary successiva e
+ogni terminale Flop/Turn devono dichiarare la stessa identità. I fingerprint
+locali di boundary, accumulatore e aggregato restano distinti. Ogni
+contributo ha già sollevato l'orbita del runout, permutato le combo private,
+applicato la molteplicità del Flop e incluso la reach delle azioni postflop del
+player di cui si sta accumulando la CFV. I payload v1 applicavano una
+moltiplicazione scalare al solo board rappresentante; i v2 omettevano la reach
+delle azioni proprie; i v3 non distinguevano valori di profilo e best response;
+i v4 non conservavano l'identità globale del checkpoint.
+Tutti vengono rifiutati come incompatibili. I formati v5 conservano
+fingerprint, checksum e sostituzione atomica.
+
+I terminali best-response Flop/Turn usano la minor 1.1 del payload runtime.
+Oltre a tree, blueprint, catalogo e iterazione, registrano il fingerprint della
+continuation che ha fornito le probabilità della strategia avversaria. Il
+dispatcher richiede la stessa identità usata dalle boundary BR River e rifiuta
+un terminale di un altro checkpoint anche quando il payload è internamente
+valido e il fingerprint è stato ricalcolato.
+
+La riduzione best-response può essere ripresa a quattro livelli. Il leaf
+accumulator usa `gtosd.hu_preflop_river_best_response_leaf_accumulator.v1` e
+conserva query completa, manifest dei root River ordinati, prossimo root da
+consumare, 630 righe con somma compensata, identità della continuation e catena
+dei contributi. I livelli superiori usano
+`gtosd.hu_preflop_best_response_task_evaluation.v1`,
+`gtosd.hu_preflop_best_response_entry_accumulator.v1` e
+`gtosd.hu_preflop_best_response_entry_evaluation.v1`. Conservano lo stato
+pubblico, la history completa, i valori per combo e per classe e le identità
+immutabili necessarie a ricomporre e validare il risultato.
+
+I quattro envelope usano rispettivamente i marker
+`GTOSD_HU_PREFLOP_RIVER_BR_LEAF_ACCUMULATOR_FILE`,
+`GTOSD_HU_PREFLOP_BR_TASK_EVALUATION_FILE`,
+`GTOSD_HU_PREFLOP_BR_ENTRY_ACCUMULATOR_FILE` e
+`GTOSD_HU_PREFLOP_BR_ENTRY_EVALUATION_FILE`, con checksum e sostituzione
+atomica. Il leaf viene committato solo dopo che il checkpoint sink ha accettato
+il candidato: un errore conserva l'ultimo root completo e il resume parte dal
+successivo. Questi formati riducono il lavoro perso dopo un'interruzione; non
+riducono il costo di calcolo, l'errore di astrazione o la NashConv.
 
 ## Container `.gtsd`
 
@@ -108,3 +193,32 @@ Node lock di prodotto, preflop e multiway richiederanno payload versionati. Il
 chunk `NODELOCKS` esistente riserva il tipo, ma non dimostra che il node locking
 globale sia implementato. Nessun reader deve trasformare `none` in una strategia
 vincolata o viceversa.
+
+R2-S usa per ora due sidecar di laboratorio distinti dal container `.gtsd`:
+`GTOSD_CARD_ABSTRACTION 1 0` e `GTOSD_SUBGAME_BOUNDARY 1 1`, accompagnato da
+`GTOSD_PUBLIC_SUBGAME 1 0`. Il probe postflop coarse usa inoltre il checkpoint
+binario `GTOSD_POSTFLOP_BUCKET_1`, versione 1.0, con fingerprint separati per
+gioco e astrazione, algoritmo ProductionDcfr, stato `float64` e checksum. Hanno
+versione e fingerprint propri, ma non sono
+ancora chunk di soluzione production. Un checkpoint abstract identifica il
+gioco trasformato e non può essere ripreso come exact; un boundary identifica
+gioco e blueprint. I sidecar public-state/boundary sono avvolti da checksum e
+sostituzione atomica nello stesso filesystem. L'integrazione futura richiede
+comunque chunk `.gtsd` autenticati e migrazione esplicita: l'envelope di
+laboratorio non è un formato production promosso.
+
+La diagnostica HU preflop può produrre il sidecar JSON
+`gtosd.hu_preflop_root_decision_trace.v1`. Il file conserva gli identificatori
+di algoritmo, albero, astrazione ed evaluator, oltre ai seed; per ogni classe registra stato
+di training e valutazioni paired delle cinque azioni root. I rami e i bucket
+sono aggregati per evitare l'export dei singoli deal. Il sidecar non contiene lo
+stato necessario per riprendere il solve e non certifica convergenza.
+
+Il layout postflop espone inoltre `exact_identity` 1.0 come policy implicita.
+Poiché è l'identità verificata, non aggiunge payload né cambia il fingerprint o
+i byte del checkpoint ProductionDcfr v2; i checkpoint esistenti rappresentano
+già questa semantica exact. `made_hand_value` 1.0 ha fingerprint, mapping e
+checkpoint di laboratorio distinti. Il checkpoint bucket non può essere
+ripreso come exact e non è incorporato nel container `.gtsd`; una promozione
+futura dovrà serializzare policy, mapping, stato e schema di lift come chunk
+autenticati.

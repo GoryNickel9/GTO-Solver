@@ -43,6 +43,174 @@ add_executable(gtosd_real_node_state_replay real_node_state_replay.cpp)
 target_link_libraries(gtosd_real_node_state_replay PRIVATE nlohmann_json::nlohmann_json)
 gtosd_set_warnings(gtosd_real_node_state_replay)
 
+add_executable(gtosd_river_bucket_qualification river_bucket_qualification.cpp)
+target_link_libraries(gtosd_river_bucket_qualification
+  PRIVATE
+    gtosd::postflop_subgame
+    gtosd::best_response
+    gtosd::memory
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_river_bucket_qualification)
+
+add_executable(gtosd_hu_preflop_reference hu_preflop_reference.cpp)
+target_link_libraries(gtosd_hu_preflop_reference
+  PRIVATE
+    gtosd::core
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_reference)
+
+add_test(NAME gtosd_hu_preflop_reference_preflight
+  COMMAND gtosd_hu_preflop_reference
+    --fixture ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/hu_preflop_co40_reference_v1.json
+    --preflight-only)
+set_tests_properties(gtosd_hu_preflop_reference_preflight
+  PROPERTIES LABELS "benchmark;preflop;reference;qualification")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_reference_preflight PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_tree hu_preflop_tree.cpp)
+target_link_libraries(gtosd_hu_preflop_tree
+  PRIVATE
+    gtosd::preflop
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_tree)
+add_test(NAME gtosd_hu_preflop_tree COMMAND gtosd_hu_preflop_tree)
+set_tests_properties(gtosd_hu_preflop_tree PROPERTIES
+  LABELS "benchmark;preflop;tree;resource")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_tree PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_trainer hu_preflop_trainer.cpp)
+target_link_libraries(gtosd_hu_preflop_trainer PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_trainer)
+add_test(NAME gtosd_hu_preflop_trainer COMMAND gtosd_hu_preflop_trainer)
+set_tests_properties(gtosd_hu_preflop_trainer
+  PROPERTIES LABELS "benchmark;preflop;trainer;isolation")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_trainer PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_solve hu_preflop_solve.cpp)
+target_link_libraries(gtosd_hu_preflop_solve
+  PRIVATE
+    gtosd::preflop
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_solve)
+
+add_executable(gtosd_hu_preflop_decomposition hu_preflop_decomposition.cpp)
+target_link_libraries(gtosd_hu_preflop_decomposition
+  PRIVATE
+    gtosd::preflop
+    gtosd_postflop_preflop_experimental)
+gtosd_set_warnings(gtosd_hu_preflop_decomposition)
+
+add_executable(gtosd_hu_preflop_all_in_policy_audit hu_preflop_all_in_policy_audit.cpp)
+target_link_libraries(gtosd_hu_preflop_all_in_policy_audit
+  PRIVATE
+    gtosd::preflop
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_all_in_policy_audit)
+
+add_executable(gtosd_hu_preflop_postflop_query hu_preflop_postflop_query.cpp)
+target_link_libraries(gtosd_hu_preflop_postflop_query
+  PRIVATE
+    gtosd::preflop
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_postflop_query)
+
+add_executable(gtosd_mccfr_nashconv_validation mccfr_nashconv_validation.cpp)
+target_link_libraries(gtosd_mccfr_nashconv_validation
+  PRIVATE
+    gtosd::best_response
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_mccfr_nashconv_validation)
+
+add_executable(gtosd_hu_preflop_nashconv_probe hu_preflop_nashconv_probe.cpp)
+target_link_libraries(gtosd_hu_preflop_nashconv_probe
+  PRIVATE
+    gtosd::preflop
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_nashconv_probe)
+add_test(NAME gtosd_hu_preflop_decomposition
+  COMMAND gtosd_hu_preflop_decomposition)
+set_tests_properties(gtosd_hu_preflop_decomposition PROPERTIES
+  LABELS "benchmark;preflop;decomposition;resource;qualification")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_decomposition PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_bucket_qualification_preflight
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_bucket_qualification_corpus_v1.json
+    --preflight-only)
+set_tests_properties(gtosd_river_bucket_qualification_preflight
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;qualification")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_bucket_qualification_preflight PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_bucket_diagnostic_smoke
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_bucket_qualification_corpus_v1.json
+    --diagnostic-smoke-only)
+set_tests_properties(gtosd_river_bucket_diagnostic_smoke
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;oracle;memory")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_bucket_diagnostic_smoke PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_exact_blocker_qualification_preflight
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_exact_blocker_qualification_corpus_v2.json
+    --preflight-only)
+set_tests_properties(gtosd_river_exact_blocker_qualification_preflight
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;qualification;exact_blocker")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_exact_blocker_qualification_preflight PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_joint_equitable_feasibility_preflight
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_exact_blocker_qualification_corpus_v2.json
+    --equitable-preflight-only)
+set_tests_properties(gtosd_river_joint_equitable_feasibility_preflight
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;feasibility;equitable")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_joint_equitable_feasibility_preflight PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_showdown_distribution_qualification_preflight
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_showdown_distribution_qualification_corpus_v3.json
+    --preflight-only)
+set_tests_properties(gtosd_river_showdown_distribution_qualification_preflight
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;qualification;distribution")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_showdown_distribution_qualification_preflight PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_river_showdown_distribution_diagnostic_smoke
+  COMMAND gtosd_river_bucket_qualification
+    --manifest ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/river_showdown_distribution_qualification_corpus_v3.json
+    --diagnostic-smoke-only)
+set_tests_properties(gtosd_river_showdown_distribution_diagnostic_smoke
+  PROPERTIES LABELS "benchmark;postflop;river;card_abstraction;oracle;memory;distribution")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_river_showdown_distribution_diagnostic_smoke PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_executable(gtosd_fd_ftrl_omd_local_benchmark fd_ftrl_omd_local_benchmark.cpp)
 target_link_libraries(gtosd_fd_ftrl_omd_local_benchmark
   PRIVATE benchmark::benchmark)

@@ -207,8 +207,7 @@ void test_fixed_point_section_22_4() {
   }
   auto inclusive_boundary = scenario_state(gtosd::Street::Flop, 0, false, antes(100));
   const auto inclusive = gtosd::legal_actions(
-      inclusive_boundary,
-      config({5'000}, 0, gtosd::AllInMode::Go, 10'000, units(1), false));
+      inclusive_boundary, config({5'000}, 0, gtosd::AllInMode::Go, 10'000, units(1), false));
   require(inclusive.has_value() && has_type(inclusive.value(), gtosd::ActionType::AllIn) &&
               !has_type(inclusive.value(), gtosd::ActionType::Bet),
           "inclusive all-in threshold triggers exactly at the boundary");
@@ -234,8 +233,8 @@ void test_fixed_point_section_22_4() {
   auto gto_plus_root =
       gtosd::make_hu_postflop_state(gtosd::Street::Flop, antes(16), antes(80)).value();
   auto gto_plus_add = config({3'300, 7'500}, 4, gtosd::AllInMode::Add, 20'000);
-  gto_plus_add.aggressive_sizes_by_raise_count =
-      {{pct(3'300), pct(7'500)}, {pct(7'500)}, {pct(7'500)}, {pct(7'500)}};
+  gto_plus_add.aggressive_sizes_by_raise_count = {
+      {pct(3'300), pct(7'500)}, {pct(7'500)}, {pct(7'500)}, {pct(7'500)}};
   const auto root_actions = gtosd::legal_actions(gto_plus_root, gto_plus_add).value();
   const auto root_bet = std::ranges::find_if(root_actions, [](const auto &action) {
     return action.type == gtosd::ActionType::Bet && action.amount == units(52'800);
@@ -265,10 +264,9 @@ void test_fixed_point_section_22_4() {
           "149.60%-pot push is added beside the configured 75%-pot later raise");
 
   auto rounded_config = gto_plus_add;
-  rounded_config.aggressive_target_rounding = {
-      {units(100'000), units(1'000)}, {gtosd::Money{}, units(10'000)}};
-  const auto rounded_root_actions =
-      gtosd::legal_actions(gto_plus_root, rounded_config).value();
+  rounded_config.aggressive_target_rounding = {{units(100'000), units(1'000)},
+                                               {gtosd::Money{}, units(10'000)}};
+  const auto rounded_root_actions = gtosd::legal_actions(gto_plus_root, rounded_config).value();
   const auto rounded_bet = std::ranges::find_if(rounded_root_actions, [](const auto &action) {
     return action.type == gtosd::ActionType::Bet && action.amount == units(53'000);
   });
@@ -276,28 +274,38 @@ void test_fixed_point_section_22_4() {
           "generic target rounding converts 5.28 to 5.30");
   const auto rounded_after_bet =
       gtosd::apply_action(gto_plus_root, *rounded_bet, rounded_config).value();
-  const auto rounded_facing_bet =
-      gtosd::legal_actions(rounded_after_bet, rounded_config).value();
-  const auto rounded_raise_14 =
-      std::ranges::find_if(rounded_facing_bet, [](const auto &action) {
-        return action.type == gtosd::ActionType::Raise && action.amount == units(140'000);
-      });
+  const auto rounded_facing_bet = gtosd::legal_actions(rounded_after_bet, rounded_config).value();
+  const auto rounded_raise_14 = std::ranges::find_if(rounded_facing_bet, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == units(140'000);
+  });
   require(rounded_raise_14 != rounded_facing_bet.end(),
           "rounding applies to total committed target and produces raise-to 14");
   const auto rounded_after_raise =
       gtosd::apply_action(rounded_after_bet, *rounded_raise_14, rounded_config).value();
   const auto rounded_facing_raise =
       gtosd::legal_actions(rounded_after_raise, rounded_config).value();
-  const auto rounded_raise_47 =
-      std::ranges::find_if(rounded_facing_raise, [](const auto &action) {
-        return action.type == gtosd::ActionType::Raise && action.amount == units(417'000);
-      });
+  const auto rounded_raise_47 = std::ranges::find_if(rounded_facing_raise, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise && action.amount == units(417'000);
+  });
   require(rounded_raise_47 != rounded_facing_raise.end(),
           "later 75%-pot action rounds the raise-to target to 47");
 
   const auto below_min_raise = gtosd::legal_actions(raise_state, config({1'000}, 1)).value();
   require(!has_type(below_min_raise, gtosd::ActionType::Raise),
           "raise increment below last full raise is discarded");
+  auto explicit_incomplete_config = config({1'000}, 1);
+  explicit_incomplete_config.allow_incomplete_non_all_in_raise = true;
+  const auto explicit_incomplete =
+      gtosd::legal_actions(raise_state, explicit_incomplete_config).value();
+  const auto incomplete_raise = std::ranges::find_if(explicit_incomplete, [](const auto &action) {
+    return action.type == gtosd::ActionType::Raise;
+  });
+  require(incomplete_raise != explicit_incomplete.end(),
+          "explicit benchmark override admits an incomplete non-all-in raise");
+  const auto incomplete_state =
+      gtosd::apply_action(raise_state, *incomplete_raise, explicit_incomplete_config).value();
+  require(incomplete_state.last_full_raise_increment == raise_state.last_full_raise_increment,
+          "incomplete benchmark raise preserves the prior full-raise increment");
   auto open_state = scenario_state(gtosd::Street::Flop, 0, false);
   const auto below_min_bet =
       gtosd::legal_actions(open_state, config({50}, 0, gtosd::AllInMode::Disabled, 0, antes(1)))
@@ -354,6 +362,8 @@ void test_rake_section_22_5() {
           "preflop fold returns unmatched button blind");
   const auto no_drop = gtosd::settle_terminal(folded, rake).value();
   require(no_drop.rake.units() == 0, "preflop fold has no-flop-no-drop");
+  require(no_drop.payoff_units[0] == -ante.units() && no_drop.payoff_units[1] == ante.units(),
+          "root fold loses only CO dead ante and awards it to BTN");
   require(no_drop.payoff_units[0] + no_drop.payoff_units[1] == 0,
           "rake-free HU payoff sum is zero");
   const auto with_drop = gtosd::settle_terminal(folded, preflop_rake).value();
@@ -464,8 +474,9 @@ void test_legal_action_matrix_section_22_6() {
   require(!gtosd::legal_actions(capped_depth, config({1'000, 2'000, 3'000, 4'000}, 4)),
           "more than three configured sizes rejected");
   auto invalid_depth = config({5'000}, 4);
-  invalid_depth.raise_depth = 5;
-  require(!gtosd::legal_actions(capped_depth, invalid_depth), "raise depth above four rejected");
+  invalid_depth.raise_depth = static_cast<std::uint8_t>(gtosd::maximum_core_raise_depth + 1U);
+  require(!gtosd::legal_actions(capped_depth, invalid_depth),
+          "raise depth above the core safety limit rejected");
 
   const gtosd::Action forged{gtosd::ActionType::Raise, antes(1), gtosd::AllInKind::None, 5'000};
   require(!gtosd::apply_action(capped_depth, forged, config({5'000}, 4)),

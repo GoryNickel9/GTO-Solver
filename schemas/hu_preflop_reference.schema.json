@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gtosd.local/schemas/hu_preflop_reference.schema.json",
+  "title": "GTOSD HU preflop external reference",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "provenance", "game", "reference", "acceptance"],
+  "properties": {
+    "schema": {"const": "gtosd.hu_preflop_reference.v1"},
+    "id": {"const": "GTP-HU-PREFLOP-CO40-001"},
+    "provenance": {
+      "type": "object",
+      "required": ["kind", "received_on", "external_solver", "configuration_complete"]
+    },
+    "game": {
+      "type": "object",
+      "required": [
+        "variant",
+        "monetary_contract_revision",
+        "ante_accounting",
+        "preflop_target_basis",
+        "effective_stack_ante",
+        "root_player",
+        "forced_contributions_ante",
+        "forced_contribution_components_ante",
+        "root_pot_ante",
+        "root_amount_to_call_ante",
+        "external_preflop_tree_status",
+        "external_postflop_tree_status",
+        "external_postflop_all_in_status",
+        "current_local_tree_fingerprint",
+        "root_actions",
+        "rake",
+        "unknown_configuration_fields"
+      ],
+      "properties": {
+        "variant": {"const": "short_deck_hu_36"},
+        "monetary_contract_revision": {"const": 2},
+        "ante_accounting": {"const": "dead_initial_pot_contribution"},
+        "preflop_target_basis": {"const": "live_commitment_excluding_dead_ante"},
+        "effective_stack_ante": {"const": 40},
+        "root_player": {"const": "CO"},
+        "forced_contributions_ante": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {"CO": {"const": 1}, "BTN": {"const": 2}},
+          "required": ["CO", "BTN"]
+        },
+        "forced_contribution_components_ante": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["CO", "BTN"],
+          "properties": {
+            "CO": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ante", "button_blind", "total"],
+              "properties": {
+                "ante": {"const": 1},
+                "button_blind": {"const": 0},
+                "total": {"const": 1}
+              }
+            },
+            "BTN": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ante", "button_blind", "total"],
+              "properties": {
+                "ante": {"const": 1},
+                "button_blind": {"const": 1},
+                "total": {"const": 2}
+              }
+            }
+          }
+        },
+        "root_pot_ante": {"const": 3},
+        "root_amount_to_call_ante": {"const": 1},
+        "external_preflop_tree_status": {"const": "user_confirmed_match_2026-09-10"},
+        "external_postflop_tree_status": {"const": "awaiting_information_2026-09-10"},
+        "external_postflop_all_in_status": {"const": "user_confirmed_always_available_2026-09-10"},
+        "current_local_tree_fingerprint": {"const": "fnv1a64:a68337fa567aa2d9"},
+        "root_actions": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "target_live_commitment_ante",
+              "target_total_contribution_ante"
+            ],
+            "properties": {
+              "id": {"enum": ["all_in", "raise_6", "raise_10", "call", "fold"]},
+              "type": {"enum": ["all_in", "raise", "call", "fold"]},
+              "incremental_amount_ante": {"type": "integer", "minimum": 0},
+              "target_live_commitment_ante": {"type": "number", "minimum": 0},
+              "target_total_contribution_ante": {"type": "number", "minimum": 1}
+            }
+          }
+        },
+        "rake": {
+          "type": "object",
+          "properties": {"status": {"const": "user_confirmed_zero_2026-09-07"}},
+          "required": ["status"]
+        },
+        "unknown_configuration_fields": {"type": "array", "minItems": 1}
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": [
+        "root_ev_ante",
+        "frequency_unit",
+        "rounding",
+        "comparison_normalization",
+        "strategy"
+      ],
+      "properties": {
+        "root_ev_ante": {"const": -0.3},
+        "frequency_unit": {"const": "percent"},
+        "strategy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all_in", "raise_6", "raise_10", "call", "fold"],
+          "properties": {
+            "all_in": {"type": "string", "minLength": 1},
+            "raise_6": {"type": "string", "minLength": 1},
+            "raise_10": {"type": "string", "minLength": 1},
+            "call": {"type": "string", "minLength": 1},
+            "fold": {"type": "string", "minLength": 1}
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "required": [
+        "weighted_mean_absolute_action_error_percentage_points_max",
+        "weighted_mean_class_total_variation_percentage_points_max",
+        "root_action_frequency_max_absolute_error_percentage_points_max",
+        "class_total_variation_p95_percentage_points_max",
+        "root_ev_absolute_error_ante_max",
+        "candidate_must_report_nashconv",
+        "candidate_normalized_nashconv_max"
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "gtosd.hu_preflop_all_in_equity_differential.v1",
+  "solverEquityTableFingerprint": "fnv1a64:fe73211ffab94a00",
+  "pokerQuantTableSha256": "2fad50c45560f78896d509b9887d1e8e91f28ab7dd3b50f89ccb240abf96a61b",
+  "canonicalPokerQuantMatchups": 10215,
+  "physicalUnorderedPrivateMatchups": 176715,
+  "classMatchups": 6561,
+  "tolerance": 1e-12,
+  "maximumAbsoluteEquityError": 1.2212453270876722e-15,
+  "meanAbsoluteEquityError": 1.5904989733589397e-16,
+  "cellsAboveTolerance": 0,
+  "physicalCountMismatches": [],
+  "maximumCase": {
+    "responder": "QJo",
+    "opponent": "76o",
+    "solverEquity": 0.6830295069918958,
+    "pokerQuantEquity": 0.6830295069918946,
+    "absoluteError": 1.2212453270876722e-15
+  },
+  "passed": true
+}

@@ -79,8 +79,13 @@ void test_preflop_and_actions() {
   auto state = gtosd::make_hu_preflop_state(gtosd::Money::from_antes(40).value(), ante).value();
   require(state.pot == gtosd::Money::from_antes(3).value(), "root pot 3");
   require(state.player_to_act == 0U, "CO first");
-  require(state.committed_total[0] == ante, "CO ante");
-  require(state.committed_total[1] == gtosd::Money::from_antes(2).value(), "BTN posts blind");
+  require(state.initial_pot == gtosd::Money::from_antes(2).value(),
+          "both dead antes are initial pot");
+  require(state.initial_pot_contributions[0] == ante &&
+              state.initial_pot_contributions[1] == ante,
+          "dead ante ownership is preserved");
+  require(state.committed_total[0].units() == 0, "CO has no live root commitment");
+  require(state.committed_total[1] == ante, "BTN posts one live button blind");
   require(gtosd::amount_to_call(state, 0) == ante, "CO calls one");
 
   const gtosd::ActionConfig config{
@@ -91,6 +96,20 @@ void test_preflop_and_actions() {
   require(actions[2].type == gtosd::ActionType::Raise, "raise facing button blind");
   require(actions[2].amount == gtosd::Money::from_units(30'000).value(),
           "raise uses pot after call");
+
+  auto exact_targets = config;
+  exact_targets.aggressive_sizes.clear();
+  exact_targets.aggressive_targets = {gtosd::Money::from_antes(6).value(),
+                                      gtosd::Money::from_antes(10).value()};
+  const auto exact_actions = gtosd::legal_actions(state, exact_targets).value();
+  require(exact_actions.size() == 4U && exact_actions[2].type == gtosd::ActionType::Raise &&
+              exact_actions[2].amount == gtosd::Money::from_antes(6).value() &&
+              exact_actions[3].type == gtosd::ActionType::Raise &&
+              exact_actions[3].amount == gtosd::Money::from_antes(10).value(),
+          "absolute targets preserve exact live commitments independent of dead antes");
+  exact_targets.aggressive_sizes = {pct(5'000)};
+  require(!gtosd::legal_actions(state, exact_targets),
+          "absolute and percentage aggression modes are mutually exclusive");
 
   const auto called = gtosd::apply_action(state, actions[1], config).value();
   require(called.pot == gtosd::Money::from_antes(4).value(), "call adds to pot");

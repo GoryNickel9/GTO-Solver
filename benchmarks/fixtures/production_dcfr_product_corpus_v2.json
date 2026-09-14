@@ -1,0 +1,124 @@
+{
+  "schema": "gtosd.production_dcfr_product_corpus.v2",
+  "frozen_at": "2026-09-05",
+  "seed": 1305092026,
+  "selection": {
+    "version": 1,
+    "method": "minimum SHA-256 of seed|stratum|canonical-board",
+    "strata": [
+      "paired_two_tone",
+      "connected_two_tone",
+      "ace_low_rainbow"
+    ],
+    "excluded_boards": [
+      "6s,7d,Th",
+      "7c,Qd,As",
+      "9d,Tc,Ts",
+      "Qh,Kh,Ah"
+    ],
+    "profile_assignment": "fixed table in tools/generate_production_dcfr_holdout.py before preflight",
+    "solver_outputs_used": false
+  },
+  "development": [
+    {
+      "id": "D-RIVER-CHECK-001",
+      "config": "tests/fixtures/postflop_check_only.json",
+      "sha256": "A7F2FA07A3200EE12C28DFB4493BA7BD6F11A882E8963EBF35F27DAF641FBFDB",
+      "purpose": "minimal exact outcome and checkpoint diagnostics"
+    },
+    {
+      "id": "D-AHKHQH-CONFIG-001",
+      "config": "benchmarks/fixtures/postflop_config_ahkhqh_003.json",
+      "sha256": "D1110D53D075FE9E194E068FF50E1A31EB9D3A8A469C1A8A367DA7143F57E433",
+      "purpose": "profiling only; not eligible as independent confirmation"
+    }
+  ],
+  "validation": [
+    {
+      "id": "V-RIVER-BET-001",
+      "config": "tests/fixtures/postflop_river_bet.json",
+      "sha256": "7213C678E4A0FF4372F39EE43A87622868BEE211AEA6DB5A3AC0710864A6EB4A",
+      "purpose": "independent small-game solve and persistence validation"
+    }
+  ],
+  "holdout": [
+    {
+      "id": "H-PAIRED-TWOTONE-001",
+      "stratum": "paired_two_tone",
+      "board": [
+        "7s",
+        "8c",
+        "8s"
+      ],
+      "selection_sha256": "0054FD2C6921F068FE37785320F37F3B04600C865DD7540FA02673E0F4882127",
+      "config": "benchmarks/fixtures/postflop_holdout_paired_two_tone_001.json",
+      "sha256": "2BC6803D922AACD61C343CC25A6F9CCB05FB1EFDC83EC1A4804429097096478F",
+      "ranges": "benchmarks/fixtures/postflop_holdout_paired_two_tone_ranges_001.json",
+      "ranges_sha256": "D845553616829AA877F0EBCE9817C8F7B9F4BD82988CC94434FD2B16ACF93D22",
+      "sealed": true,
+      "purpose": "blind final confirmation; forbidden for architecture or parameter selection"
+    },
+    {
+      "id": "H-CONNECTED-TWOTONE-001",
+      "stratum": "connected_two_tone",
+      "board": [
+        "Ts",
+        "Qs",
+        "Kd"
+      ],
+      "selection_sha256": "019DF93DB7B763740617B4C98DDBE2AB7C7CADDC0C38126B62007D528D20122A",
+      "config": "benchmarks/fixtures/postflop_holdout_connected_two_tone_001.json",
+      "sha256": "E5F844D967B0CA864A94A9115DEA61A8EE8779DAC057DF15D34AFD9508A73BF0",
+      "ranges": "benchmarks/fixtures/postflop_holdout_connected_two_tone_ranges_001.json",
+      "ranges_sha256": "1AB98464059D1DE4C42A4F13A1EA8E936D838AB2E64055F1BF1D6E52A8219A7A",
+      "sealed": true,
+      "purpose": "blind final confirmation; forbidden for architecture or parameter selection"
+    },
+    {
+      "id": "H-ACELOW-RAINBOW-001",
+      "stratum": "ace_low_rainbow",
+      "board": [
+        "7c",
+        "Qh",
+        "As"
+      ],
+      "selection_sha256": "001890090F25DEE4D0C4C9B3246688C5375BD8ED1514D3814CC245FE44596659",
+      "config": "benchmarks/fixtures/postflop_holdout_ace_low_rainbow_001.json",
+      "sha256": "579902433126A1E3D56B0CA3655D470BAD6E790050602B8285D266ED8293F96E",
+      "ranges": "benchmarks/fixtures/postflop_holdout_ace_low_rainbow_ranges_001.json",
+      "ranges_sha256": "79ACD76D6C300D01A683EBFF42819A5B470598701C4DAD761D936C5595E1B12B",
+      "sealed": true,
+      "purpose": "blind final confirmation; forbidden for architecture or parameter selection"
+    }
+  ],
+  "regressions": [
+    {
+      "id": "GTP-AHKHQH-003",
+      "specification": "benchmarks/fixtures/gto_plus_ahkhqh_101.json",
+      "sha256": "1184481BEE759CDAC55F1FF8C8332566A801C63C1AE7DCC5C20ACEE81BE1143A"
+    },
+    {
+      "id": "GTP-TH7D6S-101",
+      "specification": "benchmarks/fixtures/gto_plus_th7d6s_101.json",
+      "sha256": "0CDE44A6D0FD15A4AD7FBE8C9E0636099F00C47A0B1447E2EE79745F905EBAB3"
+    },
+    {
+      "id": "GTP-TSTC9D-101",
+      "specification": "benchmarks/fixtures/gto_plus_tstc9d_101.json",
+      "sha256": "7CC678B1F8AE1D66AAF5AE6AA361751359E7942D526BA940338825871FB54FB0"
+    }
+  ],
+  "seal": {
+    "status": "sealed",
+    "opened_at": null,
+    "permitted_before_open": [
+      "JSON parsing and rules validation",
+      "partition and checksum verification",
+      "hard resource-feasibility preflight without solver iterations"
+    ],
+    "forbidden_before_open": [
+      "solve, strategy, EV, dEV, NashConv or timing inspection",
+      "architecture, branch, threshold or parameter selection"
+    ]
+  }
+}

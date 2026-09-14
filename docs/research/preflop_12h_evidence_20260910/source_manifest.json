@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-10",
+  "git_head": "ffb208a0dad018dc537288c42239322ff7dfde6d",
+  "working_tree": "dirty before analysis; hashes identify the measured source and linked libraries; no production edits by this research",
+  "compiler": "MSVC 19.51.36248.0 x64",
+  "flags": "/std:c++20 /EHsc /O2 /Ob2 /DNDEBUG /MD /W4 /permissive-",
+  "cpu": "Intel Core i3-10100F 3.60 GHz",
+  "physical_cores": 4,
+  "logical_processors": 8,
+  "training_threads": 1,
+  "source_sha256": {
+    "libs/preflop/src/hu_preflop_solver.cpp": "9841dc63060412d6cb7be4097b983309667188bb58d87ce178e30c1e17c204e0",
+    "libs/preflop/src/hu_preflop_sampled_evaluation.cpp": "b4890f8397eec0155e0da5c972a8033bf0303c748adbb176d4a5593a41e4594d",
+    "libs/preflop/src/hu_preflop_decomposition.cpp": "c8f26af74a3420114e7986f427d4d2a381befb61eee27ef339ab1d590bf6aade",
+    "include/gtosd/preflop/hu_preflop.hpp": "e23b07cb2c09a943f6d1f83ec1c74dc1a58d725351b893c16e0a05bd55a6d22c",
+    "libs/core/src/game.cpp": "49153746db3d50f92342f86d5f2d945babae2076e3226421dcd10230c2e3639a",
+    "benchmarks/hu_preflop_solve.cpp": "f0bd10758dcca47e5ed896433b9f69fcb89db2ceca10c72cb038c5fbfa0fa1a4",
+    "benchmarks/fixtures/hu_preflop_co40_game_v1.json": "87af6c5d763baf0862c33e385e576f1925e3340b2a55038a1b9a66f141b8bc73",
+    "benchmarks/fixtures/hu_preflop_co40_reference_v1.json": "5e8aae5be43d4a4a19ed95cff2b435550dcb01b4efa74338309058e8cff39eb1",
+    "out/build/codex-release-20260907/libs/preflop/gtosd_preflop.lib": "e7d4829163b2f36378e6c106b86028e1bbe3002e8e22157aa34504d9f9f3474a",
+    "out/build/codex-release-20260907/libs/tree/gtosd_tree.lib": "938e90ac87947aa162f8fc83bb0ba93edfcada38c35a373e63f239be291ad6b5",
+    "out/build/codex-release-20260907/libs/equity/gtosd_equity.lib": "612601d629f21815e118d4b0a742ee16ab05d554851b543b793112380ce280c7",
+    "out/build/codex-release-20260907/libs/core/gtosd_core.lib": "efc5da00a9f3c45efb33867bcd662ee1f15f1b892167f638fddc25bb4a93ddc3"
+  },
+  "profile_extra_state_bytes": 8
+}

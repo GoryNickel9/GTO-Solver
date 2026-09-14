@@ -54,10 +54,21 @@ sono stati raggiunti da strategie root differenti.
 
 ## Risorse e responsività
 
-Il preflight seleziona RAM o out-of-core in base ai byte stimati e alle risorse
-disponibili. Memoria solver, transient e RSS sono concetti distinti. Durante il
-solve pausa e cancel vengono applicati a un confine sicuro di iterazione;
-recovery autenticato viene aggiornato alle certificazioni previste.
+Il preflight calcola i byte esatti dello stato production node-scaled dal layout
+preparato. Il solve operativo usa il backend `LazyInRam`; se la RAM non basta,
+la UI interrompe l'avvio con un errore di risorse e non converte silenziosamente
+lo stato in Float64 out-of-core. Memoria solver, transient e RSS sono concetti
+distinti. Il display GTO+ “Memory needed for solving” non viene presentato come
+equivalente al working set del processo. Durante il solve pausa e cancel vengono
+applicati a un confine sicuro di iterazione; recovery autenticato viene
+aggiornato alle certificazioni previste.
+
+Nuovi solve e resume compatibili passano dal resolver production condiviso con
+CLI e benchmark: `ProductionDcfr`, scaled uint16, delay 0, certificazione 20 e
+profondità parallela 7. La UI rifiuta checkpoint CFR+ e checkpoint legacy
+ambigui; può conservarne la configurazione soltanto per un nuovo solve da zero.
+Il nuovo progetto predefinito lascia l'all-in automatico disabilitato e mostra
+fold, call e raise configurato; `Add` o `Go` richiedono una scelta esplicita.
 
 Operazioni analytics on-demand possono ancora essere sincrone: il gate E2E di
 responsività certifica solve/resume, non ogni analisi di un nodo grande.

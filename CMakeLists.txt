@@ -90,6 +90,8 @@ add_subdirectory(libs/solver)
 add_subdirectory(libs/best_response)
 add_subdirectory(libs/memory)
 add_subdirectory(libs/postflop)
+add_subdirectory(libs/postflop_subgame)
+add_subdirectory(libs/preflop)
 add_subdirectory(libs/storage)
 add_subdirectory(libs/gui_prototype)
 add_subdirectory(apps/gto_cli)
@@ -124,6 +126,8 @@ install(TARGETS
     gtosd_best_response
     gtosd_memory
     gtosd_postflop
+    gtosd_postflop_subgame
+    gtosd_preflop
     gtosd_storage
     gtosd_gui_prototype
     gto_cli
@@ -139,6 +143,9 @@ install(FILES schemas/postflop_tree_config.schema.json
               schemas/gto_plus_reference.schema.json
               schemas/gto_plus_convergence_benchmark.schema.json
               schemas/gto_plus_convergence_benchmark.v2.schema.json
+              schemas/hu_preflop_reference.schema.json
+              schemas/hu_preflop_candidate.schema.json
+              schemas/hu_preflop_game.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
 install(DIRECTORY benchmarks/fixtures/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)

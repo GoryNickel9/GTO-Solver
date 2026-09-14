@@ -1,0 +1,106 @@
+{
+  "schema": "gtosd.hu_preflop_reference.v1",
+  "id": "GTP-HU-PREFLOP-CO40-001",
+  "provenance": {
+    "kind": "user_supplied_external_solver_output",
+    "received_on": "2026-09-06",
+    "external_solver": "modified MonkerSolver",
+    "external_solver_version": "unknown",
+    "external_solver_identified_on": "2026-09-09",
+    "solve_wall_time": {
+      "status": "user_confirmed_upper_bound",
+      "upper_bound_hours_exclusive": 12,
+      "confirmed_on": "2026-09-09"
+    },
+    "configuration_complete": false
+  },
+  "game": {
+    "variant": "short_deck_hu_36",
+    "monetary_contract_revision": 2,
+    "ante_accounting": "dead_initial_pot_contribution",
+    "preflop_target_basis": "live_commitment_excluding_dead_ante",
+    "hand_ranking": {
+      "status": "user_confirmed_matches_gtosd_postflop_2026-09-09",
+      "contract": "short_deck_36_flush_over_full_house_a6789_exact_v1",
+      "flush_beats_full_house": true,
+      "ace_low_straight": "A-6-7-8-9"
+    },
+    "effective_stack_ante": 40,
+    "root_player": "CO",
+    "forced_contributions_ante": {
+      "CO": 1,
+      "BTN": 2
+    },
+    "forced_contribution_components_ante": {
+      "CO": {"ante": 1, "button_blind": 0, "total": 1},
+      "BTN": {"ante": 1, "button_blind": 1, "total": 2}
+    },
+    "root_pot_ante": 3,
+    "root_amount_to_call_ante": 1,
+    "external_preflop_tree_status": "user_confirmed_match_2026-09-10",
+    "external_postflop_tree_status": "awaiting_information_2026-09-10",
+    "external_postflop_all_in_status": "user_confirmed_always_available_2026-09-10",
+    "current_local_tree_fingerprint": "fnv1a64:a68337fa567aa2d9",
+    "root_actions": [
+      {"id": "all_in", "type": "all_in", "target_live_commitment_ante": 39, "target_total_contribution_ante": 40},
+      {"id": "raise_6", "type": "raise", "target_live_commitment_ante": 6, "target_total_contribution_ante": 7},
+      {"id": "raise_10", "type": "raise", "target_live_commitment_ante": 10, "target_total_contribution_ante": 11},
+      {"id": "call", "type": "call", "incremental_amount_ante": 1, "target_live_commitment_ante": 1, "target_total_contribution_ante": 2},
+      {"id": "fold", "type": "fold", "target_live_commitment_ante": 0, "target_total_contribution_ante": 1}
+    ],
+    "rake": {
+      "status": "user_confirmed_zero_2026-09-07",
+      "enabled": false,
+      "percentage_basis_points": 0,
+      "cap_ante": 0,
+      "no_flop_no_drop": true,
+      "must_be_reported_by_candidate": true
+    },
+    "implemented_candidate_contract": {
+      "source": "user_confirmed_2026-09-06",
+      "game_config": "hu_preflop_co40_game_v1.json",
+      "BTN_after_raise_to_6a": ["fold", "call", "raise_to_10.5a", "all_in"],
+      "BTN_after_raise_to_10a": ["fold", "call", "raise_to_14.5a", "all_in"],
+      "after_limp": "BTN check or raise-to 6a/10a/all-in; CO responses mirror the open branches",
+      "after_configured_reraise": ["fold", "call", "all_in"],
+      "postflop_bet_and_raise_sizes": ["33%", "66%", "120%", "all_in"],
+      "postflop_raise_termination": "natural_stack",
+      "rake": "disabled",
+      "minimum_raise_exception": "raise-to 10.5a after raise-to 6a and raise-to 14.5a after raise-to 10a are explicit non-full non-all-in benchmark actions",
+      "external_equivalence_scope": "preflop tree confirmed; postflop tree awaiting information"
+    },
+    "unknown_configuration_fields": [
+      "external_postflop_non_all_in_action_tree",
+      "external_bucket_method_and_count_per_street",
+      "external_history_dependent_abstractions",
+      "external_solver_version",
+      "external_convergence_metric",
+      "convergence_target_and_iterations",
+      "exact_solve_wall_time_cpu_and_ram_within_the_confirmed_less_than_12_hour_bound"
+    ]
+  },
+  "reference": {
+    "root_ev_ante": -0.3,
+    "frequency_unit": "percent",
+    "rounding": "integer_percent_source; class totals of 100 or 101 are preserved",
+    "comparison_normalization": "divide each class row by its reported total; never rewrite the source values",
+    "strategy": {
+      "all_in": "[28.0]99[/28.0],[87.0]97s[/87.0],[37.0]98o[/37.0],98s,[50.0]A6o[/50.0],A6s,A7o,A7s,A8o,A8s,A9o,A9s,AJo,AJs,AKo,[66.0]AKs[/66.0],AQo,[99.0]AQs[/99.0],ATo,[88.0]ATs[/88.0],[99.0]J9s[/99.0],[60.0]JJ[/60.0],[88.0]JTo[/88.0],[78.0]JTs[/78.0],[69.0]K9s[/69.0],KJo,KJs,[65.0]KK[/65.0],KQo,KQs,KTo,[97.0]KTs[/97.0],[8.0]Q9s[/8.0],QJo,[31.0]QJs[/31.0],[47.0]QQ[/47.0],[60.0]QTo[/60.0],[78.0]QTs[/78.0],[87.0]T8s[/87.0],[96.0]T9o[/96.0],T9s,[32.0]TT[/32.0]",
+      "raise_6": "[4.0]77[/4.0],[14.0]88[/14.0],[9.0]99[/9.0],[8.0]A6o[/8.0],[24.0]AA[/24.0],[17.0]J8s[/17.0],[11.0]J9o[/11.0],[11.0]JJ[/11.0],[4.0]JTo[/4.0],[1.0]JTs[/1.0],[2.0]K7s[/2.0],[19.0]K8s[/19.0],[15.0]K9o[/15.0],[2.0]K9s[/2.0],[6.0]KK[/6.0],[1.0]KTs[/1.0],[5.0]Q8s[/5.0],[1.0]Q9o[/1.0],[27.0]Q9s[/27.0],[11.0]QJs[/11.0],[10.0]QQ[/10.0],[10.0]QTo[/10.0],[5.0]QTs[/5.0],[1.0]T8o[/1.0],[1.0]T9o[/1.0],[14.0]TT[/14.0]",
+      "raise_10": "[9.0]88[/9.0],[35.0]99[/35.0],[16.0]A6o[/16.0],[48.0]AA[/48.0],[26.0]AKs[/26.0],[1.0]AQs[/1.0],[12.0]ATs[/12.0],[13.0]J8s[/13.0],[28.0]J9o[/28.0],[18.0]JJ[/18.0],[11.0]JTs[/11.0],[5.0]K7s[/5.0],[23.0]K8s[/23.0],[26.0]K9o[/26.0],[21.0]KK[/21.0],[2.0]KTs[/2.0],[27.0]Q8s[/27.0],[13.0]Q9o[/13.0],[39.0]QJs[/39.0],[27.0]QQ[/27.0],[10.0]QTo[/10.0],[17.0]QTs[/17.0],[4.0]T7s[/4.0],[4.0]T8o[/4.0],[25.0]TT[/25.0]",
+      "call": "[26.0]66[/26.0],[32.0]77[/32.0],[61.0]88[/61.0],[28.0]99[/28.0],[13.0]97s[/13.0],[1.0]98o[/1.0],[26.0]A6o[/26.0],[28.0]AA[/28.0],[8.0]AKs[/8.0],[71.0]J8s[/71.0],[35.0]J9o[/35.0],[1.0]J9s[/1.0],[12.0]JJ[/12.0],[8.0]JTo[/8.0],[10.0]JTs[/10.0],[8.0]K6s[/8.0],[69.0]K7s[/69.0],[59.0]K8s[/59.0],[20.0]K9o[/20.0],[30.0]K9s[/30.0],[8.0]KK[/8.0],[69.0]Q8s[/69.0],[9.0]Q9o[/9.0],[66.0]Q9s[/66.0],[20.0]QJs[/20.0],[16.0]QQ[/16.0],[21.0]QTo[/21.0],[28.0]T7s[/28.0],[1.0]T8o[/1.0],[13.0]T8s[/13.0],[3.0]T9o[/3.0],[30.0]TT[/30.0]",
+      "fold": "[74.0]66[/74.0],[65.0]77[/65.0],[17.0]88[/17.0],76o,76s,86o,86s,87o,87s,96o,96s,97o,[63.0]98o[/63.0],J6o,J6s,J7o,J7s,J8o,[26.0]J9o[/26.0],K6o,[92.0]K6s[/92.0],K7o,[25.0]K7s[/25.0],K8o,[39.0]K9o[/39.0],Q6o,Q6s,Q7o,Q7s,Q8o,[77.0]Q9o[/77.0],T6o,T6s,T7o,[69.0]T7s[/69.0],[94.0]T8o[/94.0]"
+    }
+  },
+  "acceptance": {
+    "status": "provisional_until_candidate_output_exists",
+    "weighted_mean_absolute_action_error_percentage_points_max": 1.0,
+    "weighted_mean_class_total_variation_percentage_points_max": 2.0,
+    "root_action_frequency_max_absolute_error_percentage_points_max": 1.0,
+    "class_total_variation_p95_percentage_points_max": 5.0,
+    "root_ev_absolute_error_ante_max": 0.05,
+    "candidate_must_report_nashconv": true,
+    "candidate_nashconv_normalization": "effective_stack_40a",
+    "candidate_normalized_nashconv_max": 0.01
+  }
+}

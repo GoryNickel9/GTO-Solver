@@ -1,0 +1,3967 @@
+{
+  "schema": "gtosd.hu_preflop_all_in_training_diagnostic.v1",
+  "treeFingerprint": "fnv1a64:a68337fa567aa2d9",
+  "exactEquityTableFingerprint": "fnv1a64:fe73211ffab94a00",
+  "candidate": "docs\\research\\preflop_r6_20260910\\v12_exact_allin_street_adaptive_symmetric_mean4_2m_seed2_monetary_v2.json",
+  "diagnostic": "linear_mccfr_v1_opponent_pass_average_deterministic_batch32_workers8_root_action_rollouts4_v1_continuation_mean_updates_v1_symmetric_traverser_mean_updates_v1_exact_preflop_all_in_expectation_v1",
+  "iterations": 2000000,
+  "summary": {
+    "averageMaterialRows": 158,
+    "currentMaterialRows": 0,
+    "currentMaterialRowsOwnReachAtLeastOnePercent": 0,
+    "currentMaterialRowsPublicReachAtLeastOnePercent": 0,
+    "averageMaterialRowsCurrentMovesToBest": 158
+  },
+  "cases": [
+    {
+      "nodeId": 28,
+      "hand": "QJo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.25324106153306764,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.7661973691961603,
+      "ownSequenceReach": 0.9361301790107891,
+      "opponentSequenceReach": 0.10639053956847744,
+      "publicSequenceReach": 0.09959539485129322,
+      "averageRealizationWeightedLossAnte": 0.18163980544795888,
+      "lastUpdateIteration": 1999985,
+      "callCumulativeRegret": -3313299028.2422276,
+      "foldCumulativeRegret": 18367411.40987582,
+      "averageStrategy": {
+        "call": 0.25324106153306764,
+        "fold": 0.7467589384669322
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "A8o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.4849796666276894,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5040406858841973,
+      "ownSequenceReach": 0.5378145762715264,
+      "opponentSequenceReach": 0.017680972269657914,
+      "publicSequenceReach": 0.009509084609274679,
+      "averageRealizationWeightedLossAnte": 0.1314684955534066,
+      "lastUpdateIteration": 1999980,
+      "callCumulativeRegret": 9913428.283085898,
+      "foldCumulativeRegret": -233924080.70510018,
+      "averageStrategy": {
+        "call": 0.5150203333723106,
+        "fold": 0.4849796666276894
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 55,
+      "hand": "QTo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.2001524582222291,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.48874416000081844,
+      "ownSequenceReach": 1.0,
+      "opponentSequenceReach": 0.17003567878839598,
+      "publicSequenceReach": 0.17003567878839598,
+      "averageRealizationWeightedLossAnte": 0.09782334506592227,
+      "lastUpdateIteration": 1999982,
+      "callCumulativeRegret": -3142311836.891306,
+      "foldCumulativeRegret": 18940022.460139796,
+      "averageStrategy": {
+        "call": 0.2001524582222291,
+        "fold": 0.7998475417777708
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "TT",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.05196832752746423,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.0772401210356763,
+      "ownSequenceReach": 0.5569872863089016,
+      "opponentSequenceReach": 0.0173492825617597,
+      "publicSequenceReach": 0.009663329813480883,
+      "averageRealizationWeightedLossAnte": 0.08907286236623138,
+      "lastUpdateIteration": 1999997,
+      "callCumulativeRegret": 11102402.192678422,
+      "foldCumulativeRegret": -987001853.279519,
+      "averageStrategy": {
+        "call": 0.9480316724725358,
+        "fold": 0.05196832752746423
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "K9s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.4405600205077029,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.8839296705676922,
+      "ownSequenceReach": 0.1566316344795437,
+      "opponentSequenceReach": 0.015814021929693254,
+      "publicSequenceReach": 0.0024769761025432023,
+      "averageRealizationWeightedLossAnte": 0.06099612918382827,
+      "lastUpdateIteration": 1999941,
+      "callCumulativeRegret": -210560282.8528659,
+      "foldCumulativeRegret": 14501978.3495157,
+      "averageStrategy": {
+        "call": 0.4405600205077029,
+        "fold": 0.5594399794922972
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 55,
+      "hand": "KJo",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.18804125159216614,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.2801728768129321,
+      "ownSequenceReach": 1.0,
+      "opponentSequenceReach": 0.17575894260787628,
+      "publicSequenceReach": 0.17575894260787628,
+      "averageRealizationWeightedLossAnte": 0.05268405841808154,
+      "lastUpdateIteration": 1999981,
+      "callCumulativeRegret": 37949218.258887306,
+      "foldCumulativeRegret": -1256546502.3013465,
+      "averageStrategy": {
+        "call": 0.8119587484078338,
+        "fold": 0.18804125159216614
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "KJo",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.1545796182244054,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.1507929808743373,
+      "ownSequenceReach": 0.23391690505203588,
+      "opponentSequenceReach": 0.01669750469062314,
+      "publicSequenceReach": 0.0039058286193224168,
+      "averageRealizationWeightedLossAnte": 0.04161127698669637,
+      "lastUpdateIteration": 1999412,
+      "callCumulativeRegret": 13882045.964571657,
+      "foldCumulativeRegret": -500861626.17831784,
+      "averageStrategy": {
+        "call": 0.8454203817755945,
+        "fold": 0.1545796182244054
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "T9s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.4126751212556143,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.23853116549981013,
+      "ownSequenceReach": 0.33017588189271546,
+      "opponentSequenceReach": 0.11287235318921342,
+      "publicSequenceReach": 0.0372677287555546,
+      "averageRealizationWeightedLossAnte": 0.03250115271161092,
+      "lastUpdateIteration": 1999933,
+      "callCumulativeRegret": 5677494.441687693,
+      "foldCumulativeRegret": -128417443.15761054,
+      "averageStrategy": {
+        "call": 0.5873248787443858,
+        "fold": 0.4126751212556143
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 55,
+      "hand": "KTo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.2246708953933751,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.13985381467960067,
+      "ownSequenceReach": 1.0,
+      "opponentSequenceReach": 0.17149433590973348,
+      "publicSequenceReach": 0.17149433590973348,
+      "averageRealizationWeightedLossAnte": 0.03142108176824503,
+      "lastUpdateIteration": 1999996,
+      "callCumulativeRegret": -1091378861.927016,
+      "foldCumulativeRegret": 79795255.44067818,
+      "averageStrategy": {
+        "call": 0.2246708953933751,
+        "fold": 0.7753291046066249
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 55,
+      "hand": "A8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.06557564825271876,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.3975572020321718,
+      "ownSequenceReach": 1.0,
+      "opponentSequenceReach": 0.15761158347735016,
+      "publicSequenceReach": 0.15761158347735016,
+      "averageRealizationWeightedLossAnte": 0.026070071240796747,
+      "lastUpdateIteration": 1999981,
+      "callCumulativeRegret": -767138467.6691409,
+      "foldCumulativeRegret": 2325379.105232264,
+      "averageStrategy": {
+        "call": 0.06557564825271876,
+        "fold": 0.9344243517472812
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "A7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.14207535872084406,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.33191105119522746,
+      "ownSequenceReach": 0.34325107853044723,
+      "opponentSequenceReach": 0.01771086839167356,
+      "publicSequenceReach": 0.006079274677152757,
+      "averageRealizationWeightedLossAnte": 0.01618647886506611,
+      "lastUpdateIteration": 1999958,
+      "callCumulativeRegret": -225772390.35957116,
+      "foldCumulativeRegret": 17807462.281754278,
+      "averageStrategy": {
+        "call": 0.14207535872084406,
+        "fold": 0.8579246412791559
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "QTo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.1868678469437493,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.3686952816652127,
+      "ownSequenceReach": 0.19808157929037365,
+      "opponentSequenceReach": 0.11042393879064173,
+      "publicSequenceReach": 0.021872948187113866,
+      "averageRealizationWeightedLossAnte": 0.01364728469800269,
+      "lastUpdateIteration": 1999947,
+      "callCumulativeRegret": -1596523456.565178,
+      "foldCumulativeRegret": 19649910.25983819,
+      "averageStrategy": {
+        "call": 0.1868678469437493,
+        "fold": 0.8131321530562506
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 55,
+      "hand": "A9o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.06552014390303577,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.19883687832958952,
+      "ownSequenceReach": 1.0,
+      "opponentSequenceReach": 0.15687039305401645,
+      "publicSequenceReach": 0.15687039305401645,
+      "averageRealizationWeightedLossAnte": 0.01302782088138512,
+      "lastUpdateIteration": 1999992,
+      "callCumulativeRegret": 9411825.063437324,
+      "foldCumulativeRegret": -744098016.3490913,
+      "averageStrategy": {
+        "call": 0.9344798560969643,
+        "fold": 0.06552014390303577
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "Q9s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9899634229300031,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.34685546644172405,
+      "ownSequenceReach": 0.01662991966568025,
+      "opponentSequenceReach": 0.2100770693586845,
+      "publicSequenceReach": 0.0034935647870364614,
+      "averageRealizationWeightedLossAnte": 0.005710285774032339,
+      "lastUpdateIteration": 1999718,
+      "callCumulativeRegret": -821382817.6269472,
+      "foldCumulativeRegret": 20310921.641319726,
+      "averageStrategy": {
+        "call": 0.9899634229300031,
+        "fold": 0.010036577069996937
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "T9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8674801169298054,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.6760745301170754,
+      "ownSequenceReach": 0.003229946310170931,
+      "opponentSequenceReach": 0.01651040904301405,
+      "publicSequenceReach": 5.332773476789601e-05,
+      "averageRealizationWeightedLossAnte": 0.004696217030926718,
+      "lastUpdateIteration": 1999983,
+      "callCumulativeRegret": -955944306.7558316,
+      "foldCumulativeRegret": 4616811.84551875,
+      "averageStrategy": {
+        "call": 0.8674801169298054,
+        "fold": 0.1325198830701946
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "98o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9989694561868935,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.16215508172508297,
+      "ownSequenceReach": 0.02628472653324473,
+      "opponentSequenceReach": 0.23068620744000778,
+      "publicSequenceReach": 0.006063523877551971,
+      "averageRealizationWeightedLossAnte": 0.0042578095932399645,
+      "lastUpdateIteration": 1999806,
+      "callCumulativeRegret": -1416895638.2922795,
+      "foldCumulativeRegret": 32946902.535971105,
+      "averageStrategy": {
+        "call": 0.9989694561868935,
+        "fold": 0.0010305438131064401
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "Q9s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.25386427930492733,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.1040418229498261,
+      "ownSequenceReach": 0.01443577819391656,
+      "opponentSequenceReach": 0.017224052834144934,
+      "publicSequenceReach": 0.0002486426063140162,
+      "averageRealizationWeightedLossAnte": 0.004046013453607618,
+      "lastUpdateIteration": 1996682,
+      "callCumulativeRegret": -117088178.8105111,
+      "foldCumulativeRegret": 17610907.38092018,
+      "averageStrategy": {
+        "call": 0.25386427930492733,
+        "fold": 0.7461357206950726
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "A8o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.47889738276963223,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.19707247593650035,
+      "ownSequenceReach": 0.03777269183949084,
+      "opponentSequenceReach": 0.20098400940119374,
+      "publicSequenceReach": 0.007591707051776622,
+      "averageRealizationWeightedLossAnte": 0.0035648919574789166,
+      "lastUpdateIteration": 1999999,
+      "callCumulativeRegret": 8956525.093746664,
+      "foldCumulativeRegret": -1752013981.6153858,
+      "averageStrategy": {
+        "call": 0.5211026172303679,
+        "fold": 0.47889738276963223
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "A6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.06326409495195862,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6815864837651215,
+      "ownSequenceReach": 0.07009128787937263,
+      "opponentSequenceReach": 0.02992726154890037,
+      "publicSequenceReach": 0.0020976403046652553,
+      "averageRealizationWeightedLossAnte": 0.0030223329708613618,
+      "lastUpdateIteration": 1999928,
+      "callCumulativeRegret": -770108707.5785024,
+      "foldCumulativeRegret": 18538554.56239152,
+      "averageStrategy": {
+        "call": 0.06326409495195862,
+        "fold": 0.9367359050480414
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "98o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999993979485388,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.9416910505346312,
+      "ownSequenceReach": 0.0006867554995757995,
+      "opponentSequenceReach": 0.03336010942403366,
+      "publicSequenceReach": 2.2910238613405574e-05,
+      "averageRealizationWeightedLossAnte": 0.0013334662046160092,
+      "lastUpdateIteration": 1999996,
+      "callCumulativeRegret": -2578918442.9359655,
+      "foldCumulativeRegret": 730764.2377790858,
+      "averageStrategy": {
+        "call": 0.9999993979485388,
+        "fold": 6.020514612225937e-07
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "99",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8816529251954551,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.902457970073126,
+      "ownSequenceReach": 0.0002658575229673739,
+      "opponentSequenceReach": 0.01580441555856751,
+      "publicSequenceReach": 4.201722772347783e-06,
+      "averageRealizationWeightedLossAnte": 0.001149107041357779,
+      "lastUpdateIteration": 1998224,
+      "callCumulativeRegret": -1439002258.5840757,
+      "foldCumulativeRegret": 2685843.7081243317,
+      "averageStrategy": {
+        "call": 0.8816529251954551,
+        "fold": 0.11834707480454482
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "98s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.99999075519521,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.1050016524407527,
+      "ownSequenceReach": 0.0003606606114725221,
+      "opponentSequenceReach": 0.017720526356526902,
+      "publicSequenceReach": 6.391095871359936e-06,
+      "averageRealizationWeightedLossAnte": 0.0011198414417812387,
+      "lastUpdateIteration": 1999418,
+      "callCumulativeRegret": -760189614.5143094,
+      "foldCumulativeRegret": 853853.7964924697,
+      "averageStrategy": {
+        "call": 0.99999075519521,
+        "fold": 9.244804790048837e-06
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "KTs",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.1376439819966958,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.9352152981914992,
+      "ownSequenceReach": 0.006321083607682558,
+      "opponentSequenceReach": 0.11149953881594298,
+      "publicSequenceReach": 0.0007047979070736222,
+      "averageRealizationWeightedLossAnte": 0.000813692597760928,
+      "lastUpdateIteration": 1999899,
+      "callCumulativeRegret": 963412.2491154491,
+      "foldCumulativeRegret": -1503558028.1499755,
+      "averageStrategy": {
+        "call": 0.8623560180033043,
+        "fold": 0.1376439819966958
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "Q8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999989629344541,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.625759790263908,
+      "ownSequenceReach": 0.0012552279221112355,
+      "opponentSequenceReach": 0.03408731807190876,
+      "publicSequenceReach": 4.27873534337468e-05,
+      "averageRealizationWeightedLossAnte": 0.0007854703466886492,
+      "lastUpdateIteration": 1999857,
+      "callCumulativeRegret": -321709068.4593256,
+      "foldCumulativeRegret": 11146636.514194388,
+      "averageStrategy": {
+        "call": 0.9999989629344541,
+        "fold": 1.037065545930778e-06
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "87s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999969099981116,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5924069818958717,
+      "ownSequenceReach": 0.0011528238991967061,
+      "opponentSequenceReach": 0.23466446573336608,
+      "publicSequenceReach": 0.0002705268043896509,
+      "averageRealizationWeightedLossAnte": 0.0006829388164917979,
+      "lastUpdateIteration": 1999552,
+      "callCumulativeRegret": -1861784792.786105,
+      "foldCumulativeRegret": 4317907.815810337,
+      "averageStrategy": {
+        "call": 0.9999969099981116,
+        "fold": 3.0900018883740647e-06
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "A6s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.7877677055555117,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.24302846602968042,
+      "ownSequenceReach": 0.0030103360233660064,
+      "opponentSequenceReach": 0.2017838806171017,
+      "publicSequenceReach": 0.0006074372847562469,
+      "averageRealizationWeightedLossAnte": 0.0005763287626430362,
+      "lastUpdateIteration": 1999915,
+      "callCumulativeRegret": 3840602.9409701386,
+      "foldCumulativeRegret": -523892435.7491094,
+      "averageStrategy": {
+        "call": 0.2122322944444883,
+        "fold": 0.7877677055555117
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "88",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.6370016825110517,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.396865399872372,
+      "ownSequenceReach": 0.0001715588200540992,
+      "opponentSequenceReach": 0.03575996527850866,
+      "publicSequenceReach": 6.134937448356502e-06,
+      "averageRealizationWeightedLossAnte": 0.0004805037715945013,
+      "lastUpdateIteration": 1999791,
+      "callCumulativeRegret": -3177421963.815711,
+      "foldCumulativeRegret": 1656648.6651837819,
+      "averageStrategy": {
+        "call": 0.6370016825110517,
+        "fold": 0.3629983174889483
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "K9s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.9990031461778859,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6990311075362694,
+      "ownSequenceReach": 0.0006860052420806195,
+      "opponentSequenceReach": 0.03102611896732275,
+      "publicSequenceReach": 2.1284080253000346e-05,
+      "averageRealizationWeightedLossAnte": 0.000479060973858165,
+      "lastUpdateIteration": 1997092,
+      "callCumulativeRegret": 2343283.9302464095,
+      "foldCumulativeRegret": -316682538.7272494,
+      "averageStrategy": {
+        "call": 0.000996853822114197,
+        "fold": 0.9990031461778859
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "K8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8348743957318516,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0902517428638365,
+      "ownSequenceReach": 0.0005145967199042175,
+      "opponentSequenceReach": 0.033425842448962705,
+      "publicSequenceReach": 1.7200828884271365e-05,
+      "averageRealizationWeightedLossAnte": 0.0004683979065593071,
+      "lastUpdateIteration": 1999206,
+      "callCumulativeRegret": -470592181.9200985,
+      "foldCumulativeRegret": 7569989.489884073,
+      "averageStrategy": {
+        "call": 0.8348743957318516,
+        "fold": 0.16512560426814843
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "A6s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5296949072374921,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.43624290281778233,
+      "ownSequenceReach": 0.0017131271604050606,
+      "opponentSequenceReach": 0.01772862937333444,
+      "publicSequenceReach": 3.0371396496214175e-05,
+      "averageRealizationWeightedLossAnte": 0.0003958619617435524,
+      "lastUpdateIteration": 1996037,
+      "callCumulativeRegret": 13155111.094806718,
+      "foldCumulativeRegret": -125693753.11450434,
+      "averageStrategy": {
+        "call": 0.4703050927625078,
+        "fold": 0.5296949072374921
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "99",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999936438892715,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.353122645704529,
+      "ownSequenceReach": 0.00014762480390783302,
+      "opponentSequenceReach": 0.03175423845370116,
+      "publicSequenceReach": 4.687713224970204e-06,
+      "averageRealizationWeightedLossAnte": 0.00034737706116211287,
+      "lastUpdateIteration": 1999560,
+      "callCumulativeRegret": -1338796795.9987123,
+      "foldCumulativeRegret": 3354160.7337253755,
+      "averageStrategy": {
+        "call": 0.9999936438892715,
+        "fold": 6.35611072853378e-06
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "87s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999911572298084,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.026537090112763,
+      "ownSequenceReach": 0.00011200035413869357,
+      "opponentSequenceReach": 0.03576104292659492,
+      "publicSequenceReach": 4.005249472147654e-06,
+      "averageRealizationWeightedLossAnte": 0.00033897022844418275,
+      "lastUpdateIteration": 1999828,
+      "callCumulativeRegret": -1319895951.3286638,
+      "foldCumulativeRegret": 574952.5447208637,
+      "averageStrategy": {
+        "call": 0.9999911572298084,
+        "fold": 8.84277019165447e-06
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "97s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999525427690118,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.601520282382408,
+      "ownSequenceReach": 0.00018271504484598382,
+      "opponentSequenceReach": 0.033361187788409005,
+      "publicSequenceReach": 6.095590922874439e-06,
+      "averageRealizationWeightedLossAnte": 0.0002926079631945164,
+      "lastUpdateIteration": 1999951,
+      "callCumulativeRegret": -734720431.1821015,
+      "foldCumulativeRegret": 981604.912353612,
+      "averageStrategy": {
+        "call": 0.9999525427690118,
+        "fold": 4.7457230988223466e-05
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "77",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5599605964506245,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.4182250933034,
+      "ownSequenceReach": 7.732004269108024e-05,
+      "opponentSequenceReach": 0.03576212149444728,
+      "publicSequenceReach": 2.765128760674262e-06,
+      "averageRealizationWeightedLossAnte": 0.00023458843387314684,
+      "lastUpdateIteration": 1999976,
+      "callCumulativeRegret": -3763776864.5393367,
+      "foldCumulativeRegret": 201661.20700041798,
+      "averageStrategy": {
+        "call": 0.5599605964506245,
+        "fold": 0.4400394035493756
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "KTo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.17069798374129058,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.7203188529121389,
+      "ownSequenceReach": 0.0014041873520849524,
+      "opponentSequenceReach": 0.11148007847774807,
+      "publicSequenceReach": 0.00015653891620789177,
+      "averageRealizationWeightedLossAnte": 0.00017265463032927332,
+      "lastUpdateIteration": 1999971,
+      "callCumulativeRegret": -2921015504.773401,
+      "foldCumulativeRegret": 4073677.405282304,
+      "averageStrategy": {
+        "call": 0.17069798374129058,
+        "fold": 0.8293020162587094
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "A8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.2552075026796954,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6125247734105983,
+      "ownSequenceReach": 0.0011011435058621126,
+      "opponentSequenceReach": 0.10184117498950367,
+      "publicSequenceReach": 0.00011214174846905896,
+      "averageRealizationWeightedLossAnte": 0.0001721317634125413,
+      "lastUpdateIteration": 1998506,
+      "callCumulativeRegret": -936250049.4996148,
+      "foldCumulativeRegret": 5661176.465815926,
+      "averageStrategy": {
+        "call": 0.2552075026796954,
+        "fold": 0.7447924973203046
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "A7s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.10033424228334005,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.5885379075106494,
+      "ownSequenceReach": 0.0007204427190754697,
+      "opponentSequenceReach": 0.017701963561341877,
+      "publicSequenceReach": 1.2753250761108026e-05,
+      "averageRealizationWeightedLossAnte": 0.00011482758071564284,
+      "lastUpdateIteration": 1999534,
+      "callCumulativeRegret": 4183009.599197378,
+      "foldCumulativeRegret": -356286592.1936475,
+      "averageStrategy": {
+        "call": 0.8996657577166599,
+        "fold": 0.10033424228334005
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "K7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.6002690398595866,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.352889379908674,
+      "ownSequenceReach": 4.149290213806373e-05,
+      "opponentSequenceReach": 0.017476184982200396,
+      "publicSequenceReach": 7.2513763321314e-07,
+      "averageRealizationWeightedLossAnte": 0.00010841700020373311,
+      "lastUpdateIteration": 1998868,
+      "callCumulativeRegret": -965690112.0658437,
+      "foldCumulativeRegret": 219132.6996503379,
+      "averageStrategy": {
+        "call": 0.6002690398595866,
+        "fold": 0.39973096014041354
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "Q7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.727504490929534,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.39108161178825,
+      "ownSequenceReach": 4.932050680905735e-05,
+      "opponentSequenceReach": 0.03408839572247884,
+      "publicSequenceReach": 1.6812569533403591e-06,
+      "averageRealizationWeightedLossAnte": 8.579413676825022e-05,
+      "lastUpdateIteration": 1999028,
+      "callCumulativeRegret": -843335212.312744,
+      "foldCumulativeRegret": 413176.53250842734,
+      "averageStrategy": {
+        "call": 0.727504490929534,
+        "fold": 0.272495509070466
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "K9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8196151384218938,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.3130779297846669,
+      "ownSequenceReach": 5.815148397856847e-05,
+      "opponentSequenceReach": 0.031025986740286542,
+      "publicSequenceReach": 1.8042071708470507e-06,
+      "averageRealizationWeightedLossAnte": 6.258370572003208e-05,
+      "lastUpdateIteration": 1999740,
+      "callCumulativeRegret": -1709365562.2816951,
+      "foldCumulativeRegret": 12609787.521398053,
+      "averageStrategy": {
+        "call": 0.8196151384218938,
+        "fold": 0.18038486157810615
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "KJo",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999997597737837,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.7221052987526191,
+      "ownSequenceReach": 5.9610565826558974e-05,
+      "opponentSequenceReach": 0.10843870222190785,
+      "publicSequenceReach": 6.4640923969456645e-06,
+      "averageRealizationWeightedLossAnte": 4.304509510443722e-05,
+      "lastUpdateIteration": 1999938,
+      "callCumulativeRegret": -3198478057.578272,
+      "foldCumulativeRegret": 28334612.397117063,
+      "averageStrategy": {
+        "call": 0.9999997597737837,
+        "fold": 2.4022621622329314e-07
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "J6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.06246058125641233,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.28365832127381,
+      "ownSequenceReach": 0.00017948819947063361,
+      "opponentSequenceReach": 0.034020495626157526,
+      "publicSequenceReach": 6.106277505037581e-06,
+      "averageRealizationWeightedLossAnte": 3.6812887448042135e-05,
+      "lastUpdateIteration": 1998530,
+      "callCumulativeRegret": -1485182808.8737304,
+      "foldCumulativeRegret": 19158.792574090337,
+      "averageStrategy": {
+        "call": 0.06246058125641233,
+        "fold": 0.9375394187435877
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "T8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9130650314080646,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5927733877283003,
+      "ownSequenceReach": 6.596591644366909e-05,
+      "opponentSequenceReach": 0.03186838910775602,
+      "publicSequenceReach": 2.102227493076568e-06,
+      "averageRealizationWeightedLossAnte": 3.5703435618097286e-05,
+      "lastUpdateIteration": 1999501,
+      "callCumulativeRegret": -793897773.3376296,
+      "foldCumulativeRegret": 3289771.298807248,
+      "averageStrategy": {
+        "call": 0.9130650314080646,
+        "fold": 0.08693496859193542
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6094662692064379,
+      "ownSequenceReach": 5.297959328770311e-05,
+      "opponentSequenceReach": 0.08492523080068312,
+      "publicSequenceReach": 4.499304187684509e-06,
+      "averageRealizationWeightedLossAnte": 3.228927506513085e-05,
+      "lastUpdateIteration": 1999632,
+      "callCumulativeRegret": -1967602501.0643296,
+      "foldCumulativeRegret": 5081580.344389521,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "86s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.22342011959075442,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.481150762168548,
+      "ownSequenceReach": 2.69014673645933e-05,
+      "opponentSequenceReach": 0.035761146961622796,
+      "publicSequenceReach": 9.620273279085205e-07,
+      "averageRealizationWeightedLossAnte": 2.693319062912157e-05,
+      "lastUpdateIteration": 1999593,
+      "callCumulativeRegret": -1995971663.7208955,
+      "foldCumulativeRegret": 369941.77748142724,
+      "averageStrategy": {
+        "call": 0.22342011959075442,
+        "fold": 0.7765798804092456
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "J8s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.2821865770406807,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.45868206897174346,
+      "ownSequenceReach": 0.00018093939225277434,
+      "opponentSequenceReach": 0.03401931408095795,
+      "publicSequenceReach": 6.15543401466478e-06,
+      "averageRealizationWeightedLossAnte": 2.3419695363259148e-05,
+      "lastUpdateIteration": 1999602,
+      "callCumulativeRegret": 128511.5512311721,
+      "foldCumulativeRegret": -166762953.5590459,
+      "averageStrategy": {
+        "call": 0.7178134229593194,
+        "fold": 0.2821865770406807
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "96s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.13551072416834595,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.411798268183201,
+      "ownSequenceReach": 4.884578346115293e-05,
+      "opponentSequenceReach": 0.03336129178902807,
+      "publicSequenceReach": 1.6295584347112045e-06,
+      "averageRealizationWeightedLossAnte": 2.25831277051882e-05,
+      "lastUpdateIteration": 1999357,
+      "callCumulativeRegret": -1436486661.094924,
+      "foldCumulativeRegret": 2519448.3428901746,
+      "averageStrategy": {
+        "call": 0.13551072416834595,
+        "fold": 0.864489275831654
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9999101584498169,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.3686067035479788,
+      "ownSequenceReach": 9.143770411665617e-06,
+      "opponentSequenceReach": 0.08506179029778493,
+      "publicSequenceReach": 7.777854812881914e-07,
+      "averageRealizationWeightedLossAnte": 2.1656050104849974e-05,
+      "lastUpdateIteration": 1999510,
+      "callCumulativeRegret": -2314994733.513743,
+      "foldCumulativeRegret": 2048579.8212524601,
+      "averageStrategy": {
+        "call": 0.9999101584498169,
+        "fold": 8.984155018307955e-05
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "J6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.6480676314787336,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.540387988925085,
+      "ownSequenceReach": 9.41637131015851e-06,
+      "opponentSequenceReach": 0.03202759636408515,
+      "publicSequenceReach": 3.0158373953610837e-07,
+      "averageRealizationWeightedLossAnte": 1.550257912958211e-05,
+      "lastUpdateIteration": 1998665,
+      "callCumulativeRegret": -1007346001.6718149,
+      "foldCumulativeRegret": 1060497.293124469,
+      "averageStrategy": {
+        "call": 0.6480676314787336,
+        "fold": 0.35193236852126647
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "T8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9987377836001716,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.024911399210212,
+      "ownSequenceReach": 7.514980126399322e-06,
+      "opponentSequenceReach": 0.018495262083753187,
+      "publicSequenceReach": 1.389915269919521e-07,
+      "averageRealizationWeightedLossAnte": 1.5197961562610887e-05,
+      "lastUpdateIteration": 1997429,
+      "callCumulativeRegret": -422542911.2787756,
+      "foldCumulativeRegret": 1421057.0486013335,
+      "averageStrategy": {
+        "call": 0.9987377836001716,
+        "fold": 0.0012622163998284198
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "J8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.99997670272708,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5047451575521897,
+      "ownSequenceReach": 2.3821807644797257e-05,
+      "opponentSequenceReach": 0.0317119910624654,
+      "publicSequenceReach": 7.554369511235806e-07,
+      "averageRealizationWeightedLossAnte": 1.202366192779157e-05,
+      "lastUpdateIteration": 1999561,
+      "callCumulativeRegret": -541370601.9480829,
+      "foldCumulativeRegret": 2806525.3764447263,
+      "averageStrategy": {
+        "call": 0.99997670272708,
+        "fold": 2.3297272920068893e-05
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "J7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.38092807505428,
+      "ownSequenceReach": 4.905555948681632e-06,
+      "opponentSequenceReach": 0.032030458079868686,
+      "publicSequenceReach": 1.5712720417269747e-07,
+      "averageRealizationWeightedLossAnte": 1.167977588196563e-05,
+      "lastUpdateIteration": 1998103,
+      "callCumulativeRegret": -2969918665.9055023,
+      "foldCumulativeRegret": 974499.629618003,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "T7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.16716343380541374,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.8520156248790496,
+      "ownSequenceReach": 6.278776257209402e-05,
+      "opponentSequenceReach": 0.03186946652777732,
+      "publicSequenceReach": 2.00101249764538e-06,
+      "averageRealizationWeightedLossAnte": 8.942600925505413e-06,
+      "lastUpdateIteration": 1998733,
+      "callCumulativeRegret": -426939982.29451215,
+      "foldCumulativeRegret": 2891185.722355112,
+      "averageStrategy": {
+        "call": 0.16716343380541374,
+        "fold": 0.8328365661945862
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "Q8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9998825390721636,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6760729201654652,
+      "ownSequenceReach": 1.100655083111261e-05,
+      "opponentSequenceReach": 0.16467494053892834,
+      "publicSequenceReach": 1.8125031036521613e-06,
+      "averageRealizationWeightedLossAnte": 7.440356907446966e-06,
+      "lastUpdateIteration": 1999979,
+      "callCumulativeRegret": -4275123864.200702,
+      "foldCumulativeRegret": 841305.0050997179,
+      "averageStrategy": {
+        "call": 0.9998825390721636,
+        "fold": 0.0001174609278363369
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5955805955565354,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.6575526448341513,
+      "ownSequenceReach": 4.12645780186209e-06,
+      "opponentSequenceReach": 0.08506193077864144,
+      "publicSequenceReach": 3.51004467902978e-07,
+      "averageRealizationWeightedLossAnte": 6.531302885624608e-06,
+      "lastUpdateIteration": 1999225,
+      "callCumulativeRegret": -3083089236.8763447,
+      "foldCumulativeRegret": 3148012.9406634676,
+      "averageStrategy": {
+        "call": 0.5955805955565354,
+        "fold": 0.4044194044434645
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "T7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8977379390329603,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.8167310851860794,
+      "ownSequenceReach": 2.5054785806052218e-06,
+      "opponentSequenceReach": 0.03186946644415853,
+      "publicSequenceReach": 7.984826555115605e-08,
+      "averageRealizationWeightedLossAnte": 6.335569510106901e-06,
+      "lastUpdateIteration": 1999363,
+      "callCumulativeRegret": -3428755540.0227313,
+      "foldCumulativeRegret": 6935.389650141132,
+      "averageStrategy": {
+        "call": 0.8977379390329603,
+        "fold": 0.10226206096703966
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "J7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9636227125895299,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.190937830609718,
+      "ownSequenceReach": 1.9936587593454587e-06,
+      "opponentSequenceReach": 0.21735238409906424,
+      "publicSequenceReach": 4.33326484423718e-07,
+      "averageRealizationWeightedLossAnte": 6.1302219077687884e-06,
+      "lastUpdateIteration": 1999956,
+      "callCumulativeRegret": -8823659022.030788,
+      "foldCumulativeRegret": 18203.744060896253,
+      "averageStrategy": {
+        "call": 0.9636227125895299,
+        "fold": 0.03637728741047001
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "K8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.8534632194589094,
+      "ownSequenceReach": 2.8725111921016367e-06,
+      "opponentSequenceReach": 0.21243085905260314,
+      "publicSequenceReach": 6.102100201763679e-07,
+      "averageRealizationWeightedLossAnte": 5.32409384204445e-06,
+      "lastUpdateIteration": 1999748,
+      "callCumulativeRegret": -4750121436.28026,
+      "foldCumulativeRegret": 25402.84061675212,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "Q6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8199918164165677,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.727442911160431,
+      "ownSequenceReach": 1.1856037976553977e-06,
+      "opponentSequenceReach": 0.03408849975895642,
+      "publicSequenceReach": 4.041545477059384e-08,
+      "averageRealizationWeightedLossAnte": 4.595951032353929e-06,
+      "lastUpdateIteration": 1999633,
+      "callCumulativeRegret": -6307120398.063823,
+      "foldCumulativeRegret": 23084.36103359083,
+      "averageStrategy": {
+        "call": 0.8199918164165677,
+        "fold": 0.18000818358343226
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "K6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.2574420742553532,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.012660551818659,
+      "ownSequenceReach": 3.4722321387987587e-06,
+      "opponentSequenceReach": 0.21343091609634096,
+      "publicSequenceReach": 7.410816862829764e-07,
+      "averageRealizationWeightedLossAnte": 4.480810470646633e-06,
+      "lastUpdateIteration": 1999606,
+      "callCumulativeRegret": -41104930459.84538,
+      "foldCumulativeRegret": 4165.5005496556,
+      "averageStrategy": {
+        "call": 0.2574420742553532,
+        "fold": 0.7425579257446467
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "77",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5363575766803894,
+      "ownSequenceReach": 8.26475171874974e-06,
+      "opponentSequenceReach": 0.03460850107900416,
+      "publicSequenceReach": 2.860306687760518e-07,
+      "averageRealizationWeightedLossAnte": 4.432862203733694e-06,
+      "lastUpdateIteration": 1999976,
+      "callCumulativeRegret": -230338433.08162898,
+      "foldCumulativeRegret": 7179009.901437319,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "A9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6060795904322323,
+      "ownSequenceReach": 6.698979245562556e-06,
+      "opponentSequenceReach": 0.09851101884377135,
+      "publicSequenceReach": 6.599232706936461e-07,
+      "averageRealizationWeightedLossAnte": 4.060114597464578e-06,
+      "lastUpdateIteration": 1999757,
+      "callCumulativeRegret": -2162133334.25695,
+      "foldCumulativeRegret": 6332986.834387781,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "T7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9998100799414661,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0076840179565139,
+      "ownSequenceReach": 3.4743590850321244e-06,
+      "opponentSequenceReach": 0.03318468296001365,
+      "publicSequenceReach": 1.1529550472603416e-07,
+      "averageRealizationWeightedLossAnte": 3.500391201845148e-06,
+      "lastUpdateIteration": 1999535,
+      "callCumulativeRegret": -1249929134.4106214,
+      "foldCumulativeRegret": 9387138.321396202,
+      "averageStrategy": {
+        "call": 0.9998100799414661,
+        "fold": 0.00018992005853388715
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "J6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.124271178575812,
+      "ownSequenceReach": 1.0998406183593637e-06,
+      "opponentSequenceReach": 0.09011657623483248,
+      "publicSequenceReach": 9.911387093054689e-08,
+      "averageRealizationWeightedLossAnte": 3.4362003449671594e-06,
+      "lastUpdateIteration": 1998921,
+      "callCumulativeRegret": -3601295922.887914,
+      "foldCumulativeRegret": 172918.29804688616,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "T6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9964615264310291,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.159586584191434,
+      "ownSequenceReach": 2.9259289106948095e-06,
+      "opponentSequenceReach": 0.033181821233044737,
+      "publicSequenceReach": 9.708765005527249e-08,
+      "averageRealizationWeightedLossAnte": 3.380862337712981e-06,
+      "lastUpdateIteration": 1998458,
+      "callCumulativeRegret": -473311384.1690849,
+      "foldCumulativeRegret": 12444513.786198752,
+      "averageStrategy": {
+        "call": 0.9964615264310291,
+        "fold": 0.00353847356897091
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "Q7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.794462283523054,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.3785775595626557,
+      "ownSequenceReach": 1.2405655333737593e-06,
+      "opponentSequenceReach": 0.02975812485112156,
+      "publicSequenceReach": 3.691690402813454e-08,
+      "averageRealizationWeightedLossAnte": 3.32986700714386e-06,
+      "lastUpdateIteration": 1999586,
+      "callCumulativeRegret": -3773357896.11058,
+      "foldCumulativeRegret": 150069.65825871986,
+      "averageStrategy": {
+        "call": 0.794462283523054,
+        "fold": 0.20553771647694596
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "J7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9820051946279945,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.36517385127415025,
+      "ownSequenceReach": 7.3042184120917055e-06,
+      "opponentSequenceReach": 0.03203045830862886,
+      "publicSequenceReach": 2.339574633256227e-07,
+      "averageRealizationWeightedLossAnte": 2.6193118515463993e-06,
+      "lastUpdateIteration": 1994374,
+      "callCumulativeRegret": -171814392.52233756,
+      "foldCumulativeRegret": 2967502.7717222003,
+      "averageStrategy": {
+        "call": 0.9820051946279945,
+        "fold": 0.017994805372005537
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "K6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9993769678359645,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.8751917350027334,
+      "ownSequenceReach": 1.2697677919912516e-06,
+      "opponentSequenceReach": 0.08821343247329379,
+      "publicSequenceReach": 1.1201057537558362e-07,
+      "averageRealizationWeightedLossAnte": 2.379574593153295e-06,
+      "lastUpdateIteration": 1999606,
+      "callCumulativeRegret": -6250480023.105491,
+      "foldCumulativeRegret": 5657.242311248711,
+      "averageStrategy": {
+        "call": 0.9993769678359645,
+        "fold": 0.0006230321640354683
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "Q6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.7621160397841251,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.8348447017877216,
+      "ownSequenceReach": 1.02848548987633e-06,
+      "opponentSequenceReach": 0.16512195579554678,
+      "publicSequenceReach": 1.6982553559572066e-07,
+      "averageRealizationWeightedLossAnte": 2.222022966288111e-06,
+      "lastUpdateIteration": 1999911,
+      "callCumulativeRegret": -17352983919.04742,
+      "foldCumulativeRegret": 62303.480075084,
+      "averageStrategy": {
+        "call": 0.7621160397841251,
+        "fold": 0.23788396021587485
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "J8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.903850488097282,
+      "ownSequenceReach": 2.3909138424006346e-06,
+      "opponentSequenceReach": 0.08995596532622142,
+      "publicSequenceReach": 2.150769627049743e-07,
+      "averageRealizationWeightedLossAnte": 2.1610286434523613e-06,
+      "lastUpdateIteration": 1999763,
+      "callCumulativeRegret": -3090356906.788071,
+      "foldCumulativeRegret": 9694856.837965187,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "K8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9995245738892756,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.9817330263308595,
+      "ownSequenceReach": 1.9885849967623497e-06,
+      "opponentSequenceReach": 0.16394932091549833,
+      "publicSequenceReach": 3.260271598019357e-07,
+      "averageRealizationWeightedLossAnte": 1.9513314118145865e-06,
+      "lastUpdateIteration": 1999966,
+      "callCumulativeRegret": -6328234300.297565,
+      "foldCumulativeRegret": 1846191.7012397079,
+      "averageStrategy": {
+        "call": 0.9995245738892756,
+        "fold": 0.0004754261107243238
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "76s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9455829128724812,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5726401583331349,
+      "ownSequenceReach": 3.0046704236393495e-06,
+      "opponentSequenceReach": 0.034605639363351495,
+      "publicSequenceReach": 1.0397854108619189e-07,
+      "averageRealizationWeightedLossAnte": 1.6269651819824888e-06,
+      "lastUpdateIteration": 1999912,
+      "callCumulativeRegret": -156063033.17982134,
+      "foldCumulativeRegret": 4729986.646155566,
+      "averageStrategy": {
+        "call": 0.9455829128724812,
+        "fold": 0.054417087127518776
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "K7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.822417109283461,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0271740258407398,
+      "ownSequenceReach": 1.806235459311138e-06,
+      "opponentSequenceReach": 0.030396910759285075,
+      "publicSequenceReach": 5.490397806693695e-08,
+      "averageRealizationWeightedLossAnte": 1.5258453883728412e-06,
+      "lastUpdateIteration": 1999686,
+      "callCumulativeRegret": -1175488414.8209524,
+      "foldCumulativeRegret": 232831.0997969197,
+      "averageStrategy": {
+        "call": 0.822417109283461,
+        "fold": 0.17758289071653907
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "J7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5249377025837034,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.4734028629126161,
+      "ownSequenceReach": 1.9572538796924744e-06,
+      "opponentSequenceReach": 0.03402039161047905,
+      "publicSequenceReach": 6.658654346826743e-08,
+      "averageRealizationWeightedLossAnte": 1.5138276668862783e-06,
+      "lastUpdateIteration": 1999829,
+      "callCumulativeRegret": -575462830.0639666,
+      "foldCumulativeRegret": 2405202.287446047,
+      "averageStrategy": {
+        "call": 0.5249377025837034,
+        "fold": 0.47506229741629663
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "J8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8687533636594036,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.4734747099655188,
+      "ownSequenceReach": 1.1269415115329325e-06,
+      "opponentSequenceReach": 0.03401931298599407,
+      "publicSequenceReach": 3.8337775997748074e-08,
+      "averageRealizationWeightedLossAnte": 1.4425821763150885e-06,
+      "lastUpdateIteration": 1999881,
+      "callCumulativeRegret": -1954482976.5188057,
+      "foldCumulativeRegret": 818697.14651735,
+      "averageStrategy": {
+        "call": 0.8687533636594036,
+        "fold": 0.13124663634059633
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "Q9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.978796374779944,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5643533261669038,
+      "ownSequenceReach": 2.520402373427363e-06,
+      "opponentSequenceReach": 0.03168746245620402,
+      "publicSequenceReach": 7.986515558250706e-08,
+      "averageRealizationWeightedLossAnte": 1.3922374800091604e-06,
+      "lastUpdateIteration": 1999688,
+      "callCumulativeRegret": -760687176.5894053,
+      "foldCumulativeRegret": 3258044.0707948655,
+      "averageStrategy": {
+        "call": 0.978796374779944,
+        "fold": 0.021203625220056074
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "Q8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.6421395366188474,
+      "ownSequenceReach": 5.266599563314987e-07,
+      "opponentSequenceReach": 0.034087317092276435,
+      "publicSequenceReach": 1.7952424931276257e-08,
+      "averageRealizationWeightedLossAnte": 1.3915090929774084e-06,
+      "lastUpdateIteration": 1999747,
+      "callCumulativeRegret": -3696174843.038254,
+      "foldCumulativeRegret": 518394.01420936076,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "Q6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.6500171130053023,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.7291022522635195,
+      "ownSequenceReach": 4.680834456626446e-07,
+      "opponentSequenceReach": 0.02975526313572104,
+      "publicSequenceReach": 1.392794609516697e-08,
+      "averageRealizationWeightedLossAnte": 1.1346250417358908e-06,
+      "lastUpdateIteration": 1999577,
+      "callCumulativeRegret": -4098615703.4080124,
+      "foldCumulativeRegret": 126969.23797323837,
+      "averageStrategy": {
+        "call": 0.6500171130053023,
+        "fold": 0.3499828869946977
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "87o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.057979632767589,
+      "ownSequenceReach": 1.956531887507045e-07,
+      "opponentSequenceReach": 0.03576104287120591,
+      "publicSequenceReach": 6.996762070802086e-09,
+      "averageRealizationWeightedLossAnte": 9.89609843787096e-07,
+      "lastUpdateIteration": 1999772,
+      "callCumulativeRegret": -6970966040.976156,
+      "foldCumulativeRegret": 521442.81533081044,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "96o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.7224738651654852,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0485666653757484,
+      "ownSequenceReach": 1.2651919607729208e-06,
+      "opponentSequenceReach": 0.034271944429361725,
+      "publicSequenceReach": 4.3360588572084744e-08,
+      "averageRealizationWeightedLossAnte": 9.584613668856772e-07,
+      "lastUpdateIteration": 1999317,
+      "callCumulativeRegret": -1370792127.2015579,
+      "foldCumulativeRegret": 2053391.0903367137,
+      "averageStrategy": {
+        "call": 0.7224738651654852,
+        "fold": 0.2775261348345147
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "Q7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9462281388671365,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.2540018621496465,
+      "ownSequenceReach": 1.8872912186709295e-07,
+      "opponentSequenceReach": 0.019374695722353508,
+      "publicSequenceReach": 3.6565693101218995e-09,
+      "averageRealizationWeightedLossAnte": 9.382638858723455e-07,
+      "lastUpdateIteration": 1997131,
+      "callCumulativeRegret": -1258273543.9386432,
+      "foldCumulativeRegret": 7877.942290173822,
+      "averageStrategy": {
+        "call": 0.9462281388671365,
+        "fold": 0.05377186113286348
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "97o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.1358728389432144,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.569900333614509,
+      "ownSequenceReach": 1.8946402381884408e-06,
+      "opponentSequenceReach": 0.03336118774313741,
+      "publicSequenceReach": 6.320744869190716e-08,
+      "averageRealizationWeightedLossAnte": 9.189999710088382e-07,
+      "lastUpdateIteration": 1999898,
+      "callCumulativeRegret": -4320343806.271981,
+      "foldCumulativeRegret": 3009712.73186596,
+      "averageStrategy": {
+        "call": 0.1358728389432144,
+        "fold": 0.8641271610567857
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "J7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.12501149848220036,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.366936572898725,
+      "ownSequenceReach": 1.6321918150934947e-06,
+      "opponentSequenceReach": 0.019184566520923128,
+      "publicSequenceReach": 3.131289245156741e-08,
+      "averageRealizationWeightedLossAnte": 8.910417238948398e-07,
+      "lastUpdateIteration": 1998414,
+      "callCumulativeRegret": -996709225.1589087,
+      "foldCumulativeRegret": 1250.264125317813,
+      "averageStrategy": {
+        "call": 0.12501149848220036,
+        "fold": 0.8749885015177996
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "T6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.619394778268969,
+      "ownSequenceReach": 5.06673456110426e-07,
+      "opponentSequenceReach": 0.09310779787723306,
+      "publicSequenceReach": 4.717524974128866e-08,
+      "averageRealizationWeightedLossAnte": 8.205043491127155e-07,
+      "lastUpdateIteration": 1999542,
+      "callCumulativeRegret": -1950927195.6624548,
+      "foldCumulativeRegret": 2618254.1848974344,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "K8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5785086402533111,
+      "ownSequenceReach": 1.4164122590324672e-06,
+      "opponentSequenceReach": 0.08805282142268091,
+      "publicSequenceReach": 1.2471909570548188e-07,
+      "averageRealizationWeightedLossAnte": 8.194067300109932e-07,
+      "lastUpdateIteration": 1999879,
+      "callCumulativeRegret": -2147975194.6804595,
+      "foldCumulativeRegret": 24221471.756111257,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "J9o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9906440843579513,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.7816311490059702,
+      "ownSequenceReach": 4.2092196102048306e-07,
+      "opponentSequenceReach": 0.016981812024594256,
+      "publicSequenceReach": 7.148017619073434e-09,
+      "averageRealizationWeightedLossAnte": 7.429114169706075e-07,
+      "lastUpdateIteration": 1999899,
+      "callCumulativeRegret": -1168025981.3253813,
+      "foldCumulativeRegret": 1469502.7156321849,
+      "averageStrategy": {
+        "call": 0.9906440843579513,
+        "fold": 0.009355915642048693
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "K6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5381272459041381,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.858565045105708,
+      "ownSequenceReach": 7.381538316941961e-07,
+      "opponentSequenceReach": 0.030394049060471502,
+      "publicSequenceReach": 2.243548377468842e-08,
+      "averageRealizationWeightedLossAnte": 7.382604868448414e-07,
+      "lastUpdateIteration": 1999493,
+      "callCumulativeRegret": -2272998392.6453032,
+      "foldCumulativeRegret": 120733.91637885195,
+      "averageStrategy": {
+        "call": 0.5381272459041381,
+        "fold": 0.46187275409586204
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.4196635883104225,
+      "ownSequenceReach": 2.9732003691671537e-07,
+      "opponentSequenceReach": 0.08490131189993337,
+      "publicSequenceReach": 2.5242861188365756e-08,
+      "averageRealizationWeightedLossAnte": 7.194144674024868e-07,
+      "lastUpdateIteration": 1999979,
+      "callCumulativeRegret": -7956866046.893435,
+      "foldCumulativeRegret": 961557.4289737525,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "88",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9942866437590224,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.31262188785134626,
+      "ownSequenceReach": 2.2176746399928793e-06,
+      "opponentSequenceReach": 0.23377206842294368,
+      "publicSequenceReach": 5.184303876802424e-07,
+      "averageRealizationWeightedLossAnte": 6.89332599092014e-07,
+      "lastUpdateIteration": 1999955,
+      "callCumulativeRegret": -1416264493.6506228,
+      "foldCumulativeRegret": 3894620.930838314,
+      "averageStrategy": {
+        "call": 0.9942866437590224,
+        "fold": 0.005713356240977573
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "K8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8514988910885194,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.7772574483400536,
+      "ownSequenceReach": 1.0172583789860143e-06,
+      "opponentSequenceReach": 0.030078443735030057,
+      "publicSequenceReach": 3.0597548916318716e-08,
+      "averageRealizationWeightedLossAnte": 6.732560348532849e-07,
+      "lastUpdateIteration": 1999932,
+      "callCumulativeRegret": -849698545.7867324,
+      "foldCumulativeRegret": 1757672.5895564596,
+      "averageStrategy": {
+        "call": 0.8514988910885194,
+        "fold": 0.14850110891148058
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "96o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9998416455527404,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.338547022151051,
+      "ownSequenceReach": 4.588750221979813e-07,
+      "opponentSequenceReach": 0.0979547170851824,
+      "publicSequenceReach": 4.494897297686005e-08,
+      "averageRealizationWeightedLossAnte": 6.141285291164242e-07,
+      "lastUpdateIteration": 1999996,
+      "callCumulativeRegret": -5279473904.197964,
+      "foldCumulativeRegret": 13060192.927858902,
+      "averageStrategy": {
+        "call": 0.9998416455527404,
+        "fold": 0.0001583544472596346
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "76s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.38011949749770196,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.371252566654537,
+      "ownSequenceReach": 2.9855370166361576e-07,
+      "opponentSequenceReach": 0.0357622255661513,
+      "publicSequenceReach": 1.0676944822503668e-08,
+      "averageRealizationWeightedLossAnte": 6.095624148750551e-07,
+      "lastUpdateIteration": 1999912,
+      "callCumulativeRegret": -2463826200.7863717,
+      "foldCumulativeRegret": 9049.999558522275,
+      "averageStrategy": {
+        "call": 0.38011949749770196,
+        "fold": 0.619880502502298
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "Q8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.11224617765449746,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.254136249782936,
+      "ownSequenceReach": 8.848734552421926e-07,
+      "opponentSequenceReach": 0.01933240380586159,
+      "publicSequenceReach": 1.710673095383006e-08,
+      "averageRealizationWeightedLossAnte": 5.218600585388044e-07,
+      "lastUpdateIteration": 1999747,
+      "callCumulativeRegret": -4169407860.2766356,
+      "foldCumulativeRegret": 7022.247888470397,
+      "averageStrategy": {
+        "call": 0.11224617765449746,
+        "fold": 0.8877538223455025
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "97o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.804478658176526,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.787248190588107,
+      "ownSequenceReach": 3.2740215348137725e-07,
+      "opponentSequenceReach": 0.23157860218968948,
+      "publicSequenceReach": 7.581933305711152e-08,
+      "averageRealizationWeightedLossAnte": 4.7073980705754555e-07,
+      "lastUpdateIteration": 1999905,
+      "callCumulativeRegret": -15573304640.835875,
+      "foldCumulativeRegret": 7258.146768328874,
+      "averageStrategy": {
+        "call": 0.804478658176526,
+        "fold": 0.1955213418234741
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q8s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.3178935518875381,
+      "ownSequenceReach": 1.2352064697137988e-06,
+      "opponentSequenceReach": 0.08490153531147217,
+      "publicSequenceReach": 1.0487092570536497e-07,
+      "averageRealizationWeightedLossAnte": 3.9266417197178625e-07,
+      "lastUpdateIteration": 1999872,
+      "callCumulativeRegret": -332222883.60517824,
+      "foldCumulativeRegret": 120356.44069624934,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "77",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.049463287919064,
+      "ownSequenceReach": 3.5811832757670243e-07,
+      "opponentSequenceReach": 0.09809122505671047,
+      "publicSequenceReach": 3.5128265467259085e-08,
+      "averageRealizationWeightedLossAnte": 3.7583203752272254e-07,
+      "lastUpdateIteration": 1999866,
+      "callCumulativeRegret": -1902173380.9407706,
+      "foldCumulativeRegret": 27637258.468896464,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "K7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.113737771049002,
+      "ownSequenceReach": 8.825994846222284e-08,
+      "opponentSequenceReach": 0.21332324562249186,
+      "publicSequenceReach": 1.8827898664435235e-08,
+      "averageRealizationWeightedLossAnte": 3.6307828365988436e-07,
+      "lastUpdateIteration": 1999994,
+      "callCumulativeRegret": -33124559889.540966,
+      "foldCumulativeRegret": 2648.044502441523,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "86o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.4598577707096654,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 6.582370642829424,
+      "ownSequenceReach": 1.1949615992135095e-07,
+      "opponentSequenceReach": 0.03576114691807288,
+      "publicSequenceReach": 4.273319731092964e-09,
+      "averageRealizationWeightedLossAnte": 3.617094138881163e-07,
+      "lastUpdateIteration": 1999518,
+      "callCumulativeRegret": -8839019229.55835,
+      "foldCumulativeRegret": 4778.456901014842,
+      "averageStrategy": {
+        "call": 0.4598577707096654,
+        "fold": 0.5401422292903345
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "Q6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9992160551897147,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.5268590325843636,
+      "ownSequenceReach": 2.1215339295263445e-07,
+      "opponentSequenceReach": 0.029755263134709903,
+      "publicSequenceReach": 6.3126800322271475e-09,
+      "averageRealizationWeightedLossAnte": 3.2367438239439225e-07,
+      "lastUpdateIteration": 1998424,
+      "callCumulativeRegret": -448985509.34823406,
+      "foldCumulativeRegret": 2282772.70509898,
+      "averageStrategy": {
+        "call": 0.9992160551897147,
+        "fold": 0.0007839448102853559
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "96s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.1240481708326436,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.8895923624120439,
+      "ownSequenceReach": 1.058246984336909e-06,
+      "opponentSequenceReach": 0.23168627270504974,
+      "publicSequenceReach": 2.451812994023776e-07,
+      "averageRealizationWeightedLossAnte": 2.480535970409672e-07,
+      "lastUpdateIteration": 1999347,
+      "callCumulativeRegret": -5495754433.08825,
+      "foldCumulativeRegret": 3647.7844799591558,
+      "averageStrategy": {
+        "call": 0.1240481708326436,
+        "fold": 0.8759518291673564
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 22,
+      "hand": "K7s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 7.326074697811947,
+      "ownSequenceReach": 6.743891582092238e-08,
+      "opponentSequenceReach": 0.026766671264602873,
+      "publicSequenceReach": 1.8051152902198553e-09,
+      "averageRealizationWeightedLossAnte": 2.4703126742176465e-07,
+      "lastUpdateIteration": 1989195,
+      "callCumulativeRegret": 130.56663488532263,
+      "foldCumulativeRegret": -2517517635.027193,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "K7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.999398979890192,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0881310354002434,
+      "ownSequenceReach": 2.1775507472981564e-07,
+      "opponentSequenceReach": 0.164395942113503,
+      "publicSequenceReach": 3.579805066020429e-08,
+      "averageRealizationWeightedLossAnte": 2.3680364558545942e-07,
+      "lastUpdateIteration": 1999994,
+      "callCumulativeRegret": -6591056316.381835,
+      "foldCumulativeRegret": 2821487.2067497876,
+      "averageStrategy": {
+        "call": 0.999398979890192,
+        "fold": 0.0006010201098079985
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "Q6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.7359714080386298,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.6950995930668586,
+      "ownSequenceReach": 3.792671754042252e-07,
+      "opponentSequenceReach": 0.16512195590366083,
+      "publicSequenceReach": 6.262533781280246e-08,
+      "averageRealizationWeightedLossAnte": 1.9402300838057706e-07,
+      "lastUpdateIteration": 1999815,
+      "callCumulativeRegret": -1737845549.57723,
+      "foldCumulativeRegret": 102101.59936152672,
+      "averageStrategy": {
+        "call": 0.7359714080386298,
+        "fold": 0.2640285919613701
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "T6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.3492837130811261,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.1981426036946043,
+      "ownSequenceReach": 1.3922423490324145e-07,
+      "opponentSequenceReach": 0.033181821233195394,
+      "publicSequenceReach": 4.61971367388776e-09,
+      "averageRealizationWeightedLossAnte": 1.555217018223047e-07,
+      "lastUpdateIteration": 1999903,
+      "callCumulativeRegret": -3888438363.8955407,
+      "foldCumulativeRegret": 210881.63812505876,
+      "averageStrategy": {
+        "call": 0.3492837130811261,
+        "fold": 0.650716286918874
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "K7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.1065578251427635,
+      "ownSequenceReach": 1.2638750851328452e-07,
+      "opponentSequenceReach": 0.08821330211820393,
+      "publicSequenceReach": 1.1149059472449438e-08,
+      "averageRealizationWeightedLossAnte": 1.3985508654567263e-07,
+      "lastUpdateIteration": 1999504,
+      "callCumulativeRegret": -3495274124.7545605,
+      "foldCumulativeRegret": 8559415.509599425,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 13,
+      "hand": "76s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.05089991041615767,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 7.6760111479414075,
+      "ownSequenceReach": 3.207917903766181e-07,
+      "opponentSequenceReach": 0.01998655099979816,
+      "publicSequenceReach": 6.4115214786788385e-09,
+      "averageRealizationWeightedLossAnte": 1.253360085867642e-07,
+      "lastUpdateIteration": 1997922,
+      "callCumulativeRegret": -1928302450.8232794,
+      "foldCumulativeRegret": 83.37743036243965,
+      "averageStrategy": {
+        "call": 0.05089991041615767,
+        "fold": 0.9491000895838423
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "87o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9977494895749551,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.18682939301732482,
+      "ownSequenceReach": 6.265557563899103e-07,
+      "opponentSequenceReach": 0.03429003408725392,
+      "publicSequenceReach": 2.148461824417519e-08,
+      "averageRealizationWeightedLossAnte": 1.1679558908674617e-07,
+      "lastUpdateIteration": 1999634,
+      "callCumulativeRegret": -321665224.5272265,
+      "foldCumulativeRegret": 3787522.7349653402,
+      "averageStrategy": {
+        "call": 0.9977494895749551,
+        "fold": 0.0022505104250448555
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "86o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.7328024934893415,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.8401500315673402,
+      "ownSequenceReach": 7.826759360531125e-08,
+      "opponentSequenceReach": 0.03428717234759988,
+      "publicSequenceReach": 2.683574471177213e-09,
+      "averageRealizationWeightedLossAnte": 1.055412304799218e-07,
+      "lastUpdateIteration": 1999427,
+      "callCumulativeRegret": -2279231804.215402,
+      "foldCumulativeRegret": 2561668.642713252,
+      "averageStrategy": {
+        "call": 0.7328024934893415,
+        "fold": 0.2671975065106586
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "96o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9972382048331415,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.840874375465832,
+      "ownSequenceReach": 2.5760903702885714e-08,
+      "opponentSequenceReach": 0.23168627350032708,
+      "publicSequenceReach": 5.9684477809223685e-09,
+      "averageRealizationWeightedLossAnte": 9.867113076957535e-08,
+      "lastUpdateIteration": 1999996,
+      "callCumulativeRegret": -34462599597.23611,
+      "foldCumulativeRegret": 625.5551769860987,
+      "averageStrategy": {
+        "call": 0.9972382048331415,
+        "fold": 0.002761795166858458
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "K8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8973827904349463,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.188798951757862,
+      "ownSequenceReach": 2.9988386757768884e-08,
+      "opponentSequenceReach": 0.03342584187685397,
+      "publicSequenceReach": 1.0023870739071242e-09,
+      "averageRealizationWeightedLossAnte": 8.581396690002306e-08,
+      "lastUpdateIteration": 1999952,
+      "callCumulativeRegret": -4343180545.622124,
+      "foldCumulativeRegret": 462911.69778087875,
+      "averageStrategy": {
+        "call": 0.8973827904349463,
+        "fold": 0.10261720956505366
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "J6s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.8755618909300497,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.9952362790667859,
+      "ownSequenceReach": 9.196641577559154e-08,
+      "opponentSequenceReach": 0.1726403640774546,
+      "publicSequenceReach": 1.5877115502396686e-08,
+      "averageRealizationWeightedLossAnte": 8.01387031853198e-08,
+      "lastUpdateIteration": 1999909,
+      "callCumulativeRegret": -2168588958.375524,
+      "foldCumulativeRegret": 71145.10376635329,
+      "averageStrategy": {
+        "call": 0.8755618909300497,
+        "fold": 0.12443810906995034
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "J7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9171258540886048,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.5079153241802388,
+      "ownSequenceReach": 2.4673387316308946e-08,
+      "opponentSequenceReach": 0.03402039157984602,
+      "publicSequenceReach": 8.393982981020365e-10,
+      "averageRealizationWeightedLossAnte": 7.937921767100167e-08,
+      "lastUpdateIteration": 1998815,
+      "callCumulativeRegret": -4501712751.623093,
+      "foldCumulativeRegret": 24876.429150219865,
+      "averageStrategy": {
+        "call": 0.9171258540886048,
+        "fold": 0.08287414591139519
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "66",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.1483050847457627,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 6.504409922490188,
+      "ownSequenceReach": 7.89817903052969e-08,
+      "opponentSequenceReach": 0.03576232958917287,
+      "publicSequenceReach": 2.8245728164409665e-09,
+      "averageRealizationWeightedLossAnte": 7.618876237086201e-08,
+      "lastUpdateIteration": 1999642,
+      "callCumulativeRegret": -4470525270.398212,
+      "foldCumulativeRegret": 14681.636492171865,
+      "averageStrategy": {
+        "call": 0.1483050847457627,
+        "fold": 0.8516949152542372
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "Q7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5408051565320999,
+      "ownSequenceReach": 1.1644000005773513e-07,
+      "opponentSequenceReach": 0.16512156423180666,
+      "publicSequenceReach": 1.9226754948684883e-08,
+      "averageRealizationWeightedLossAnte": 6.297135245782117e-08,
+      "lastUpdateIteration": 1999204,
+      "callCumulativeRegret": -934881697.0279149,
+      "foldCumulativeRegret": 631697.7027740089,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "J6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.679268432072407,
+      "ownSequenceReach": 2.6127767375941154e-08,
+      "opponentSequenceReach": 0.03202759645173097,
+      "publicSequenceReach": 8.368095897013451e-10,
+      "averageRealizationWeightedLossAnte": 6.112941854138637e-08,
+      "lastUpdateIteration": 1998678,
+      "callCumulativeRegret": -5844366998.551417,
+      "foldCumulativeRegret": 8588.276664049205,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "J6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.338383388956146,
+      "ownSequenceReach": 1.0203728500760266e-08,
+      "opponentSequenceReach": 0.0901165749191376,
+      "publicSequenceReach": 9.195250638933021e-10,
+      "averageRealizationWeightedLossAnte": 5.4471414733877e-08,
+      "lastUpdateIteration": 1999974,
+      "callCumulativeRegret": -17895462937.84402,
+      "foldCumulativeRegret": 2901.1398136602365,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "96o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.2438635418111219,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.686470190493912,
+      "ownSequenceReach": 3.826756319632101e-08,
+      "opponentSequenceReach": 0.04021645679490833,
+      "publicSequenceReach": 1.538985801931268e-09,
+      "averageRealizationWeightedLossAnte": 5.306650089453356e-08,
+      "lastUpdateIteration": 1999627,
+      "callCumulativeRegret": 1055.378848522167,
+      "foldCumulativeRegret": -8689018052.630318,
+      "averageStrategy": {
+        "call": 0.7561364581888781,
+        "fold": 0.2438635418111219
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "86s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.16508934346766185,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.14580740916363055,
+      "ownSequenceReach": 2.201056825503131e-06,
+      "opponentSequenceReach": 0.034287172410882624,
+      "publicSequenceReach": 7.546801486217585e-08,
+      "averageRealizationWeightedLossAnte": 5.298218790371054e-08,
+      "lastUpdateIteration": 1998849,
+      "callCumulativeRegret": 5717.974485741928,
+      "foldCumulativeRegret": -103072749.05633824,
+      "averageStrategy": {
+        "call": 0.8349106565323381,
+        "fold": 0.16508934346766185
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "T7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.4054867252360417,
+      "ownSequenceReach": 1.373551388979189e-08,
+      "opponentSequenceReach": 0.21924651666200473,
+      "publicSequenceReach": 3.011463574899455e-09,
+      "averageRealizationWeightedLossAnte": 4.6776110215981546e-08,
+      "lastUpdateIteration": 1999973,
+      "callCumulativeRegret": -28609892851.943516,
+      "foldCumulativeRegret": 6075.3901532129985,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "86s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.14019337016574585,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 6.926793553839536,
+      "ownSequenceReach": 3.864253989404927e-08,
+      "opponentSequenceReach": 0.040173252479451825,
+      "publicSequenceReach": 1.5523965116109308e-09,
+      "averageRealizationWeightedLossAnte": 3.7525404652723606e-08,
+      "lastUpdateIteration": 1999753,
+      "callCumulativeRegret": 682.2004968317973,
+      "foldCumulativeRegret": -3664041826.604961,
+      "averageStrategy": {
+        "call": 0.8598066298342542,
+        "fold": 0.14019337016574585
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "96s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 7.605978510920003,
+      "ownSequenceReach": 9.272334543179438e-09,
+      "opponentSequenceReach": 0.04021645869209763,
+      "publicSequenceReach": 3.7290045913508584e-10,
+      "averageRealizationWeightedLossAnte": 3.526258864074202e-08,
+      "lastUpdateIteration": 1999666,
+      "callCumulativeRegret": 497.73287780073093,
+      "foldCumulativeRegret": -4078410365.606591,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "Q8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.6867786718691882,
+      "ownSequenceReach": 3.434965856611315e-08,
+      "opponentSequenceReach": 0.029439657863781755,
+      "publicSequenceReach": 1.0112421959240913e-09,
+      "averageRealizationWeightedLossAnte": 2.8970135727654212e-08,
+      "lastUpdateIteration": 1999959,
+      "callCumulativeRegret": -1842205945.0470483,
+      "foldCumulativeRegret": 1666158.7605135348,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9386234107847435,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.5944063025164645,
+      "ownSequenceReach": 6.7178098932566375e-09,
+      "opponentSequenceReach": 0.08506179018935164,
+      "publicSequenceReach": 5.714289356721469e-10,
+      "averageRealizationWeightedLossAnte": 2.8969999697176765e-08,
+      "lastUpdateIteration": 1999712,
+      "callCumulativeRegret": -14944328459.382921,
+      "foldCumulativeRegret": 255427.87784311702,
+      "averageStrategy": {
+        "call": 0.9386234107847435,
+        "fold": 0.06137658921525647
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "T6s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.4820973844672485,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.24668048972263001,
+      "ownSequenceReach": 2.257077283291061e-07,
+      "opponentSequenceReach": 0.1711988665379013,
+      "publicSequenceReach": 3.864090725878752e-08,
+      "averageRealizationWeightedLossAnte": 2.6842070148418177e-08,
+      "lastUpdateIteration": 1999969,
+      "callCumulativeRegret": 1111050.233101952,
+      "foldCumulativeRegret": -549236058.6064183,
+      "averageStrategy": {
+        "call": 0.5179026155327515,
+        "fold": 0.4820973844672485
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "J7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.0851934639025824,
+      "ownSequenceReach": 2.4378476704817725e-08,
+      "opponentSequenceReach": 0.09011644315326445,
+      "publicSequenceReach": 2.196901610132888e-09,
+      "averageRealizationWeightedLossAnte": 2.645536357996956e-08,
+      "lastUpdateIteration": 1999936,
+      "callCumulativeRegret": -1215470558.1055539,
+      "foldCumulativeRegret": 1283596.91217897,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "Q7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.28290343915343913,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.939978390861872,
+      "ownSequenceReach": 1.5658756715878015e-08,
+      "opponentSequenceReach": 0.21403211092809146,
+      "publicSequenceReach": 3.3514767544088006e-09,
+      "averageRealizationWeightedLossAnte": 2.6313606072396578e-08,
+      "lastUpdateIteration": 1999832,
+      "callCumulativeRegret": -48247003006.247696,
+      "foldCumulativeRegret": 945.4250752371958,
+      "averageStrategy": {
+        "call": 0.28290343915343913,
+        "fold": 0.7170965608465608
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "J7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 1.0,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.8588371285832928,
+      "ownSequenceReach": 3.034822875520204e-08,
+      "opponentSequenceReach": 0.17263997245996843,
+      "publicSequenceReach": 5.239317376506902e-09,
+      "averageRealizationWeightedLossAnte": 2.6064185641706636e-08,
+      "lastUpdateIteration": 1999895,
+      "callCumulativeRegret": -5604412333.026769,
+      "foldCumulativeRegret": 71660.94091948032,
+      "averageStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "K8o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.7813186813186813,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 3.8964090372694073,
+      "ownSequenceReach": 8.538365241385989e-09,
+      "opponentSequenceReach": 0.21243084953525845,
+      "publicSequenceReach": 1.8138121818699478e-09,
+      "averageRealizationWeightedLossAnte": 2.5993662682880026e-08,
+      "lastUpdateIteration": 1999966,
+      "callCumulativeRegret": -31703495208.338768,
+      "foldCumulativeRegret": 13193.066383175517,
+      "averageStrategy": {
+        "call": 0.7813186813186813,
+        "fold": 0.21868131868131868
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "98o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.42752468939152594,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.9165664146188153,
+      "ownSequenceReach": 3.0554816712548096e-08,
+      "opponentSequenceReach": 0.033956339182017826,
+      "publicSequenceReach": 1.03752971993567e-09,
+      "averageRealizationWeightedLossAnte": 2.5035989252185634e-08,
+      "lastUpdateIteration": 1999821,
+      "callCumulativeRegret": 534.7499999999999,
+      "foldCumulativeRegret": -2410903448.72164,
+      "averageStrategy": {
+        "call": 0.572475310608474,
+        "fold": 0.42752468939152594
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "Q7o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.21771247021445592,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.557964407606656,
+      "ownSequenceReach": 3.547280218615976e-08,
+      "opponentSequenceReach": 0.038331175448553335,
+      "publicSequenceReach": 1.359714204249516e-09,
+      "averageRealizationWeightedLossAnte": 1.975483013855165e-08,
+      "lastUpdateIteration": 1999845,
+      "callCumulativeRegret": 80.68885181065365,
+      "foldCumulativeRegret": -3742090208.725145,
+      "averageStrategy": {
+        "call": 0.7822875297855441,
+        "fold": 0.21771247021445592
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "76o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.1424511545293073,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.183027879391311,
+      "ownSequenceReach": 2.988942808477807e-08,
+      "opponentSequenceReach": 0.040769810492599506,
+      "publicSequenceReach": 1.2185863187485834e-09,
+      "averageRealizationWeightedLossAnte": 1.7810427247620966e-08,
+      "lastUpdateIteration": 1999574,
+      "callCumulativeRegret": 8220.760947974151,
+      "foldCumulativeRegret": -6505607257.682277,
+      "averageStrategy": {
+        "call": 0.8575488454706928,
+        "fold": 0.1424511545293073
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "K6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9193245778611632,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.9866397667719635,
+      "ownSequenceReach": 9.536332835166631e-09,
+      "opponentSequenceReach": 0.16439633366411188,
+      "publicSequenceReach": 1.5677381547020795e-09,
+      "averageRealizationWeightedLossAnte": 1.7416841349648168e-08,
+      "lastUpdateIteration": 1999850,
+      "callCumulativeRegret": -12303613110.325064,
+      "foldCumulativeRegret": 68885.26803021466,
+      "averageStrategy": {
+        "call": 0.9193245778611632,
+        "fold": 0.08067542213883677
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "K7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9546413502109705,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.309732969965431,
+      "ownSequenceReach": 1.2858026437299953e-08,
+      "opponentSequenceReach": 0.03342692666894665,
+      "publicSequenceReach": 4.2980430682700287e-10,
+      "averageRealizationWeightedLossAnte": 1.6076715130828167e-08,
+      "lastUpdateIteration": 1998868,
+      "callCumulativeRegret": -529523191.2464227,
+      "foldCumulativeRegret": 16059198.053119816,
+      "averageStrategy": {
+        "call": 0.9546413502109705,
+        "fold": 0.04535864978902954
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "76s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5169694195592704,
+      "ownSequenceReach": 5.971606258202394e-08,
+      "opponentSequenceReach": 0.18110016939329102,
+      "publicSequenceReach": 1.0814589049104901e-08,
+      "averageRealizationWeightedLossAnte": 1.5435689105696993e-08,
+      "lastUpdateIteration": 1999435,
+      "callCumulativeRegret": 843647.6029857557,
+      "foldCumulativeRegret": -1194482316.3555999,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 22,
+      "hand": "76o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.2905296209900459,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.441240268211876,
+      "ownSequenceReach": 1.03703669882917e-08,
+      "opponentSequenceReach": 0.02958230739475915,
+      "publicSequenceReach": 3.067793840441077e-10,
+      "averageRealizationWeightedLossAnte": 1.3381007433019784e-08,
+      "lastUpdateIteration": 1996910,
+      "callCumulativeRegret": 6964.8966511891995,
+      "foldCumulativeRegret": -4818620122.87588,
+      "averageStrategy": {
+        "call": 0.7094703790099541,
+        "fold": 0.2905296209900459
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "Q6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.906709602748133,
+      "ownSequenceReach": 4.63653573096306e-09,
+      "opponentSequenceReach": 0.08506192254090232,
+      "publicSequenceReach": 3.9439264320530574e-10,
+      "averageRealizationWeightedLossAnte": 1.1375067197300641e-08,
+      "lastUpdateIteration": 1999853,
+      "callCumulativeRegret": -15615591490.26694,
+      "foldCumulativeRegret": 25800.325436504678,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "76o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.05619551681195517,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.420749956571571,
+      "ownSequenceReach": 2.5237111985034416e-08,
+      "opponentSequenceReach": 0.23566453256836967,
+      "publicSequenceReach": 5.9474921993287355e-09,
+      "averageRealizationWeightedLossAnte": 7.687775623376254e-09,
+      "lastUpdateIteration": 1999958,
+      "callCumulativeRegret": -48087202549.88611,
+      "foldCumulativeRegret": 323.7287586405529,
+      "averageStrategy": {
+        "call": 0.05619551681195517,
+        "fold": 0.9438044831880449
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "Q7s",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.9563492063492064,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.203836091461012,
+      "ownSequenceReach": 4.863223126635759e-09,
+      "opponentSequenceReach": 0.029758128894910234,
+      "publicSequenceReach": 1.4472042064713527e-10,
+      "averageRealizationWeightedLossAnte": 5.5989689225474225e-09,
+      "lastUpdateIteration": 1996551,
+      "callCumulativeRegret": -526105512.79449475,
+      "foldCumulativeRegret": 7783719.511468081,
+      "averageStrategy": {
+        "call": 0.9563492063492064,
+        "fold": 0.04365079365079365
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "86o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.374431123434501,
+      "ownSequenceReach": 2.5461341463702958e-09,
+      "opponentSequenceReach": 0.23477213419773363,
+      "publicSequenceReach": 5.97761347497079e-10,
+      "averageRealizationWeightedLossAnte": 5.568944227160779e-09,
+      "lastUpdateIteration": 1999898,
+      "callCumulativeRegret": -39575198300.68219,
+      "foldCumulativeRegret": 31.85124123805995,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "Q6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.12516914749661706,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 6.212578087364175,
+      "ownSequenceReach": 6.801563063134943e-09,
+      "opponentSequenceReach": 0.21413978127172553,
+      "publicSequenceReach": 1.4564852266455643e-09,
+      "averageRealizationWeightedLossAnte": 5.2890525740755595e-09,
+      "lastUpdateIteration": 1999911,
+      "callCumulativeRegret": -49856509118.79503,
+      "foldCumulativeRegret": 3238.805486746351,
+      "averageStrategy": {
+        "call": 0.12516914749661706,
+        "fold": 0.874830852503383
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 22,
+      "hand": "K6o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.328921616296569,
+      "ownSequenceReach": 2.1459671614207567e-09,
+      "opponentSequenceReach": 0.026726844911396774,
+      "publicSequenceReach": 5.735493150824293e-11,
+      "averageRealizationWeightedLossAnte": 4.644861816468451e-09,
+      "lastUpdateIteration": 1998657,
+      "callCumulativeRegret": 655.5313418679484,
+      "foldCumulativeRegret": -4332927298.7665825,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "T6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.31203007518796994,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.691417028013666,
+      "ownSequenceReach": 2.209864834007482e-09,
+      "opponentSequenceReach": 0.21935418724383832,
+      "publicSequenceReach": 4.847431045824509e-10,
+      "averageRealizationWeightedLossAnte": 3.924484115443377e-09,
+      "lastUpdateIteration": 1999889,
+      "callCumulativeRegret": -48170300063.63973,
+      "foldCumulativeRegret": 33.84947395253987,
+      "averageStrategy": {
+        "call": 0.31203007518796994,
+        "fold": 0.6879699248120301
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "76o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.6034416504481985,
+      "ownSequenceReach": 1.9289972185225627e-09,
+      "opponentSequenceReach": 0.034605639365035946,
+      "publicSequenceReach": 6.675418208034925e-11,
+      "averageRealizationWeightedLossAnte": 2.5110158511501824e-09,
+      "lastUpdateIteration": 1999809,
+      "callCumulativeRegret": -3533523607.4730453,
+      "foldCumulativeRegret": 2386095.814112326,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "76o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.5163229391762751,
+      "ownSequenceReach": 2.691099627040509e-09,
+      "opponentSequenceReach": 0.18110016945103197,
+      "publicSequenceReach": 4.873585984666451e-10,
+      "averageRealizationWeightedLossAnte": 2.040288048045121e-09,
+      "lastUpdateIteration": 1999873,
+      "callCumulativeRegret": -10567345119.782446,
+      "foldCumulativeRegret": 10.797451036866303,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "T6o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.767725472663436,
+      "ownSequenceReach": 2.1278310045327744e-09,
+      "opponentSequenceReach": 0.17119886639704868,
+      "publicSequenceReach": 3.6428225586050433e-10,
+      "averageRealizationWeightedLossAnte": 1.8807105341178063e-09,
+      "lastUpdateIteration": 1999889,
+      "callCumulativeRegret": -11882127007.489302,
+      "foldCumulativeRegret": 13068.005464676271,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 40,
+      "hand": "66",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.081107541738003,
+      "ownSequenceReach": 8.190040102940868e-10,
+      "opponentSequenceReach": 0.2357722031578685,
+      "publicSequenceReach": 1.9309837990216649e-10,
+      "averageRealizationWeightedLossAnte": 1.6712217215624335e-09,
+      "lastUpdateIteration": 1998761,
+      "callCumulativeRegret": -18367786036.829704,
+      "foldCumulativeRegret": 314.64876140740387,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "Q7o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.662520019516027,
+      "ownSequenceReach": 1.174425337190691e-09,
+      "opponentSequenceReach": 0.16512156423373353,
+      "publicSequenceReach": 1.9392294875265682e-10,
+      "averageRealizationWeightedLossAnte": 1.5634654858485374e-09,
+      "lastUpdateIteration": 1999754,
+      "callCumulativeRegret": -16869690767.538557,
+      "foldCumulativeRegret": 97375.58404342394,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 22,
+      "hand": "86o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.638669393692377,
+      "ownSequenceReach": 3.81164208867241e-10,
+      "opponentSequenceReach": 0.029541204504869762,
+      "publicSequenceReach": 1.1260049844084059e-11,
+      "averageRealizationWeightedLossAnte": 1.0746294792553402e-09,
+      "lastUpdateIteration": 1997565,
+      "callCumulativeRegret": 383.1986910284488,
+      "foldCumulativeRegret": -6202937806.070001,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 37,
+      "hand": "K6s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.27499015810165517,
+      "ownSequenceReach": 7.06503659157095e-09,
+      "opponentSequenceReach": 0.030394049030732416,
+      "publicSequenceReach": 2.147350685681261e-10,
+      "averageRealizationWeightedLossAnte": 9.714077646550373e-10,
+      "lastUpdateIteration": 1997902,
+      "callCumulativeRegret": 10488660.193238635,
+      "foldCumulativeRegret": -69888525.37616062,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 25,
+      "hand": "96o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 5.4709423850102095,
+      "ownSequenceReach": 2.7475529528715406e-10,
+      "opponentSequenceReach": 0.0333612917965945,
+      "publicSequenceReach": 9.166191578734233e-12,
+      "averageRealizationWeightedLossAnte": 7.515851952462435e-10,
+      "lastUpdateIteration": 1999495,
+      "callCumulativeRegret": -6804169528.180304,
+      "foldCumulativeRegret": 1248.1139534357098,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "76s",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 6.1722640470039725,
+      "ownSequenceReach": 2.4266198768207034e-10,
+      "opponentSequenceReach": 0.04076981059173606,
+      "publicSequenceReach": 9.893283275612196e-12,
+      "averageRealizationWeightedLossAnte": 7.488869310722818e-10,
+      "lastUpdateIteration": 1998851,
+      "callCumulativeRegret": 14629.459840907948,
+      "foldCumulativeRegret": -3317443907.057879,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "86o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.5403273528553179,
+      "ownSequenceReach": 2.5461341463702958e-09,
+      "opponentSequenceReach": 0.18065354569947997,
+      "publicSequenceReach": 4.5996816136831264e-10,
+      "averageRealizationWeightedLossAnte": 6.878729616613981e-10,
+      "lastUpdateIteration": 1999898,
+      "callCumulativeRegret": -4027214902.358902,
+      "foldCumulativeRegret": 9814135.671251157,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 49,
+      "hand": "Q6o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.054242749731471536,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.316188119580218,
+      "ownSequenceReach": 5.268726087337391e-09,
+      "opponentSequenceReach": 0.03844311371340443,
+      "publicSequenceReach": 2.025462361002917e-10,
+      "averageRealizationWeightedLossAnte": 6.619438440655942e-10,
+      "lastUpdateIteration": 1998567,
+      "callCumulativeRegret": 3361.2765134781025,
+      "foldCumulativeRegret": -3299704194.3443494,
+      "averageStrategy": {
+        "call": 0.9457572502685284,
+        "fold": 0.054242749731471536
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "97o",
+      "inferiorAction": "fold",
+      "averageInferiorFrequency": 0.080608793686584,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 1.5850874445855911,
+      "ownSequenceReach": 4.277014067878384e-09,
+      "opponentSequenceReach": 0.17558339070289194,
+      "publicSequenceReach": 7.509726321220555e-10,
+      "averageRealizationWeightedLossAnte": 5.464825850063845e-10,
+      "lastUpdateIteration": 1999988,
+      "callCumulativeRegret": 501.2155310353655,
+      "foldCumulativeRegret": -10841425849.97829,
+      "averageStrategy": {
+        "call": 0.919391206313416,
+        "fold": 0.080608793686584
+      },
+      "currentStrategy": {
+        "call": 1.0,
+        "fold": 0.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "66",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.3248383673209574,
+      "ownSequenceReach": 2.5954275595760396e-09,
+      "opponentSequenceReach": 0.18110056094162913,
+      "publicSequenceReach": 4.700333869225843e-10,
+      "averageRealizationWeightedLossAnte": 4.2154722547624877e-10,
+      "lastUpdateIteration": 1999410,
+      "callCumulativeRegret": -1138778095.4561627,
+      "foldCumulativeRegret": 19763879.384878885,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 10,
+      "hand": "86o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 2.043793535147545,
+      "ownSequenceReach": 3.81164208867241e-10,
+      "opponentSequenceReach": 0.09793087027159558,
+      "publicSequenceReach": 3.732774269075314e-11,
+      "averageRealizationWeightedLossAnte": 3.8951047295624787e-10,
+      "lastUpdateIteration": 1999735,
+      "callCumulativeRegret": -7842990766.245627,
+      "foldCumulativeRegret": 444865.96333230176,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 28,
+      "hand": "87o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.5,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 4.943493111432098,
+      "ownSequenceReach": 8.886440649340787e-11,
+      "opponentSequenceReach": 0.12243872373429875,
+      "publicSequenceReach": 1.0880444516458791e-11,
+      "averageRealizationWeightedLossAnte": 2.1965029067583183e-10,
+      "lastUpdateIteration": 1999963,
+      "callCumulativeRegret": -22854648962.66392,
+      "foldCumulativeRegret": 48.17601774789448,
+      "averageStrategy": {
+        "call": 0.5,
+        "fold": 0.5
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    },
+    {
+      "nodeId": 52,
+      "hand": "96o",
+      "inferiorAction": "call",
+      "averageInferiorFrequency": 0.055710306406685235,
+      "currentInferiorFrequency": 0.0,
+      "averageMaterial": true,
+      "currentMaterial": false,
+      "exactEvGapAnte": 0.48307553495296496,
+      "ownSequenceReach": 2.673392169234241e-09,
+      "opponentSequenceReach": 0.17558378210019082,
+      "publicSequenceReach": 4.694043081111814e-10,
+      "averageRealizationWeightedLossAnte": 7.194709483520324e-11,
+      "lastUpdateIteration": 1999919,
+      "callCumulativeRegret": -3362040228.2170825,
+      "foldCumulativeRegret": 15429969.885963246,
+      "averageStrategy": {
+        "call": 0.055710306406685235,
+        "fold": 0.9442896935933147
+      },
+      "currentStrategy": {
+        "call": 0.0,
+        "fold": 1.0
+      }
+    }
+  ]
+}

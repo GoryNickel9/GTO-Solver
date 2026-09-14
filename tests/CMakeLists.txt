@@ -16,6 +16,115 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_hu_preflop_tests hu_preflop_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_tests PRIVATE gtosd::preflop)
+target_compile_definitions(gtosd_hu_preflop_tests PRIVATE
+  GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+gtosd_set_warnings(gtosd_hu_preflop_tests)
+add_test(NAME gtosd_hu_preflop_tests COMMAND gtosd_hu_preflop_tests)
+set_tests_properties(gtosd_hu_preflop_tests
+  PROPERTIES LABELS "preflop;tree;resource;reference")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_trainer_isolation_tests hu_preflop_trainer_isolation_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_trainer_isolation_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_trainer_isolation_tests)
+add_test(NAME gtosd_hu_preflop_trainer_isolation_tests
+  COMMAND gtosd_hu_preflop_trainer_isolation_tests)
+set_tests_properties(gtosd_hu_preflop_trainer_isolation_tests
+  PROPERTIES LABELS "preflop;trainer;isolation")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_trainer_isolation_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_test(NAME gtosd_hu_preflop_trainer_dependency_check
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_preflop_trainer_isolation.cmake)
+set_tests_properties(gtosd_hu_preflop_trainer_dependency_check
+  PROPERTIES LABELS "preflop;trainer;isolation;dependencies")
+
+add_executable(gtosd_external_sampling_tests external_sampling_tests.cpp)
+target_link_libraries(gtosd_external_sampling_tests PRIVATE gtosd::best_response)
+gtosd_set_warnings(gtosd_external_sampling_tests)
+add_test(NAME gtosd_external_sampling_tests COMMAND gtosd_external_sampling_tests)
+set_tests_properties(gtosd_external_sampling_tests
+  PROPERTIES LABELS "preflop;sampling;averaging;r2;oracle")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_external_sampling_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_sampling_tests hu_preflop_sampling_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_sampling_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_sampling_tests)
+add_test(NAME gtosd_hu_preflop_sampling_tests COMMAND gtosd_hu_preflop_sampling_tests)
+set_tests_properties(gtosd_hu_preflop_sampling_tests
+  PROPERTIES LABELS "preflop;sampling;averaging;r2")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_sampling_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_seven_card_table_tests seven_card_table_tests.cpp)
+target_link_libraries(gtosd_seven_card_table_tests PRIVATE gtosd::equity gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_seven_card_table_tests)
+add_test(NAME gtosd_seven_card_table_tests COMMAND gtosd_seven_card_table_tests)
+set_tests_properties(gtosd_seven_card_table_tests
+  PROPERTIES LABELS "preflop;evaluator;r3;exhaustive;slow")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_seven_card_table_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_compiled_tests hu_preflop_compiled_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_compiled_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_compiled_tests)
+add_test(NAME gtosd_hu_preflop_compiled_tests COMMAND gtosd_hu_preflop_compiled_tests)
+set_tests_properties(gtosd_hu_preflop_compiled_tests
+  PROPERTIES LABELS "preflop;compiled;memory;r4")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_compiled_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_abstraction_tests hu_preflop_abstraction_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_abstraction_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_abstraction_tests)
+add_test(NAME gtosd_hu_preflop_abstraction_tests COMMAND gtosd_hu_preflop_abstraction_tests)
+set_tests_properties(gtosd_hu_preflop_abstraction_tests
+  PROPERTIES LABELS "preflop;abstraction;persistence;coverage;r5")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_abstraction_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_parallel_tests hu_preflop_parallel_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_parallel_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_parallel_tests)
+add_test(NAME gtosd_hu_preflop_parallel_tests COMMAND gtosd_hu_preflop_parallel_tests)
+set_tests_properties(gtosd_hu_preflop_parallel_tests
+  PROPERTIES LABELS "preflop;parallel;deterministic;memory;r6")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_parallel_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_hu_preflop_telemetry_tests hu_preflop_telemetry_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_telemetry_tests PRIVATE gtosd::preflop_trainer)
+gtosd_set_warnings(gtosd_hu_preflop_telemetry_tests)
+add_test(NAME gtosd_hu_preflop_telemetry_tests COMMAND gtosd_hu_preflop_telemetry_tests)
+set_tests_properties(gtosd_hu_preflop_telemetry_tests
+  PROPERTIES LABELS "preflop;telemetry;deterministic;non-mutating;r6;v19")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_telemetry_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_executable(gtosd_phase2_tests phase2_tests.cpp)
 target_link_libraries(gtosd_phase2_tests PRIVATE gtosd::core gtosd::equity)
 gtosd_set_warnings(gtosd_phase2_tests)
@@ -59,6 +168,48 @@ set_tests_properties(gtosd_phase5_tests
   PROPERTIES LABELS "phase5;solver;best_response;reference")
 if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_phase5_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_card_abstraction_tests card_abstraction_tests.cpp)
+target_link_libraries(gtosd_card_abstraction_tests
+  PRIVATE
+    gtosd::solver
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_card_abstraction_tests)
+add_test(NAME gtosd_card_abstraction_tests COMMAND gtosd_card_abstraction_tests)
+set_tests_properties(gtosd_card_abstraction_tests
+  PROPERTIES LABELS "solver;card_abstraction;dcfr;reference")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_card_abstraction_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_subgame_contract_tests subgame_contract_tests.cpp)
+target_link_libraries(gtosd_subgame_contract_tests
+  PRIVATE
+    gtosd::solver
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_subgame_contract_tests)
+add_test(NAME gtosd_subgame_contract_tests COMMAND gtosd_subgame_contract_tests)
+set_tests_properties(gtosd_subgame_contract_tests
+  PROPERTIES LABELS "solver;subgame;boundary;reference")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_subgame_contract_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_postflop_subgame_tests postflop_subgame_tests.cpp)
+target_link_libraries(gtosd_postflop_subgame_tests
+  PRIVATE
+    gtosd::postflop_subgame
+    gtosd::best_response)
+gtosd_set_warnings(gtosd_postflop_subgame_tests)
+add_test(NAME gtosd_postflop_subgame_tests COMMAND gtosd_postflop_subgame_tests)
+set_tests_properties(gtosd_postflop_subgame_tests
+  PROPERTIES LABELS "postflop;subgame;boundary;card_abstraction;dcfr;reference")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_postflop_subgame_tests PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
@@ -134,6 +285,8 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
 endif()
 
 add_executable(gtosd_phase10_tests phase10_tests.cpp)
+target_compile_definitions(gtosd_phase10_tests PRIVATE
+  GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 target_link_libraries(gtosd_phase10_tests PRIVATE gtosd::storage)
 if(GTOSD_ENABLE_REAL_NODE_REPLAY)
   target_compile_definitions(gtosd_phase10_tests PRIVATE GTOSD_ENABLE_REAL_NODE_REPLAY=1)

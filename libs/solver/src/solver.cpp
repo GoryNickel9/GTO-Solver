@@ -1,5 +1,7 @@
 #include "gtosd/solver/solver.hpp"
 
+#include "gtosd/core/external_sampling.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <barrier>
@@ -171,6 +173,55 @@ void traverse_full_iteration(const FiniteGame &game, const StrategyProfile &stra
   static_cast<void>(traverse_full(game, game.root, strategy, {1.0, 1.0}, 1.0, delta));
 }
 
+double traverse_alternating(const FiniteGame &game, const GameNodeId node_id,
+                            const StrategyProfile &strategy, const std::uint8_t updating_player,
+                            const std::array<double, 2> reach, const double chance_reach,
+                            IterationDelta &delta) {
+  ++delta.traversed_nodes;
+  const auto &node = game.nodes[node_id];
+  if (node.kind == GameNodeKind::Terminal) {
+    return node.payoff[updating_player];
+  }
+  if (node.kind == GameNodeKind::Chance) {
+    double value = 0.0;
+    for (const auto &edge : node.edges) {
+      value +=
+          edge.probability * traverse_alternating(game, edge.child, strategy, updating_player,
+                                                  reach, chance_reach * edge.probability, delta);
+    }
+    return value;
+  }
+
+  const auto &information_strategy = strategy.at(node.information_set);
+  std::vector<double> action_values(node.edges.size(), 0.0);
+  double value = 0.0;
+  for (std::size_t index = 0U; index < node.edges.size(); ++index) {
+    auto child_reach = reach;
+    child_reach[node.player] *= information_strategy.probabilities[index];
+    action_values[index] = traverse_alternating(game, node.edges[index].child, strategy,
+                                                updating_player, child_reach, chance_reach, delta);
+    value += information_strategy.probabilities[index] * action_values[index];
+  }
+  if (node.player != updating_player) {
+    return value;
+  }
+
+  auto &regret_delta = delta.regret[node.information_set];
+  auto &strategy_delta = delta.strategy[node.information_set];
+  if (regret_delta.empty()) {
+    regret_delta.resize(node.edges.size(), 0.0);
+    strategy_delta.resize(node.edges.size(), 0.0);
+  }
+  const auto opponent = static_cast<std::uint8_t>(1U - node.player);
+  const double counterfactual_weight = reach[opponent] * chance_reach;
+  const double average_weight = reach[node.player] * chance_reach;
+  for (std::size_t index = 0U; index < node.edges.size(); ++index) {
+    regret_delta[index] += counterfactual_weight * (action_values[index] - value);
+    strategy_delta[index] += average_weight * information_strategy.probabilities[index];
+  }
+  return value;
+}
+
 class ExactTraversalWorkers {
 public:
   ExactTraversalWorkers(const FiniteGame &game, const std::uint32_t requested_threads)
@@ -297,12 +348,16 @@ double traverse_external_sampling(const FiniteGame &game, const GameNodeId node_
   }
 
   const auto &information_strategy = strategy.at(node.information_set);
-  auto &strategy_delta = delta.strategy[node.information_set];
-  if (strategy_delta.empty()) {
-    strategy_delta.resize(node.edges.size(), 0.0);
-  }
-  for (std::size_t index = 0; index < node.edges.size(); ++index) {
-    strategy_delta[index] += reach[node.player] * information_strategy.probabilities[index];
+  const double average_multiplier =
+      external_sampling_average_multiplier(node.player, updating_player, reach[node.player]);
+  if (average_multiplier != 0.0) {
+    auto &strategy_delta = delta.strategy[node.information_set];
+    if (strategy_delta.empty()) {
+      strategy_delta.resize(node.edges.size(), 0.0);
+    }
+    for (std::size_t index = 0; index < node.edges.size(); ++index) {
+      strategy_delta[index] += average_multiplier * information_strategy.probabilities[index];
+    }
   }
 
   if (node.player != updating_player) {
@@ -343,7 +398,9 @@ double power_discount(const double numerator, const double exponent) {
 bool compatible_resume(const SolverCheckpoint &checkpoint, const FiniteGame &game,
                        const SolverConfig &config) {
   const auto &stored = checkpoint.config;
-  return checkpoint.game_fingerprint == finite_game_fingerprint(game) &&
+  return checkpoint.major == SolverCheckpoint::format_major &&
+         checkpoint.minor <= SolverCheckpoint::format_minor &&
+         checkpoint.game_fingerprint == finite_game_fingerprint(game) &&
          stored.algorithm == config.algorithm && stored.seed == config.seed &&
          stored.thread_count == config.thread_count &&
          stored.averaging_delay == config.averaging_delay &&
@@ -355,10 +412,16 @@ bool compatible_resume(const SolverCheckpoint &checkpoint, const FiniteGame &gam
 bool valid_configuration(const SolverConfig &config) {
   const bool supported_threads = config.thread_count == 1U || config.thread_count == 2U ||
                                  config.thread_count == 4U || config.thread_count == 8U;
-  const bool supported_sampling_threads =
-      config.algorithm != SolverAlgorithm::ExternalSamplingMccfr || config.thread_count == 1U;
+  const bool sampled = config.algorithm == SolverAlgorithm::ExternalSamplingMccfr ||
+                       config.algorithm == SolverAlgorithm::LinearMccfr;
+  const bool supported_sampling_threads = !sampled || config.thread_count == 1U;
+  const bool production_contract =
+      config.algorithm != SolverAlgorithm::ProductionDcfr ||
+      (config.thread_count == 1U && config.averaging_delay == 0U &&
+       config.dcfr.positive_regret_exponent == 1.5 && config.dcfr.negative_regret_exponent == 0.0 &&
+       config.dcfr.strategy_exponent == 3.0);
   return config.iterations > 0U && supported_threads && supported_sampling_threads &&
-         std::isfinite(config.dcfr.positive_regret_exponent) &&
+         production_contract && std::isfinite(config.dcfr.positive_regret_exponent) &&
          std::isfinite(config.dcfr.negative_regret_exponent) &&
          std::isfinite(config.dcfr.strategy_exponent);
 }
@@ -389,9 +452,11 @@ void apply_iteration_delta(SolverCheckpoint &checkpoint, const IterationDelta &d
       }
     }
 
-    const double regret_weight = algorithm == SolverAlgorithm::LinearCfr ? iteration_value : 1.0;
+    const bool linear =
+        algorithm == SolverAlgorithm::LinearCfr || algorithm == SolverAlgorithm::LinearMccfr;
+    const double regret_weight = linear ? iteration_value : 1.0;
     double strategy_weight = 1.0;
-    if (algorithm == SolverAlgorithm::LinearCfr) {
+    if (linear) {
       strategy_weight = iteration_value;
     } else if (algorithm == SolverAlgorithm::CfrPlus) {
       strategy_weight = iteration > checkpoint.config.averaging_delay
@@ -403,6 +468,63 @@ void apply_iteration_delta(SolverCheckpoint &checkpoint, const IterationDelta &d
       buffer.cumulative_regret[index] =
           algorithm == SolverAlgorithm::CfrPlus ? std::max(0.0, updated) : updated;
       buffer.cumulative_strategy[index] += strategy_weight * strategy_delta[index];
+    }
+  }
+}
+
+struct FiniteProductionSchedulePoint {
+  std::uint64_t regret_discount_iteration{0U};
+  double average_strategy_weight{1.0};
+  bool reset_average_strategy{true};
+};
+
+FiniteProductionSchedulePoint finite_production_schedule(const std::uint64_t iteration) noexcept {
+  const std::uint64_t zero_based_iteration = iteration == 0U ? 0U : iteration - 1U;
+  std::uint64_t epoch_start = 0U;
+  if (zero_based_iteration != 0U) {
+    const auto highest_bit = static_cast<unsigned>(std::numeric_limits<std::uint64_t>::digits - 1U -
+                                                   std::countl_zero(zero_based_iteration));
+    epoch_start = std::min<std::uint64_t>(std::uint64_t{1} << (highest_bit & ~1U), 64U);
+  }
+  const auto epoch_index = zero_based_iteration - epoch_start;
+  const double sample_index = static_cast<double>(epoch_index) + 1.0;
+  return {
+      .regret_discount_iteration =
+          zero_based_iteration <= 64U ? zero_based_iteration : zero_based_iteration - 1U,
+      .average_strategy_weight = sample_index * sample_index * sample_index,
+      .reset_average_strategy = epoch_index == 0U,
+  };
+}
+
+void reset_average_strategy(SolverCheckpoint &checkpoint) {
+  for (auto &[key, buffer] : checkpoint.information_sets) {
+    static_cast<void>(key);
+    std::ranges::fill(buffer.cumulative_strategy, 0.0);
+  }
+}
+
+void apply_production_player_delta(SolverCheckpoint &checkpoint, const IterationDelta &delta,
+                                   const FiniteProductionSchedulePoint &schedule,
+                                   const std::uint8_t updating_player) {
+  const double regret_iteration = static_cast<double>(schedule.regret_discount_iteration);
+  const double powered = std::pow(regret_iteration, 1.5);
+  const double positive_discount = powered / (powered + 1.0);
+  constexpr double negative_discount = 0.5;
+  for (auto &[key, buffer] : checkpoint.information_sets) {
+    if (buffer.player != updating_player) {
+      continue;
+    }
+    const auto regret_found = delta.regret.find(key);
+    const auto strategy_found = delta.strategy.find(key);
+    for (std::size_t index = 0U; index < buffer.actions.size(); ++index) {
+      const double regret_delta =
+          regret_found == delta.regret.end() ? 0.0 : regret_found->second[index];
+      const double strategy_delta =
+          strategy_found == delta.strategy.end() ? 0.0 : strategy_found->second[index];
+      buffer.cumulative_regret[index] *=
+          buffer.cumulative_regret[index] > 0.0 ? positive_discount : negative_discount;
+      buffer.cumulative_regret[index] += regret_delta;
+      buffer.cumulative_strategy[index] += schedule.average_strategy_weight * strategy_delta;
     }
   }
 }
@@ -450,9 +572,26 @@ Result<SolveResult, SolverError> solve_finite_game(const FiniteGame &game,
   }
   for (std::uint64_t iteration = checkpoint.completed_iterations + 1U;
        iteration <= config.iterations; ++iteration) {
+    if (config.algorithm == SolverAlgorithm::ProductionDcfr) {
+      const auto schedule = finite_production_schedule(iteration);
+      if (schedule.reset_average_strategy) {
+        reset_average_strategy(checkpoint);
+      }
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        const StrategyProfile strategy = strategy_from_buffers(checkpoint.information_sets, false);
+        IterationDelta delta;
+        static_cast<void>(
+            traverse_alternating(game, game.root, strategy, player, {1.0, 1.0}, 1.0, delta));
+        apply_production_player_delta(checkpoint, delta, schedule, player);
+        traversed_nodes += delta.traversed_nodes;
+      }
+      checkpoint.completed_iterations = iteration;
+      continue;
+    }
     const StrategyProfile strategy = strategy_from_buffers(checkpoint.information_sets, false);
     IterationDelta delta;
-    if (config.algorithm == SolverAlgorithm::ExternalSamplingMccfr) {
+    if (config.algorithm == SolverAlgorithm::ExternalSamplingMccfr ||
+        config.algorithm == SolverAlgorithm::LinearMccfr) {
       for (std::uint8_t player = 0; player < 2U; ++player) {
         static_cast<void>(traverse_external_sampling(game, game.root, strategy, player, {1.0, 1.0},
                                                      delta, checkpoint.rng_state));
@@ -513,7 +652,8 @@ Result<StrategyProfile, SolverError> average_strategy_profile(const SolverCheckp
 }
 
 Result<std::string, SolverError> serialize_solver_checkpoint(const SolverCheckpoint &checkpoint) {
-  if (checkpoint.major != SolverCheckpoint::format_major || checkpoint.information_sets.empty() ||
+  if (checkpoint.major != SolverCheckpoint::format_major ||
+      checkpoint.minor > SolverCheckpoint::format_minor || checkpoint.information_sets.empty() ||
       checkpoint.game_fingerprint.empty()) {
     return Result<std::string, SolverError>::failure(SolverError::InvalidCheckpoint);
   }
@@ -565,7 +705,7 @@ Result<SolverCheckpoint, SolverError> deserialize_solver_checkpoint(const std::s
         checkpoint.completed_iterations >> checkpoint.rng_state)) {
     return Result<SolverCheckpoint, SolverError>::failure(SolverError::InvalidCheckpoint);
   }
-  if (algorithm > static_cast<unsigned>(SolverAlgorithm::ExternalSamplingMccfr)) {
+  if (algorithm > static_cast<unsigned>(SolverAlgorithm::LinearMccfr)) {
     return Result<SolverCheckpoint, SolverError>::failure(SolverError::InvalidCheckpoint);
   }
   checkpoint.config.algorithm = static_cast<SolverAlgorithm>(algorithm);
@@ -651,6 +791,10 @@ const char *solver_algorithm_name(const SolverAlgorithm algorithm) noexcept {
     return "dcfr";
   case SolverAlgorithm::ExternalSamplingMccfr:
     return "external_sampling_mccfr";
+  case SolverAlgorithm::ProductionDcfr:
+    return "production_dcfr";
+  case SolverAlgorithm::LinearMccfr:
+    return "linear_mccfr";
   }
   return "unknown";
 }

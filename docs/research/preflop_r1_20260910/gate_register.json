@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "gate": "R1",
+  "date": "2026-09-10",
+  "status": "PASS",
+  "r0_commit": "39eb45b",
+  "scope": "Isolamento del nuovo trainer preflop dal solver postflop standalone con compatibilita legacy",
+  "autonomous_target": {
+    "library": "gtosd_preflop_trainer",
+    "benchmark": "gtosd_hu_preflop_trainer",
+    "test": "gtosd_hu_preflop_trainer_isolation_tests",
+    "dependencies": [
+      "gtosd::core",
+      "gtosd::equity",
+      "gtosd::tree",
+      "nlohmann_json"
+    ],
+    "forbidden_dependencies": [
+      "gtosd_postflop",
+      "gtosd_postflop_preflop_experimental",
+      "gtosd_postflop_subgame"
+    ]
+  },
+  "checks": [
+    {
+      "name": "autonomous_build",
+      "status": "PASS",
+      "targets": [
+        "gtosd_hu_preflop_trainer",
+        "gtosd_hu_preflop_trainer_isolation_tests"
+      ]
+    },
+    {
+      "name": "trainer_execution",
+      "status": "PASS",
+      "fingerprint": "fnv1a64:0f9919d7d6030cf0",
+      "preflop_nodes": 58,
+      "preflop_decisions": 20,
+      "postflop_entries": 9
+    },
+    {
+      "name": "dependency_check",
+      "status": "PASS",
+      "test": "gtosd_hu_preflop_trainer_dependency_check"
+    },
+    {
+      "name": "ctest_r1",
+      "status": "PASS",
+      "passed": 3,
+      "total": 3
+    },
+    {
+      "name": "legacy_build",
+      "status": "PASS",
+      "targets": [
+        "gtosd_hu_preflop_tests",
+        "gtosd_hu_preflop_decomposition"
+      ]
+    },
+    {
+      "name": "legacy_test",
+      "status": "PASS",
+      "test": "gtosd_hu_preflop_tests",
+      "elapsed_seconds": 483.32
+    }
+  ],
+  "not_evaluated": [
+    "sampling_and_averaging_correctness",
+    "strategy_convergence",
+    "cpu_ram_qualification",
+    "two_hour_gate"
+  ],
+  "next_gate": "R2"
+}

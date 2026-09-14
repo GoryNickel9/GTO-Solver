@@ -27,6 +27,10 @@ enum class SolverError : std::uint8_t {
   GameMismatch,
   InvalidCheckpoint,
   UnsupportedCheckpointVersion,
+  InvalidAbstraction,
+  UnsupportedAbstractionVersion,
+  InvalidSubgame,
+  UnsupportedSubgameVersion,
   IoFailure
 };
 
@@ -62,6 +66,7 @@ struct InformationSetStrategy {
   std::uint8_t player{0};
   std::vector<GameActionId> actions;
   std::vector<double> probabilities;
+  friend bool operator==(const InformationSetStrategy &, const InformationSetStrategy &) = default;
 };
 
 using StrategyProfile = std::map<std::string, InformationSetStrategy>;

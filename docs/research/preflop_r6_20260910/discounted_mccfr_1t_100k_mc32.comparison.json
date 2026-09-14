@@ -1,0 +1,31 @@
+{
+  "benchmark_id": "GTP-HU-PREFLOP-CO40-001",
+  "candidate_rake_mode": "disabled",
+  "candidate_tree_fingerprint": "fnv1a64:0f9919d7d6030cf0",
+  "configuration_comparability": "REFERENCE_CONFIG_INCOMPLETE",
+  "gates": {
+    "nashconv": false,
+    "rake": true,
+    "root_ev": false,
+    "strategy": false
+  },
+  "metrics": {
+    "class_total_variation_p95_percentage_points": 87.58957638474291,
+    "nashconv_certified": false,
+    "normalized_nashconv": 0.0,
+    "root_action_delta_percentage_points": {
+      "all_in": -23.327321296515034,
+      "call": 9.842930075442062,
+      "fold": -11.595067825999422,
+      "raise_10": 10.2767241151946,
+      "raise_6": 14.802734931877787
+    },
+    "root_action_max_absolute_error_percentage_points": 23.327321296515034,
+    "root_ev_absolute_error_ante": 0.4076467349999999,
+    "weighted_mean_absolute_action_error_percentage_points": 19.843257825173158,
+    "weighted_mean_class_total_variation_percentage_points": 49.60814456293289
+  },
+  "reference_fingerprint": "fnv1a64:e8c2cecc49fb63d2",
+  "schema": "gtosd.hu_preflop_comparison_report.v1",
+  "status": "REJECTED"
+}

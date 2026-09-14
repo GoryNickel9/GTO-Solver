@@ -1,0 +1,31 @@
+PROBE training creates=1396374 touches=1791570 policy_queries=0 policy_misses=0
+TIMER training touch calls=1791570 seconds=1.15675
+TIMER training key_inclusive calls=1558294 seconds=6.11218
+TIMER training bucket_nested calls=146965 seconds=5.7705
+TIMER training terminal calls=1299528 seconds=2.58517
+TIMER training legal_actions calls=1558294 seconds=0.522636
+TIMER training apply_action calls=2628515 seconds=1.42967
+TIMER training sample_deal calls=40000 seconds=0.018233
+TIMER training canonical_nested calls=298163 seconds=0.303815
+VISITS street=0 states=1620 touches=233276 singleton=0 le2=0 ge10=1614
+VISITS street=1 states=251097 touches=408175 singleton=175963 le2=218018 ge10=1386
+VISITS street=2 states=569102 touches=575359 singleton=563046 le2=568917 ge10=0
+VISITS street=3 states=574555 touches=574760 singleton=574350 le2=574555 ge10=0
+PROBE after_profile_eval creates=1396374 touches=1791570 policy_queries=52205 policy_misses=3737
+TIMER after_profile_eval touch calls=1791570 seconds=1.15675
+TIMER after_profile_eval key_inclusive calls=1567603 seconds=6.37091
+TIMER after_profile_eval bucket_nested calls=153355 seconds=6.01642
+TIMER after_profile_eval terminal calls=1319528 seconds=2.63196
+TIMER after_profile_eval legal_actions calls=1567603 seconds=0.527312
+TIMER after_profile_eval apply_action calls=2637824 seconds=1.43692
+TIMER after_profile_eval sample_deal calls=60000 seconds=0.0243281
+TIMER after_profile_eval canonical_nested calls=311845 seconds=0.316995
+PROBE all creates=1535079 touches=1952187 policy_queries=387627 policy_misses=213776
+TIMER all touch calls=1952187 seconds=1.23336
+TIMER all key_inclusive calls=1963954 seconds=7.95519
+TIMER all bucket_nested calls=193756 seconds=7.50901
+TIMER all terminal calls=1662423 seconds=3.27675
+TIMER all legal_actions calls=1963954 seconds=0.655045
+TIMER all apply_action calls=3300594 seconds=1.78364
+TIMER all sample_deal calls=90000 seconds=0.0341198
+TIMER all canonical_nested calls=396178 seconds=0.396056

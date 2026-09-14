@@ -1,0 +1,143 @@
+{
+  "blueprint_fingerprint": "fnv1a64:51149ff78d961217",
+  "board_batch_benchmark": {
+    "canonical_board_offset": 0,
+    "entry_node": 3,
+    "public_history_roots": 633,
+    "root_materialization_seconds": 0.8146699,
+    "seconds": 198.725931,
+    "seconds_per_public_subgame": 0.313943018957346,
+    "selected_root_differential_pass": true,
+    "selected_root_differential_tolerance_antes": 1e-10,
+    "shared_preparation": "live_combos_showdown_values_and_private_abstraction_keys",
+    "task_span_index": 0
+  },
+  "board_batched_full_river_projection": {
+    "ideal_eight_worker_years": 0.4006657489014618,
+    "projection_method": "first_entry_first_canonical_board_all_river_shapes_extrapolated",
+    "scope": "river_only_excludes_upper_street_and_preflop_terminal_reduction",
+    "serial_seconds": 101152395.50026216,
+    "serial_years": 3.2053259912116943
+  },
+  "catalog": {
+    "canonical_boards": 369072,
+    "canonical_public_subgames": 322199856,
+    "resolver_sides": 644399712,
+    "river_shapes": 873,
+    "tasks": 5157
+  },
+  "decision": "whole-game certification must include the declared uniform fallback or require a dense policy export; the measured board-batched River path still determines the exact-execution feasibility gate",
+  "exact_execution_gate": {
+    "board_batched_within_budget": false,
+    "maximum_exact_seconds": 604800.0,
+    "naive_root_by_root_within_budget": false,
+    "next_required_executor": "cross_board_policy_prefix_trie_or_estimated_only",
+    "status": "INFEASIBLE_EXACT_BOARD_BATCHED"
+  },
+  "naive_full_river_projection": {
+    "ideal_eight_worker_years": 0.3114823991483573,
+    "scope": "river_only_excludes_upper_street_and_preflop_terminal_reduction",
+    "serial_seconds": 78637095.6749136,
+    "serial_years": 2.4918591931868583
+  },
+  "nashconv_certified": false,
+  "permissive_fallback_diagnostic": {
+    "best_response_ev_antes": [
+      15.735573892678937,
+      2.6718732516741555
+    ],
+    "deviation_gain_antes": [
+      6.021700356552824,
+      12.38574678780027
+    ],
+    "exact_for_selected_subgame": true,
+    "fallback": "uniform_declared_by_policy_contract",
+    "maximum_recomposition_error_antes": 0.0,
+    "profile_and_best_response_seconds": 0.2440631,
+    "profile_ev_antes": [
+      9.713873536126114,
+      -9.713873536126115
+    ],
+    "river_subgame_nashconv_antes": 18.407447144353092,
+    "whole_game_certified": false
+  },
+  "policy_entries": 1566290,
+  "policy_fingerprint": "fnv1a64:3821fd86bf83ad5f",
+  "policy_iterations": 2000000,
+  "policy_reuse_census": {
+    "distinct_public_histories_by_street": [
+      372,
+      2100,
+      7588
+    ],
+    "maximum_information_sets_per_context": 206,
+    "mean_information_sets_per_context": 155.6948310139165,
+    "minimum_information_sets_per_context": 23,
+    "scope": "trained_rows_only_not_physical_terminal_work",
+    "trained_decision_contexts": 10060,
+    "trained_decision_contexts_by_street": [
+      372,
+      2100,
+      7588
+    ],
+    "trained_decision_contexts_by_street_player": [
+      [
+        186,
+        186
+      ],
+      [
+        1050,
+        1050
+      ],
+      [
+        3794,
+        3794
+      ]
+    ],
+    "trained_information_sets": 1566290,
+    "trained_information_sets_by_street": [
+      10353,
+      230012,
+      1325925
+    ],
+    "trained_information_sets_by_street_player": [
+      [
+        5160,
+        5193
+      ],
+      [
+        113785,
+        116227
+      ],
+      [
+        655261,
+        670664
+      ]
+    ],
+    "trained_rows_per_context": 155.6948310139165
+  },
+  "probe_root": {
+    "entry_node": 3,
+    "ordinal": 16800,
+    "pot_units": 767584,
+    "public_history_actions": 7,
+    "remaining_stack_units": 16208,
+    "selection": "minimum_remaining_stack_first_task"
+  },
+  "schema": "gtosd.hu_preflop_nashconv_probe.v3",
+  "status": "STRICT_COVERAGE_INCOMPLETE",
+  "strict_lookup": {
+    "complete": false,
+    "error": "integrity_failure",
+    "seconds": 0.0948302
+  },
+  "timing": {
+    "measured_seconds_per_public_subgame": 0.2440631,
+    "one_time_policy_validation_seconds": 0.3550068,
+    "policy_load_seconds": 17.6272918,
+    "river_evaluator": "vectorized_combo_matrix_board_batch_v2",
+    "setup_seconds": 3.2258702
+  },
+  "total_probe_seconds": 222.2456701,
+  "tree_fingerprint": "fnv1a64:a68337fa567aa2d9"
+}

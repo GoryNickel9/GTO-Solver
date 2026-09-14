@@ -14,7 +14,9 @@ enum class SolverAlgorithm : std::uint8_t {
   CfrPlus,
   LinearCfr,
   Dcfr,
-  ExternalSamplingMccfr
+  ExternalSamplingMccfr,
+  ProductionDcfr,
+  LinearMccfr
 };
 
 struct DcfrParameters {
@@ -41,7 +43,7 @@ struct InformationSetBuffer {
 
 struct SolverCheckpoint {
   static constexpr std::uint32_t format_major = 1;
-  static constexpr std::uint32_t format_minor = 0;
+  static constexpr std::uint32_t format_minor = 2;
 
   std::uint32_t major{format_major};
   std::uint32_t minor{format_minor};

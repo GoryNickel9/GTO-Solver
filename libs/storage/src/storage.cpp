@@ -36,24 +36,27 @@ constexpr std::array<std::byte, 8> file_magic{std::byte{'G'}, std::byte{'T'}, st
 constexpr std::array<std::byte, 8> footer_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
                                                 std::byte{'D'}, std::byte{'D'}, std::byte{'O'},
                                                 std::byte{'N'}, std::byte{'E'}};
-constexpr std::array<std::byte, 8> strategy_magic_v1{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{1}};
-constexpr std::array<std::byte, 8> strategy_magic_v2{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{2}};
-constexpr std::array<std::byte, 8> strategy_magic_v3{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'S'}, std::byte{'T'}, std::byte{'R'}, std::byte{3}};
-constexpr std::array<std::byte, 8> metrics_magic_v1{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{1}};
-constexpr std::array<std::byte, 8> metrics_magic_v2{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{2}};
-constexpr std::array<std::byte, 8> metrics_magic_v3{
-    std::byte{'G'}, std::byte{'T'}, std::byte{'S'}, std::byte{'D'},
-    std::byte{'M'}, std::byte{'E'}, std::byte{'T'}, std::byte{3}};
+constexpr std::array<std::byte, 8> strategy_magic_v1{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                     std::byte{'D'}, std::byte{'S'}, std::byte{'T'},
+                                                     std::byte{'R'}, std::byte{1}};
+constexpr std::array<std::byte, 8> strategy_magic_v2{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                     std::byte{'D'}, std::byte{'S'}, std::byte{'T'},
+                                                     std::byte{'R'}, std::byte{2}};
+constexpr std::array<std::byte, 8> strategy_magic_v3{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                     std::byte{'D'}, std::byte{'S'}, std::byte{'T'},
+                                                     std::byte{'R'}, std::byte{3}};
+constexpr std::array<std::byte, 8> metrics_magic_v1{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                    std::byte{'D'}, std::byte{'M'}, std::byte{'E'},
+                                                    std::byte{'T'}, std::byte{1}};
+constexpr std::array<std::byte, 8> metrics_magic_v2{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                    std::byte{'D'}, std::byte{'M'}, std::byte{'E'},
+                                                    std::byte{'T'}, std::byte{2}};
+constexpr std::array<std::byte, 8> metrics_magic_v3{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                    std::byte{'D'}, std::byte{'M'}, std::byte{'E'},
+                                                    std::byte{'T'}, std::byte{3}};
+constexpr std::array<std::byte, 8> metrics_magic_v4{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
+                                                    std::byte{'D'}, std::byte{'M'}, std::byte{'E'},
+                                                    std::byte{'T'}, std::byte{4}};
 constexpr std::array<std::byte, 8> ev_magic{std::byte{'G'}, std::byte{'T'}, std::byte{'S'},
                                             std::byte{'D'}, std::byte{'E'}, std::byte{'V'},
                                             std::byte{0},   std::byte{1}};
@@ -310,11 +313,10 @@ bool atomic_replace(const std::filesystem::path &temporary,
       return false;
     }
     const bool replaced =
-        destination_exists
-            ? ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr,
-                           REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) != 0
-            : MoveFileExW(temporary.c_str(), destination.c_str(),
-                          MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING) != 0;
+        destination_exists ? ReplaceFileW(destination.c_str(), temporary.c_str(), nullptr,
+                                          REPLACEFILE_WRITE_THROUGH, nullptr, nullptr) != 0
+                           : MoveFileExW(temporary.c_str(), destination.c_str(),
+                                         MOVEFILE_WRITE_THROUGH | MOVEFILE_REPLACE_EXISTING) != 0;
     if (replaced) {
       return true;
     }
@@ -429,21 +431,17 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
     for (std::size_t offset = 0; offset < expected_values * 3U; offset += 3U) {
-      const auto packed = static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
-                          (static_cast<std::uint32_t>(
-                               checkpoint.cumulative_regret_float24[offset + 1U])
-                           << 8U) |
-                          (static_cast<std::uint32_t>(
-                               checkpoint.cumulative_regret_float24[offset + 2U])
-                           << 16U);
+      const auto packed =
+          static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset + 1U]) << 8U) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset + 2U]) << 16U);
       if ((packed & 0xff0000U) == 0xff0000U) {
         return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
       }
     }
-    if (std::ranges::any_of(checkpoint.cumulative_strategy_float16,
-                            [](const std::uint16_t value) {
-                              return (value & 0x7c00U) == 0x7c00U;
-                            })) {
+    if (std::ranges::any_of(checkpoint.cumulative_strategy_float16, [](const std::uint16_t value) {
+          return (value & 0x7c00U) == 0x7c00U;
+        })) {
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
     }
     result.clear();
@@ -461,8 +459,7 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
   }
 
   if (!checkpoint.cumulative_regret_uint16.empty() ||
-      !checkpoint.cumulative_strategy_uint16.empty() ||
-      !checkpoint.regret_node_scale.empty() ||
+      !checkpoint.cumulative_strategy_uint16.empty() || !checkpoint.regret_node_scale.empty() ||
       !checkpoint.strategy_node_scale.empty()) {
     const auto scale_count = static_cast<std::size_t>(checkpoint.decision_node_count);
     if (checkpoint.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy ||
@@ -470,19 +467,16 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
         checkpoint.cumulative_strategy_uint16.size() != expected_values ||
         checkpoint.regret_node_scale.size() != scale_count ||
         checkpoint.strategy_node_scale.size() != scale_count ||
-        std::ranges::any_of(checkpoint.regret_node_scale,
-                            [](const float value) {
-                              return !std::isfinite(value) || value < 0.0F;
-                            }) ||
-        std::ranges::any_of(checkpoint.strategy_node_scale,
-                            [](const float value) {
-                              return !std::isfinite(value) || value < 0.0F;
-                            })) {
+        std::ranges::any_of(
+            checkpoint.regret_node_scale,
+            [](const float value) { return !std::isfinite(value) || value < 0.0F; }) ||
+        std::ranges::any_of(checkpoint.strategy_node_scale, [](const float value) {
+          return !std::isfinite(value) || value < 0.0F;
+        })) {
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
-    const std::uint64_t payload_bytes =
-        checkpoint.action_count * 2U * sizeof(std::uint16_t) +
-        checkpoint.decision_node_count * 2U * sizeof(float);
+    const std::uint64_t payload_bytes = checkpoint.action_count * 2U * sizeof(std::uint16_t) +
+                                        checkpoint.decision_node_count * 2U * sizeof(float);
     if (payload_bytes > maximum_chunk_bytes) {
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
@@ -517,13 +511,10 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
       return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
     }
     for (std::size_t offset = 0; offset < expected_values * 3U; offset += 3U) {
-      const auto word = static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
-                        (static_cast<std::uint32_t>(
-                             checkpoint.cumulative_compact_state[offset + 1U])
-                         << 8U) |
-                        (static_cast<std::uint32_t>(
-                             checkpoint.cumulative_compact_state[offset + 2U])
-                         << 16U);
+      const auto word =
+          static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset + 1U]) << 8U) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset + 2U]) << 16U);
       if ((word & 0x1fffU) == 0x1fffU) {
         return Result<std::vector<std::byte>, StorageError>::failure(StorageError::CorruptData);
       }
@@ -578,15 +569,15 @@ Result<std::vector<std::byte>, StorageError> encode_strategy(const PostflopCheck
 
 Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const std::byte> bytes,
                                                          PostflopCheckpoint checkpoint) {
-  const bool version_1 = bytes.size() >= strategy_magic_v1.size() &&
-                         std::equal(strategy_magic_v1.begin(), strategy_magic_v1.end(),
-                                    bytes.begin());
-  const bool version_2 = bytes.size() >= strategy_magic_v2.size() &&
-                         std::equal(strategy_magic_v2.begin(), strategy_magic_v2.end(),
-                                    bytes.begin());
-  const bool version_3 = bytes.size() >= strategy_magic_v3.size() &&
-                         std::equal(strategy_magic_v3.begin(), strategy_magic_v3.end(),
-                                    bytes.begin());
+  const bool version_1 =
+      bytes.size() >= strategy_magic_v1.size() &&
+      std::equal(strategy_magic_v1.begin(), strategy_magic_v1.end(), bytes.begin());
+  const bool version_2 =
+      bytes.size() >= strategy_magic_v2.size() &&
+      std::equal(strategy_magic_v2.begin(), strategy_magic_v2.end(), bytes.begin());
+  const bool version_3 =
+      bytes.size() >= strategy_magic_v3.size() &&
+      std::equal(strategy_magic_v3.begin(), strategy_magic_v3.end(), bytes.begin());
   if (!version_1 && !version_2 && !version_3) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
@@ -636,9 +627,8 @@ Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const s
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
     const auto scale_count = static_cast<std::size_t>(checkpoint.decision_node_count);
-    const std::uint64_t payload_bytes =
-        action_count * 2U * sizeof(std::uint16_t) +
-        checkpoint.decision_node_count * 2U * sizeof(float);
+    const std::uint64_t payload_bytes = action_count * 2U * sizeof(std::uint16_t) +
+                                        checkpoint.decision_node_count * 2U * sizeof(float);
     if (payload_bytes > maximum_chunk_bytes || bytes.size() - cursor != payload_bytes) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
@@ -694,8 +684,7 @@ Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const s
         return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
       }
     }
-  } else if (checkpoint.state_precision ==
-             PostflopStatePrecision::Float24RegretFloat16Strategy) {
+  } else if (checkpoint.state_precision == PostflopStatePrecision::Float24RegretFloat16Strategy) {
     if (action_count > maximum_chunk_bytes / 5U || bytes.size() - cursor != action_count * 5U) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
@@ -703,13 +692,10 @@ Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const s
     std::memcpy(checkpoint.cumulative_regret_float24.data(), bytes.data() + cursor, count * 3U);
     cursor += count * 3U;
     for (std::size_t offset = 0; offset < count * 3U; offset += 3U) {
-      const auto packed = static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
-                          (static_cast<std::uint32_t>(
-                               checkpoint.cumulative_regret_float24[offset + 1U])
-                           << 8U) |
-                          (static_cast<std::uint32_t>(
-                               checkpoint.cumulative_regret_float24[offset + 2U])
-                           << 16U);
+      const auto packed =
+          static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset]) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset + 1U]) << 8U) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_regret_float24[offset + 2U]) << 16U);
       if ((packed & 0xff0000U) == 0xff0000U) {
         return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
       }
@@ -720,8 +706,7 @@ Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const s
         return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
       }
     }
-  } else if (checkpoint.state_precision ==
-                 PostflopStatePrecision::Float13RegretFloat11Strategy ||
+  } else if (checkpoint.state_precision == PostflopStatePrecision::Float13RegretFloat11Strategy ||
              checkpoint.state_precision ==
                  PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy) {
     if (action_count > maximum_chunk_bytes / 3U || bytes.size() - cursor != action_count * 3U) {
@@ -731,13 +716,10 @@ Result<PostflopCheckpoint, StorageError> decode_strategy(const std::span<const s
     std::memcpy(checkpoint.cumulative_compact_state.data(), bytes.data() + cursor, count * 3U);
     cursor += count * 3U;
     for (std::size_t offset = 0; offset < count * 3U; offset += 3U) {
-      const auto word = static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
-                        (static_cast<std::uint32_t>(
-                             checkpoint.cumulative_compact_state[offset + 1U])
-                         << 8U) |
-                        (static_cast<std::uint32_t>(
-                             checkpoint.cumulative_compact_state[offset + 2U])
-                         << 16U);
+      const auto word =
+          static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset]) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset + 1U]) << 8U) |
+          (static_cast<std::uint32_t>(checkpoint.cumulative_compact_state[offset + 2U]) << 16U);
       if ((word & 0x1fffU) == 0x1fffU) {
         return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
       }
@@ -837,14 +819,21 @@ Result<PostflopRanges, StorageError> decode_ranges(const std::span<const std::by
 }
 
 Result<std::vector<std::byte>, StorageError> encode_metrics(const PostflopCheckpoint &checkpoint) {
+  const auto algorithm = static_cast<std::uint8_t>(checkpoint.algorithm);
+  if ((algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::CfrPlus) &&
+       algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::DcfrPlus) &&
+       algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::Dcfr) &&
+       algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::HsDcfr30) &&
+       algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::ProductionDcfr)) ||
+      !std::isfinite(checkpoint.dcfr_positive_regret_exponent) ||
+      !std::isfinite(checkpoint.dcfr_average_exponent) ||
+      checkpoint.dcfr_positive_regret_exponent < 0.0 || checkpoint.dcfr_average_exponent < 0.0) {
+    return Result<std::vector<std::byte>, StorageError>::failure(StorageError::InvalidArgument);
+  }
   std::vector<std::byte> result;
   const bool scaled =
       checkpoint.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy;
-  if (scaled) {
-    result.insert(result.end(), metrics_magic_v3.begin(), metrics_magic_v3.end());
-  } else {
-    result.insert(result.end(), metrics_magic_v2.begin(), metrics_magic_v2.end());
-  }
+  result.insert(result.end(), metrics_magic_v4.begin(), metrics_magic_v4.end());
   append_integer(result, checkpoint.major);
   append_integer(result, checkpoint.minor);
   append_integer(result, checkpoint.completed_iterations);
@@ -857,20 +846,26 @@ Result<std::vector<std::byte>, StorageError> encode_metrics(const PostflopCheckp
   if (scaled) {
     append_integer(result, checkpoint.decision_node_count);
   }
+  append_integer(result, algorithm);
+  append_double(result, checkpoint.dcfr_positive_regret_exponent);
+  append_double(result, checkpoint.dcfr_average_exponent);
   return Result<std::vector<std::byte>, StorageError>::success(std::move(result));
 }
 
 Result<PostflopCheckpoint, StorageError> decode_metrics(const std::span<const std::byte> bytes) {
-  const bool version_1 = bytes.size() >= metrics_magic_v1.size() &&
-                         std::equal(metrics_magic_v1.begin(), metrics_magic_v1.end(),
-                                    bytes.begin());
-  const bool version_2 = bytes.size() >= metrics_magic_v2.size() &&
-                         std::equal(metrics_magic_v2.begin(), metrics_magic_v2.end(),
-                                    bytes.begin());
-  const bool version_3 = bytes.size() >= metrics_magic_v3.size() &&
-                         std::equal(metrics_magic_v3.begin(), metrics_magic_v3.end(),
-                                    bytes.begin());
-  if (!version_1 && !version_2 && !version_3) {
+  const bool version_1 =
+      bytes.size() >= metrics_magic_v1.size() &&
+      std::equal(metrics_magic_v1.begin(), metrics_magic_v1.end(), bytes.begin());
+  const bool version_2 =
+      bytes.size() >= metrics_magic_v2.size() &&
+      std::equal(metrics_magic_v2.begin(), metrics_magic_v2.end(), bytes.begin());
+  const bool version_3 =
+      bytes.size() >= metrics_magic_v3.size() &&
+      std::equal(metrics_magic_v3.begin(), metrics_magic_v3.end(), bytes.begin());
+  const bool version_4 =
+      bytes.size() >= metrics_magic_v4.size() &&
+      std::equal(metrics_magic_v4.begin(), metrics_magic_v4.end(), bytes.begin());
+  if (!version_1 && !version_2 && !version_3 && !version_4) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
   std::size_t cursor = metrics_magic_v1.size();
@@ -884,20 +879,42 @@ Result<PostflopCheckpoint, StorageError> decode_metrics(const std::span<const st
       result.minor > PostflopCheckpoint::format_minor || result.game_fingerprint.empty()) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
   }
-  if (version_2 || version_3) {
+  if (version_2 || version_3 || version_4) {
     std::uint8_t precision = 0;
     if (!read_integer(bytes, cursor, precision) ||
-        precision >
-            static_cast<std::uint8_t>(
-                PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy)) {
+        precision > static_cast<std::uint8_t>(
+                        PostflopStatePrecision::ActionMajorFloat13RegretFloat11Strategy)) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
     result.state_precision = static_cast<PostflopStatePrecision>(precision);
-    if (version_3 &&
-        (!read_integer(bytes, cursor, result.decision_node_count) ||
-         result.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy)) {
+    if (version_3 && result.state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) {
       return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
     }
+    const bool has_decision_node_count =
+        version_3 ||
+        (version_4 && result.state_precision == PostflopStatePrecision::ScaledUint16RegretStrategy);
+    if (has_decision_node_count && !read_integer(bytes, cursor, result.decision_node_count)) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+  }
+  if (version_4) {
+    std::uint8_t algorithm = 0U;
+    double positive_exponent = 0.0;
+    double average_exponent = 0.0;
+    if (!read_integer(bytes, cursor, algorithm) ||
+        (algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::CfrPlus) &&
+         algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::DcfrPlus) &&
+         algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::Dcfr) &&
+         algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::HsDcfr30) &&
+         algorithm != static_cast<std::uint8_t>(PostflopAlgorithm::ProductionDcfr)) ||
+        !read_double(bytes, cursor, positive_exponent) ||
+        !read_double(bytes, cursor, average_exponent) || !std::isfinite(positive_exponent) ||
+        !std::isfinite(average_exponent) || positive_exponent < 0.0 || average_exponent < 0.0) {
+      return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);
+    }
+    result.algorithm = static_cast<PostflopAlgorithm>(algorithm);
+    result.dcfr_positive_regret_exponent = positive_exponent;
+    result.dcfr_average_exponent = average_exponent;
   }
   if (cursor != bytes.size()) {
     return Result<PostflopCheckpoint, StorageError>::failure(StorageError::CorruptData);

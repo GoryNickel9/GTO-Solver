@@ -166,11 +166,14 @@ Result<PublicState, GameError> make_hu_preflop_state(const Money effective_stack
   PublicState state;
   state.street = Street::Preflop;
   state.player_to_act = static_cast<std::uint8_t>(Player::CO);
+  state.initial_pot = Money::from_units(ante.units() * 2).value();
+  state.initial_pot_contributions[0] = ante;
+  state.initial_pot_contributions[1] = ante;
   state.pot = Money::from_units(ante.units() * 3).value();
-  state.current_bet = Money::from_units(ante.units() * 2).value();
+  state.current_bet = ante;
   state.last_full_raise_increment = ante;
-  state.committed_this_street[0] = ante;
-  state.committed_this_street[1] = Money::from_units(ante.units() * 2).value();
+  state.committed_this_street[0] = Money{};
+  state.committed_this_street[1] = ante;
   state.committed_total = state.committed_this_street;
   state.remaining_stacks[0] = Money::from_units(effective_stack.units() - ante.units()).value();
   state.remaining_stacks[1] = Money::from_units(effective_stack.units() - ante.units() * 2).value();
@@ -222,7 +225,7 @@ Result<bool, GameError> validate_state(const PublicState &state) {
   if (state.player_count < 2U || state.player_count > maximum_players) {
     return Result<bool, GameError>::failure(GameError::InvalidState);
   }
-  if ((state.board_mask >> 36U) != 0U || state.raise_count_this_street > 4U) {
+  if ((state.board_mask >> 36U) != 0U || state.raise_count_this_street > maximum_core_raise_depth) {
     return Result<bool, GameError>::failure(GameError::InvalidState);
   }
   const auto valid_mask = static_cast<std::uint8_t>((std::uint16_t{1} << state.player_count) - 1U);
@@ -327,7 +330,8 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
     for (std::size_t index = 0; index < config.aggressive_target_rounding.size(); ++index) {
       const auto &band = config.aggressive_target_rounding[index];
       const bool unbounded = band.upper_bound_exclusive.units() == 0;
-      if (band.quantum.units() <= 0 || (unbounded && index + 1U != config.aggressive_target_rounding.size()) ||
+      if (band.quantum.units() <= 0 ||
+          (unbounded && index + 1U != config.aggressive_target_rounding.size()) ||
           (!unbounded && band.upper_bound_exclusive <= previous_bound)) {
         return false;
       }
@@ -338,7 +342,10 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
     return true;
   }();
   if (!validate_state(state) || state.status != HandStatus::InProgress ||
-      config.aggressive_sizes.size() > 3U || config.raise_depth > 4U ||
+      config.aggressive_sizes.size() > 3U || config.aggressive_targets.size() > 3U ||
+      (!config.aggressive_targets.empty() &&
+       (!config.aggressive_sizes.empty() || !config.aggressive_sizes_by_raise_count.empty())) ||
+      config.raise_depth > maximum_core_raise_depth ||
       !valid_raise_schedule || !valid_rounding || config.minimum_bet.units() <= 0) {
     return Result<std::vector<Action>, GameError>::failure(GameError::InvalidConfiguration);
   }
@@ -356,16 +363,15 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
     }
     for (const auto &band : config.aggressive_target_rounding) {
       if (band.upper_bound_exclusive.units() == 0 || target.value() < band.upper_bound_exclusive) {
-        const auto rounded = round_to_quantum(target.value(), band.quantum,
-                                              config.aggressive_target_rounding_mode);
+        const auto rounded =
+            round_to_quantum(target.value(), band.quantum, config.aggressive_target_rounding_mode);
         if (!rounded || rounded.value() < state.committed_this_street[player]) {
           return Result<Money, GameError>::failure(GameError::ArithmeticFailure);
         }
         const auto rounded_payment =
             subtract_checked(rounded.value(), state.committed_this_street[player]);
-        return rounded_payment
-                   ? Result<Money, GameError>::success(rounded_payment.value())
-                   : Result<Money, GameError>::failure(GameError::ArithmeticFailure);
+        return rounded_payment ? Result<Money, GameError>::success(rounded_payment.value())
+                               : Result<Money, GameError>::failure(GameError::ArithmeticFailure);
       }
     }
     return Result<Money, GameError>::failure(GameError::InvalidConfiguration);
@@ -410,43 +416,70 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
       (to_call.units() == 0 || config.raise_depth > state.raise_count_this_street);
 
   if (allow_regular && regular_aggression_allowed) {
-    const auto *active_sizes = &config.aggressive_sizes;
-    if (to_call.units() > 0 && !config.aggressive_sizes_by_raise_count.empty()) {
-      active_sizes = &config.aggressive_sizes_by_raise_count[state.raise_count_this_street];
-    }
-    for (const auto size : *active_sizes) {
-      const auto size_bp = size.basis_points();
-      const auto increment = percent_of(pot_after_call, size_bp, 100'000U);
-      if (!increment) {
-        return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
+    if (!config.aggressive_targets.empty()) {
+      for (const auto target : config.aggressive_targets) {
+        if (target <= state.current_bet) {
+          continue;
+        }
+        const auto required_increment =
+            Money::from_units(target.units() - state.current_bet.units()).value();
+        const auto payment =
+            Money::from_units(target.units() - state.committed_this_street[player].units()).value();
+        if ((to_call.units() == 0 && required_increment < config.minimum_bet) ||
+            (to_call.units() > 0 && required_increment < state.last_full_raise_increment &&
+             !config.allow_incomplete_non_all_in_raise)) {
+          continue;
+        }
+        if (payment >= stack) {
+          add_unique_aggressive(actions, {ActionType::AllIn, stack, AllInKind::Raise, 0});
+        } else {
+          add_unique_aggressive(actions,
+                                {to_call.units() == 0 ? ActionType::Bet : ActionType::Raise,
+                                 payment, AllInKind::None, 0});
+        }
       }
-      const auto required_increment = increment.value();
-      if (to_call.units() == 0 && required_increment < config.minimum_bet) {
-        continue;
+    } else {
+      const auto *active_sizes = &config.aggressive_sizes;
+      if (to_call.units() > 0 && !config.aggressive_sizes_by_raise_count.empty()) {
+        active_sizes = &config.aggressive_sizes_by_raise_count[state.raise_count_this_street];
       }
-      if (to_call.units() > 0 && required_increment < state.last_full_raise_increment) {
-        continue;
-      }
-      const auto total_result = checked_add(to_call, required_increment);
-      if (!total_result) {
-        return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
-      }
-      const auto rounded_total = round_aggressive_payment(total_result.value());
-      if (!rounded_total) {
-        return Result<std::vector<Action>, GameError>::failure(rounded_total.error());
-      }
-      if (rounded_total.value() <= to_call ||
-          (to_call.units() == 0 && rounded_total.value() < config.minimum_bet) ||
-          (to_call.units() > 0 &&
-           rounded_total.value().units() - to_call.units() <
-               state.last_full_raise_increment.units())) {
-        continue;
-      }
-      if (rounded_total.value() >= stack) {
-        add_unique_aggressive(actions, {ActionType::AllIn, stack, AllInKind::Raise, size_bp});
-      } else {
-        add_unique_aggressive(actions, {to_call.units() == 0 ? ActionType::Bet : ActionType::Raise,
-                                        rounded_total.value(), AllInKind::None, size_bp});
+      for (const auto size : *active_sizes) {
+        const auto size_bp = size.basis_points();
+        const auto increment = percent_of(pot_after_call, size_bp, 100'000U);
+        if (!increment) {
+          return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
+        }
+        const auto required_increment = increment.value();
+        if (to_call.units() == 0 && required_increment < config.minimum_bet) {
+          continue;
+        }
+        if (to_call.units() > 0 && required_increment < state.last_full_raise_increment &&
+            !config.allow_incomplete_non_all_in_raise) {
+          continue;
+        }
+        const auto total_result = checked_add(to_call, required_increment);
+        if (!total_result) {
+          return Result<std::vector<Action>, GameError>::failure(GameError::ArithmeticFailure);
+        }
+        const auto rounded_total = round_aggressive_payment(total_result.value());
+        if (!rounded_total) {
+          return Result<std::vector<Action>, GameError>::failure(rounded_total.error());
+        }
+        if (rounded_total.value() <= to_call ||
+            (to_call.units() == 0 && rounded_total.value() < config.minimum_bet) ||
+            (to_call.units() > 0 &&
+             rounded_total.value().units() - to_call.units() <
+                 state.last_full_raise_increment.units() &&
+             !config.allow_incomplete_non_all_in_raise)) {
+          continue;
+        }
+        if (rounded_total.value() >= stack) {
+          add_unique_aggressive(actions, {ActionType::AllIn, stack, AllInKind::Raise, size_bp});
+        } else {
+          add_unique_aggressive(
+              actions, {to_call.units() == 0 ? ActionType::Bet : ActionType::Raise,
+                        rounded_total.value(), AllInKind::None, size_bp});
+        }
       }
     }
   }
@@ -516,7 +549,7 @@ Result<PublicState, GameError> apply_action(const PublicState &state, const Acti
     const auto old_bet = state.current_bet;
     next.current_bet = next.committed_this_street[player];
     const auto increment = Money::from_units(next.current_bet.units() - old_bet.units()).value();
-    if (action.type != ActionType::AllIn || increment >= state.last_full_raise_increment) {
+    if (increment >= state.last_full_raise_increment) {
       next.last_full_raise_increment = increment;
     }
     if (action.type == ActionType::Raise) {
@@ -624,7 +657,8 @@ Result<Settlement, GameError> settle_terminal(const PublicState &state,
   } else if (state.status != HandStatus::Showdown && state.status != HandStatus::AllInRunout) {
     return Result<Settlement, GameError>::failure(GameError::NotTerminal);
   }
-  const bool flop_dealt = state.street != Street::Preflop;
+  const bool flop_dealt =
+      state.street != Street::Preflop || state.status == HandStatus::AllInRunout;
   const auto rake = calculate_rake(rake_config, state.pot, flop_dealt);
   if (!rake) {
     return Result<Settlement, GameError>::failure(rake.error());

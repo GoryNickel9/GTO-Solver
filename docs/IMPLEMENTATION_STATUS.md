@@ -1,5 +1,204 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **V20 trace paired V18 AA 2026-09-14 — PASS; EV LOCALE INCONCLUSIVO.** La replica V18 seed 1
+> coincide bit per bit per strategia, regret, vantaggi root, algoritmo e root EV. Con 10.000 deal
+> `AA` per azione, Call precede Raise 6 di `0,2267a` sulla continuation media, con IC simultaneo
+> `[-0,1426a; +0,5960a]`; sulla continuation corrente Raise 6 precede Call di `0,1052a`, ancora
+> senza separazione. Il precedente vantaggio di Raise 6 su 188 campioni non si replica. La best
+> response resta campionata e `normalized_nashconv=0` non certifica convergenza. Report:
+> [`V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md).
+
+> **V20 root decision trace 2026-09-14 — ENGINEERING PASS; ACTION EV INCONCLUSIVE.**
+> La trace post-training forza le cinque azioni root sugli stessi deal fisici e valuta sia la
+> continuation media sia quella corrente senza mutare policy, regret o strategy sum. Nel V17
+> seed 1 da 2M, Call è l'unica azione con regret cumulativo positivo per `JTo`, `QJo` e `J9s`:
+> questo produce il 100% Call nella policy corrente. I sei confronti paired contro la migliore
+> alternativa osservata non superano però l'intervallo simultaneo al 95%. Build Release, test
+> mirato con 4.537 asserzioni e suite HU 8/8 passano. Il contratto completo Monker è
+> permanentemente indisponibile; WMAE e TV verso Monker restano diagnostiche. Report e roadmap:
+> [`V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md) e
+> [`V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md`](research/preflop_r6_20260910/V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md).
+
+> **HU preflop R6 2026-09-14 — V18 E V19 RESPINTE; V17 BASELINE.** V18 migliora la WMAE media
+> del `4,04%`, ma peggiora la TV fra seed del `18,92%`. V19 aggiunge telemetria action-conditioned
+> opt-in e CRN globale sperimentale, con non-mutazione, fixture paired e riproducibilità 1/8 worker.
+> La coppia V19 C2 da `2M + 2M` migliora la WMAE da `13,9472 pp` a `13,6347 pp`, ma peggiora la TV
+> da `10,9453 pp` a `12,1140 pp` e gli errori Call/Fold raggiunti da 7 a 10. Il Gate C fallisce.
+> I run corretti restano sotto 44,1 minuti e 2,81 GB private per seed; il vecchio `memory_failure`
+> usava per errore perfect recall e non era matched. Nessun default, viewer o policy pubblicata cambia. Registri:
+> [`V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md`](research/preflop_r6_20260910/V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md) e
+> [`V19_FASE_A_AUDIT_2026-09-13.md`](research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md),
+> [`V19_FASE_B_CRN_AUDIT_2026-09-14.md`](research/preflop_r6_20260910/V19_FASE_B_CRN_AUDIT_2026-09-14.md) e
+> [`V19_COMPLETION_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V19_COMPLETION_REPORT_2026-09-14.md).
+
+> **R9-C decomposizione exact 2026-09-09 — IN CORSO.** Blueprint preflop denso,
+> reach sulle 630 combo fisiche, 573 flop canonici/5.157 task, resource estimator,
+> boundary CFV ProductionDcfr e scheduler River task-local sono implementati. Il piano
+> Flop-only è respinto dal picco modellato di 32.528.500.840 B; il nesting River
+> porta il lower bound attivo a 637.398.110 B. Lo smoke River ricompone l'EV con
+> errore `6,49e-15`, ma una iterazione non dimostra convergenza. Valutazione del
+> profilo, BR exact e NashConv globale sono collegate; manca il provider che
+> produca continuation postflop convergenti per l'intero benchmark. Nessun
+> percorso di prodotto è stato modificato.
+>
+> Blueprint, piano, boundary, checkpoint scheduler e ledger di copertura sono
+> persistibili con checksum e scrittura atomica. Il certificatore consuma in
+> streaming le 10.314 boundary canoniche: il ledger usa `170.181 B` e il payload
+> transazionale usa `365.706 B`, invece di materializzare `130.699.008 B`. Lo
+> schema 1.3 rifiuta boundary di checkpoint diversi. Il fingerprint locale del
+> task è distinto dall'identità globale del checkpoint: River v5, terminali e
+> assemblatore Flop 1.1 e boundary Flop 1.1 propagano la seconda. Il test completo copre
+> 10.314/10.314 boundary e tutta la massa postflop, poi restituisce
+> `GLOBAL_BEST_RESPONSE_MISSING` senza BR e
+> `GLOBAL_BEST_RESPONSE_NOT_EXACT` con una risposta campionata. L'oracle sparse fisico
+> lossless è stato misurato e respinto: 8.996.964 infoset/1.295.562.816 B minimi
+> a 100k, EV `+0,7437a`, errore strategico medio `21,627 pp`. Release `42/42` e
+> ASan mirato `3/3` passano. Le 64.260 frontiere fisiche sono `9 × 7.140`, non
+> flop distinti; senza isomorfismo i boundary occuperebbero `1.628.605.440 B`.
+>
+> Il catalogo River contiene 5.157 span task-local, 366.488.496 stati pubblici
+> e 732.976.992 boundary per lato, divise in 141.687 batch task-aligned da
+> massimo 64 MiB. Ogni batch mantiene unita la coppia dei resolver. L'accumulatore
+> numerico task-local e la sua persistenza atomica sono implementati. La materializzazione da 9,29 TB è
+> vietata. Il probe Flop file-backed ha rappresentato 31,43 GB logici con
+> 608,01 MB Peak RSS, ma una traversata dura 1.285,69 s e solve più certificazione
+> 9.719,15 s; il percorso monolitico resta respinto per tempo e convergenza.
+> Anche lo sweep River exact separato è respinto: cinque processi Release
+> proiettano fra 783.076 e 930.075 s per una sola iterazione sui 366.488.496
+> stati pubblici, con mediana 834.311 s. L'exact resta oracle; il primo solve
+> deve riusare informazione fra root e misurare l'errore introdotto. Il target
+> HU Release passa con 9.090 asserzioni. I terminali BR Flop/Turn 1.1
+> dichiarano la continuation usata dal provider avversario e il dispatcher
+> rifiuta checkpoint misti prima della ricorsione. La suite Release completa
+> passa 42/42 in 787,22 s; il target HU impiega 506,16 s. Lo stesso target passa sotto
+> AddressSanitizer con 9.090 asserzioni in 4.793,91 s, senza diagnostiche. La BR globale lega il
+> fingerprint composito delle boundary alla stessa continuation globale, pur
+> consentendo fingerprint locali diversi fra task. Evidenza
+> calcolata su continuation diverse fallisce prima del gate NashConv.
+> La BR exact è ora persistibile e riprendibile anche dentro il singolo leaf
+> River e ai livelli task, entry accumulator ed entry evaluation. Il sink salva
+> il candidato prima del commit; dopo un'interruzione il provider riparte dal
+> primo root non completato. Roundtrip, checksum, incompatibilità di schema e
+> resume senza replay passano nel target HU Release: 9.099 asserzioni in
+> 462,24 s, stderr vuoto. La stessa revisione passa l'intera suite Release
+> 42/42 in 752,22 s; nel run integrale il target HU impiega 484,88 s. Questo
+> incremento protegge il lavoro già calcolato, ma non modifica la proiezione di
+> 783.076–930.075 s né prova convergenza.
+>
+> La riduzione River ora solleva ogni runout canonico nella sua orbita fisica e
+> permuta insieme le combo private nelle coordinate del Flop rappresentante.
+> Una boundary River contiene 528 righe, non le sole 465 combo vive sul board
+> rappresentante. L'oracolo unitario verifica per tutte le combo la massa esatta
+> `molteplicità Flop × 31 × 30 × 406`. I checkpoint accumulator/aggregate v1-v4
+> sono rifiutati; i nuovi payload usano lo schema v5. Le history Flop/Turn
+> conservano inoltre le azioni complete, sono replayabili e alimentano un
+> propagatore di reach che applica blocker e probabilità per il solo actor. La
+> riduzione River include ora anche la reach delle azioni proprie del player di
+> cui si accumula la CFV; ometterla sovrastimava i rami mixed-strategy.
+> Il manifesto terminale contiene 3.792 history: 612 Flop, 3.180 Turn, 2.388
+> fold e 1.404 all-in runout. Il valutatore exact e l'assemblatore task-local
+> sono implementati: sommano continuation River, fold e showdown, rifiutano
+> ordinali mancanti/fuori ordine e provano 812 runout per combo compatibile
+> prima di emettere le due boundary Flop.
+> Il postflop espone ora anche best-response CFV exact per combo, ricomposte
+> contro la certificazione entro `1e-9`. Il bridge solleva ora anche tali valori
+> sull'orbita fisica del River e li accumula in un canale task-local distinto.
+> Boundary, accumulatore e aggregato BR non possono essere mescolati con quelli
+> di profilo; l'assemblatore Flop average-policy rifiuta l'aggregato BR. Restano
+> da implementare la scelta ottima alle decisioni Flop/Turn e la ricorsione BR
+> preflop. I test Release mirati passano `2/2` in `99,29 s` e il test HU conta
+> 8.971 asserzioni. La suite Release completa passa `42/42` in `318,07 s`.
+> Il target HU passa sotto AddressSanitizer in `1.115,26 s` senza diagnostiche.
+> Nessun default production è cambiato.
+> La vista successiva per la BR upper-street partiziona ogni task per Turn
+> canonico e genera span River per history senza duplicare il catalogo. Il test
+> Release copre ogni root una volta e passa con 8.975 asserzioni; la suite
+> completa passa `42/42` in `333,03 s`. ASan deve ancora essere rieseguito dopo
+> questo incremento.
+
+> **R9-C v2 showdown distribution 2026-09-07 — `REJECTED` 12/12.** La firma
+> River v3 conserva `HandValue` e aggiunge masse avversarie per categoria e
+> loss/tie/win, con quantum 5% e cinque holdout congelati. Profile value e byte
+> model passano 12/12, ma speedup 0/12, riduzione minima 5/12, delta NashConv
+> 2/12 e best response 6/12. Il native è `7,6x`–`123,9x` più lento; NashConv
+> fisica massima `2,6527%`. Suite Release `42/42` PASS; ASan mirato `2/2` PASS.
+> V3 resta benchmark-only e non entra nel preflop o nel prodotto. R9-C passa
+> alla specifica di decomposizione con boundary CFV.
+>
+> **Oracle River CFV/RSS 2026-09-07 — bucket v1 `REJECTED` 7/7.** Exact e
+> profilo bucket sollevato sono ora confrontati nello stesso gioco fisico per
+> strategia root, CFV di strategia/azione e NashConv certificata. La riduzione
+> nodi `8,34x`–`892,33x` non compensa NashConv `0,5506%`–`5,3387%`, CFV media
+> fino al `7,41%` del pot ed errore CFV d'azione fino all'`88,76%`. Peak RSS del
+> workflow ridotto: `107.356.160 B`, distinto dal byte model. Nessun default di
+> prodotto cambia; R9-C v2 non riusa `made_hand_value_v1`. Test mirati `2/2` e
+> suite Release completa `40/40` PASS in `245,99 s`; smoke AddressSanitizer
+> PASS in `22,27 s` senza diagnostiche.
+>
+> **River lossless generale 2026-09-06 — `BLOCKED`.** La partizione equa
+> pesata riduce il full range da 465 a 45 classi per player e da 188.790 a
+> 2.005 coppie, ma sui 12 range realistici v2 produce solo singleton e rapporto
+> `1,00x`. Il gate `1,25x` fallisce 12/12: nessun kernel v3 viene implementato,
+> exact resta product e il ramo River exact compresso è chiuso.
+>
+> **River exact-blocker v2 2026-09-06 — `REJECTED_FEASIBILITY`.** La firma
+> lossless unisce solo combo con uguale `HandValue` e identica compatibilità
+> contro ogni combo avversaria attiva. Sette regressioni v1 e cinque holdout
+> producono una classe per combo: riduzione nodi `1,00x` e speedup
+> exact/native `0,006709x`–`0,017259x`. Memoria passa 12/12 e qualità 11/12,
+> ma nessuna fixture supera tutti i gate. Exact resta il prodotto; nessuna
+> estensione a Turn o preflop. Release 35/35 in 260,92 s; kernel e preflight
+> passano anche sotto ASan.
+
+> **River bucket-native 2026-09-06 — qualifica v1 `REJECTED`.** Un kernel isolato
+> raggruppa i deal di un river completo per coppia di `HandValue`, attraversa
+> un solo albero pubblico con ProductionDcfr e riporta la strategia alle combo
+> per BR/NashConv originale. Full range: 188.790 deal → 611 coppie e
+> 1.699.110 → 5.499 nodi per passata, byte model nativo 55.972 B. Sui due casi
+> pesati D/V la mediana di cinque solve scende da 7,2651 a 3,1269 ms e da
+> 8,0537 a 3,0401 ms; NashConv originale sale però a 0,00377002 e 0,000511609.
+> Il corpus indipendente v1, congelato prima del solve, qualifica 0/7 fixture:
+> bucket NashConv e delta falliscono 7/7; lo speedup operativo passa 3/7, mentre
+> byte model e profile-value delta passano 7/7. Test Release 313 asserzioni e
+> percorso ASan completo passano senza diagnostiche. Il percorso è river-only,
+> single-thread e non collegato a CLI/GUI/`.gtsd`: exact resta il prodotto
+> predefinito; questa rappresentazione non prosegue su Turn o preflop. Il CTest
+> Release corrente passa 35/35 in 260,92 s.
+
+> **ProductionDcfr product optimization 2026-09-06 — `BLOCKED_WITH_EVIDENCE`.** R0/R1/R2/R2-S/R3/R4/R6 sono chiuse. Nuovi
+> solve API/CLI e worker GUI, resume e benchmark passano da un resolver
+> production condiviso: algoritmo `ProductionDcfr`, stato scaled uint16,
+> averaging delay 0, certificazione 20, strict target e profondità parallela 7.
+> Checkpoint nativo v2 e metrics archive v4 persistono identità e parametri;
+> checkpoint CFR+ e backend incompatibili sono rifiutati senza fallback. Il
+> corpus H v2 è deterministico, disgiunto e sigillato. I timer product sono
+> disponibili nel CLI e nel benchmark con range reali; l'audit dinamico copre
+> identità, semi, range, stack, sizing e soglia di residency. La suite GUI
+> Release GUI passa `38/38` in 203,93 s; il preset Release corrente, con i
+> nuovi gate R2-S/R3/R6 e River, passa `35/35` in 260,92 s nella verifica finale del
+> 2026-09-06. B0 ha
+> cinque run controllati per AHK, TH e TST. TH/TST falliscono il gate tempo e la
+> RAM GTO+ resta non comparabile: R2 è una baseline chiusa, non una parity.
+> S0 definisce mapping bucket e boundary CFV; S1 implementa identità-oracle,
+> strategy tying pesato, persistenza e BR/NashConv nel gioco originale sul
+> motore finito. Le policy postflop 1.0 includono `exact_identity`, integrata
+> con mapping implicito a zero byte ed equivalenza esatta di fingerprint, stato
+> e checkpoint, e `made_hand_value`, mapping coarse deterministico misurato su
+> D/V. Il traversal coarse ProductionDcfr, il checkpoint 1.0 e il resume
+> byte-identico sono implementati; l'oracolo scalare controlla 1.024 update. S2
+> valida public-state chiusi, deriva reach/CFV, costruisce il
+> gadget opt-out zero-sum e verifica lo splice del solo resolving player con BR
+> globale su Kuhn e Short Deck toy. Persistenza con checksum/sostituzione atomica
+> e rifiuto della corruzione passano. Un bridge river exact e bounded porta il
+> postflop nel resolver; S3 comprime 12 infoset in 4 e certifica la combinazione
+> nel gioco originale. A0 non è promossa: è più lenta su D/V e V perde qualità.
+> R3 attribuisce quasi tutto il wall a mapping e training. R4-A1/B1 falliscono i
+> kill gate e sono state rimosse. R6 non trova finestre RBP su D/V e non dispone
+> di una derivazione lazy compatibile con la traiettoria ProductionDcfr signed.
+> H resta sigillato; nessun candidato raggiunge R7. Il prodotto resta exact.
+> Registro:
+> `PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md`.
+
 > **Correzione semantica memoria GTO+ 2026-09-04 — stato corrente.** I valori
 > `8/399/2.000 MB` sono il campo UI “Memory needed for solving”, non Peak RSS e
 > non un cap desktop generale. La loro composizione interna non è ancora
@@ -15,7 +214,7 @@
 > dEV, root/layout, exact outcomes e test restano invariati. Piano e autorità:
 > [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
-> **Production DCFR integration 2026-09-01 — stato corrente.** Il contratto
+> **Production DCFR integration 2026-09-01 — checkpoint di qualificazione.** Il contratto
 > comune AHK/TH/TST e' ora `production_dcfr`: exact alternating signed DCFR
 > `1.5/0/3`, reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di
 > una iterazione, delay zero, `ScaledUint16RegretStrategy`, CPU-only e massimo
@@ -24,8 +223,8 @@
 > registrato resta diagnostico e non è sottoposto a un cap normativo.
 > Iterazioni deterministiche AHK/TH/TST `80/80/160`; mediane solver
 > `0,758705/19,948228/184,095930 s`; p95
-> `0,790918/24,192260/197,865030 s`. Full CTest Release corrente
-> `28/28 PASS` (`105,46 s`, 2026-09-04).
+> `0,790918/24,192260/197,865030 s`. Il CTest Release disponibile a quel
+> checkpoint passava `28/28` (`105,46 s`, 2026-09-04).
 > La vecchia authority `1.5/0/2` e' ora il comparator Release storico. Il gate
 > GTO+ resta non superato: la qualification storica fallisce i tempi TH/TST e
 > la memoria non è valutabile finché la metrica non è equivalente. Report:
@@ -205,7 +404,7 @@ riassume gate ed evidenza di implementazione.
 | F8 | **Completata** | Modulo `gtosd::storage`, `.gtsd` 1.0 chunked, Zstd, secretstream, random access, atomic save, migrazione, verifier, catalogo SQLite e round-trip byte-exact dello stato packed 13+11 | Le vecchie misure PF-F1 non sostituiscono i tre run di certificazione RAM correnti |
 | F9 | **Completata localmente** | Qt/ImGui, 7/7 E2E, 19/19 regression, tre backend sopra 60 FPS, install tree verificato | Qualifica su hardware esattamente 4-core/2 GHz/16 GB resta release gate F10 |
 | F10 | **Completata localmente** | `gto_gui` Qt, pannelli CO/OOP e BTN/IP, board visuale 3–5 carte, Target dEV, range quadrati paint-on-click/slider, pausa/cancel, memoria solver canonica separata dal peak RSS, chiavi locali trasparenti, log persistenti, recovery cifrato, albero orizzontale, selettore turn/river, heatmap 9×9 read-only ed E2E create→solve→save→reopen→navigate→resume | Qualifica personale e su hardware esattamente 4-core/2 GHz/16 GB restano gate distinti |
-| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes PASS; la memoria resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Full CTest corrente 28/28 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+; nessuna parità memoria è dichiarata |
+| GTO+ parity gate | **NON SUPERATO; TH/TST time blocker in scope** | Production final-head `production_dcfr` exact signed `1.5/0/3`, reset `1,2,5,17,65`: cinque processi auditabili, `15/15` solve PASS. AHK `0,951423% @80`, root `19,118978`, mediana/p95 `0,758705/0,790918 s`; TH `0,807956% @80`, root `8,226793`, `19,948228/24,192260 s`; TST `0,904505% @160`, root `8,495661`, `184,095930/197,865030 s`, stato `1.472.605.376 B`, peak massimo `1.969.860.608 B`. TH/TST superano le rispettive mediane limite del `1,661%/42,722%`. Correctness/layout/exact outcomes PASS; la memoria resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Full CTest corrente 35/35 PASS | La nuova production e' qualificata e la five-process non e' piu' congelata. F11+ resta congelata finche' TH e TST non superano insieme il gate tempo GTO+; nessuna parità memoria è dichiarata |
 | Backend di calcolo | **CPU/RAM only** | Contratto permanente: solver, CFR, best response e certificazione non usano GPU o acceleratori di calcolo | Conservare il confine anche nelle ottimizzazioni future; la GPU può soltanto renderizzare la GUI |
 | F11+ | **Congelata dal parity gate** | — | Nessuna fase successiva prima del superamento documentato in `GTO_PLUS_PARITY_JOURNEY.md` |
 
@@ -718,3 +917,129 @@ Il dettaglio del gate F5 è registrato in
 Il risultato PF-F1 F7 è una soluzione HU postflop exact della configurazione
 versionata e certificata tramite BR/NashConv. Non è una strategia preflop, non
 copre configurazioni diverse da PF-F1 e non sostituisce i gate F9–F15.
+
+## Ricerca River blocker-aware 2026-09-06
+
+Il kernel sperimentale supporta ora due identità: `made_hand_value_v1` ed
+`exact_blocker_signature_v2`. V2 unisce soltanto combo con uguale valore finale
+e uguale compatibilità contro ogni combo attiva avversaria. Test mirati
+verificano equivalenza fisica, separazione dei blocker, lift, BR/NashConv e il
+caso full-range.
+
+La qualifica v2 è chiusa con `REJECTED_FEASIBILITY`, 0/12. Su sette regressioni
+congelate e cinque holdout la partizione produce una classe per combo, non
+riduce i nodi ed è 58–149 volte più lenta dell'exact. CTest Release passa 35/35
+in 260,92 s; il target River e il preflight v2 passano anche sotto ASan.
+
+Nessuna superficie prodotto cambia: CLI, GUI, `.gtsd`, Turn e preflop usano
+ancora il percorso ProductionDcfr exact. Il kernel v2 resta isolato come prova
+del limite della firma lossless con etichette avversarie fisse.
+
+## Fattibilità River lossless generale 2026-09-06
+
+`analyze_fixed_river_equitable_partition` calcola la partizione equa pesata
+coarsest del grafo di compatibilità River entro un cap esplicito di deal. Il
+test controllato prova una fusione lossless; il full range trova 45 classi per
+player e 2.005 coppie contro 188.790 deal. Il corpus v2 mostra però zero
+compressione in 12/12 fixture asimmetriche.
+
+Il runner e il report sono diagnostici. Non esistono dispatch CLI/GUI, nuova
+identità `.gtsd`, stato di regret o checkpoint v3. L'analisi chiude il ramo
+River exact senza modificare ProductionDcfr product.
+
+Validazione finale: CTest Release `36/36` PASS in `267,95 s`; target postflop e
+preflight equo ASan `2/2` PASS in `198,94 s`.
+
+## HU preflop CO 40a 2026-09-06
+
+È congelata la fixture esterna unica `GTP-HU-PREFLOP-CO40-001`. Il preflight
+verifica 81 classi, 630 combo, masse `6/4/12`, cinque azioni root e percentuali
+arrotondate. La strategia marginale fisica è 40,7789% all-in, 2,40789% raise
+6a, 4,71957% raise 10a, 7,56675% call e 44,5269% fold.
+
+Il primo solver HU preflop campionato è implementato. La configurazione
+dichiarativa fissa raise-to 10,5a/14,5a, struttura speculare dopo limp,
+33/66/120/all-in postflop fino alla terminazione naturale e rake zero. Il
+raise-to 14,5a è ammesso tramite un override locale; il motore standard continua
+a rifiutarlo come non-full raise non all-in.
+
+Il preflight pubblica anche il lower bound della chance: 353.430 deal privati,
+1.753.012.800 frontiere private+flop e almeno 73.042.200 rappresentanti anche
+nel caso ideale di orbite globali da 24 elementi. Questo indirizza il prossimo
+prototipo verso decomposizione/on-demand, non verso la materializzazione del
+full game.
+
+Il tree/resource gate misura 58 nodi preflop e 30.324 nodi nello scheletro
+postflop. Il massimo è quattro raise per street e deriva dallo stack, non da un
+cap a quattro. Il limite interno 63 non viene raggiunto.
+
+Il candidato v1 conserva le 81 classi exact al preflop e usa bucket
+postflop categoria/equity MC8 con perfect recall astratta. External-sampling
+DCFR `1.5/0/3` visita deal fisici e risolve gli showdown con l'evaluator exact.
+Il solve 20k termina in 13,810 s; il run 100k termina in 75,141 s. Il payload
+minimo è 136 B per infoset: 196.420.720 B per il blueprint 20k e 897.882.472 B
+per quello 100k, esclusi hash table, allocator e Peak RSS.
+
+Il comparatore conclude `REJECTED`: a 100k la MAE action/class è 21,763 pp,
+la TV media 54,407 pp, l'errore root massimo 27,896 pp e il delta EV 0,8958a.
+La risposta campionata non certifica NashConv. Il gate ora controlla
+`nashconv_certified`, quindi il lower bound zero non può produrre un falso
+PASS.
+
+Il 7 settembre 2026 la rake del benchmark è stata confermata a `0%`. Il
+comparatore dispone ora di un gate rake esplicito: il run 5%/cap 3a resta una
+sensibilità diagnostica e non è un candidato valido, indipendentemente dalla
+vicinanza del solo EV.
+
+Validazione corrente: build Release warning-clean, albero/resource gate PASS,
+solve smoke PASS, due solve riproducibili completati, CTest Release `39/39`
+PASS in `251,60 s` e AddressSanitizer mirato `3/3` PASS in `3,57 s`.
+
+## Calibrazione NashConv whole-game V21 — 2026-09-14
+
+Il percorso `MCCFR -> strategia media -> best response esatta -> NashConv` è validato su una
+fixture Short Deck enumerabile di quattro street. Linear MCCFR riduce la NashConv esatta da
+`0,0014765486` a `0,0001654188` fra 20.000 e 60.000 iterazioni; la best response domina il
+profilo e il resume è byte-coerente.
+
+La policy postflop può ora essere fissata in uno snapshot immutabile associato ai fingerprint del
+tree e del checkpoint. Il nuovo evaluator River vettoriale conserva i valori dell'oracolo scalare
+entro `1e-10` e, sul probe V17 seed 1, riduce il costo di profilo più BR da `89,8287 s` a
+`0,8999 s` per root.
+
+La strategia CO40 non ha ancora NashConv globale certificata. Il catalogo completo contiene
+322.199.856 sottogiochi River canonici; una valutazione indipendente root-by-root richiederebbe
+circa 9,19 anni seriali per proiezione. Il prossimo componente richiesto è un reducer batch che
+riusi policy query e transizioni fra board e shape, quindi aggreghi la best response per
+information set prima della massimizzazione.
+
+Protocollo e risultati: [V21 whole-game NashConv](research/preflop_r6_20260910/V21_WHOLE_GAME_NASHCONV_IMPLEMENTATION_REPORT_2026-09-14.md).
+
+## Certificatore NashConv generico V22 — 2026-09-14
+
+Il probe accetta configurazione, candidato e policy senza dipendere dallo stack: una futura
+soluzione HU 50a richiede un nuovo run, non nuovo codice. Il contratto primario resta la best
+response fisica lifted; la policy media V8 è congelata e la fallback uniforme dichiarata fa parte
+della strategia valutata.
+
+Il census V17 trova 1.566.290 infoset addestrati in 10.060 contesti decisionali. Batching delle
+query, chiavi private River preparate e inizializzazione condivisa riducono profilo più BR per il
+root campione da `0,8421401 s` a `0,2410329 s`, con EV invariati. La proiezione root-by-root scende
+da `8,60` a `2,46 anni` seriali, ancora oltre la stop rule di sette giorni; il manifest riporta
+quindi `INFEASIBLE_EXACT_ROOT_BY_ROOT`, non una NashConv globale.
+
+Ogni nuovo solve serializza inoltre una stima separata con stato
+`ESTIMATED_LOWER_BOUND_ONLY`, errore standard e intervallo al 95%. Il campo resta
+`certified: false`: due risposte MCCFR fattibili possono dimostrare sfruttabilità, ma non fornire
+un upper bound sull'errore. Build Release e suite HU passano con `15.956` asserzioni.
+
+Protocollo e risultati: [V22 NashConv generico](research/preflop_r6_20260910/V22_GENERIC_NASHCONV_CERTIFIER_PHASE1_REPORT_2026-09-14.md).
+
+Il follow-up board-batched condivide combo vive, showdown e chiavi private fra tutte le 633 River
+shape dello stesso board. L'enumerazione strided riduce la materializzazione del campione da circa
+`493 s` a `0,814670 s`, ma la traversata profile+BR richiede ancora `198,725931 s`, pari a
+`0,313943019 s` per sottogioco. La proiezione più rappresentativa sale a `3,2053 anni` seriali o
+`146,34 giorni` ideali su otto worker. Il gate è `INFEASIBLE_EXACT_BOARD_BATCHED`: il prossimo
+salto richiesto è il riuso dei prefissi pubblici e del reach fra history, non altra cache del board.
+
+Dettagli: [V22 reducer board-batched](research/preflop_r6_20260910/V22_CROSS_ROOT_BOARD_BATCHED_REDUCER_REPORT_2026-09-14.md).

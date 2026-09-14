@@ -1,5 +1,6 @@
 add_library(gtosd_equity
   src/evaluator.cpp
+  src/seven_card_table.cpp
   src/showdown.cpp)
 add_library(gtosd::equity ALIAS gtosd_equity)
 

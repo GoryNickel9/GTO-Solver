@@ -1,0 +1,134 @@
+{
+  "schema": "gtosd.river_showdown_distribution_qualification_corpus.v3",
+  "frozen_at": "2026-09-07",
+  "selection": {
+    "method": "five structural River strata fixed before the first v3 solve",
+    "solver_outputs_used": false,
+    "range_method": "splitmix64 rank over legal combo ids with independent player salts",
+    "timing_order": "exact/native alternated by repetition",
+    "startup_included": false
+  },
+  "regression_source": {
+    "path": "river_bucket_qualification_corpus_v1.json",
+    "fingerprint": "fnv1a64:8be8d95b06ac9768",
+    "purpose": "development regressions remain separate from the five untouched v3 holdouts"
+  },
+  "abstraction": {
+    "mode": "showdown_distribution_v3",
+    "distribution_quantization_basis_points": 500,
+    "features": "exact final HandValue plus compatible opponent range mass by nine HandCategory values and hero loss/tie/win",
+    "normalization": "each mass uses total active opponent range weight before own-hand card removal",
+    "rounding": "nearest 500 normalized basis points"
+  },
+  "solver": {
+    "algorithm": "ProductionDcfr",
+    "positive_regret_exponent": 1.5,
+    "negative_regret_exponent": 0.0,
+    "strategy_exponent": 3.0,
+    "iterations": 1024,
+    "timing_repetitions": 5,
+    "seed": 14106333703424951235
+  },
+  "limits": {
+    "maximum_physical_deals": 30000,
+    "maximum_bucket_pairs": 30000,
+    "maximum_materialized_validation_nodes": 2000000
+  },
+  "thresholds": {
+    "maximum_exact_normalized_nash_conv": 0.001,
+    "maximum_bucket_normalized_nash_conv": 0.002,
+    "maximum_normalized_nash_conv_delta": 0.001,
+    "maximum_normalized_profile_value_delta": 0.001,
+    "maximum_normalized_best_response_delta": 0.001,
+    "minimum_operational_speedup": 1.1,
+    "minimum_node_reduction_ratio": 2.0,
+    "maximum_native_byte_model": 1048576
+  },
+  "fixtures": [
+    {
+      "id": "RQ3-UNPAIRED-TWOTONE-001",
+      "stratum": "v3_unpaired_two_tone",
+      "board": ["6c", "7c", "9d", "Jh", "Ks"],
+      "initial_pot_antes": 22,
+      "effective_stack_antes": 88,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [3300, 10000],
+      "player1_sizes_bp": [5000, 12500],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9913001,
+      "player0_weights_bp": [2000, 4500, 7000, 10000],
+      "player1_weights_bp": [2500, 5000, 8000, 10000]
+    },
+    {
+      "id": "RQ3-PAIRED-TWOTONE-001",
+      "stratum": "v3_paired_two_tone",
+      "board": ["8c", "8h", "Td", "Qd", "As"],
+      "initial_pot_antes": 34,
+      "effective_stack_antes": 68,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [5000, 10000],
+      "player1_sizes_bp": [3300, 7500],
+      "raise_depth": 1,
+      "combos_per_player": 112,
+      "range_seed": 9913002,
+      "player0_weights_bp": [3000, 6000, 10000],
+      "player1_weights_bp": [2000, 5000, 7500, 10000]
+    },
+    {
+      "id": "RQ3-THREE-STRAIGHT-001",
+      "stratum": "v3_three_straight_rainbow",
+      "board": ["6s", "7d", "8c", "Js", "Ah"],
+      "initial_pot_antes": 16,
+      "effective_stack_antes": 112,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [2500, 7500],
+      "player1_sizes_bp": [3300, 10000],
+      "raise_depth": 1,
+      "combos_per_player": 112,
+      "range_seed": 9913003,
+      "player0_weights_bp": [2500, 5000, 7500, 10000],
+      "player1_weights_bp": [2000, 4000, 6500, 8500, 10000]
+    },
+    {
+      "id": "RQ3-THREE-FLUSH-001",
+      "stratum": "v3_three_flush_connected",
+      "board": ["Tc", "Jc", "Qc", "8d", "6h"],
+      "initial_pot_antes": 26,
+      "effective_stack_antes": 78,
+      "rake_bp": 250,
+      "rake_cap_antes": 2,
+      "player0_sizes_bp": [5000],
+      "player1_sizes_bp": [7500, 12500],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9913004,
+      "player0_weights_bp": [2000, 5000, 8000, 10000],
+      "player1_weights_bp": [3000, 6000, 9000]
+    },
+    {
+      "id": "RQ3-TRIPS-HIGH-001",
+      "stratum": "v3_trips_high_card",
+      "board": ["Kc", "Kd", "Kh", "As", "6c"],
+      "initial_pot_antes": 44,
+      "effective_stack_antes": 66,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [5000, 15000],
+      "player1_sizes_bp": [5000, 10000],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9913005,
+      "player0_weights_bp": [3500, 6500, 10000],
+      "player1_weights_bp": [2500, 5000, 7500, 10000]
+    }
+  ],
+  "decision": {
+    "scope": "all quality, reduction, time and memory thresholds must pass on every frozen regression and untouched v3 holdout fixture",
+    "on_pass": "eligible for a separate flop/turn transition prototype, not automatic preflop integration",
+    "on_fail": "reject v3 and retain exact production without retuning the frozen v3 holdouts"
+  }
+}

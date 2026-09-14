@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -19,6 +20,7 @@ constexpr GameActionId action_check = 0;
 constexpr GameActionId action_bet_or_raise = 1;
 constexpr GameActionId action_fold = 2;
 constexpr GameActionId action_call = 3;
+constexpr GameActionId action_all_in = 4;
 
 class GameBuilder {
 public:
@@ -271,6 +273,232 @@ GameNodeId build_short_deck_toy_deal(GameBuilder &builder, const std::uint8_t sh
                            edge(action_bet_or_raise, "bet", second_facing)});
 }
 
+constexpr double four_street_stack = 8.0;
+constexpr double four_street_postflop_bet = 2.0;
+constexpr std::uint8_t four_street_flop_outcomes = 1U;
+constexpr std::uint8_t four_street_turn_outcomes = 2U;
+constexpr std::uint8_t four_street_river_outcomes = 1U;
+
+struct FourStreetBoards {
+  std::array<std::array<CardId, 3>, 2> flops{};
+  std::array<std::array<CardId, 2>, 2> turns{};
+  std::array<std::array<std::array<CardId, 2>, 2>, 2> rivers{};
+};
+
+struct FourStreetState {
+  std::array<std::array<CardId, 2>, 2> holes{};
+  std::array<std::uint8_t, 2> private_types{};
+  std::vector<CardId> board;
+  std::uint8_t flop_branch{0};
+  std::uint8_t turn_branch{0};
+  std::array<double, 2> contributions{1.0, 2.0};
+  std::string history{"p"};
+  double rake_fraction{0.0};
+};
+
+std::array<double, 2> four_street_winner_payoff(const std::uint8_t winner,
+                                                const std::array<double, 2> contributions) {
+  const double pot = contributions[0] + contributions[1];
+  std::array<double, 2> payoff{-contributions[0], -contributions[1]};
+  payoff[winner] += pot;
+  return payoff;
+}
+
+std::array<double, 2> four_street_showdown_payoff(const FourStreetState &state) {
+  const auto showdown = evaluate_showdown(
+      std::vector<std::array<CardId, 2>>{state.holes[0], state.holes[1]}, state.board);
+  if (!showdown || state.board.size() != 5U || showdown.value().winner_mask == 0U) {
+    throw std::logic_error("invalid four-street Short Deck showdown fixture");
+  }
+  const double pot = state.contributions[0] + state.contributions[1];
+  const double distributable = pot * (1.0 - state.rake_fraction);
+  std::array<double, 2> payoff{-state.contributions[0], -state.contributions[1]};
+  const auto winner_count = static_cast<unsigned>(std::popcount(showdown.value().winner_mask));
+  for (std::uint8_t player = 0U; player < 2U; ++player) {
+    if ((showdown.value().winner_mask & (std::uint8_t{1} << player)) != 0U) {
+      payoff[player] += distributable / static_cast<double>(winner_count);
+    }
+  }
+  return payoff;
+}
+
+std::string four_street_information_set(const FourStreetState &state, const std::uint8_t player,
+                                        const std::string_view suffix) {
+  std::string key = "short_deck_four_street:p" + std::to_string(player) + ":h" +
+                    std::to_string(state.private_types[player]) + ":b";
+  for (const auto card : state.board) {
+    key += format_card(card);
+  }
+  key += ":c" + std::to_string(static_cast<unsigned>(state.contributions[0])) + "_" +
+         std::to_string(static_cast<unsigned>(state.contributions[1])) + ":" + state.history +
+         ":" + std::string(suffix);
+  return key;
+}
+
+char four_street_street_code(const FourStreetState &state) {
+  switch (state.board.size()) {
+  case 3U:
+    return 'f';
+  case 4U:
+    return 't';
+  case 5U:
+    return 'r';
+  default:
+    throw std::logic_error("invalid four-street Short Deck board size");
+  }
+}
+
+GameNodeId build_four_street_public_chance(GameBuilder &builder, const FourStreetBoards &boards,
+                                           const FourStreetState &state, bool all_in);
+
+GameNodeId build_four_street_after_round(GameBuilder &builder, const FourStreetBoards &boards,
+                                         const FourStreetState &state) {
+  if (state.board.size() == 5U) {
+    return builder.terminal(four_street_showdown_payoff(state));
+  }
+  const bool all_in = state.contributions[0] >= four_street_stack &&
+                      state.contributions[1] >= four_street_stack;
+  return build_four_street_public_chance(builder, boards, state, all_in);
+}
+
+GameNodeId build_four_street_betting(GameBuilder &builder, const FourStreetBoards &boards,
+                                     const FourStreetState &state) {
+  const double remaining = four_street_stack - state.contributions[0];
+  if (remaining <= 0.0) {
+    return build_four_street_after_round(builder, boards, state);
+  }
+  const double bet = std::min(four_street_postflop_bet, remaining);
+  const bool bet_is_all_in = bet == remaining;
+  const auto aggressive_action = bet_is_all_in ? action_all_in : action_bet_or_raise;
+  const char street = four_street_street_code(state);
+
+  FourStreetState first_bet = state;
+  first_bet.contributions[1] += bet;
+  first_bet.history += "/" + std::string(1, street) + ":b1";
+  const auto first_bet_fold =
+      builder.terminal(four_street_winner_payoff(1U, first_bet.contributions));
+  FourStreetState first_bet_call = first_bet;
+  first_bet_call.contributions[0] += bet;
+  first_bet_call.history += "c0";
+  const auto first_bet_called = build_four_street_after_round(builder, boards, first_bet_call);
+  const auto first_bet_response = builder.decision(
+      0U, four_street_information_set(first_bet, 0U, "facing_bet"),
+      {edge(action_fold, "fold", first_bet_fold),
+       edge(action_call, "call", first_bet_called)});
+
+  FourStreetState first_check = state;
+  first_check.history += "/" + std::string(1, street) + ":k1";
+  const auto checked_through = build_four_street_after_round(builder, boards, first_check);
+
+  return builder.decision(
+      1U, four_street_information_set(state, 1U, "first_to_act"),
+      {edge(action_check, "check", checked_through),
+       edge(aggressive_action, bet_is_all_in ? "all_in" : "bet", first_bet_response)});
+}
+
+GameNodeId build_four_street_public_chance(GameBuilder &builder, const FourStreetBoards &boards,
+                                           const FourStreetState &state, const bool all_in) {
+  std::vector<GameEdge> outcomes;
+  outcomes.reserve(2U);
+  if (state.board.empty()) {
+    for (std::uint8_t branch = 0U; branch < four_street_flop_outcomes; ++branch) {
+      FourStreetState next = state;
+      next.flop_branch = branch;
+      next.board.assign(boards.flops[branch].begin(), boards.flops[branch].end());
+      next.history += "/F" + std::to_string(branch);
+      const auto child = all_in ? build_four_street_public_chance(builder, boards, next, true)
+                                : build_four_street_betting(builder, boards, next);
+      outcomes.push_back(edge(600U + branch, ("flop_" + std::to_string(branch)).c_str(), child,
+                              1.0 / static_cast<double>(four_street_flop_outcomes)));
+    }
+  } else if (state.board.size() == 3U) {
+    for (std::uint8_t branch = 0U; branch < four_street_turn_outcomes; ++branch) {
+      FourStreetState next = state;
+      next.turn_branch = branch;
+      next.board.push_back(boards.turns[state.flop_branch][branch]);
+      next.history += "/T" + std::to_string(branch);
+      const auto child = all_in ? build_four_street_public_chance(builder, boards, next, true)
+                                : build_four_street_betting(builder, boards, next);
+      outcomes.push_back(edge(610U + branch, ("turn_" + std::to_string(branch)).c_str(), child,
+                              1.0 / static_cast<double>(four_street_turn_outcomes)));
+    }
+  } else if (state.board.size() == 4U) {
+    const auto &rivers = boards.rivers[state.flop_branch][state.turn_branch];
+    for (std::uint8_t branch = 0U; branch < four_street_river_outcomes; ++branch) {
+      FourStreetState next = state;
+      next.board.push_back(rivers[branch]);
+      next.history += "/R" + std::to_string(branch);
+      const auto child = all_in ? builder.terminal(four_street_showdown_payoff(next))
+                                : build_four_street_betting(builder, boards, next);
+      outcomes.push_back(edge(620U + branch, ("river_" + std::to_string(branch)).c_str(), child,
+                              1.0 / static_cast<double>(four_street_river_outcomes)));
+    }
+  } else {
+    throw std::logic_error("invalid four-street Short Deck public chance state");
+  }
+  return builder.chance(std::move(outcomes));
+}
+
+GameNodeId build_four_street_preflop(GameBuilder &builder, const FourStreetBoards &boards,
+                                     const FourStreetState &state) {
+  const auto root_fold = builder.terminal(four_street_winner_payoff(1U, state.contributions));
+
+  FourStreetState called = state;
+  called.contributions[0] = 2.0;
+  called.history += ":c0";
+  FourStreetState checked = called;
+  checked.history += "k1";
+  const auto call_check = build_four_street_public_chance(builder, boards, checked, false);
+  FourStreetState limp_raised = called;
+  limp_raised.contributions[1] = 4.0;
+  limp_raised.history += "r1";
+  const auto limp_raise_fold =
+      builder.terminal(four_street_winner_payoff(1U, limp_raised.contributions));
+  FourStreetState limp_raise_called = limp_raised;
+  limp_raise_called.contributions[0] = 4.0;
+  limp_raise_called.history += "c0";
+  const auto limp_raise_call =
+      build_four_street_public_chance(builder, boards, limp_raise_called, false);
+  const auto limp_raise_response = builder.decision(
+      0U, four_street_information_set(limp_raised, 0U, "facing_limp_raise"),
+      {edge(action_fold, "fold", limp_raise_fold),
+       edge(action_call, "call", limp_raise_call)});
+  const auto after_call = builder.decision(
+      1U, four_street_information_set(called, 1U, "after_call"),
+      {edge(action_check, "check", call_check),
+       edge(action_bet_or_raise, "raise", limp_raise_response)});
+
+  FourStreetState raised = state;
+  raised.contributions[0] = 4.0;
+  raised.history += ":r0";
+  const auto raise_fold = builder.terminal(four_street_winner_payoff(0U, raised.contributions));
+  FourStreetState raise_called = raised;
+  raise_called.contributions[1] = 4.0;
+  raise_called.history += "c1";
+  const auto raise_call = build_four_street_public_chance(builder, boards, raise_called, false);
+  const auto raise_response = builder.decision(
+      1U, four_street_information_set(raised, 1U, "facing_raise"),
+      {edge(action_fold, "fold", raise_fold), edge(action_call, "call", raise_call)});
+
+  FourStreetState shoved = state;
+  shoved.contributions[0] = four_street_stack;
+  shoved.history += ":a0";
+  const auto shove_fold = builder.terminal(four_street_winner_payoff(0U, shoved.contributions));
+  FourStreetState shove_called = shoved;
+  shove_called.contributions[1] = four_street_stack;
+  shove_called.history += "c1";
+  const auto shove_call = build_four_street_public_chance(builder, boards, shove_called, true);
+  const auto shove_response = builder.decision(
+      1U, four_street_information_set(shoved, 1U, "facing_all_in"),
+      {edge(action_fold, "fold", shove_fold), edge(action_call, "call", shove_call)});
+
+  return builder.decision(
+      0U, four_street_information_set(state, 0U, "root"),
+      {edge(action_fold, "fold", root_fold), edge(action_call, "call", after_call),
+       edge(action_bet_or_raise, "raise", raise_response),
+       edge(action_all_in, "all_in", shove_response)});
+}
+
 struct ActionProbability {
   GameActionId action{0};
   double probability{0.0};
@@ -400,6 +628,53 @@ Result<FiniteGame, SolverError> make_short_deck_river_toy_game(const double rake
   FiniteGame game{"short_deck_river_toy_v1_rake_" + std::to_string(rake_fraction), root,
                   builder.finish(), 2.0};
   return Result<FiniteGame, SolverError>::success(std::move(game));
+}
+
+Result<FiniteGame, SolverError>
+make_short_deck_four_street_toy_game(const double rake_fraction) {
+  if (!std::isfinite(rake_fraction) || rake_fraction < 0.0 || rake_fraction > 0.25) {
+    return Result<FiniteGame, SolverError>::failure(SolverError::InvalidConfiguration);
+  }
+  const auto card = [](const std::string_view text) { return parse_card(text).value(); };
+  const std::array<std::array<CardId, 2>, 2> first_hands{{
+      {card("As"), card("Ah")},
+      {card("Qc"), card("Jc")},
+  }};
+  const std::array<std::array<CardId, 2>, 2> second_hands{{
+      {card("Kd"), card("Kh")},
+      {card("Td"), card("9d")},
+  }};
+
+  FourStreetBoards boards;
+  boards.flops = {{{card("8s"), card("7h"), card("6c")},
+                   {card("Qs"), card("Jh"), card("Tc")}}};
+  boards.turns = {{{card("9c"), card("Ad")}, {card("8h"), card("6s")}}};
+  boards.rivers[0][0] = {card("Ts"), card("Qd")};
+  boards.rivers[0][1] = {card("6d"), card("Js")};
+  boards.rivers[1][0] = {card("7s"), card("Ac")};
+  boards.rivers[1][1] = {card("9h"), card("Ks")};
+
+  GameBuilder builder;
+  std::vector<GameEdge> deals;
+  deals.reserve(first_hands.size() * second_hands.size());
+  GameActionId deal_action = 700U;
+  for (std::uint8_t first_type = 0U; first_type < first_hands.size(); ++first_type) {
+    for (std::uint8_t second_type = 0U; second_type < second_hands.size(); ++second_type) {
+      FourStreetState state;
+      state.holes = {first_hands[first_type], second_hands[second_type]};
+      state.private_types = {first_type, second_type};
+      state.rake_fraction = rake_fraction;
+      const auto label = "deal_" + std::to_string(first_type) + "_" +
+                         std::to_string(second_type);
+      deals.push_back(edge(deal_action++, label.c_str(),
+                           build_four_street_preflop(builder, boards, state), 0.25));
+    }
+  }
+  FiniteGame game{"short_deck_four_street_toy_v1_rake_" + std::to_string(rake_fraction),
+                  builder.chance(std::move(deals)), builder.finish(), 3.0};
+  const auto valid = validate_finite_game(game);
+  return valid ? Result<FiniteGame, SolverError>::success(std::move(game))
+               : Result<FiniteGame, SolverError>::failure(valid.error());
 }
 
 Result<StrategyProfile, SolverError> reference_equilibrium_strategy(const FiniteGame &game) {

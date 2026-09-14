@@ -1,5 +1,24 @@
 # Performance
 
+> **Ricerca postflop 2026-09-10.** L'analisi distingue il costo della
+> ricodifica dello stato, la certificazione exact seriale e la traversata per
+> coppie nel prototipo River. Il nuovo oracle algebrico dei blocker passa
+> 1.530 confronti; non è uno speedup del prodotto. Algoritmi campionati e
+> raffinamento dell'astrazione sono valutati con gate nel gioco originale.
+> [Analisi, fonti e verifiche](../POSTFLOP_RESEARCH_DECISION_2026-09-10.md) e
+> [roadmap operativa dell'agente](../POSTFLOP_AGENT_EXECUTION_ROADMAP_2026-09-10.md).
+
+> **Chiusura ProductionDcfr product optimization — 2026-09-06.** R3 misura A0
+> su cinque processi Release: mapping `56,53%/46,54%` e training
+> `42,54%/50,62%` del wall D/V. Le prove R4-A1/B1 falliscono i kill gate
+> predefiniti e sono state rimosse. La telemetria R6 non osserva finestre RBP
+> utilizzabili e non esiste una derivazione lazy che preservi la traiettoria
+> signed, i clock e i reset di `ProductionDcfr`. Esito:
+> `BLOCKED_WITH_EVIDENCE`. Il prodotto resta exact, H resta sigillato e la
+> comparabilità RAM GTO+ resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. La
+> suite Release finale passa `35/35` in `260,92 s`. Evidenza:
+> [`../PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md`](../PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md).
+
 > **Correzione semantica memoria GTO+ — 2026-09-04.** I riferimenti
 > `8/399/2.000 MB` sono il campo UI “Memory needed for solving”, non Peak RSS e
 > non un limite desktop generale. La composizione interna GTO+ non è ancora
@@ -11,7 +30,7 @@
 > configura più il backend page-backed né un budget dal valore esterno. Piano:
 > [`../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
-> **Production final-head — 2026-09-01, stato corrente.** La schedule comune
+> **Production final-head — 2026-09-01, checkpoint di qualificazione.** La schedule comune
 > qualificata e' `production_dcfr`: exact alternating signed DCFR `1.5/0/3`,
 > reset one-based `1,2,5,17,65`, regret clock post-65 ritardato di una
 > iterazione, delay zero, stato scaled uint16, massimo otto thread e nessuna
@@ -20,8 +39,8 @@
 > dEV `0,951423%/0,807956%/0,904505%` e mediana/p95 solver
 > `0,758705/0,790918 s`, `19,948228/24,192260 s`,
 > `184,095930/197,865030 s`. Peak RSS massimo TST `1.969.860.608 B`, dato
-> diagnostico senza cap normativo; full CTest Release corrente
-> `28/28 PASS` (`105,46 s`, 2026-09-04). Il precedente
+> diagnostico senza cap normativo; il full CTest Release disponibile a quel
+> checkpoint passava `28/28` (`105,46 s`, 2026-09-04). Il precedente
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
@@ -417,11 +436,11 @@ con dEV strettamente sotto soglia. La sua durata dipende anche dal numero di
 iterazioni richieste dalla dinamica CFR/DCFR; non è lecito attribuire un
 miglioramento del kernel a una convergenza ottenuta con meno iterazioni.
 
-Lo stato corrente è pertanto: le ottimizzazioni lossless già mantenute sono
-globali al binario e non contengono branch per benchmark, ma la loro efficacia
-non è ancora stata dimostrata con una profilazione comparativa omogenea sui
-tre carichi. Il prossimo intervento prioritario è questa misura comparativa;
-non una nuova ottimizzazione mirata a TSTC9D.
+Questo checkpoint storico è superato dalla chiusura 2026-09-06 riportata in
+testa al documento. La profilazione R3 è stata eseguita su D/V, i due candidati
+R4 selezionati sono stati respinti e nessuna modifica prestazionale è stata
+promossa. Una riapertura richiede nuova evidenza architetturale o matematica,
+non una micro-ottimizzazione mirata a una fixture.
 
 ## Piano prestazionale CPU/RAM-only
 
@@ -486,10 +505,50 @@ regressioni, ma non dimostrano parità GTO+ se fixture o timer differiscono.
 - conservare report grezzi insieme al riepilogo.
 
 Il percorso root-lock diagnostico ha ridotto il mismatch downstream, ma non
-modifica i gate prestazionali del percorso standard. Il prossimo intervento è
-il fast path generale del fallback fisico descritto sopra, seguito dal
-differenziale sul chance tree asimmetrico; F11+ resta congelata finché tutti e tre i
-benchmark non superano i rispettivi gate.
+modifica i gate prestazionali del percorso standard. La roadmap corrente
+inserisce R2-S prima delle ottimizzazioni profonde: strategy tying e subgame
+vengono valutati come architetture sperimentali DCFR, senza riaprire il fallback
+fisico range-aware già bloccato e senza sbloccare F11+.
+
+## Baseline di prodotto 2026-09-05
+
+La prima correzione del piano product non è uno speedup: centralizza il profilo
+ProductionDcfr 1.0 e rimuove i fallback numerici nascosti dai caller. I tempi
+smoke registrati nel documento di esecuzione dimostrano soltanto che solve e
+resume operativi completano; non sono B0 e non sostituiscono cinque processi
+indipendenti per fixture.
+
+Il report benchmark misura ora, senza startup o parsing, `build_to_ready`,
+`solve_to_consultable` e `build_to_consultable` sul gioco e sui range reali,
+oltre a kernel, certificazione, peak RSS e `solver_state_bytes`. Il runner
+aggregante richiede cinque processi e un preflight CPU/RAM prima di ciascuno. La
+distribuzione B0 controllata è congelata in
+`out/production-dcfr-product-b0-controlled-20260905`. Il gate RAM esterno resta
+`NOT_EVALUATED_COMPARABILITY_UNRESOLVED` finché il display GTO+ e la misura del
+processo non hanno perimetro equivalente.
+
+La B0 controllata conserva 15 processi accettati. Le mediane/p95 solver sono
+AHK `0,788373/0,817360 s`, TH `22,682420/22,975138 s` e TST
+`245,082130/304,203644 s`; le mediane build-to-consultable sono rispettivamente
+`0,829805`, `23,042815` e `247,841130 s`. Tutti i crossing e i gate root passano
+a `80/80/160`; TH e TST falliscono il gate tempo. AHK/TH conservano inoltre
+diagnostici EV/action GTO+ fuori tolleranza. R2 è una baseline riproducibile,
+non una qualification.
+
+L'audit dinamico `gtosd.production_dcfr_anti_specialization_audit.v1` verifica
+rinomina/metadati, riserializzazione, permutazione globale dei semi e
+perturbazioni di range, stack e sizing. Phase10 confronta inoltre i due lati del
+dispatch di residency e richiede checkpoint materializzati byte-identici. H non
+è usato da questo audit.
+
+Il candidato A0 `made_hand_value` è stato eseguito in Release su D/V a 32
+iterazioni. D riduce 1.015.872 infoset a 72.052, usa 4.700.960 B di mapping e
+1.152.832 B di stato; V riduce 1.997.952 infoset a 141.328, usa 9.242.624 B di
+mapping e 4.478.080 B di stato. Il profilo R3 a cinque processi misura wall
+operativo mediano `3,67412 s` contro `0,713685 s` exact su D e `8,62473 s`
+contro `1,13260 s` exact su V. Su V NashConv è `0,00330981` contro `0,00175170`
+exact, con delta massimo di profilo `0,00590437` ante e di BR `0,0109969` ante.
+A0 non è uno speedup né un candidato production qualificato.
 
 ## Benchmark grande TH7D6S — checkpoint storico 2026-08-08
 
@@ -518,3 +577,76 @@ di profile EV P1 quando rake=0 e la fusione fold/showdown fratelli restano in
 produzione. Le ultime due modifiche sono positive in A/B controllati, ma i full
 successivi erano sotto carico e non vengono usati per dichiarare un nuovo wall
 best. Fonte completa: `speed_optimization_journey.md` §§8.24-8.28.
+
+## River bucket-native 2026-09-06
+
+Il kernel sperimentale river elimina i deal fisici dal traversal dopo una
+preparazione esatta di pesi e compatibilità. Su full range conta 188.790 deal,
+611 coppie di bucket e 25 bucket per player. Il lavoro per passata passa da
+1.699.110 nodi fisici a 5.499 nodi bucket; il modello nativo è 55.972 B senza
+overhead allocator e senza materializzare il `FiniteGame` di validazione.
+
+Cinque processi Release MSVC 18.8 x64, 128 iterazioni:
+
+| Caso | Solve exact, mediana | Solve native, mediana | Riduzione nodi | NashConv originale exact/native |
+|---|---:|---:|---:|---:|
+| D | 7,2651 ms | 3,1269 ms | 77.761 → 811 | 0,000202927 / 0,00377002 |
+| V | 8,0537 ms | 3,0401 ms | 77.761 → 631 | 0,0000145436 / 0,000511609 |
+
+Questi numeri provano uno speedup sul micro-corpus, non una qualifica product.
+Il confronto include solve-to-profile ma non startup; build e oracolo fisico
+sono misurati separatamente. Il kernel è single-thread, river-only e non passa
+da CLI/GUI. Il costo astratto è visibile nella NashConv originale.
+
+### Qualifica River v1
+
+Il corpus indipendente a sette fixture misura build più solve per entrambi i
+percorsi, esclude startup e alterna l'ordine su cinque ripetizioni. La decisione
+Release è `REJECTED`, 0/7. Lo speedup passa soltanto su monotone, straight board
+e ace-low straight (`2,346x`, `4,063x`, `4,049x`); sugli altri casi varia da
+`0,098x` a `0,721x`. La riduzione dei nodi varia da `8,34x` a `892,33x`, ma non
+predice da sola il wall perché il builder enumera e aggrega i deal.
+
+Bucket NashConv nel gioco originale varia da `0,00550591` a `0,05338713` e
+supera la soglia `0,005` in 7/7. Il byte model resta fra 5.932 e 90.639 B e
+passa sempre il limite di 1 MiB. Quindi il candidato riduce bene la
+rappresentazione, ma non offre insieme qualità e tempo sufficienti.
+
+Il timer bucket non include lift e BR nel gioco fisico, mentre il percorso
+exact include le proprie certificazioni. È quindi un limite superiore favorevole
+allo speedup del candidato, non un confronto del workflow completo. Poiché il
+candidato fallisce già così, questa asimmetria non può trasformare il risultato
+in un falso `REJECTED`; impedisce invece qualsiasi claim positivo sui tre casi
+più veloci.
+
+### Qualifica River exact-blocker v2
+
+La firma v2 aggiunge al valore finale il vettore di compatibilità contro tutte
+le combo avversarie. Sul corpus congelato non comprime: 12/12 fixture hanno
+rapporto nodi `1,00x`. Le regressioni hanno 96 classi per 96 combo per player;
+gli holdout 112/112. Sul full range sono 465/465 e il modello nativo sale a
+6.620.596 B.
+
+Cinque ripetizioni Release a 1.024 iterazioni producono speedup exact/native fra
+`0,006709x` e `0,017259x`, cioè il candidato impiega circa 58–149 volte il tempo
+del percorso exact. Il byte model del corpus resta fra 373.856 e 793.104 B e
+passa il limite di 1 MiB, ma non compensa il lavoro invariato e il costo della
+matrice di compatibilità.
+
+La decisione è `REJECTED_FEASIBILITY`, 0/12. Il risultato non dimostra che ogni
+quoziente lossless River sia impossibile: esclude questa relazione con etichette
+avversarie fisse. Un nuovo tentativo deve dimostrare automorfismi congiunti del
+grafo prima di aggiungere un altro kernel.
+
+## River lossless: limite strutturale misurato
+
+La partizione equa pesata separa il costo di rappresentazione dal costo del
+kernel. Sul full range uniforme stima una riduzione potenziale delle righe di
+`10,3333x` e delle coppie compatibili di `94,1596x`. Sul corpus v2 la riduzione
+è `1,00x` in 12/12 fixture, quindi il kill gate `1,25x` fallisce prima di
+misurare un solver.
+
+Non viene riportato uno speedup v3: il kernel non esiste e dedurlo dal full
+range sarebbe fuorviante. Il risultato prestazionale è un blocker
+architetturale per range pesati asimmetrici, non una regressione del percorso
+exact corrente.

@@ -1,0 +1,131 @@
+{
+  "schema": "gtosd.river_exact_blocker_qualification_corpus.v2",
+  "frozen_at": "2026-09-06",
+  "selection": {
+    "method": "structural river strata selected before the first v2 corpus solve",
+    "solver_outputs_used": false,
+    "range_method": "splitmix64 rank over legal combo ids with independent player salts",
+    "timing_order": "exact/native alternated by repetition",
+    "startup_included": false
+  },
+  "regression_source": {
+    "path": "river_bucket_qualification_corpus_v1.json",
+    "fingerprint": "fnv1a64:8be8d95b06ac9768",
+    "purpose": "reuse all seven frozen v1 fixtures without copying or editing them"
+  },
+  "abstraction": {
+    "mode": "exact_blocker_signature_v2",
+    "equivalence": "same final HandValue and identical compatibility bit vector against every active opponent combo"
+  },
+  "solver": {
+    "algorithm": "ProductionDcfr",
+    "positive_regret_exponent": 1.5,
+    "negative_regret_exponent": 0.0,
+    "strategy_exponent": 3.0,
+    "iterations": 1024,
+    "timing_repetitions": 5,
+    "seed": 11936128518282651045
+  },
+  "limits": {
+    "maximum_physical_deals": 30000,
+    "maximum_bucket_pairs": 30000,
+    "maximum_materialized_validation_nodes": 2000000
+  },
+  "thresholds": {
+    "maximum_exact_normalized_nash_conv": 0.001,
+    "maximum_bucket_normalized_nash_conv": 0.0015,
+    "maximum_normalized_nash_conv_delta": 0.0005,
+    "maximum_normalized_profile_value_delta": 0.0005,
+    "maximum_normalized_best_response_delta": 0.0005,
+    "minimum_operational_speedup": 1.25,
+    "minimum_node_reduction_ratio": 1.25,
+    "maximum_native_byte_model": 1048576
+  },
+  "fixtures": [
+    {
+      "id": "RQ2-UNPAIRED-RAINBOW-001",
+      "stratum": "v2_unpaired_rainbow",
+      "board": ["6c", "8d", "Th", "Qs", "Ac"],
+      "initial_pot_antes": 28,
+      "effective_stack_antes": 84,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [3300, 7500],
+      "player1_sizes_bp": [5000, 10000],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9902001,
+      "player0_weights_bp": [2000, 4000, 7000, 10000],
+      "player1_weights_bp": [2500, 5000, 7500, 10000]
+    },
+    {
+      "id": "RQ2-TRIPS-BOARD-001",
+      "stratum": "v2_trips_board",
+      "board": ["Qc", "Qd", "Qh", "8s", "Ac"],
+      "initial_pot_antes": 36,
+      "effective_stack_antes": 54,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [5000],
+      "player1_sizes_bp": [7500, 12500],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9902002,
+      "player0_weights_bp": [3000, 6000, 10000],
+      "player1_weights_bp": [2000, 5000, 8000, 10000]
+    },
+    {
+      "id": "RQ2-FULL-HOUSE-RAKE-001",
+      "stratum": "v2_full_house_board_with_rake",
+      "board": ["Jc", "Jd", "Jh", "9s", "9c"],
+      "initial_pot_antes": 30,
+      "effective_stack_antes": 60,
+      "rake_bp": 300,
+      "rake_cap_antes": 2,
+      "player0_sizes_bp": [5000],
+      "player1_sizes_bp": [5000],
+      "raise_depth": 1,
+      "combos_per_player": 112,
+      "range_seed": 9902003,
+      "player0_weights_bp": [2500, 5000, 7500, 10000],
+      "player1_weights_bp": [3000, 6000, 9000]
+    },
+    {
+      "id": "RQ2-FOUR-STRAIGHT-TWOTONE-001",
+      "stratum": "v2_four_straight_two_tone",
+      "board": ["7c", "8d", "9c", "Th", "As"],
+      "initial_pot_antes": 18,
+      "effective_stack_antes": 108,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [2500, 10000],
+      "player1_sizes_bp": [3300, 10000],
+      "raise_depth": 1,
+      "combos_per_player": 112,
+      "range_seed": 9902004,
+      "player0_weights_bp": [2000, 4000, 6000, 8000, 10000],
+      "player1_weights_bp": [2500, 5000, 7500, 10000]
+    },
+    {
+      "id": "RQ2-FOUR-FLUSH-HIGH-001",
+      "stratum": "v2_four_flush_high_card",
+      "board": ["6d", "9d", "Jd", "Kd", "As"],
+      "initial_pot_antes": 48,
+      "effective_stack_antes": 48,
+      "rake_bp": 0,
+      "rake_cap_antes": 0,
+      "player0_sizes_bp": [7500, 15000],
+      "player1_sizes_bp": [5000, 10000],
+      "raise_depth": 0,
+      "combos_per_player": 112,
+      "range_seed": 9902005,
+      "player0_weights_bp": [3500, 6500, 10000],
+      "player1_weights_bp": [2000, 5000, 8000, 10000]
+    }
+  ],
+  "decision": {
+    "scope": "every threshold must pass on every frozen regression and independent holdout fixture",
+    "on_pass": "eligible for product-integration planning, not automatic promotion",
+    "on_fail": "reject v2 and retain exact production without tuning either frozen corpus"
+  }
+}

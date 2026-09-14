@@ -37,6 +37,9 @@ gtosd::SolverConfig config(const gtosd::SolverAlgorithm algorithm, const std::ui
   result.algorithm = algorithm;
   result.iterations = iterations;
   result.seed = 0x534f4c5645525f35ULL;
+  if (algorithm == gtosd::SolverAlgorithm::ProductionDcfr) {
+    result.dcfr = {1.5, 0.0, 3.0};
+  }
   return result;
 }
 
@@ -216,6 +219,66 @@ void test_checkpoint_resume_and_validation() {
   require(parallel_continuous_bytes.has_value() && parallel_resumed_bytes.has_value() &&
               parallel_continuous_bytes.value() == parallel_resumed_bytes.value(),
           "parallel resume is byte-equivalent at the same worker count");
+
+  const auto production_continuous =
+      gtosd::solve_finite_game(kuhn, config(gtosd::SolverAlgorithm::ProductionDcfr, 32));
+  const auto production_epoch =
+      gtosd::solve_finite_game(kuhn, config(gtosd::SolverAlgorithm::ProductionDcfr, 16));
+  const auto production_serialized =
+      production_epoch ? gtosd::serialize_solver_checkpoint(production_epoch.value().checkpoint)
+                       : gtosd::Result<std::string, gtosd::SolverError>::failure(
+                             gtosd::SolverError::InvalidCheckpoint);
+  const auto production_restored =
+      production_serialized ? gtosd::deserialize_solver_checkpoint(production_serialized.value())
+                            : gtosd::Result<gtosd::SolverCheckpoint, gtosd::SolverError>::failure(
+                                  gtosd::SolverError::InvalidCheckpoint);
+  const auto production_resumed =
+      production_restored
+          ? gtosd::solve_finite_game(kuhn, config(gtosd::SolverAlgorithm::ProductionDcfr, 32),
+                                     &production_restored.value())
+          : gtosd::Result<gtosd::SolveResult, gtosd::SolverError>::failure(
+                gtosd::SolverError::InvalidCheckpoint);
+  const auto production_continuous_bytes =
+      production_continuous
+          ? gtosd::serialize_solver_checkpoint(production_continuous.value().checkpoint)
+          : gtosd::Result<std::string, gtosd::SolverError>::failure(
+                gtosd::SolverError::InvalidCheckpoint);
+  const auto production_resumed_bytes =
+      production_resumed ? gtosd::serialize_solver_checkpoint(production_resumed.value().checkpoint)
+                         : gtosd::Result<std::string, gtosd::SolverError>::failure(
+                               gtosd::SolverError::InvalidCheckpoint);
+  require(production_restored.has_value() && production_restored.value().config.algorithm ==
+                                                 gtosd::SolverAlgorithm::ProductionDcfr,
+          "ProductionDcfr checkpoint preserves its distinct algorithm identity");
+  require(production_restored.has_value() &&
+              production_restored.value().minor == gtosd::SolverCheckpoint::format_minor,
+          "ProductionDcfr checkpoint uses the current feature minor");
+  require(production_continuous_bytes.has_value() && production_resumed_bytes.has_value() &&
+              production_continuous_bytes.value() == production_resumed_bytes.value(),
+          "ProductionDcfr resume across an epoch boundary is byte-equivalent");
+
+  auto invalid_production_threads = config(gtosd::SolverAlgorithm::ProductionDcfr, 32);
+  invalid_production_threads.thread_count = 2U;
+  auto invalid_production_gamma = config(gtosd::SolverAlgorithm::ProductionDcfr, 32);
+  invalid_production_gamma.dcfr.strategy_exponent = 2.0;
+  auto invalid_production_delay = config(gtosd::SolverAlgorithm::ProductionDcfr, 32);
+  invalid_production_delay.averaging_delay = 1U;
+  require(!gtosd::solve_finite_game(kuhn, invalid_production_threads),
+          "ProductionDcfr rejects a non-contract worker count");
+  require(!gtosd::solve_finite_game(kuhn, invalid_production_gamma),
+          "ProductionDcfr rejects a non-contract discount schedule");
+  require(!gtosd::solve_finite_game(kuhn, invalid_production_delay),
+          "ProductionDcfr rejects delayed averaging");
+
+  auto legacy_checkpoint = first_half.value().checkpoint;
+  legacy_checkpoint.minor = 0U;
+  const auto legacy_serialized = gtosd::serialize_solver_checkpoint(legacy_checkpoint);
+  const auto legacy_restored =
+      legacy_serialized ? gtosd::deserialize_solver_checkpoint(legacy_serialized.value())
+                        : gtosd::Result<gtosd::SolverCheckpoint, gtosd::SolverError>::failure(
+                              gtosd::SolverError::InvalidCheckpoint);
+  require(legacy_restored.has_value() && legacy_restored.value().minor == 0U,
+          "legacy generic checkpoint 1.0 remains readable");
 
   auto sampled_parallel = config(gtosd::SolverAlgorithm::ExternalSamplingMccfr, 100);
   sampled_parallel.thread_count = 2;

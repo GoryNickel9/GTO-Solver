@@ -3,6 +3,7 @@
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/equity/evaluator.hpp"
 #include "gtosd/memory/memory.hpp"
+#include "gtosd/postflop/root_values.hpp"
 #include "gtosd/postflop/solver_memory_ledger.hpp"
 
 #include <array>
@@ -15,6 +16,8 @@
 #include <vector>
 
 namespace gtosd {
+
+enum class PostflopSolverError : std::uint8_t;
 
 namespace detail {
 class PostflopRuntimeState;
@@ -31,6 +34,27 @@ namespace detail {
 regret_match_signed_action_major(std::span<const std::uint16_t *const> action_sources,
                                  std::span<float *const> action_strategies,
                                  std::size_t hand_count) noexcept;
+
+// Double-precision S1 oracle for one abstract-infoset update. Every row in
+// member_action_values is one physical private state and every column is one
+// shared action. Counterfactual weights aggregate regret deltas; own reach
+// weights aggregate the average strategy. The production dense traversal may
+// use a compressed/vectorized implementation only after matching this oracle.
+struct ProductionDcfrBucketUpdate {
+  std::vector<double> strategy;
+  std::vector<double> current_values;
+  std::vector<double> immediate_regret_delta;
+  std::vector<double> updated_regret;
+  std::vector<double> updated_average_strategy;
+};
+
+[[nodiscard]] Result<ProductionDcfrBucketUpdate, PostflopSolverError> production_dcfr_bucket_update(
+    std::span<const double> old_regret, std::span<const double> old_average_strategy,
+    std::span<const double> member_action_values,
+    std::span<const double> counterfactual_member_weights,
+    std::span<const double> own_reach_member_weights, std::size_t action_count,
+    double regret_update_weight, double average_strategy_weight, double positive_regret_discount,
+    double negative_regret_discount);
 
 } // namespace detail
 
@@ -65,6 +89,56 @@ enum class PostflopAlgorithm : std::uint8_t {
   // Value 11 preserves checkpoint compatibility with the qualified research
   // candidate that became the common production schedule.
   ProductionDcfr = 11
+};
+
+// S1 postflop boundary. ExactIdentity names the existing lossless logical
+// infoset space explicitly without allocating a per-infoset map. Additional
+// modes require a distinct implementation, fingerprint and checkpoint format.
+enum class PostflopCardAbstractionMode : std::uint8_t { ExactIdentity = 0, MadeHandValue = 1 };
+
+struct PostflopCardAbstractionPolicy {
+  static constexpr std::uint32_t format_major = 1;
+  static constexpr std::uint32_t format_minor = 0;
+
+  std::uint32_t major{format_major};
+  std::uint32_t minor{format_minor};
+  PostflopCardAbstractionMode mode{PostflopCardAbstractionMode::ExactIdentity};
+
+  friend bool operator==(const PostflopCardAbstractionPolicy &,
+                         const PostflopCardAbstractionPolicy &) = default;
+};
+
+struct PostflopCardAbstractionSummary {
+  PostflopCardAbstractionPolicy policy{};
+  std::uint64_t exact_information_sets{0};
+  std::uint64_t abstract_information_sets{0};
+  std::uint64_t exact_action_entries{0};
+  std::uint64_t abstract_action_entries{0};
+  std::array<std::uint64_t, 3> exact_information_sets_by_street{};
+  std::array<std::uint64_t, 3> abstract_information_sets_by_street{};
+  std::uint64_t exact_to_abstract_bytes{0};
+  std::uint64_t aggregation_weight_bytes{0};
+  std::uint64_t decision_offset_bytes{0};
+  std::uint64_t bucket_member_offset_bytes{0};
+  std::uint64_t bucket_member_index_bytes{0};
+  std::uint64_t mapping_bytes{0};
+  bool perfect_recall_verified{false};
+  bool checkpoint_identity_preserved{false};
+  bool solver_supported{false};
+  std::string fingerprint;
+
+  friend bool operator==(const PostflopCardAbstractionSummary &,
+                         const PostflopCardAbstractionSummary &) = default;
+};
+
+[[nodiscard]] bool
+validate_postflop_card_abstraction_policy(const PostflopCardAbstractionPolicy &policy) noexcept;
+[[nodiscard]] const char *postflop_card_abstraction_name(PostflopCardAbstractionMode mode) noexcept;
+
+struct PostflopCardAbstractionEntry {
+  std::uint64_t exact_information_set{0};
+  std::uint64_t abstract_information_set{0};
+  std::uint16_t aggregation_weight_basis_points{0};
 };
 
 [[nodiscard]] constexpr bool
@@ -288,6 +362,7 @@ struct PostflopSolveOptions {
   MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
   PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
   PostflopAlgorithm algorithm{PostflopAlgorithm::CfrPlus};
+  PostflopCardAbstractionPolicy card_abstraction{};
   // DCFR+ keeps CFR+'s non-negative regret projection. DCFR and ProductionDcfr
   // store signed regrets. ProductionDcfr uses the fixed qualified schedule;
   // dcfr_average_exponent is ignored.
@@ -314,11 +389,33 @@ struct PostflopSolveOptions {
   // promotion decisions.
   bool diagnostic_pure_cfr_trajectory{false};
   std::uint64_t diagnostic_pure_cfr_phase_cap{1'000'000U};
+  // OutOfCore uses this as its persistent Float64 buffer. LazyInRam may also
+  // set it together with a nonzero resident budget to back the exact scaled
+  // runtime mapping with a temporary local file instead of system commit.
+  // The latter path is experimental, delete-on-close, and is not serialized.
   std::string backing_file;
   std::function<void(const PostflopCertification &)> progress_callback;
   std::function<bool(const PostflopCertification &, const PostflopCheckpoint &)>
       checkpoint_callback;
   std::function<PostflopControlCommand(std::uint64_t)> control_callback;
+};
+
+// Versioned application profile used by new production solves. Mathematical
+// identity and numerical storage are intentionally absent from this request:
+// resolve_postflop_production_options fixes them in one shared place. Callers
+// may select only runtime boundaries that do not change ProductionDcfr.
+struct PostflopProductionSolveRequest {
+  static constexpr std::uint32_t profile_major = 1;
+  static constexpr std::uint32_t profile_minor = 0;
+  static constexpr std::uint64_t certification_interval = 20;
+  static constexpr std::uint8_t parallel_action_depth = 7;
+
+  std::uint64_t iterations{0};
+  std::optional<double> target_normalized_nash_conv;
+  std::optional<double> target_normalized_max_deviation;
+  std::uint64_t resident_working_set_budget_bytes{0};
+  MemoryPrototype memory_backend{MemoryPrototype::LazyInRam};
+  bool enable_detailed_memory_accounting{true};
 };
 
 struct PostflopCheckpoint {
@@ -366,6 +463,16 @@ struct PostflopCheckpoint {
   // through the same ActionBuffers view as resident vectors.
   std::shared_ptr<detail::PostflopRuntimeState> runtime_state;
 };
+
+// Resolves the only profile accepted by product API/CLI/GUI entry points for a
+// new solve. A resume must identify the same fixed 1.5/0/3 contract. CFR+ and
+// ambiguous legacy checkpoints are rejected.
+[[nodiscard]] Result<PostflopSolveOptions, PostflopSolverError>
+resolve_postflop_production_options(const PostflopProductionSolveRequest &request,
+                                    const PostflopCheckpoint *resume_from = nullptr);
+
+[[nodiscard]] const char *postflop_algorithm_name(PostflopAlgorithm algorithm) noexcept;
+[[nodiscard]] const char *postflop_state_precision_name(PostflopStatePrecision precision) noexcept;
 
 struct PostflopWorkCounters {
   std::uint64_t visited_nodes{0};
@@ -436,6 +543,58 @@ struct PostflopSolveResult {
   PostflopStopReason stop_reason{PostflopStopReason::Completed};
   std::optional<PostflopRealNodeReplayCorpus> diagnostic_real_node_replay;
   std::vector<PostflopPureCfrTrajectoryPoint> diagnostic_pure_cfr_trajectory;
+};
+
+// S1 feasibility runner. It executes the made-hand-value mapping on the
+// physical postflop tree with a double-precision bucket state, then evaluates
+// the lifted average strategy and its best responses in the original game. It
+// is deliberately separate from PostflopCheckpoint and the product solver.
+struct PostflopBucketCheckpoint {
+  static constexpr std::uint32_t format_major = 1;
+  static constexpr std::uint32_t format_minor = 0;
+
+  std::uint32_t major{format_major};
+  std::uint32_t minor{format_minor};
+  std::string game_fingerprint;
+  std::string abstraction_fingerprint;
+  std::uint64_t completed_iterations{0};
+  std::uint64_t action_count{0};
+  PostflopAlgorithm algorithm{PostflopAlgorithm::ProductionDcfr};
+  PostflopStatePrecision state_precision{PostflopStatePrecision::Float64};
+  double dcfr_positive_regret_exponent{1.5};
+  double dcfr_average_exponent{3.0};
+  std::vector<double> cumulative_regret;
+  std::vector<double> cumulative_strategy;
+
+  friend bool operator==(const PostflopBucketCheckpoint &,
+                         const PostflopBucketCheckpoint &) = default;
+};
+
+struct PostflopBucketTraversalProbeResult {
+  PostflopCardAbstractionSummary abstraction;
+  std::uint64_t completed_iterations{0};
+  std::uint64_t state_bytes{0};
+  std::uint64_t traversal_owned_capacity_bytes{0};
+  std::uint64_t state_update_passes{0};
+  std::uint64_t strategy_reset_passes{0};
+  double preparation_seconds{0.0};
+  double layout_preparation_seconds{0.0};
+  double abstraction_preparation_seconds{0.0};
+  double setup_seconds{0.0};
+  double rank_preparation_seconds{0.0};
+  double state_initialization_seconds{0.0};
+  double traversal_initialization_seconds{0.0};
+  double traversal_seconds{0.0};
+  double certification_seconds{0.0};
+  double finalization_seconds{0.0};
+  double operational_seconds{0.0};
+  double maximum_oracle_deviation{0.0};
+  std::uint64_t oracle_updates_checked{0};
+  std::uint64_t oracle_updates_total{0};
+  PostflopWorkCounters traversal_work_counters;
+  PostflopCertification certification;
+  PostflopBucketCheckpoint checkpoint;
+  std::string state_fingerprint;
 };
 
 struct PostflopStrategyQuery {
@@ -592,13 +751,23 @@ private:
   std::unique_ptr<Impl> implementation_;
 
   friend Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
-  prepare_postflop_tree(const PostflopTreeConfig &, const PostflopRanges &, bool, bool, bool);
+  prepare_postflop_tree(const PostflopTreeConfig &, const PostflopRanges &, bool, bool, bool,
+                        PostflopCardAbstractionPolicy);
   friend Result<PostflopSolveResult, PostflopSolverError>
   solve_postflop_exact(PostflopPreparedTree &, const PostflopSolveOptions &,
                        const PostflopCheckpoint *);
   friend Result<PostflopNodeAnalysis, PostflopSolverError>
   analyze_postflop_node(PostflopPreparedTree &, const PostflopCheckpoint &, NodeId);
   friend PostflopLayoutEstimate prepared_postflop_layout_estimate(const PostflopPreparedTree &);
+  friend Result<PostflopCardAbstractionSummary, PostflopSolverError>
+  prepared_postflop_card_abstraction(const PostflopPreparedTree &);
+  friend Result<PostflopCardAbstractionEntry, PostflopSolverError>
+  prepared_postflop_card_abstraction_entry(const PostflopPreparedTree &, std::uint64_t);
+  friend Result<PostflopBucketTraversalProbeResult, PostflopSolverError>
+  run_postflop_bucket_traversal_probe(PostflopPreparedTree &, std::uint64_t,
+                                      const PostflopBucketCheckpoint *);
+  friend Result<std::uint64_t, PostflopSolverError>
+  prepared_postflop_solver_state_bytes(const PostflopPreparedTree &, PostflopStatePrecision);
   friend Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
   prepared_postflop_action_edges(const PostflopPreparedTree &, NodeId);
   friend Result<PostflopArchitecturalTopology, PostflopSolverError>
@@ -614,10 +783,42 @@ private:
 [[nodiscard]] Result<std::shared_ptr<PostflopPreparedTree>, PostflopSolverError>
 prepare_postflop_tree(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                       bool enable_lossless_isomorphism = true,
-                      bool enable_canonical_public_dag = true, bool prepare_analysis = false);
+                      bool enable_canonical_public_dag = true, bool prepare_analysis = false,
+                      PostflopCardAbstractionPolicy card_abstraction = {});
 
 [[nodiscard]] PostflopLayoutEstimate
 prepared_postflop_layout_estimate(const PostflopPreparedTree &prepared);
+
+// The identity policy uses an implicit mapping and therefore consumes zero
+// bytes regardless of the number of exact infosets.
+[[nodiscard]] Result<PostflopCardAbstractionSummary, PostflopSolverError>
+prepared_postflop_card_abstraction(const PostflopPreparedTree &prepared);
+
+[[nodiscard]] Result<PostflopCardAbstractionEntry, PostflopSolverError>
+prepared_postflop_card_abstraction_entry(const PostflopPreparedTree &prepared,
+                                         std::uint64_t exact_information_set);
+
+[[nodiscard]] Result<PostflopBucketTraversalProbeResult, PostflopSolverError>
+run_postflop_bucket_traversal_probe(PostflopPreparedTree &prepared, std::uint64_t iterations,
+                                    const PostflopBucketCheckpoint *resume_from = nullptr);
+
+[[nodiscard]] Result<bool, PostflopSolverError>
+save_postflop_bucket_checkpoint(const PostflopBucketCheckpoint &checkpoint,
+                                const std::string &path);
+
+[[nodiscard]] Result<PostflopBucketCheckpoint, PostflopSolverError>
+load_postflop_bucket_checkpoint(const std::string &path);
+
+[[nodiscard]] Result<std::uint64_t, PostflopSolverError>
+map_postflop_exact_infoset(const PostflopCardAbstractionSummary &summary,
+                           std::uint64_t exact_information_set);
+
+// Logical solver-owned regret + average-strategy payload for the selected
+// numerical profile. This excludes prepared layout, ranks, worker scratch,
+// process overhead and persistence, which remain separate memory scopes.
+[[nodiscard]] Result<std::uint64_t, PostflopSolverError>
+prepared_postflop_solver_state_bytes(const PostflopPreparedTree &prepared,
+                                     PostflopStatePrecision precision);
 
 [[nodiscard]] Result<std::vector<PostflopPreparedActionEdge>, PostflopSolverError>
 prepared_postflop_action_edges(const PostflopPreparedTree &prepared, NodeId node);
@@ -675,6 +876,22 @@ estimate_postflop_layout(const PostflopTreeConfig &config, const PostflopRanges 
 [[nodiscard]] Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node(const PostflopTreeConfig &config, const PostflopRanges &ranges,
                       const PostflopCheckpoint &checkpoint, NodeId public_node);
+
+// Exact root CFVs under the checkpoint's average strategy. Each conditional
+// value divides out the compatible opponent reach used by the traversal; the
+// accompanying counterfactual reach makes the normalization explicit.
+[[nodiscard]] Result<PostflopRootCounterfactualValues, PostflopSolverError>
+derive_postflop_root_counterfactual_values(const PostflopTreeConfig &config,
+                                           const PostflopRanges &ranges,
+                                           const PostflopCheckpoint &checkpoint);
+
+// Exact per-combo values when each player independently best-responds to the
+// checkpoint's average strategy. This report is deliberately mode-tagged and
+// cannot be consumed as an average-policy decomposition boundary.
+[[nodiscard]] Result<PostflopRootCounterfactualValues, PostflopSolverError>
+derive_postflop_root_best_response_values(const PostflopTreeConfig &config,
+                                          const PostflopRanges &ranges,
+                                          const PostflopCheckpoint &checkpoint);
 
 [[nodiscard]] Result<PostflopNodeAnalysis, PostflopSolverError>
 analyze_postflop_node(PostflopPreparedTree &prepared, const PostflopCheckpoint &checkpoint,

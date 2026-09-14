@@ -1028,7 +1028,7 @@ void ProductWindow::load_default_project() {
   project_.config.rake.percentage = RangeWeight::from_basis_points(0).value();
   project_.config.rake.cap = Money{};
   const auto half_pot = PotPercentage::from_basis_points(5'000).value();
-  const auto go_all_in_threshold = PotPercentage::from_basis_points(15'000).value();
+  const auto all_in_threshold = PotPercentage::from_basis_points(15'000).value();
   for (auto &street : project_.config.streets) {
     for (auto &player : street.players) {
       player[static_cast<std::size_t>(BettingScenario::Lead)].aggressive_sizes = {half_pot};
@@ -1037,8 +1037,8 @@ void ProductWindow::load_default_project() {
       facing.aggressive_sizes = {half_pot};
       facing.raise_depth = 1U;
       for (auto &scenario : player) {
-        scenario.all_in_mode = AllInMode::Go;
-        scenario.all_in_threshold = go_all_in_threshold;
+        scenario.all_in_mode = AllInMode::Disabled;
+        scenario.all_in_threshold = all_in_threshold;
       }
     }
   }
@@ -1336,30 +1336,23 @@ bool ProductWindow::estimate_current_project() {
     return false;
   }
   const auto layout = prepared_postflop_layout_estimate(*prepared.value());
-  const auto solver_state_bytes = layout.regret_bytes + layout.strategy_bytes;
-  project_.memory_backend = MemoryPrototype::LazyInRam;
-  if (solver_state_bytes > project_.ram_budget_bytes) {
-    auto out_of_core =
-        analyze_postflop_config(project_.config, project_.ranges, MemoryPrototype::OutOfCore);
-    if (!out_of_core) {
-      estimate_summary_->setText(
-          tr_text("Stima out-of-core fallita: %1")
-              .arg(QString::fromLatin1(memory_error_name(out_of_core.error()))));
-      return false;
-    }
-    project_.memory_backend = MemoryPrototype::OutOfCore;
-    report = std::move(out_of_core);
+  const auto production_state_bytes = prepared_postflop_solver_state_bytes(
+      *prepared.value(), PostflopStatePrecision::ScaledUint16RegretStrategy);
+  if (!production_state_bytes) {
+    estimate_summary_->setText(
+        tr_text("Stima stato ProductionDcfr fallita: %1")
+            .arg(QString::fromLatin1(postflop_solver_error_name(production_state_bytes.error()))));
+    return false;
   }
+  const auto solver_state_bytes = production_state_bytes.value();
+  project_.memory_backend = MemoryPrototype::LazyInRam;
   const auto &memory = report.value().memory;
   const bool ram_ok = solver_state_bytes <= project_.ram_budget_bytes;
-  const bool disk_ok = project_.memory_backend != MemoryPrototype::OutOfCore ||
-                       solver_state_bytes <= project_.disk_budget_bytes;
-  const auto mode = project_.memory_backend == MemoryPrototype::LazyInRam
-                        ? tr_text("RAM automatica")
-                        : tr_text("Out-of-core automatico");
+  const bool disk_ok = true;
+  const auto mode = tr_text("ProductionDcfr residente");
   estimate_summary_->setText(
       tr_text("%1 nodi fisici → %2 canonici · %3 infoset · %4 azioni · memoria solver %5 MB "
-              "(regret + strategia, float64) · %6 · %7")
+              "(regret + strategia, scaled uint16) · %6 · %7")
           .arg(static_cast<qulonglong>(layout.physical_public_tree.node_count))
           .arg(static_cast<qulonglong>(layout.canonical_public_nodes))
           .arg(static_cast<qulonglong>(layout.information_sets))
@@ -1369,9 +1362,9 @@ bool ProductWindow::estimate_current_project() {
           .arg(ram_ok && disk_ok ? tr_text("risorse sufficienti")
                                  : tr_text("RISORSE INSUFFICIENTI")));
   estimate_summary_->setToolTip(
-      tr_text("La memoria solver è lo storage persistente confrontabile con “Memory needed for "
-              "solving” di GTO+. Non è il picco RSS dell'intero processo. La precedente stima "
-              "fisica conservativa era %1 MiB e non teneva conto del layout canonico.")
+      tr_text("La memoria solver include solo regret, strategia e scale del profilo production. "
+              "Non include layout, rank, scratch, BR o overhead di processo e non è ancora "
+              "comparabile con il display GTO+. La stima fisica conservativa è %1 MiB.")
           .arg(static_cast<double>(memory.peak_resident_bytes) / (1024.0 * 1024.0), 0, 'f', 1));
   preflight_layout_ = layout;
   prepared_tree_ = std::move(prepared.value());
@@ -1411,6 +1404,17 @@ bool ProductWindow::start_current_solve() {
   }
   const auto recovery_key = current_key_;
   if (checkpoint_) {
+    if (checkpoint_->algorithm != PostflopAlgorithm::ProductionDcfr ||
+        checkpoint_->state_precision != PostflopStatePrecision::ScaledUint16RegretStrategy) {
+      statusBar()->showMessage(
+          tr_text("Resume rifiutato: il checkpoint non identifica ProductionDcfr."));
+      append_log(QStringLiteral("error"), QStringLiteral("resume_profile_incompatible"),
+                 tr_text("algorithm=%1 precision=%2")
+                     .arg(QString::fromLatin1(postflop_algorithm_name(checkpoint_->algorithm)))
+                     .arg(QString::fromLatin1(
+                         postflop_state_precision_name(checkpoint_->state_precision))));
+      return false;
+    }
     session->resume = std::make_shared<PostflopCheckpoint>(std::move(checkpoint_.value()));
     checkpoint_.reset();
   }
@@ -1418,9 +1422,10 @@ bool ProductWindow::start_current_solve() {
   QSettings().setValue(QStringLiteral("recoveryKey"),
                        QString::fromStdString(storage_key_to_hex(recovery_key)));
   solve_progress_->setRange(0, 0);
-  solve_status_->setText(tr_text("Solving exact CFR+…"));
+  solve_status_->setText(tr_text("Solving ProductionDcfr exact…"));
   append_log(QStringLiteral("info"), QStringLiteral("solve_started"),
-             tr_text("target_gto_plus_dev=%1% backend=%2")
+             tr_text("profile=production-v1.0 algorithm=production_dcfr "
+                     "precision=scaled_uint16_regret_strategy target_gto_plus_dev=%1% backend=%2")
                  .arg(project.target_normalized_max_deviation * 100.0, 0, 'f', 4)
                  .arg(project.memory_backend == MemoryPrototype::LazyInRam
                           ? QStringLiteral("ram")
@@ -1429,21 +1434,18 @@ bool ProductWindow::start_current_solve() {
   pages_->setCurrentIndex(2);
   set_solve_controls_enabled(true);
   worker_ = std::jthread([session, project, recovery_key, resume, prepared_tree] {
-    PostflopSolveOptions options;
-    options.iterations = project.iterations;
-    options.averaging_delay = 20U;
-    options.certification_interval = project.certification_interval;
-    options.target_normalized_max_deviation = project.target_normalized_max_deviation;
-    options.parallel_action_depth = 5U;
-    options.memory_backend = project.memory_backend;
-    options.state_precision = resume != nullptr ? resume->state_precision
-                              : project.memory_backend == MemoryPrototype::OutOfCore
-                                  ? PostflopStatePrecision::Float64
-                                  : PostflopStatePrecision::Float32;
-    if (project.memory_backend == MemoryPrototype::OutOfCore) {
-      options.backing_file =
-          (std::filesystem::temp_directory_path() / "gtosd_phase10_actions.bin").string();
+    PostflopProductionSolveRequest request;
+    request.iterations = project.iterations;
+    request.target_normalized_max_deviation = project.target_normalized_max_deviation;
+    request.memory_backend = project.memory_backend;
+    const auto resolved = resolve_postflop_production_options(request, resume.get());
+    if (!resolved) {
+      std::scoped_lock lock(session->mutex);
+      session->error = postflop_solver_error_name(resolved.error());
+      session->done.store(true);
+      return;
     }
+    auto options = resolved.value();
     options.progress_callback = [session](const PostflopCertification &certification) {
       std::scoped_lock lock(session->mutex);
       session->latest = certification;
@@ -2315,30 +2317,36 @@ bool ProductWindow::run_phase10_e2e(const std::filesystem::path &workspace, std:
     return false;
   }
   const auto &e2e_root = browser_tree_->nodes[static_cast<std::size_t>(browser_tree_->root)];
-  const auto after_root_check = std::ranges::find_if(
-      e2e_root.edges, [](const auto &edge) { return edge.action.type == ActionType::Check; });
-  if (!check(after_root_check != e2e_root.edges.end(), "root check path unavailable")) {
+  const auto after_root_bet = std::ranges::find_if(
+      e2e_root.edges, [](const auto &edge) { return edge.action.type == ActionType::Bet; });
+  if (!check(after_root_bet != e2e_root.edges.end(), "root bet path unavailable")) {
     return false;
   }
-  const auto &e2e_btn = browser_tree_->nodes[static_cast<std::size_t>(after_root_check->child)];
-  const auto after_btn_check = std::ranges::find_if(
-      e2e_btn.edges, [](const auto &edge) { return edge.action.type == ActionType::Check; });
-  if (!check(after_btn_check != e2e_btn.edges.end(), "BTN check path unavailable") ||
-      !check(browser_tree_->nodes[static_cast<std::size_t>(after_btn_check->child)].kind ==
+  const auto &e2e_btn = browser_tree_->nodes[static_cast<std::size_t>(after_root_bet->child)];
+  const auto after_btn_call = std::ranges::find_if(
+      e2e_btn.edges, [](const auto &edge) { return edge.action.type == ActionType::Call; });
+  if (!check(after_btn_call != e2e_btn.edges.end(), "BTN call path unavailable") ||
+      !check(browser_tree_->nodes[static_cast<std::size_t>(after_btn_call->child)].kind ==
                  PublicNodeKind::Chance,
-             "flop check-check does not reach turn chance")) {
+             "flop bet-call does not reach turn chance")) {
     return false;
   }
-  navigate_browser_node(after_btn_check->child);
+  navigate_browser_node(after_btn_call->child);
   if (!check(!chance_card_selector_->isHidden() && chance_card_selector_->count() > 1,
              "turn card selector is unavailable")) {
     return false;
   }
+  bool selected_turn_valid = false;
+  const auto selected_turn_node =
+      static_cast<NodeId>(chance_card_selector_->itemData(1).toULongLong(&selected_turn_valid));
   chance_card_selector_->setCurrentIndex(1);
   QCoreApplication::processEvents();
-  if (!check(chance_card_selector_->isHidden() && browser_analysis_.has_value() &&
-                 browser_tree_->nodes[static_cast<std::size_t>(browser_analysis_->public_node)]
-                         .state.street == Street::Turn,
+  if (!check(selected_turn_valid && selected_turn_node < browser_tree_->nodes.size() &&
+                 chance_card_selector_->isHidden() &&
+                 browser_tree_->nodes[static_cast<std::size_t>(selected_turn_node)].kind ==
+                     PublicNodeKind::Decision &&
+                 browser_tree_->nodes[static_cast<std::size_t>(selected_turn_node)].state.street ==
+                     Street::Turn,
              "selecting a turn card does not continue to the turn decision")) {
     return false;
   }

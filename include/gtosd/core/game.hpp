@@ -10,6 +10,9 @@
 namespace gtosd {
 
 constexpr std::size_t maximum_players = 6;
+// The generic state machine must be able to represent naturally terminating
+// betting sequences. Product tree configurations may impose a lower cap.
+constexpr std::uint8_t maximum_core_raise_depth = 63;
 enum class Player : std::uint8_t { CO = 0, BTN = 1 };
 enum class Street : std::uint8_t { Preflop, Flop, Turn, River };
 enum class ActionType : std::uint8_t { Fold, Check, Call, Bet, Raise, AllIn };
@@ -91,6 +94,15 @@ struct ActionConfig {
   };
   std::vector<RoundingBand> aggressive_target_rounding;
   MoneyRoundingMode aggressive_target_rounding_mode{MoneyRoundingMode::Nearest};
+  // Disabled for normal poker rules. A benchmark may explicitly reproduce an
+  // external action abstraction containing a non-all-in raise smaller than
+  // the previous full raise. Such an action does not lower the remembered
+  // full-raise increment.
+  bool allow_incomplete_non_all_in_raise{false};
+  // Optional exact total live commitments for absolute bet/raise abstractions.
+  // Dead money in initial_pot_contributions is deliberately excluded. This
+  // mode is mutually exclusive with percentage sizes and per-depth schedules.
+  std::vector<Money> aggressive_targets;
 };
 
 struct RakeConfig {

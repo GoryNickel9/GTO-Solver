@@ -129,7 +129,10 @@ eseguito.
 
 ## 5. Checkpoint
 
-Il formato `GTOSD_CFR_CHECKPOINT 1.0` conserva:
+Il formato originario `GTOSD_CFR_CHECKPOINT 1.0` conserva:
+
+> Aggiornamento 2026-09-05: il writer corrente emette la minor 1.1 per
+> identificare `ProductionDcfr`; il reader mantiene compatibilità con 1.0.
 
 | Campo | Presente |
 |---|---|

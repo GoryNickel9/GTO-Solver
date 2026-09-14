@@ -37,6 +37,19 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_test(NAME gtosd_postflop_product_timing_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -DGTOSD_CLI=$<TARGET_FILE:gto_cli>
+    -DGTOSD_CONFIG=${PROJECT_SOURCE_DIR}/tests/fixtures/postflop_check_only.json
+    -DGTOSD_OUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/product_timing_smoke
+    -P ${PROJECT_SOURCE_DIR}/tests/verify_postflop_product_timing.cmake)
+set_tests_properties(gtosd_postflop_product_timing_smoke
+  PROPERTIES LABELS "phase10;postflop;production;cli;timing")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_postflop_product_timing_smoke PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_test(NAME gtosd_tstc9d_canonical_layout
   COMMAND ${CMAKE_COMMAND}
     -DGTOSD_CLI=$<TARGET_FILE:gto_cli>

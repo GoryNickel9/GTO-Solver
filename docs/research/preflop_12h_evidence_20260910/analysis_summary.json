@@ -1,0 +1,629 @@
+{
+  "comparisons": {
+    "perfect": {
+      "seconds": {
+        "baseline": [
+          12.8133627,
+          13.0728711,
+          13.2418952
+        ],
+        "cached": [
+          10.7145994,
+          10.8326938,
+          10.859203
+        ]
+      },
+      "medians": {
+        "baseline": 13.0728711,
+        "cached": 10.8326938
+      },
+      "speedup": 1.206797804992882,
+      "time_reduction_percent": 17.136077322754307
+    },
+    "exact": {
+      "seconds": {
+        "baseline": [
+          8.4739366,
+          8.0659736,
+          9.058811
+        ],
+        "cached": [
+          5.6161115,
+          5.5977707,
+          5.9859104
+        ]
+      },
+      "medians": {
+        "baseline": 8.4739366,
+        "cached": 5.6161115
+      },
+      "speedup": 1.5088618878026194,
+      "time_reduction_percent": 33.7248817745462
+    }
+  },
+  "profiles": {
+    "profile_exact_100000_0.stderr.log": {
+      "visits": {
+        "0": {
+          "states": 1620,
+          "touches": 1132949,
+          "singleton": 0,
+          "le2": 0,
+          "ge10": 1620,
+          "singleton_percent": 0.0
+        },
+        "1": {
+          "states": 2060728,
+          "touches": 2154138,
+          "singleton": 1973834,
+          "le2": 2054751,
+          "ge10": 0,
+          "singleton_percent": 95.78333482148057
+        },
+        "2": {
+          "states": 3359123,
+          "touches": 3360304,
+          "singleton": 3357942,
+          "le2": 3359123,
+          "ge10": 0,
+          "singleton_percent": 99.96484201382324
+        },
+        "3": {
+          "states": 3575493,
+          "touches": 3575517,
+          "singleton": 3575469,
+          "le2": 3575493,
+          "ge10": 0,
+          "singleton_percent": 99.99932876389354
+        }
+      },
+      "timers": {
+        "training": {
+          "touch": {
+            "calls": 10222908,
+            "seconds": 6.63699
+          },
+          "key_inclusive": {
+            "calls": 9089959,
+            "seconds": 8.25702
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 7439538,
+            "seconds": 13.5944
+          },
+          "legal_actions": {
+            "calls": 9089959,
+            "seconds": 2.65097
+          },
+          "apply_action": {
+            "calls": 15423322,
+            "seconds": 7.20275
+          },
+          "sample_deal": {
+            "calls": 200000,
+            "seconds": 0.0693726
+          },
+          "canonical_nested": {
+            "calls": 9089959,
+            "seconds": 7.79224
+          }
+        },
+        "after_profile_eval": {
+          "touch": {
+            "calls": 10222908,
+            "seconds": 6.63699
+          },
+          "key_inclusive": {
+            "calls": 9104748,
+            "seconds": 8.27205
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 7459538,
+            "seconds": 13.6378
+          },
+          "legal_actions": {
+            "calls": 9104748,
+            "seconds": 2.65736
+          },
+          "apply_action": {
+            "calls": 15438111,
+            "seconds": 7.21187
+          },
+          "sample_deal": {
+            "calls": 220000,
+            "seconds": 0.0755193
+          },
+          "canonical_nested": {
+            "calls": 9104748,
+            "seconds": 7.80643
+          }
+        },
+        "all": {
+          "touch": {
+            "calls": 10414287,
+            "seconds": 6.72494
+          },
+          "key_inclusive": {
+            "calls": 9599922,
+            "seconds": 8.69487
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 7873589,
+            "seconds": 14.3534
+          },
+          "legal_actions": {
+            "calls": 9599922,
+            "seconds": 2.79279
+          },
+          "apply_action": {
+            "calls": 16272785,
+            "seconds": 7.57253
+          },
+          "sample_deal": {
+            "calls": 250000,
+            "seconds": 0.0840936
+          },
+          "canonical_nested": {
+            "calls": 9599922,
+            "seconds": 8.20553
+          }
+        }
+      }
+    },
+    "profile_exact_20000_0.stderr.log": {
+      "visits": {
+        "0": {
+          "states": 1620,
+          "touches": 232088,
+          "singleton": 0,
+          "le2": 1,
+          "ge10": 1613,
+          "singleton_percent": 0.0
+        },
+        "1": {
+          "states": 421885,
+          "touches": 425356,
+          "singleton": 418460,
+          "le2": 421839,
+          "ge10": 0,
+          "singleton_percent": 99.18816739158775
+        },
+        "2": {
+          "states": 632867,
+          "touches": 632899,
+          "singleton": 632835,
+          "le2": 632867,
+          "ge10": 0,
+          "singleton_percent": 99.99494364534729
+        },
+        "3": {
+          "states": 643474,
+          "touches": 643474,
+          "singleton": 643474,
+          "le2": 643474,
+          "ge10": 0,
+          "singleton_percent": 100.0
+        }
+      },
+      "timers": {
+        "training": {
+          "touch": {
+            "calls": 1933817,
+            "seconds": 1.12648
+          },
+          "key_inclusive": {
+            "calls": 1701729,
+            "seconds": 1.66705
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 1399255,
+            "seconds": 2.75903
+          },
+          "legal_actions": {
+            "calls": 1701729,
+            "seconds": 0.535958
+          },
+          "apply_action": {
+            "calls": 2873049,
+            "seconds": 1.50385
+          },
+          "sample_deal": {
+            "calls": 40000,
+            "seconds": 0.0157254
+          },
+          "canonical_nested": {
+            "calls": 1701729,
+            "seconds": 1.57532
+          }
+        },
+        "after_profile_eval": {
+          "touch": {
+            "calls": 1933817,
+            "seconds": 1.12648
+          },
+          "key_inclusive": {
+            "calls": 1712414,
+            "seconds": 1.67687
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 1419255,
+            "seconds": 2.80135
+          },
+          "legal_actions": {
+            "calls": 1712414,
+            "seconds": 0.539881
+          },
+          "apply_action": {
+            "calls": 2883734,
+            "seconds": 1.50925
+          },
+          "sample_deal": {
+            "calls": 60000,
+            "seconds": 0.0209511
+          },
+          "canonical_nested": {
+            "calls": 1712414,
+            "seconds": 1.58459
+          }
+        },
+        "all": {
+          "touch": {
+            "calls": 2112091,
+            "seconds": 1.20285
+          },
+          "key_inclusive": {
+            "calls": 2161830,
+            "seconds": 2.05564
+          },
+          "bucket_nested": {
+            "calls": 0,
+            "seconds": 0.0
+          },
+          "terminal": {
+            "calls": 1800223,
+            "seconds": 3.45274
+          },
+          "legal_actions": {
+            "calls": 2161830,
+            "seconds": 0.659738
+          },
+          "apply_action": {
+            "calls": 3637676,
+            "seconds": 1.82654
+          },
+          "sample_deal": {
+            "calls": 90000,
+            "seconds": 0.0293085
+          },
+          "canonical_nested": {
+            "calls": 2161830,
+            "seconds": 1.94221
+          }
+        }
+      }
+    },
+    "profile_memoryless_100000_0.stderr.log": {
+      "visits": {
+        "0": {
+          "states": 1620,
+          "touches": 1123387,
+          "singleton": 0,
+          "le2": 0,
+          "ge10": 1620,
+          "singleton_percent": 0.0
+        },
+        "1": {
+          "states": 29669,
+          "touches": 2041599,
+          "singleton": 3724,
+          "le2": 5766,
+          "ge10": 17529,
+          "singleton_percent": 12.551821766827327
+        },
+        "2": {
+          "states": 174195,
+          "touches": 2642462,
+          "singleton": 34658,
+          "le2": 55382,
+          "ge10": 60434,
+          "singleton_percent": 19.89609345848044
+        },
+        "3": {
+          "states": 464857,
+          "touches": 2584268,
+          "singleton": 153540,
+          "le2": 233138,
+          "ge10": 68950,
+          "singleton_percent": 33.02951230163254
+        }
+      },
+      "timers": {
+        "training": {
+          "touch": {
+            "calls": 8391716,
+            "seconds": 3.79509
+          },
+          "key_inclusive": {
+            "calls": 7268329,
+            "seconds": 26.2046
+          },
+          "bucket_nested": {
+            "calls": 658586,
+            "seconds": 24.6944
+          },
+          "terminal": {
+            "calls": 6405088,
+            "seconds": 12.6613
+          },
+          "legal_actions": {
+            "calls": 7268329,
+            "seconds": 2.41829
+          },
+          "apply_action": {
+            "calls": 12575037,
+            "seconds": 6.48811
+          },
+          "sample_deal": {
+            "calls": 200000,
+            "seconds": 0.0798114
+          },
+          "canonical_nested": {
+            "calls": 1404822,
+            "seconds": 1.35295
+          }
+        },
+        "after_profile_eval": {
+          "touch": {
+            "calls": 8391716,
+            "seconds": 3.79509
+          },
+          "key_inclusive": {
+            "calls": 7282265,
+            "seconds": 26.4448
+          },
+          "bucket_nested": {
+            "calls": 664646,
+            "seconds": 24.9189
+          },
+          "terminal": {
+            "calls": 6425088,
+            "seconds": 12.7033
+          },
+          "legal_actions": {
+            "calls": 7282265,
+            "seconds": 2.42854
+          },
+          "apply_action": {
+            "calls": 12588973,
+            "seconds": 6.49742
+          },
+          "sample_deal": {
+            "calls": 220000,
+            "seconds": 0.0855271
+          },
+          "canonical_nested": {
+            "calls": 1421458,
+            "seconds": 1.3681
+          }
+        },
+        "all": {
+          "touch": {
+            "calls": 8548864,
+            "seconds": 3.85959
+          },
+          "key_inclusive": {
+            "calls": 7667845,
+            "seconds": 27.7226
+          },
+          "bucket_nested": {
+            "calls": 697752,
+            "seconds": 26.0935
+          },
+          "terminal": {
+            "calls": 6776412,
+            "seconds": 13.3518
+          },
+          "legal_actions": {
+            "calls": 7667845,
+            "seconds": 2.5478
+          },
+          "apply_action": {
+            "calls": 13252817,
+            "seconds": 6.8097
+          },
+          "sample_deal": {
+            "calls": 250000,
+            "seconds": 0.0945489
+          },
+          "canonical_nested": {
+            "calls": 1498928,
+            "seconds": 1.43892
+          }
+        }
+      }
+    },
+    "profile_perfect_20000_0.stderr.log": {
+      "visits": {
+        "0": {
+          "states": 1620,
+          "touches": 233276,
+          "singleton": 0,
+          "le2": 0,
+          "ge10": 1614,
+          "singleton_percent": 0.0
+        },
+        "1": {
+          "states": 251097,
+          "touches": 408175,
+          "singleton": 175963,
+          "le2": 218018,
+          "ge10": 1386,
+          "singleton_percent": 70.0776990565399
+        },
+        "2": {
+          "states": 569102,
+          "touches": 575359,
+          "singleton": 563046,
+          "le2": 568917,
+          "ge10": 0,
+          "singleton_percent": 98.93586738405418
+        },
+        "3": {
+          "states": 574555,
+          "touches": 574760,
+          "singleton": 574350,
+          "le2": 574555,
+          "ge10": 0,
+          "singleton_percent": 99.96432021303444
+        }
+      },
+      "timers": {
+        "training": {
+          "touch": {
+            "calls": 1791570,
+            "seconds": 1.15675
+          },
+          "key_inclusive": {
+            "calls": 1558294,
+            "seconds": 6.11218
+          },
+          "bucket_nested": {
+            "calls": 146965,
+            "seconds": 5.7705
+          },
+          "terminal": {
+            "calls": 1299528,
+            "seconds": 2.58517
+          },
+          "legal_actions": {
+            "calls": 1558294,
+            "seconds": 0.522636
+          },
+          "apply_action": {
+            "calls": 2628515,
+            "seconds": 1.42967
+          },
+          "sample_deal": {
+            "calls": 40000,
+            "seconds": 0.018233
+          },
+          "canonical_nested": {
+            "calls": 298163,
+            "seconds": 0.303815
+          }
+        },
+        "after_profile_eval": {
+          "touch": {
+            "calls": 1791570,
+            "seconds": 1.15675
+          },
+          "key_inclusive": {
+            "calls": 1567603,
+            "seconds": 6.37091
+          },
+          "bucket_nested": {
+            "calls": 153355,
+            "seconds": 6.01642
+          },
+          "terminal": {
+            "calls": 1319528,
+            "seconds": 2.63196
+          },
+          "legal_actions": {
+            "calls": 1567603,
+            "seconds": 0.527312
+          },
+          "apply_action": {
+            "calls": 2637824,
+            "seconds": 1.43692
+          },
+          "sample_deal": {
+            "calls": 60000,
+            "seconds": 0.0243281
+          },
+          "canonical_nested": {
+            "calls": 311845,
+            "seconds": 0.316995
+          }
+        },
+        "all": {
+          "touch": {
+            "calls": 1952187,
+            "seconds": 1.23336
+          },
+          "key_inclusive": {
+            "calls": 1963954,
+            "seconds": 7.95519
+          },
+          "bucket_nested": {
+            "calls": 193756,
+            "seconds": 7.50901
+          },
+          "terminal": {
+            "calls": 1662423,
+            "seconds": 3.27675
+          },
+          "legal_actions": {
+            "calls": 1963954,
+            "seconds": 0.655045
+          },
+          "apply_action": {
+            "calls": 3300594,
+            "seconds": 1.78364
+          },
+          "sample_deal": {
+            "calls": 90000,
+            "seconds": 0.0341198
+          },
+          "canonical_nested": {
+            "calls": 396178,
+            "seconds": 0.396056
+          }
+        }
+      }
+    }
+  },
+  "deterministic_root_output_equality": "PASS for baseline/cached/profile at 20000 in both modes; not a convergence or whole-policy equivalence proof",
+  "run_count": 16,
+  "combinatorics": {
+    "ordered_compatible_private_pairs": 353430,
+    "private_pairs_and_unordered_board5": 71172319680,
+    "private_pairs_and_street_distinguished_runout": 1423446393600,
+    "physical_public_river_histories": 7539840,
+    "canonical_public_river_roots": 366488496
+  },
+  "budget_requirements_not_predictions": {
+    "certificate_3h_aggregate_roots_per_second": 33934.12,
+    "certificate_3h_ideal_8_workers_milliseconds_per_root": 0.23575091972327558,
+    "certificate_12h_ideal_8_workers_milliseconds_per_root": 0.9430036788931023,
+    "historical_worst_root_assigned_to_every_root_serial_hours": 272.769243384,
+    "historical_worst_root_assigned_to_every_root_ideal8_hours": 34.096155423
+  },
+  "limitations": [
+    "single stochastic seed and one fixture",
+    "four instrumented runs have timer and 8-byte-per-state overhead",
+    "three A/B timing repetitions are descriptive, not a statistical performance qualification",
+    "no full-game training or certificate executed",
+    "no production modification"
+  ]
+}
