@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P5 (kernel vettoriale HU), in avvio |
-| Ultimo gate | P4 PASS (2026-09-15) |
+| Fase in corso | P6 (trainer con campionamento del board), in avvio |
+| Ultimo gate | P5 PASS (2026-09-15) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p5-kernel` (P0–P4 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p6-trainer` (P0–P5 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | in attesa dell'utente (Q2): il gate P3 prevede il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | P5: kernel vettoriale HU su un board fisso (fold, showdown con blocker in n log n, all-in preflop dalla tabella esatta), reach a N vettori, test contro il calcolo diretto 465×465 |
+| Prossimo passo | P6: trainer CFR vettoriale con board campionati (batch `B`, update Linear/DCFR una volta per iterazione, parallelismo per sottoalbero, stimatore campionato di exploitability con intervallo e regola D3, checkpoint atomico), oracolo `FiniteGame` sul gioco ridotto |
 
 ## 2. Registro dei gate
 
@@ -30,7 +30,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P2 Risorse esatte | PASS | 2026-09-15 | `9f8a6d3` | [P2_EXACT_RESOURCES.md](P2_EXACT_RESOURCES.md) |
 | P3 Clustering e tabelle bucket | PASS | 2026-09-15 | `c7bb762` | [P3_BUCKET_TABLES.md](P3_BUCKET_TABLES.md) |
 | P4 Modello di gioco e albero compilato | PASS | 2026-09-15 | `89f159e` | [P4_GAME_MODEL.md](P4_GAME_MODEL.md) |
-| P5 Kernel vettoriale HU | NOT_RUN | | | |
+| P5 Kernel vettoriale HU | PASS | 2026-09-15 | `738e361` | [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md) |
 | P6 Trainer con campionamento del board | NOT_RUN | | | |
 | P7 Certificatore board-major | NOT_RUN | | | |
 | P8 Export, query, comparatore, viewer | NOT_RUN | | | |
@@ -52,6 +52,43 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-15 — P5 — kernel vettoriale HU, gate PASS
+
+Fatto: contesto di board (465 mani vive, rank dalla tabella P2, ordine per rank, classi, bucket
+P3 via permutazione canonica, incidenza per carta); kernel fold `D = S − C[h1] − C[h2] + r[h]`,
+showdown a due passate con correzione dei blocker e gruppi di pari rank, cache all-in preflop
+per board dalla tabella esatta; interfaccia `ShowdownKernel` a N reach (D13) con implementazione
+HU; traversata dei valori senza allocazioni con policy a bucket e per mano, potatura a reach nulla
+e modalità best response; compilazione di sottogiochi da uno stato arbitrario; test contro i
+riferimenti pairwise, contro la ricorsione per coppia e contro il solver postflop `ProductionDcfr`
+(solo test, D5); eseguibile di misura. Report: [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md).
+Comandi: build dei target P5; `ctest -L p5 -V`; `gtosd_preflop_blueprint_traversal` su CO40 e
+HU10; configure `windows-asan` (RelWithDebInfo, `/fsanitize=address /bigobj`) e
+`ctest -R "gtosd_preflop_blueprint_(kernel|game|oracle)_tests"`; suite CTest completa (65 test)
+sull'integrazione dopo il merge di P3.
+Risultati: kernel 1.636.010 asserzioni PASS in 7,7 s (200 board × 3 pattern di reach entro
+`1e-12`; traversata contro ricorsione per coppia con errore massimo `6,5·10⁻¹³` ante; bucket contro
+mano entro `1e-12`); oracolo postflop 179.342 asserzioni PASS: tre sottogiochi river (57, 117, 57
+nodi) con errore massimo `1,4·10⁻¹⁴` ante sui valori condizionali per combo; ASan PASS senza
+diagnostiche (gioco 7,0 s, kernel 43,3 s, oracolo 6,6 s). Tempo per board CO40 a macchina libera:
+contesto 0,06 ms, cache all-in 2,05 ms, traversata 89,8 ms (policy a bucket) / 70,7 ms (per
+mano), best response 72,5 ms; HU10 completa 9,4 ms. Suite completa sull'integrazione (build
+completa 21 min, test 1.278 s): 61/65 PASS; i 4 test legacy `gtosd_river_*_preflight/smoke`
+falliscono con "frozen v1 regression manifest fingerprint mismatch" perché il worktree ha
+`benchmarks/fixtures/river_bucket_qualification_corpus_v1.json` in CRLF (`core.autocrlf=true`)
+mentre il fingerprint congelato è sul testo LF del checkout dell'utente; con il file in LF i 4
+test passano (65/65). Nessuna relazione con il codice del programma.
+Fallimenti: (1) primo run dell'oracolo respinto dal solver postflop (`invalid_configuration`):
+opzioni `ProductionDcfr` costruite a mano; sostituite da `resolve_postflop_production_options`.
+(2) Build ASan dell'oracolo fallita per C1128 (troppe sezioni) in `postflop_solver.cpp`, libreria
+fuori perimetro: risolto aggiungendo `/bigobj` ai flag del configure ASan, senza modifiche al
+repository. (3) Le prime misure di tempo (300 ms per traversata) erano contaminate dalla suite in
+esecuzione; rimisurate a macchina libera.
+Dubbi: (1) il costo della traversata è dominato dai 15.922 terminali di showdown; ottimizzazioni
+(float, vettorizzazione) rinviate dopo P9 per §3.4. (2) Il fingerprint dei manifest legacy è
+sensibile ai fine riga: fragilità del legacy da segnalare, non da correggere in questo programma.
+Prossimo passo: P6 sul branch `feature/preflop-blueprint-p6-trainer`.
 
 ### 2026-09-15 — P4 — modello di gioco e albero compilato, gate PASS
 
@@ -204,7 +241,7 @@ Prossimo passo: P0.
 | # | Data | Domanda | Stato | Risposta |
 |---|---|---|---|---|
 | Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. | aperta | |
-| Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Prima del merge l'agent esegue la suite CTest completa sull'integrazione e ne registra l'esito. In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 procede sull'integrazione. | aperta | |
+| Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Suite CTest completa eseguita sull'integrazione dopo il merge di P3: 65/65 PASS (4 test legacy passano solo con il manifest v1 in LF, vedi voce P5 del diario; nel checkout dell'utente il file è in LF). In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 e P5 sono proceduti sull'integrazione. | aperta | |
 
 ## 5. Decisioni prese dall'agent
 
@@ -230,3 +267,7 @@ Prossimo passo: P0.
 | 18 | 2026-09-15 | P4 | Regole di fase come funzione del livello di aggressione della street (0 apertura, 1 risposta, 2+ solo fold/call/all-in) e del "facing all-in" letto dallo stato, non della macchina a stadi HU | stesso albero HU (fingerprint legacy riprodotto) e regole valide per N giocatori |
 | 19 | 2026-09-15 | P4 | Transizioni HU delegate a `gtosd::apply_action`/`advance_street`; per N > 2 fold generalizzato e avanzo di street nella libreria blueprint, nessuna modifica al core in P4 | il core gestisce il fold solo a due giocatori; il costruttore N-player nel core è previsto da P10 (§2.2) |
 | 20 | 2026-09-15 | P4 | Conteggi attesi dello scheletro postflop CO40 corretti a 27.012 nodi / 10.060 decisioni / 25.944 archi (misurati con `gtosd_hu_preflop_tree` sul codice legacy attuale) | i 30.324 / 11.308 / 29.112 della roadmap provengono da documenti anteriori alle regole di puntata correnti e non sono riprodotti nemmeno dal codice legacy |
+| 21 | 2026-09-15 | P5 | Cache per board delle probabilità esatte di vittoria e pareggio di ogni coppia viva (2 matrici 465×465 in double, 3,5 MB) invece di leggere la tabella P2 a ogni terminale | 10 terminali all-in preflop per traversata: costruzione una volta per board, poi prodotti matrice-vettore; la massa di sconfitta deriva da `D − W − T` con `D` esatto dal kernel fold |
+| 22 | 2026-09-15 | P5 | Interfaccia `Policy` per (nodo, mano) con due implementazioni: `BucketPolicy` sul layout P4 e `HandPolicy` per mano | la traversata non conosce l'astrazione; gli oracoli e i test prescrivono strategie per combo, il trainer userà i bucket |
+| 23 | 2026-09-15 | P5 | Oracolo postflop confrontato sul valore condizionale `v[h] / D[h]` invece che sul valore controfattuale grezzo | il solver postflop normalizza la reach avversaria con una costante interna; il rapporto elimina la costante e resta un confronto esatto per combo |
+| 24 | 2026-09-15 | P5 | Tabella all-in e rank caricate dalla directory `out/preflop_blueprint_resources` quando presente, altrimenti ricostruite nel test | i test restano autosufficienti su altre macchine (circa un minuto di costruzione) e rapidi su quella di riferimento |
