@@ -509,3 +509,44 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_kernel_tests preflop_blueprint_kernel_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_kernel_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_kernel_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_kernel_tests)
+  # The exact rank and all-in tables are loaded from the P2 output directory
+  # when present and rebuilt otherwise; bucket tables are optional.
+  add_test(NAME gtosd_preflop_blueprint_kernel_tests
+    COMMAND gtosd_preflop_blueprint_kernel_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_kernel_tests
+    PROPERTIES LABELS "preflop_blueprint;p5;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_kernel_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  # Oracle: the standalone postflop solver is linked by this test only (D5).
+  add_executable(gtosd_preflop_blueprint_oracle_tests preflop_blueprint_oracle_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_oracle_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::postflop gtosd::tree
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_oracle_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_oracle_tests)
+  add_test(NAME gtosd_preflop_blueprint_oracle_tests
+    COMMAND gtosd_preflop_blueprint_oracle_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_oracle_tests
+    PROPERTIES LABELS "preflop_blueprint;p5;oracle")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_oracle_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()

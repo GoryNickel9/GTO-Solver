@@ -347,3 +347,22 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_traversal preflop_blueprint_traversal.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_traversal
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_traversal)
+  add_test(NAME gtosd_preflop_blueprint_traversal_report
+    COMMAND gtosd_preflop_blueprint_traversal
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --boards 10)
+  set_tests_properties(gtosd_preflop_blueprint_traversal_report
+    PROPERTIES LABELS "preflop_blueprint;p5;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_traversal_report PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
