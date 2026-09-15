@@ -6,7 +6,8 @@ add_library(gtosd_preflop_blueprint
   src/game_model.cpp
   src/board_context.cpp
   src/kernels.cpp
-  src/traversal.cpp)
+  src/traversal.cpp
+  src/trainer.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
 
 target_include_directories(gtosd_preflop_blueprint
