@@ -135,6 +135,11 @@ public:
 
   [[nodiscard]] static Result<CompiledGame, GameModelError>
   compile(const GameConfig &config, const CompileOptions &options = {});
+  // Compiles the subgame rooted at an arbitrary in-progress public state with
+  // the postflop action abstraction of the configuration (tests and oracles).
+  [[nodiscard]] static Result<CompiledGame, GameModelError>
+  compile_subgame(const GameConfig &config, const PublicState &root,
+                  const CompileOptions &options = {});
 
 private:
   friend class GameCompiler;

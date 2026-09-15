@@ -40,14 +40,25 @@ public:
   GameCompiler(const GameConfig &config, const CompileOptions &options, CompiledGame &game)
       : config_(config), options_(options), game_(game) {}
 
-  Result<bool, GameModelError> run() {
+  Result<bool, GameModelError> run(const PublicState *subgame_root) {
     using Outcome = Result<bool, GameModelError>;
     const auto started = Clock::now();
-    const auto root = make_preflop_state(config_);
-    if (!root) {
-      return Outcome::failure(root.error());
+    PublicState root_state;
+    if (subgame_root != nullptr) {
+      if (subgame_root->status != HandStatus::InProgress ||
+          subgame_root->player_count != config_.player_count || !validate_state(*subgame_root)) {
+        return Outcome::failure(GameModelError::InvalidConfiguration);
+      }
+      root_state = *subgame_root;
+      subgame_ = true;
+    } else {
+      const auto root = make_preflop_state(config_);
+      if (!root) {
+        return Outcome::failure(root.error());
+      }
+      root_state = root.value();
     }
-    const auto root_id = expand(root.value(), 0U, 0U, no_node, no_entry);
+    const auto root_id = expand(root_state, 0U, 0U, no_node, no_entry);
     if (!root_id) {
       return Outcome::failure(root_id.error());
     }
@@ -258,7 +269,10 @@ private:
   std::string fingerprint() const {
     auto hash = detail::fnv1a_text("gtosd.preflop_blueprint_game_tree.v1|");
     hash = detail::fnv1a_text(game_config_fingerprint(config_), hash);
-    hash = detail::fnv1a_text(options_.preflop_only ? "|preflop_only|" : "|full|", hash);
+    hash = detail::fnv1a_text(subgame_ ? "|subgame|"
+                              : options_.preflop_only ? "|preflop_only|"
+                                                      : "|full|",
+                              hash);
     for (const auto &node : game_.nodes_) {
       hash = detail::fnv1a_text(std::to_string(static_cast<unsigned>(node.kind)) + ":" +
                                     std::to_string(static_cast<unsigned>(node.level)) + ":" +
@@ -274,6 +288,7 @@ private:
   const GameConfig &config_;
   const CompileOptions &options_;
   CompiledGame &game_;
+  bool subgame_{false};
 };
 
 std::span<const std::int64_t> CompiledGame::fold_payoffs(const std::uint32_t node) const noexcept {
@@ -320,7 +335,24 @@ Result<CompiledGame, GameModelError> CompiledGame::compile(const GameConfig &con
   CompiledGame game;
   game.config_ = config;
   GameCompiler compiler(config, options, game);
-  const auto outcome = compiler.run();
+  const auto outcome = compiler.run(nullptr);
+  if (!outcome) {
+    return Outcome::failure(outcome.error());
+  }
+  return Outcome::success(std::move(game));
+}
+
+Result<CompiledGame, GameModelError> CompiledGame::compile_subgame(const GameConfig &config,
+                                                                   const PublicState &root,
+                                                                   const CompileOptions &options) {
+  using Outcome = Result<CompiledGame, GameModelError>;
+  if (!validate_game_config(config)) {
+    return Outcome::failure(GameModelError::InvalidConfiguration);
+  }
+  CompiledGame game;
+  game.config_ = config;
+  GameCompiler compiler(config, options, game);
+  const auto outcome = compiler.run(&root);
   if (!outcome) {
     return Outcome::failure(outcome.error());
   }
