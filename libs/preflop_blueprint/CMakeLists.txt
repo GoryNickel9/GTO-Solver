@@ -1,7 +1,9 @@
 find_package(nlohmann_json CONFIG REQUIRED)
 
 add_library(gtosd_preflop_blueprint
-  src/game_config.cpp)
+  src/compiled_game.cpp
+  src/game_config.cpp
+  src/game_model.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
 
 target_include_directories(gtosd_preflop_blueprint
