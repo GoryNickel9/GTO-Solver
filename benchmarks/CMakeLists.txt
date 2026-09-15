@@ -332,3 +332,18 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_game preflop_blueprint_game.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_game PRIVATE gtosd::preflop_blueprint)
+  gtosd_set_warnings(gtosd_preflop_blueprint_game)
+  add_test(NAME gtosd_preflop_blueprint_game_report
+    COMMAND gtosd_preflop_blueprint_game
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
+  set_tests_properties(gtosd_preflop_blueprint_game_report
+    PROPERTIES LABELS "preflop_blueprint;p4;game")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_game_report PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()

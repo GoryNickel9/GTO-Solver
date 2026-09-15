@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P4 (modello di gioco e albero compilato), in avvio |
-| Ultimo gate | P3 PASS (2026-09-15) |
+| Fase in corso | P5 (kernel vettoriale HU), in avvio |
+| Ultimo gate | P4 PASS (2026-09-15) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p4-game-model` (P0–P3 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p5-kernel` (P0–P4 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | in attesa dell'utente (Q2): il gate P3 prevede il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | P4: modello di gioco N-player, albero preflop guidato dallo stato con fingerprint legacy riprodotto, albero pubblico postflop compilato per ingresso con payoff settled, layout dello stato |
+| Prossimo passo | P5: kernel vettoriale HU su un board fisso (fold, showdown con blocker in n log n, all-in preflop dalla tabella esatta), reach a N vettori, test contro il calcolo diretto 465×465 |
 
 ## 2. Registro dei gate
 
@@ -29,7 +29,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P1 Canonicalizzazione e cataloghi | PASS | 2026-09-15 | `ca80dab` | [P1_CANONICAL_BOARDS.md](P1_CANONICAL_BOARDS.md) |
 | P2 Risorse esatte | PASS | 2026-09-15 | `9f8a6d3` | [P2_EXACT_RESOURCES.md](P2_EXACT_RESOURCES.md) |
 | P3 Clustering e tabelle bucket | PASS | 2026-09-15 | `c7bb762` | [P3_BUCKET_TABLES.md](P3_BUCKET_TABLES.md) |
-| P4 Modello di gioco e albero compilato | NOT_RUN | | | |
+| P4 Modello di gioco e albero compilato | PASS | 2026-09-15 | `89f159e` | [P4_GAME_MODEL.md](P4_GAME_MODEL.md) |
 | P5 Kernel vettoriale HU | NOT_RUN | | | |
 | P6 Trainer con campionamento del board | NOT_RUN | | | |
 | P7 Certificatore board-major | NOT_RUN | | | |
@@ -52,6 +52,43 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-15 — P4 — modello di gioco e albero compilato, gate PASS
+
+Fatto: layer di regole N-player (`game_model`): stato preflop a N giocatori (ante morte, button
+blind vivo del BTN, primo posto ad agire), abstraction delle azioni come funzione del livello di
+aggressione della street e del "facing all-in", transizioni HU delegate al core e fold
+generalizzato per N > 2, avanzo di street con il primo giocatore attivo non all-in. Albero
+compilato (`compiled_game`): un solo array in preordine con sottoalberi contigui, nodi Decision /
+Chance / TerminalFold / TerminalShowdown, archi nell'ordine di `legal_actions`, payoff per ogni
+sottoinsieme di vincitori settled una volta con `settle_terminal`, statistiche, fingerprint,
+layout dello stato `(nodo, classe o bucket, azione)`. Test (`preflop_blueprint_game_tests`) e
+eseguibile di report (`preflop_blueprint_game`). Report: [P4_GAME_MODEL.md](P4_GAME_MODEL.md).
+Comandi: build dei target P4; `ctest -L p4 -V`; `gtosd_hu_preflop_tree` (legacy) per il confronto;
+`ctest -L preflop_blueprint`.
+Risultati: 836.981 asserzioni PASS in 0,6 s; controllo di isolamento PASS su 26 sorgenti;
+regressione `preflop_blueprint` P0–P4 11/11 PASS (223 s). CO40 parte preflop 58 nodi, 20
+decisioni, 9 ingressi, 19 fold, 10 all-in; fingerprint
+legacy `fnv1a64:a68337fa567aa2d9` riprodotto dalla parte preflop dell'albero compilato; scheletro
+postflop 27.012 nodi rappresentati, 10.060 decisioni (372 flop, 2.100 turn, 7.588 river), 25.944
+archi azione, 1.059 frontiere chance, 7.942 fold, 6.715 showdown, 1.236 runout all-in, massimo 4
+raise per street, compilazione 0,026 s; stato R+S in double: 356.617.872 B con 200/500/1.000 e
+714.889.872 B con 500/1.000/2.000 (preflop 4.617 celle, flop 216.000, turn 2.796.000, river
+19.272.000 con la baseline). HU10 completa 2.059 nodi (812 decisioni), HU10 ridotta 571 nodi
+(236 decisioni). Albero 3-way (UTG, CO, BTN, 40a) solo preflop: 580 nodi, 234 decisioni, 75
+ingressi, 115 fold, 156 runout all-in; il fold generalizzato restituisce l'eccesso non chiamato
+(UTG raise 6a, due fold: UTG +3a, CO −1a, BTN −2a).
+Fallimenti: (1) primo run del test fallito sul conteggio atteso 30.324 / 11.308 della roadmap;
+il benchmark legacy `gtosd_hu_preflop_tree` sul codice attuale misura 27.012 / 10.060 / 25.944,
+identici all'albero compilato classe per classe: il valore della roadmap era documentazione
+stale. Costanti attese corrette (decisione 20). (2) Il controllo di isolamento ha rifiutato un
+commento dell'header che citava il costruttore HU legacy per nome (pattern `hu_preflop`);
+commento riformulato.
+Dubbi: la roadmap cita anche una profondità massima 15 dallo scheletro legacy; l'albero compilato
+misura 17 dalla radice preflop (2 livelli in più per il tratto preflop fino all'ingresso). Il
+postflop multiway non è compilato in P4 (P10); la "call per meno" a N > 2 è rifiutata perché con
+stack uguali non si presenta e i side pot non sono modellati.
+Prossimo passo: P5 sul branch `feature/preflop-blueprint-p5-kernel`.
 
 ### 2026-09-15 — P3 — clustering e tabelle bucket, gate PASS
 
@@ -190,3 +227,6 @@ Prossimo passo: P0.
 | 15 | 2026-09-15 | P3 | k-means intero: istogrammi e cumulate come conteggi, centroidi come mediane pesate (EMD) o medie arrotondate (L2), partizione statica del lavoro | nessuna dipendenza dall'ordine di riduzione in virgola mobile: risultato identico a 1, 3 e 8 thread (D14) |
 | 16 | 2026-09-15 | P3 | Riavvii valutati su un campione sistematico di 500.000 osservazioni per 10 iterazioni, solo il migliore rifinito sull'intero insieme | 10 riavvii completi costerebbero dieci volte il river (814 s); il campione sistematico è deterministico e copre tutte le righe |
 | 17 | 2026-09-15 | P3 | Bucket rietichettati per forza crescente del centroide dopo la convergenza | id confrontabili fra costruzioni e leggibili nei report; l'assegnazione non cambia |
+| 18 | 2026-09-15 | P4 | Regole di fase come funzione del livello di aggressione della street (0 apertura, 1 risposta, 2+ solo fold/call/all-in) e del "facing all-in" letto dallo stato, non della macchina a stadi HU | stesso albero HU (fingerprint legacy riprodotto) e regole valide per N giocatori |
+| 19 | 2026-09-15 | P4 | Transizioni HU delegate a `gtosd::apply_action`/`advance_street`; per N > 2 fold generalizzato e avanzo di street nella libreria blueprint, nessuna modifica al core in P4 | il core gestisce il fold solo a due giocatori; il costruttore N-player nel core è previsto da P10 (§2.2) |
+| 20 | 2026-09-15 | P4 | Conteggi attesi dello scheletro postflop CO40 corretti a 27.012 nodi / 10.060 decisioni / 25.944 archi (misurati con `gtosd_hu_preflop_tree` sul codice legacy attuale) | i 30.324 / 11.308 / 29.112 della roadmap provengono da documenti anteriori alle regole di puntata correnti e non sono riprodotti nemmeno dal codice legacy |
