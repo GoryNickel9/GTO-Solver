@@ -103,6 +103,18 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_hu_preflop_abstract_game_tests hu_preflop_abstract_game_tests.cpp)
+target_link_libraries(gtosd_hu_preflop_abstract_game_tests
+  PRIVATE gtosd::preflop_certifier gtosd::best_response)
+gtosd_set_warnings(gtosd_hu_preflop_abstract_game_tests)
+add_test(NAME gtosd_hu_preflop_abstract_game_tests COMMAND gtosd_hu_preflop_abstract_game_tests)
+set_tests_properties(gtosd_hu_preflop_abstract_game_tests
+  PROPERTIES LABELS "preflop;v23;abstract-game;nashconv;exact")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_hu_preflop_abstract_game_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
 add_executable(gtosd_hu_preflop_parallel_tests hu_preflop_parallel_tests.cpp)
 target_link_libraries(gtosd_hu_preflop_parallel_tests PRIVATE gtosd::preflop_trainer)
 gtosd_set_warnings(gtosd_hu_preflop_parallel_tests)
@@ -168,6 +180,17 @@ set_tests_properties(gtosd_phase5_tests
   PROPERTIES LABELS "phase5;solver;best_response;reference")
 if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_phase5_tests PROPERTIES
+    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+endif()
+
+add_executable(gtosd_tre_validation_tests tre_validation_tests.cpp)
+target_link_libraries(gtosd_tre_validation_tests PRIVATE gtosd::solver_validation)
+gtosd_set_warnings(gtosd_tre_validation_tests)
+add_test(NAME gtosd_tre_validation_tests COMMAND gtosd_tre_validation_tests)
+set_tests_properties(gtosd_tre_validation_tests
+  PROPERTIES LABELS "solver;validation;tre;statistics")
+if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+  set_tests_properties(gtosd_tre_validation_tests PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 

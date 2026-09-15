@@ -36,6 +36,16 @@ struct IterationDelta {
   std::uint64_t traversed_nodes{0};
 };
 
+struct SampledInformationDelta {
+  std::vector<double> regret;
+  std::vector<double> strategy;
+};
+
+struct SampledIterationDelta {
+  std::map<InformationSetBuffer *, SampledInformationDelta> information_sets;
+  std::uint64_t traversed_nodes{0};
+};
+
 bool finite_vector(const std::vector<double> &values) {
   return std::ranges::all_of(values, [](const double value) { return std::isfinite(value); });
 }
@@ -326,58 +336,100 @@ std::size_t sample_probabilities(const std::vector<double> &probabilities, std::
   return probabilities.size() - 1U;
 }
 
-double traverse_external_sampling(const FiniteGame &game, const GameNodeId node_id,
-                                  const StrategyProfile &strategy,
-                                  const std::uint8_t updating_player,
-                                  const std::array<double, 2> reach, IterationDelta &delta,
-                                  std::uint64_t &rng_state) {
+std::vector<double> cumulative_edge_probabilities(const GameNode &node) {
+  std::vector<double> cumulative;
+  cumulative.reserve(node.edges.size());
+  double probability = 0.0;
+  for (const auto &edge : node.edges) {
+    probability += edge.probability;
+    cumulative.push_back(probability);
+  }
+  return cumulative;
+}
+
+std::size_t sample_cumulative_probabilities(const std::vector<double> &cumulative,
+                                            std::uint64_t &state) {
+  const double target = uniform_unit(state);
+  std::size_t first = 0U;
+  std::size_t last = cumulative.size();
+  while (first < last) {
+    const auto middle = first + (last - first) / 2U;
+    if (target < cumulative[middle]) {
+      last = middle;
+    } else {
+      first = middle + 1U;
+    }
+  }
+  return std::min(first, cumulative.size() - 1U);
+}
+
+std::size_t sample_edge_probabilities(const GameNode &node, std::uint64_t &state) {
+  const double target = uniform_unit(state);
+  double cumulative = 0.0;
+  for (std::size_t index = 0U; index < node.edges.size(); ++index) {
+    cumulative += node.edges[index].probability;
+    if (target < cumulative || index + 1U == node.edges.size()) {
+      return index;
+    }
+  }
+  return node.edges.size() - 1U;
+}
+
+double
+traverse_external_sampling(const FiniteGame &game, const GameNodeId node_id,
+                           const std::vector<InformationSetBuffer *> &information_sets_by_node,
+                           const std::vector<double> &root_chance_cumulative,
+                           const std::uint8_t updating_player, const std::array<double, 2> reach,
+                           SampledIterationDelta &delta, std::uint64_t &rng_state) {
   ++delta.traversed_nodes;
   const auto &node = game.nodes[node_id];
   if (node.kind == GameNodeKind::Terminal) {
     return node.payoff[updating_player];
   }
   if (node.kind == GameNodeKind::Chance) {
-    std::vector<double> probabilities;
-    probabilities.reserve(node.edges.size());
-    for (const auto &edge : node.edges) {
-      probabilities.push_back(edge.probability);
-    }
-    const std::size_t sampled = sample_probabilities(probabilities, rng_state);
-    return traverse_external_sampling(game, node.edges[sampled].child, strategy, updating_player,
-                                      reach, delta, rng_state);
+    const std::size_t sampled =
+        node_id == game.root && !root_chance_cumulative.empty()
+            ? sample_cumulative_probabilities(root_chance_cumulative, rng_state)
+            : sample_edge_probabilities(node, rng_state);
+    return traverse_external_sampling(game, node.edges[sampled].child, information_sets_by_node,
+                                      root_chance_cumulative, updating_player, reach, delta,
+                                      rng_state);
   }
 
-  const auto &information_strategy = strategy.at(node.information_set);
+  auto *const information_set = information_sets_by_node[node_id];
+  const auto information_strategy = regret_matching(*information_set);
   const double average_multiplier =
       external_sampling_average_multiplier(node.player, updating_player, reach[node.player]);
   if (average_multiplier != 0.0) {
-    auto &strategy_delta = delta.strategy[node.information_set];
+    auto &strategy_delta = delta.information_sets[information_set].strategy;
     if (strategy_delta.empty()) {
       strategy_delta.resize(node.edges.size(), 0.0);
     }
     for (std::size_t index = 0; index < node.edges.size(); ++index) {
-      strategy_delta[index] += average_multiplier * information_strategy.probabilities[index];
+      strategy_delta[index] += average_multiplier * information_strategy[index];
     }
   }
 
   if (node.player != updating_player) {
-    const std::size_t sampled = sample_probabilities(information_strategy.probabilities, rng_state);
+    const std::size_t sampled = sample_probabilities(information_strategy, rng_state);
     auto child_reach = reach;
-    child_reach[node.player] *= information_strategy.probabilities[sampled];
-    return traverse_external_sampling(game, node.edges[sampled].child, strategy, updating_player,
-                                      child_reach, delta, rng_state);
+    child_reach[node.player] *= information_strategy[sampled];
+    return traverse_external_sampling(game, node.edges[sampled].child, information_sets_by_node,
+                                      root_chance_cumulative, updating_player, child_reach, delta,
+                                      rng_state);
   }
 
   std::vector<double> action_values(node.edges.size(), 0.0);
   double value = 0.0;
   for (std::size_t index = 0; index < node.edges.size(); ++index) {
     auto child_reach = reach;
-    child_reach[node.player] *= information_strategy.probabilities[index];
+    child_reach[node.player] *= information_strategy[index];
     action_values[index] = traverse_external_sampling(
-        game, node.edges[index].child, strategy, updating_player, child_reach, delta, rng_state);
-    value += information_strategy.probabilities[index] * action_values[index];
+        game, node.edges[index].child, information_sets_by_node, root_chance_cumulative,
+        updating_player, child_reach, delta, rng_state);
+    value += information_strategy[index] * action_values[index];
   }
-  auto &regret_delta = delta.regret[node.information_set];
+  auto &regret_delta = delta.information_sets[information_set].regret;
   if (regret_delta.empty()) {
     regret_delta.resize(node.edges.size(), 0.0);
   }
@@ -430,6 +482,50 @@ void apply_iteration_delta(SolverCheckpoint &checkpoint, const IterationDelta &d
                            const std::uint64_t iteration) {
   const auto algorithm = checkpoint.config.algorithm;
   const double iteration_value = static_cast<double>(iteration);
+  const auto apply_additive_delta = [&](const std::string &key,
+                                        const std::vector<double> *regret_delta,
+                                        const std::vector<double> *strategy_delta) {
+    auto &buffer = checkpoint.information_sets.at(key);
+    const bool linear =
+        algorithm == SolverAlgorithm::LinearCfr || algorithm == SolverAlgorithm::LinearMccfr;
+    const double regret_weight = linear ? iteration_value : 1.0;
+    double strategy_weight = 1.0;
+    if (linear) {
+      strategy_weight = iteration_value;
+    } else if (algorithm == SolverAlgorithm::CfrPlus) {
+      strategy_weight = iteration > checkpoint.config.averaging_delay
+                            ? static_cast<double>(iteration - checkpoint.config.averaging_delay)
+                            : 0.0;
+    }
+    for (std::size_t index = 0; index < buffer.actions.size(); ++index) {
+      const double regret_increment =
+          regret_delta == nullptr ? 0.0 : regret_weight * (*regret_delta)[index];
+      const double updated = buffer.cumulative_regret[index] + regret_increment;
+      buffer.cumulative_regret[index] =
+          algorithm == SolverAlgorithm::CfrPlus ? std::max(0.0, updated) : updated;
+      if (strategy_delta != nullptr) {
+        buffer.cumulative_strategy[index] += strategy_weight * (*strategy_delta)[index];
+      }
+    }
+  };
+
+  // Additive variants leave untouched information sets unchanged. DCFR is the
+  // exception because its discount schedule must also advance dormant state.
+  if (algorithm != SolverAlgorithm::Dcfr) {
+    for (const auto &[key, regret_delta] : delta.regret) {
+      const auto strategy_found = delta.strategy.find(key);
+      const auto *strategy_delta =
+          strategy_found == delta.strategy.end() ? nullptr : &strategy_found->second;
+      apply_additive_delta(key, &regret_delta, strategy_delta);
+    }
+    for (const auto &[key, strategy_delta] : delta.strategy) {
+      if (!delta.regret.contains(key)) {
+        apply_additive_delta(key, nullptr, &strategy_delta);
+      }
+    }
+    return;
+  }
+
   for (auto &[key, buffer] : checkpoint.information_sets) {
     const auto regret_found = delta.regret.find(key);
     const auto strategy_found = delta.strategy.find(key);
@@ -452,24 +548,41 @@ void apply_iteration_delta(SolverCheckpoint &checkpoint, const IterationDelta &d
       }
     }
 
-    const bool linear =
-        algorithm == SolverAlgorithm::LinearCfr || algorithm == SolverAlgorithm::LinearMccfr;
-    const double regret_weight = linear ? iteration_value : 1.0;
-    double strategy_weight = 1.0;
-    if (linear) {
-      strategy_weight = iteration_value;
-    } else if (algorithm == SolverAlgorithm::CfrPlus) {
-      strategy_weight = iteration > checkpoint.config.averaging_delay
-                            ? static_cast<double>(iteration - checkpoint.config.averaging_delay)
-                            : 0.0;
-    }
     for (std::size_t index = 0; index < buffer.actions.size(); ++index) {
-      const double updated = buffer.cumulative_regret[index] + regret_weight * regret_delta[index];
-      buffer.cumulative_regret[index] =
-          algorithm == SolverAlgorithm::CfrPlus ? std::max(0.0, updated) : updated;
-      buffer.cumulative_strategy[index] += strategy_weight * strategy_delta[index];
+      buffer.cumulative_regret[index] += regret_delta[index];
+      buffer.cumulative_strategy[index] += strategy_delta[index];
     }
   }
+}
+
+void apply_sampled_iteration_delta(const SolverAlgorithm algorithm,
+                                   const SampledIterationDelta &delta,
+                                   const std::uint64_t iteration) {
+  const double weight =
+      algorithm == SolverAlgorithm::LinearMccfr ? static_cast<double>(iteration) : 1.0;
+  for (const auto &[buffer, update] : delta.information_sets) {
+    for (std::size_t index = 0U; index < buffer->actions.size(); ++index) {
+      if (!update.regret.empty()) {
+        buffer->cumulative_regret[index] += weight * update.regret[index];
+      }
+      if (!update.strategy.empty()) {
+        buffer->cumulative_strategy[index] += weight * update.strategy[index];
+      }
+    }
+  }
+}
+
+std::vector<InformationSetBuffer *>
+make_sampled_information_set_lookup(const FiniteGame &game,
+                                    std::map<std::string, InformationSetBuffer> &information_sets) {
+  std::vector<InformationSetBuffer *> lookup(game.nodes.size(), nullptr);
+  for (GameNodeId node_id = 0U; node_id < game.nodes.size(); ++node_id) {
+    const auto &node = game.nodes[node_id];
+    if (node.kind == GameNodeKind::Decision) {
+      lookup[node_id] = &information_sets.at(node.information_set);
+    }
+  }
+  return lookup;
 }
 
 struct FiniteProductionSchedulePoint {
@@ -570,6 +683,19 @@ Result<SolveResult, SolverError> solve_finite_game(const FiniteGame &game,
   if (can_parallelize_root(game, config)) {
     parallel_workers = std::make_unique<ExactTraversalWorkers>(game, config.thread_count);
   }
+  std::vector<double> sampled_root_chance_cumulative;
+  if ((config.algorithm == SolverAlgorithm::ExternalSamplingMccfr ||
+       config.algorithm == SolverAlgorithm::LinearMccfr) &&
+      game.nodes[game.root].kind == GameNodeKind::Chance) {
+    sampled_root_chance_cumulative = cumulative_edge_probabilities(game.nodes[game.root]);
+  }
+  const bool sampled_algorithm = config.algorithm == SolverAlgorithm::ExternalSamplingMccfr ||
+                                 config.algorithm == SolverAlgorithm::LinearMccfr;
+  std::vector<InformationSetBuffer *> sampled_information_sets_by_node;
+  if (sampled_algorithm) {
+    sampled_information_sets_by_node =
+        make_sampled_information_set_lookup(game, checkpoint.information_sets);
+  }
   for (std::uint64_t iteration = checkpoint.completed_iterations + 1U;
        iteration <= config.iterations; ++iteration) {
     if (config.algorithm == SolverAlgorithm::ProductionDcfr) {
@@ -588,20 +714,28 @@ Result<SolveResult, SolverError> solve_finite_game(const FiniteGame &game,
       checkpoint.completed_iterations = iteration;
       continue;
     }
-    const StrategyProfile strategy = strategy_from_buffers(checkpoint.information_sets, false);
-    IterationDelta delta;
-    if (config.algorithm == SolverAlgorithm::ExternalSamplingMccfr ||
-        config.algorithm == SolverAlgorithm::LinearMccfr) {
+    if (sampled_algorithm) {
+      // External sampling visits a small subset of a large game. Reading
+      // regret-matched strategies lazily and indexing information sets by node
+      // avoids dense profile copies and string lookups per iteration.
+      SampledIterationDelta delta;
       for (std::uint8_t player = 0; player < 2U; ++player) {
-        static_cast<void>(traverse_external_sampling(game, game.root, strategy, player, {1.0, 1.0},
-                                                     delta, checkpoint.rng_state));
+        static_cast<void>(traverse_external_sampling(
+            game, game.root, sampled_information_sets_by_node, sampled_root_chance_cumulative,
+            player, {1.0, 1.0}, delta, checkpoint.rng_state));
       }
+      apply_sampled_iteration_delta(config.algorithm, delta, iteration);
+      checkpoint.completed_iterations = iteration;
+      traversed_nodes += delta.traversed_nodes;
+      continue;
+    }
+
+    IterationDelta delta;
+    const StrategyProfile strategy = strategy_from_buffers(checkpoint.information_sets, false);
+    if (parallel_workers) {
+      parallel_workers->traverse(strategy, delta);
     } else {
-      if (parallel_workers) {
-        parallel_workers->traverse(strategy, delta);
-      } else {
-        traverse_full_iteration(game, strategy, delta);
-      }
+      traverse_full_iteration(game, strategy, delta);
     }
     apply_iteration_delta(checkpoint, delta, iteration);
     checkpoint.completed_iterations = iteration;

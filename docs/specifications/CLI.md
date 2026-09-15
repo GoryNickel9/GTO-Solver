@@ -116,7 +116,35 @@ gtosd_hu_preflop_solve --config <config.json> --output <result.json> \
   --root-decision-trace-classes JTo,QJo,J9s \
   --root-decision-trace-deals-per-class 2000 \
   --root-decision-trace-output <trace.json>
+gtosd_hu_preflop_solve --config <config.json> --output <result.json> \
+  --postflop-distributional-street-adaptive-perfect-recall-v23 \
+  --flop-buckets 32 --turn-buckets 128 --river-buckets 512 \
+  --abstract-game-output <manifest.json> \
+  --postflop-policy-output <policy.bin>
+gtosd_hu_preflop_abstract_nashconv \
+  --config benchmarks/fixtures/hu_preflop_hu10_calibration_v1.json \
+  --output <certificate.json> \
+  --checkpoint-output <checkpoint.bin> \
+  --deals-per-co-class 2 --equity-samples 8 \
+  --iterations 10000 --interval 1000 \
+  --maximum-nodes 500000
+gtosd_hu_preflop_tre_validation \
+  --config benchmarks/fixtures/hu_preflop_hu10_calibration_v1.json \
+  --output <certificate.json> \
+  --training-deals-per-co-class 8 \
+  --response-deals-per-co-class 8 \
+  --evaluation-initial-deals-per-co-class 8 \
+  --evaluation-maximum-deals-per-co-class 64 \
+  --evaluation-normalized-half-width-target 0.01 \
+  --equity-samples 8 --iterations 5000000 \
+  --maximum-nodes 12000000
 ```
+
+Nel certificatore V23, `--iterations` è il limite massimo. Per impostazione predefinita il run si
+ferma al primo checkpoint con `normalized_dev < 0.01`; il JSON distingue `iterations`,
+`requested_iterations` e `stopped_early_on_target`. `--continue-after-target` mantiene invece il
+numero di iterazioni richiesto ed è riservato alle curve di ricerca che devono proseguire oltre il
+gate.
 
 `--action-conditioned-telemetry` abilita le osservazioni in memoria;
 `--action-conditioned-telemetry-output` abilita anche l'export
@@ -145,6 +173,47 @@ deal per classe, con un limite aggregato di 20.000 class-deal per contenere RAM
 e dimensione dell'export. `tools/analyze_hu_preflop_root_decision_trace.py`
 trasforma il sidecar in un report leggibile; il risultato resta una diagnostica
 campionata, non una NashConv.
+
+`--postflop-distributional-street-adaptive-perfect-recall-v23` conserva il mapping V8 ma include
+nella chiave la classe preflop e tutti i bucket già osservati. L'output contiene
+`postflop_recall_contract`: V8 produce `FAILED_PERFECT_RECALL` con le osservazioni dimenticate,
+mentre la modalità V23 produce `PASS_PERFECT_RECALL`. Questo campo verifica lo schema della chiave;
+la NashConv whole-game richiede ancora il certificatore previsto dal protocollo V23.
+
+`--abstract-game-output` salva il manifest strutturale: fingerprint di regole, tree e astrazione,
+census pubblico per street e limite cartesiano degli information set. Il manifest non dichiara il
+limite cartesiano come insieme raggiungibile e resta
+`STRUCTURE_COMPILED_CHANCE_MODEL_PENDING`.
+
+`gtosd_hu_preflop_abstract_nashconv` costruisce invece un gioco finito con `K` deal completi per
+ciascuna delle 81 classi CO. Linear MCCFR e le due best response consumano lo stesso
+`finite_game_fingerprint`. La NashConv risultante è esatta per quel corpus chance congelato; il
+campo `physical_nashconv_certified` resta sempre `false`. `--checkpoint-input` riprende un run se
+game fingerprint, seed e intervallo coincidono; `--checkpoint-output` salva atomicamente lo stato
+finale.
+
+Il certificato `gtosd.hu_preflop_v23_abstract_nashconv.v2` aggiunge `policy_completion`. Il
+contratto `uniform_unseen_v1` assegna una distribuzione uniforme soltanto agli information set
+richiesti dal gioco target e assenti nella policy sorgente. L'audit pubblica chiavi richieste,
+corrispondenti, mancanti e inutilizzate, oltre a `exact_key_coverage`,
+`reach_weighted_coverage` e alle componenti per giocatore. Sul corpus usato dal training entrambe
+le coperture devono essere `1`. Su un corpus indipendente ogni fallback resta visibile; il comando
+non lo può presentare come supporto appreso. Lo schema continua ad accettare i certificati v1 già
+prodotti.
+
+`gtosd_hu_preflop_tre_validation` separa tre corpus chance con seed distinti. Linear MCCFR
+addestra la strategia media su T. Due best response esatte vengono cercate su R contro la policy
+congelata e poi congelate. Su E, baseline e risposta usano gli stessi deal per ottenere differenze
+paired. Il runner pesa le 81 classi CO con la massa fisica esatta e campiona condizionatamente
+hole BTN e board completo.
+
+E cresce per raddoppio da `--evaluation-initial-deals-per-co-class` fino a
+`--evaluation-maximum-deals-per-co-class`. Lo stop richiede che la massima semiampiezza
+normalizzata fra due profile EV, due gain e la loro somma non superi il target. Gli intervalli
+usano un'approssimazione normale stratificata e una correzione Bonferroni per cinque metriche e
+tutti i look pianificati. Il certificato riporta ogni look, la copertura della policy T su R/E e
+quella delle risposte R su E. `physical_nashconv_certified` resta `false`: il gain su E misura una
+risposta candidata fuori campione, non la best response fisica esaustiva.
 
 ## Storage
 

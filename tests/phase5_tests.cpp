@@ -106,6 +106,27 @@ void test_reference_equilibria_and_infoset_aware_best_response() {
   const auto uniform_metrics = gtosd::calculate_nash_conv(kuhn, uniform.value());
   require(uniform_metrics.has_value() && uniform_metrics.value().nash_conv > 0.1,
           "uniform Kuhn strategy has positive known exploitability");
+
+  const auto root_outcomes =
+      gtosd::evaluate_strategy_profile_by_root_chance(kuhn, kuhn_equilibrium.value());
+  require(root_outcomes.has_value() && root_outcomes.value().outcome_values.size() == 6U &&
+              root_outcomes.value().probabilities.size() == 6U,
+          "root-chance evaluator preserves all six ordered Kuhn deals");
+  require_near(root_outcomes.value().profile_value[0], kuhn_metrics.value().profile_value[0],
+               1.0e-12, "root-chance outcome aggregation reproduces exact Kuhn EV");
+  require_near(root_outcomes.value().profile_value[1], kuhn_metrics.value().profile_value[1],
+               1.0e-12, "root-chance outcome aggregation reproduces opponent Kuhn EV");
+
+  const auto no_root_chance =
+      gtosd::evaluate_strategy_profile_by_root_chance(matching, matching_equilibrium.value());
+  require(!no_root_chance && no_root_chance.error() == gtosd::SolverError::InvalidConfiguration,
+          "per-outcome evaluator rejects games without root chance explicitly");
+
+  auto incomplete = kuhn_equilibrium.value();
+  incomplete.erase(incomplete.begin());
+  const auto invalid_profile = gtosd::evaluate_strategy_profile_by_root_chance(kuhn, incomplete);
+  require(!invalid_profile && invalid_profile.error() == gtosd::SolverError::InvalidStrategy,
+          "per-outcome evaluator rejects incomplete profiles");
 }
 
 void test_exact_solver_variants() {
@@ -287,6 +308,76 @@ void test_checkpoint_resume_and_validation() {
           "sampled traversal rejects nondeterministic parallel mode");
 }
 
+void test_policy_completion_and_coverage_audit() {
+  const auto game = gtosd::make_matching_pennies_game();
+  const auto uniform = gtosd::uniform_strategy_profile(game);
+  require(uniform.has_value(), "matching policy fixture is available");
+
+  auto partial = uniform.value();
+  partial.erase("matching:p1");
+  partial.emplace("foreign:unused", gtosd::InformationSetStrategy{0U, {0U, 1U}, {0.25, 0.75}});
+  const auto completed =
+      gtosd::complete_strategy_profile(game, partial, gtosd::PolicyCompletionRule::UniformUnseenV1);
+  require(completed.has_value(), "uniform unseen completion accepts a partial portable policy");
+  const auto &audit = completed.value().coverage;
+  require(std::string{gtosd::policy_completion_rule_name(audit.completion_rule)} ==
+                  "uniform_unseen_v1" &&
+              audit.target_game_fingerprint == gtosd::finite_game_fingerprint(game),
+          "coverage audit records the versioned completion contract and target game");
+  require(audit.supplied_information_sets == 2U && audit.required_information_sets == 2U &&
+              audit.matched_information_sets == 1U && audit.unseen_information_sets == 1U &&
+              audit.unused_supplied_information_sets == 1U,
+          "coverage audit separates required, matched, unseen and unused keys");
+  require(audit.required_information_sets_by_player == std::array<std::uint64_t, 2>{1U, 1U} &&
+              audit.unseen_information_sets_by_player == std::array<std::uint64_t, 2>{0U, 1U},
+          "coverage audit attributes missing information sets to the acting player");
+  require(audit.decision_nodes == 3U && audit.unseen_decision_nodes == 2U,
+          "coverage audit counts every physical decision node sharing the missing key");
+  require_near(audit.exact_key_coverage, 0.5, 1.0e-12,
+               "exact-key coverage is normalized by required information sets");
+  require_near(audit.total_decision_reach_mass, 2.0, 1.0e-12,
+               "decision reach mass equals expected decision visits");
+  require_near(audit.unseen_decision_reach_mass, 1.0, 1.0e-12,
+               "unseen reach mass includes both opponent nodes");
+  require_near(audit.reach_weighted_coverage, 0.5, 1.0e-12,
+               "reach-weighted coverage excludes the completed opponent key");
+  require_near(audit.reach_weighted_coverage_by_player[0], 1.0, 1.0e-12,
+               "known player policy has full reach coverage");
+  require_near(audit.reach_weighted_coverage_by_player[1], 0.0, 1.0e-12,
+               "missing player policy has zero reach coverage");
+  require(gtosd::validate_strategy_profile(game, completed.value().profile).has_value(),
+          "completed policy is a complete valid strategy profile");
+  const auto completed_value = gtosd::evaluate_strategy_profile(game, completed.value().profile);
+  const auto uniform_value = gtosd::evaluate_strategy_profile(game, uniform.value());
+  require(completed_value.has_value() && uniform_value.has_value() &&
+              completed_value.value() == uniform_value.value(),
+          "explicit uniform completion has the expected profile value");
+
+  const auto rejected =
+      gtosd::complete_strategy_profile(game, partial, gtosd::PolicyCompletionRule::RejectMissing);
+  require(!rejected && rejected.error() == gtosd::SolverError::InvalidStrategy,
+          "reject-missing completion refuses an incomplete policy");
+
+  auto malformed = partial;
+  malformed.at("foreign:unused").probabilities = {0.25, 0.25};
+  const auto malformed_result = gtosd::complete_strategy_profile(
+      game, malformed, gtosd::PolicyCompletionRule::UniformUnseenV1);
+  require(!malformed_result && malformed_result.error() == gtosd::SolverError::InvalidStrategy,
+          "malformed unused policy entries are rejected instead of ignored");
+
+  const auto unknown_rule = gtosd::complete_strategy_profile(
+      game, partial, static_cast<gtosd::PolicyCompletionRule>(255U));
+  require(!unknown_rule && unknown_rule.error() == gtosd::SolverError::InvalidConfiguration,
+          "unknown policy completion contracts are rejected explicitly");
+
+  const auto complete_audit = gtosd::complete_strategy_profile(
+      game, uniform.value(), gtosd::PolicyCompletionRule::UniformUnseenV1);
+  require(complete_audit.has_value() && complete_audit.value().coverage.exact_key_coverage == 1.0 &&
+              complete_audit.value().coverage.reach_weighted_coverage == 1.0 &&
+              complete_audit.value().coverage.unseen_information_sets == 0U,
+          "a complete profile reports full exact-key and reach coverage");
+}
+
 void test_rake_general_sum_and_leduc_smoke() {
   const auto rake_game_result = gtosd::make_short_deck_river_toy_game(0.05);
   require(rake_game_result.has_value(), "valid rake toy builds");
@@ -331,6 +422,7 @@ int main() {
     test_reference_equilibria_and_infoset_aware_best_response();
     test_exact_solver_variants();
     test_checkpoint_resume_and_validation();
+    test_policy_completion_and_coverage_audit();
     test_rake_general_sum_and_leduc_smoke();
     std::cout << "F5_SOLVER_LAB_TESTS=PASS\n"
               << "assertions=" << assertions << '\n'

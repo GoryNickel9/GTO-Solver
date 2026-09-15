@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -73,6 +74,49 @@ void test_mapping_contract() {
       hole, blocked_board, gtosd::Street::Flop, 16U, 0x5235'5041'5254'0001ULL, coarse);
   require(!blocked && blocked.error() == gtosd::HuPreflopError::InvalidConfiguration,
           "mapping rejects a board blocked by the player's hole cards");
+}
+
+void test_recall_contract_audit() {
+  const auto v8 = gtosd::audit_hu_preflop_postflop_recall_contract(
+      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8);
+  require(v8.has_value() && v8.value().retains_complete_public_history &&
+              !v8.value().retains_preflop_class && !v8.value().perfect_recall &&
+              v8.value().witness_count == gtosd::hu_preflop_maximum_recall_witnesses,
+          "recall audit identifies every V8 private-observation omission");
+  require(v8.value().retains_bucket_observation[0][0] &&
+              !v8.value().retains_bucket_observation[1][0] &&
+              v8.value().retains_bucket_observation[1][1] &&
+              !v8.value().retains_bucket_observation[2][0] &&
+              !v8.value().retains_bucket_observation[2][1] &&
+              v8.value().retains_bucket_observation[2][2],
+          "V8 recall matrix retains only the current street bucket");
+  require(
+      v8.value().witnesses[0] ==
+              gtosd::HuPreflopRecallWitness{gtosd::HuPreflopRecallObservationKind::PreflopClass,
+                                            gtosd::Street::Flop, gtosd::Street::Preflop} &&
+          v8.value().witnesses[5] ==
+              gtosd::HuPreflopRecallWitness{gtosd::HuPreflopRecallObservationKind::PostflopBucket,
+                                            gtosd::Street::River, gtosd::Street::Turn},
+      "V8 audit emits stable first and last structural witnesses");
+
+  const auto v23 = gtosd::audit_hu_preflop_postflop_recall_contract(
+      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23);
+  require(v23.has_value() && v23.value().retains_complete_public_history &&
+              v23.value().retains_preflop_class && v23.value().perfect_recall &&
+              v23.value().witness_count == 0U,
+          "V23 recall contract retains the complete abstract observation history");
+  for (std::size_t decision = 0U; decision < v23.value().retains_bucket_observation.size();
+       ++decision) {
+    for (std::size_t observation = 0U; observation <= decision; ++observation) {
+      require(v23.value().retains_bucket_observation[decision][observation],
+              "V23 recall matrix retains every observed street bucket");
+    }
+  }
+
+  const auto invalid = gtosd::audit_hu_preflop_postflop_recall_contract(
+      static_cast<gtosd::HuPreflopPostflopRepresentation>(255U));
+  require(!invalid && invalid.error() == gtosd::HuPreflopError::InvalidConfiguration,
+          "recall audit rejects an unknown representation");
 }
 
 void test_profile_v6_uses_lower_distributional_features() {
@@ -235,28 +279,26 @@ void test_distributional_bucket_history(const gtosd::HuPreflopTree &tree) {
 void test_distributional_profile_v6(const gtosd::HuPreflopTree &tree) {
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   const auto solve = gtosd::solve_hu_preflop_sampled(
-      tree,
-      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6,
-                  capacities));
+      tree, options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6,
+                        capacities));
   require(solve.has_value(), "distributional profile-v6 solve completes on the reduced case");
   require(solve.value().abstraction_id.find(
               "profile_hash_v6_current_observation_imperfect_recall") != std::string::npos &&
               solve.value().postflop_policy.representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6,
           "policy identity distinguishes profile-v6 from the legacy top-bit mapping");
-  require(gtosd::validate_hu_preflop_sampled_postflop_policy(
-              tree, solve.value().postflop_policy)
+  require(gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
               .has_value(),
           "profile-v6 policy passes the persisted-policy validator");
   require(solve.value().postflop_policy.minor ==
-              gtosd::HuPreflopSampledPostflopPolicy::minimum_supported_minor &&
+                  gtosd::HuPreflopSampledPostflopPolicy::minimum_supported_minor &&
               solve.value().postflop_policy.minor == 5U,
           "profile-v6 policy uses sampled-policy format 1.5");
   const auto path = std::filesystem::temp_directory_path() / "gtosd_r6_profile_v6_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "profile-v6 policy saves with the versioned format");
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "profile-v6 policy saves with the versioned format");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
   require(loaded.has_value() &&
               loaded.value().representation ==
@@ -281,16 +323,13 @@ void test_distributional_structured_v7_mapping() {
       {"Ah", "Ad", "Ac", "As", "Kh", "8s", "6c"},
   }};
   for (const auto &cards : category_examples) {
-    const std::array hole{gtosd::parse_card(cards[0]).value(),
-                          gtosd::parse_card(cards[1]).value()};
-    const std::array board{gtosd::parse_card(cards[2]).value(),
-                           gtosd::parse_card(cards[3]).value(),
-                           gtosd::parse_card(cards[4]).value(),
-                           gtosd::parse_card(cards[5]).value(),
+    const std::array hole{gtosd::parse_card(cards[0]).value(), gtosd::parse_card(cards[1]).value()};
+    const std::array board{gtosd::parse_card(cards[2]).value(), gtosd::parse_card(cards[3]).value(),
+                           gtosd::parse_card(cards[4]).value(), gtosd::parse_card(cards[5]).value(),
                            gtosd::parse_card(cards[6]).value()};
     const auto bucket = gtosd::compute_hu_preflop_distributional_structured_v7_bucket(
         hole, board, gtosd::Street::River, 8U, partition_seed, capacities);
-    const std::array<gtosd::CardId, 7> seven{hole[0], hole[1], board[0], board[1],
+    const std::array<gtosd::CardId, 7> seven{hole[0],  hole[1],  board[0], board[1],
                                              board[2], board[3], board[4]};
     const auto value = gtosd::evaluate_seven(seven);
     require(bucket.has_value() && value.has_value() && bucket.value() < capacities[2],
@@ -301,8 +340,7 @@ void test_distributional_structured_v7_mapping() {
     seen_categories[category] = true;
     ++checked;
   }
-  require(checked > 0U &&
-              std::ranges::count(seen_categories, true) >= 6,
+  require(checked > 0U && std::ranges::count(seen_categories, true) >= 6,
           "structured-v7 category invariant is exercised across distinct categories");
 
   const std::array hole{gtosd::parse_card("Ah").value(), gtosd::parse_card("Kh").value()};
@@ -326,26 +364,25 @@ void test_distributional_structured_v7_mapping() {
 void test_distributional_structured_v7_policy(const gtosd::HuPreflopTree &tree) {
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   const auto solve = gtosd::solve_hu_preflop_sampled(
-      tree,
-      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7,
-                  capacities));
+      tree, options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7,
+                        capacities));
   require(solve.has_value(), "distributional structured-v7 solve completes on the reduced case");
   require(solve.value().abstraction_id.find("category_equity_ordered_profile_v7") !=
                   std::string::npos &&
               solve.value().postflop_policy.representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7,
           "policy identity distinguishes structured-v7 from legacy and profile-v6");
-  require(solve.value().postflop_policy.minor == 6U &&
-              gtosd::validate_hu_preflop_sampled_postflop_policy(
-                  tree, solve.value().postflop_policy)
-                  .has_value(),
-          "structured-v7 uses policy format 1.6 and passes validation");
+  require(
+      solve.value().postflop_policy.minor == 6U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "structured-v7 uses policy format 1.6 and passes validation");
 
   const auto path = std::filesystem::temp_directory_path() / "gtosd_r6_structured_v7_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "structured-v7 policy saves atomically");
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "structured-v7 policy saves atomically");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
   require(loaded.has_value() && loaded.value().minor == 6U &&
               loaded.value().representation ==
@@ -354,9 +391,9 @@ void test_distributional_structured_v7_policy(const gtosd::HuPreflopTree &tree) 
           "structured-v7 policy survives checksum validation and reload");
   std::filesystem::remove(path);
 
-  auto invalid_options = options_for(
-      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7,
-      {16U, 128U, 512U});
+  auto invalid_options =
+      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7,
+                  {16U, 128U, 512U});
   require(!gtosd::solve_hu_preflop_sampled(tree, invalid_options),
           "structured-v7 solve rejects a capacity below 32");
 }
@@ -366,7 +403,7 @@ gtosd::HandCategory visible_category_for_test(const std::array<gtosd::CardId, 2>
                                               const gtosd::Street street) {
   const std::array<gtosd::CardId, 7> cards{hole[0],  hole[1],  board[0], board[1],
                                            board[2], board[3], board[4]};
-  const auto visible_count = street == gtosd::Street::Flop ? 5U
+  const auto visible_count = street == gtosd::Street::Flop   ? 5U
                              : street == gtosd::Street::Turn ? 6U
                                                              : 7U;
   gtosd::HandValue best{};
@@ -425,8 +462,7 @@ std::uint64_t street_adaptive_category_group(const gtosd::HandCategory category,
 void test_distributional_street_adaptive_v8_mapping() {
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   constexpr auto partition_seed = 0x5235'5041'5254'0001ULL;
-  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn,
-                               gtosd::Street::River};
+  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn, gtosd::Street::River};
   constexpr std::array<std::uint32_t, 3> category_bits{2U, 3U, 4U};
   constexpr std::array<std::array<std::string_view, 7>, 7> category_examples{{
       {"Ah", "Kd", "Qc", "Js", "8h", "7d", "6c"},
@@ -438,17 +474,13 @@ void test_distributional_street_adaptive_v8_mapping() {
       {"Ah", "Ad", "Ac", "As", "Kh", "8s", "6c"},
   }};
   for (const auto &cards : category_examples) {
-    const std::array hole{gtosd::parse_card(cards[0]).value(),
-                          gtosd::parse_card(cards[1]).value()};
-    const std::array board{gtosd::parse_card(cards[2]).value(),
-                           gtosd::parse_card(cards[3]).value(),
-                           gtosd::parse_card(cards[4]).value(),
-                           gtosd::parse_card(cards[5]).value(),
+    const std::array hole{gtosd::parse_card(cards[0]).value(), gtosd::parse_card(cards[1]).value()};
+    const std::array board{gtosd::parse_card(cards[2]).value(), gtosd::parse_card(cards[3]).value(),
+                           gtosd::parse_card(cards[4]).value(), gtosd::parse_card(cards[5]).value(),
                            gtosd::parse_card(cards[6]).value()};
     for (std::size_t street_index = 0U; street_index < streets.size(); ++street_index) {
-      const auto bucket =
-          gtosd::compute_hu_preflop_distributional_street_adaptive_v8_bucket(
-              hole, board, streets[street_index], 8U, partition_seed, capacities);
+      const auto bucket = gtosd::compute_hu_preflop_distributional_street_adaptive_v8_bucket(
+          hole, board, streets[street_index], 8U, partition_seed, capacities);
       const auto category = visible_category_for_test(hole, board, streets[street_index]);
       const auto capacity_bits =
           std::countr_zero(static_cast<std::uint32_t>(capacities[street_index]));
@@ -463,12 +495,10 @@ void test_distributional_street_adaptive_v8_mapping() {
   const std::array board{gtosd::parse_card("Qh").value(), gtosd::parse_card("9c").value(),
                          gtosd::parse_card("7d").value(), gtosd::parse_card("8s").value(),
                          gtosd::parse_card("6c").value()};
-  const std::array permuted_hole{gtosd::parse_card("As").value(),
-                                 gtosd::parse_card("Ks").value()};
-  const std::array permuted_board{
-      gtosd::parse_card("Qs").value(), gtosd::parse_card("9d").value(),
-      gtosd::parse_card("7h").value(), gtosd::parse_card("8c").value(),
-      gtosd::parse_card("6d").value()};
+  const std::array permuted_hole{gtosd::parse_card("As").value(), gtosd::parse_card("Ks").value()};
+  const std::array permuted_board{gtosd::parse_card("Qs").value(), gtosd::parse_card("9d").value(),
+                                  gtosd::parse_card("7h").value(), gtosd::parse_card("8c").value(),
+                                  gtosd::parse_card("6d").value()};
   for (const auto street : streets) {
     const auto first = gtosd::compute_hu_preflop_distributional_street_adaptive_v8_bucket(
         hole, board, street, 16U, partition_seed, capacities);
@@ -492,26 +522,25 @@ void test_distributional_street_adaptive_v8_policy(const gtosd::HuPreflopTree &t
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   const auto solve = gtosd::solve_hu_preflop_sampled(
       tree,
-      options_for(
-          gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8,
-          capacities));
+      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8,
+                  capacities));
   require(solve.has_value(), "distributional street-adaptive-v8 solve completes");
-  require(solve.value().abstraction_id.find("street_adaptive_category_equity_profile_v8") !=
-                  std::string::npos &&
-              solve.value().postflop_policy.representation ==
-                  gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 &&
-              solve.value().postflop_policy.minor == 7U &&
-              gtosd::validate_hu_preflop_sampled_postflop_policy(
-                  tree, solve.value().postflop_policy)
-                  .has_value(),
-          "street-adaptive-v8 has a distinct identity and valid policy format 1.7");
+  require(
+      solve.value().abstraction_id.find("street_adaptive_category_equity_profile_v8") !=
+              std::string::npos &&
+          solve.value().postflop_policy.representation ==
+              gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 &&
+          solve.value().postflop_policy.minor == 7U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "street-adaptive-v8 has a distinct identity and valid policy format 1.7");
 
   const auto path =
       std::filesystem::temp_directory_path() / "gtosd_r6_street_adaptive_v8_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "street-adaptive-v8 policy saves atomically");
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "street-adaptive-v8 policy saves atomically");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
   require(loaded.has_value() && loaded.value().minor == 7U &&
               loaded.value().representation ==
@@ -527,31 +556,147 @@ void test_distributional_street_adaptive_v8_policy(const gtosd::HuPreflopTree &t
               !gtosd::serialize_hu_preflop_sampled_postflop_policy(old_version),
           "street-adaptive-v8 cannot be mislabeled as policy format 1.6");
 
-  auto invalid_options = options_for(
-      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8,
-      {16U, 128U, 512U});
+  auto v23_mislabeled = solve.value().postflop_policy;
+  v23_mislabeled.minor = 12U;
+  v23_mislabeled.fingerprint =
+      gtosd::fingerprint_hu_preflop_sampled_postflop_policy(v23_mislabeled);
+  require(!gtosd::validate_hu_preflop_sampled_postflop_policy(tree, v23_mislabeled) &&
+              !gtosd::serialize_hu_preflop_sampled_postflop_policy(v23_mislabeled),
+          "policy format 1.12 cannot relabel the imperfect-recall V8 representation");
+
+  auto invalid_options =
+      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8,
+                  {16U, 128U, 512U});
   require(!gtosd::solve_hu_preflop_sampled(tree, invalid_options),
           "street-adaptive-v8 solve rejects a capacity below 32");
+}
+
+void test_distributional_street_adaptive_v23_perfect_recall_policy(
+    const gtosd::HuPreflopTree &tree) {
+  constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
+  const auto options = options_for(
+      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23,
+      capacities);
+  const auto definition = gtosd::make_hu_preflop_abstract_game_definition(tree, options);
+  require(definition.has_value() && definition.value().recall_contract.perfect_recall &&
+              definition.value().rules_fingerprint != definition.value().tree_fingerprint &&
+              !definition.value().abstraction_fingerprint.empty() &&
+              !definition.value().fingerprint.empty() &&
+              definition.value().private_observation_cartesian_upper_bound_by_street ==
+                  std::array<std::uint64_t, 3>{2'592U, 331'776U, 169'869'312U} &&
+              !definition.value().cartesian_upper_bound_overflow &&
+              !definition.value().reachable_information_set_census_complete &&
+              !definition.value().exact_chance_model_compiled &&
+              !definition.value().exact_abstract_nashconv_certifiable,
+          "V23 abstract game definition separates identity, upper bounds and readiness");
+  require(gtosd::validate_hu_preflop_abstract_game_definition(tree, definition.value()).has_value(),
+          "V23 abstract game definition passes its deterministic integrity check");
+  require(definition.value().postflop_public_tree.decision_nodes ==
+                  std::accumulate(
+                      definition.value().postflop_public_tree.decision_nodes_by_street.begin(),
+                      definition.value().postflop_public_tree.decision_nodes_by_street.end(),
+                      std::uint64_t{0U}) &&
+              definition.value().total_information_set_cartesian_upper_bound >=
+                  definition.value().preflop_information_set_cartesian_upper_bound,
+          "V23 census partitions postflop decisions and includes preflop states");
+
+  auto tampered = definition.value();
+  ++tampered.partition_seed;
+  require(!gtosd::validate_hu_preflop_abstract_game_definition(tree, tampered),
+          "V23 abstract game definition rejects fingerprinted mapping changes");
+  auto v8_options = options;
+  v8_options.postflop_representation =
+      gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+  require(!gtosd::make_hu_preflop_abstract_game_definition(tree, v8_options),
+          "V23 abstract game compiler rejects the imperfect-recall V8 representation");
+
+  const auto solve = gtosd::solve_hu_preflop_sampled(tree, options);
+  require(solve.has_value(), "street-adaptive-v23 perfect-recall solve completes");
+  require(
+      solve.value().abstraction_id.find(
+          "street_adaptive_category_equity_profile_v8_full_history_v23_perfect_recall") !=
+              std::string::npos &&
+          solve.value().abstract_game_fingerprint == definition.value().fingerprint &&
+          solve.value().postflop_policy.representation ==
+              gtosd::HuPreflopPostflopRepresentation::
+                  DistributionalStrengthStreetAdaptivePerfectRecallV23 &&
+          solve.value().postflop_policy.minor == 12U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "V23 has a distinct identity and valid policy format 1.12");
+
+  std::array<std::uint64_t, 3> entries_by_street{};
+  const auto unset = gtosd::hu_preflop_sampled_postflop_unset_bucket;
+  for (const auto &entry : solve.value().postflop_policy.entries) {
+    const auto street_index =
+        static_cast<std::size_t>(entry.key.street) - static_cast<std::size_t>(gtosd::Street::Flop);
+    ++entries_by_street[street_index];
+    require(entry.key.preflop_class < gtosd::hu_preflop_hand_class_count,
+            "V23 retains a legal preflop class");
+    for (std::size_t index = 0U; index < entry.key.bucket_history.size(); ++index) {
+      require((entry.key.bucket_history[index] != unset) == (index <= street_index),
+              "V23 retains exactly the complete observed bucket history");
+      if (index <= street_index) {
+        require(entry.key.bucket_history[index] < capacities[index],
+                "V23 bucket history respects every street capacity");
+      }
+    }
+  }
+  require(std::ranges::all_of(entries_by_street, [](const auto count) { return count > 0U; }),
+          "V23 policy exercises Flop, Turn and River keys");
+
+  const auto path = std::filesystem::temp_directory_path() /
+                    "gtosd_v23_street_adaptive_perfect_recall_policy.bin";
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "V23 policy saves atomically");
+  const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
+  require(loaded.has_value() && loaded.value().minor == 12U &&
+              loaded.value().representation ==
+                  gtosd::HuPreflopPostflopRepresentation::
+                      DistributionalStrengthStreetAdaptivePerfectRecallV23 &&
+              loaded.value().fingerprint == solve.value().postflop_policy.fingerprint,
+          "V23 policy survives checksum validation and reload");
+  std::filesystem::remove(path);
+
+  auto old_version = solve.value().postflop_policy;
+  old_version.minor = 11U;
+  old_version.fingerprint = gtosd::fingerprint_hu_preflop_sampled_postflop_policy(old_version);
+  require(!gtosd::validate_hu_preflop_sampled_postflop_policy(tree, old_version) &&
+              !gtosd::serialize_hu_preflop_sampled_postflop_policy(old_version),
+          "V23 cannot be mislabeled as policy format 1.11");
+
+  const auto river =
+      std::ranges::find_if(solve.value().postflop_policy.entries, [](const auto &entry) {
+        return entry.key.street == gtosd::Street::River;
+      });
+  require(river != solve.value().postflop_policy.entries.end(),
+          "V23 policy contains a River entry");
+  auto invalid_key = river->key;
+  invalid_key.bucket_history[0] = unset;
+  const auto invalid_query = gtosd::query_hu_preflop_sampled_postflop_policy(
+      solve.value().postflop_policy, invalid_key, river->action_count);
+  require(!invalid_query && invalid_query.error() == gtosd::HuPreflopError::InvalidConfiguration,
+          "V23 rejects a River key that forgets the Flop bucket");
 }
 
 void test_distributional_selective_history_v9_policy(const gtosd::HuPreflopTree &tree) {
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   const auto solve = gtosd::solve_hu_preflop_sampled(
       tree,
-      options_for(
-          gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9,
-          capacities));
+      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9,
+                  capacities));
   require(solve.has_value(), "distributional selective-history-v9 solve completes");
-  require(solve.value().abstraction_id.find(
-              "category_equity_ordered_profile_selective_history_v9") != std::string::npos &&
-              solve.value().postflop_policy.representation ==
-                  gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthSelectiveHistoryV9 &&
-              solve.value().postflop_policy.minor == 8U &&
-              gtosd::validate_hu_preflop_sampled_postflop_policy(
-                  tree, solve.value().postflop_policy)
-                  .has_value(),
-          "selective-history-v9 has a distinct identity and valid policy format 1.8");
+  require(
+      solve.value().abstraction_id.find("category_equity_ordered_profile_selective_history_v9") !=
+              std::string::npos &&
+          solve.value().postflop_policy.representation ==
+              gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 &&
+          solve.value().postflop_policy.minor == 8U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "selective-history-v9 has a distinct identity and valid policy format 1.8");
 
   std::array<std::uint64_t, 3> entries_by_street{};
   const auto unset = gtosd::hu_preflop_sampled_postflop_unset_bucket;
@@ -573,17 +718,17 @@ void test_distributional_selective_history_v9_policy(const gtosd::HuPreflopTree 
 
   const auto path =
       std::filesystem::temp_directory_path() / "gtosd_r6_selective_history_v9_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "selective-history-v9 policy saves atomically");
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "selective-history-v9 policy saves atomically");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
-  require(loaded.has_value() && loaded.value().minor == 8U &&
-              loaded.value().representation ==
-                  gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthSelectiveHistoryV9 &&
-              loaded.value().fingerprint == solve.value().postflop_policy.fingerprint,
-          "selective-history-v9 policy survives checksum validation and reload");
+  require(
+      loaded.has_value() && loaded.value().minor == 8U &&
+          loaded.value().representation ==
+              gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 &&
+          loaded.value().fingerprint == solve.value().postflop_policy.fingerprint,
+      "selective-history-v9 policy survives checksum validation and reload");
   std::filesystem::remove(path);
 
   auto old_version = solve.value().postflop_policy;
@@ -593,9 +738,10 @@ void test_distributional_selective_history_v9_policy(const gtosd::HuPreflopTree 
               !gtosd::serialize_hu_preflop_sampled_postflop_policy(old_version),
           "selective-history-v9 cannot be mislabeled as policy format 1.7");
 
-  const auto river = std::ranges::find_if(
-      solve.value().postflop_policy.entries,
-      [](const auto &entry) { return entry.key.street == gtosd::Street::River; });
+  const auto river =
+      std::ranges::find_if(solve.value().postflop_policy.entries, [](const auto &entry) {
+        return entry.key.street == gtosd::Street::River;
+      });
   require(river != solve.value().postflop_policy.entries.end(),
           "selective-history-v9 policy contains a River entry");
   auto invalid_key = river->key;
@@ -613,35 +759,31 @@ void test_distributional_category_history_v10_policy(const gtosd::HuPreflopTree 
   const std::array board{gtosd::parse_card("Qh").value(), gtosd::parse_card("9c").value(),
                          gtosd::parse_card("7d").value(), gtosd::parse_card("8s").value(),
                          gtosd::parse_card("6c").value()};
-  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn,
-                               gtosd::Street::River};
+  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn, gtosd::Street::River};
   for (std::size_t index = 0U; index < streets.size(); ++index) {
     const auto bucket = gtosd::compute_hu_preflop_distributional_structured_v7_bucket(
         hole, board, streets[index], 8U, partition_seed, capacities);
     const auto capacity_bits = std::countr_zero(static_cast<std::uint32_t>(capacities[index]));
-    require(bucket.has_value() &&
-                (bucket.value() >> (capacity_bits - 4U)) ==
-                    static_cast<std::uint16_t>(
-                        visible_category_for_test(hole, board, streets[index])),
+    require(bucket.has_value() && (bucket.value() >> (capacity_bits - 4U)) ==
+                                      static_cast<std::uint16_t>(
+                                          visible_category_for_test(hole, board, streets[index])),
             "category-history-v10 extracts the exact visible category from the v7 bucket");
   }
 
   const auto solve = gtosd::solve_hu_preflop_sampled(
       tree,
-      options_for(
-          gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10,
-          capacities));
+      options_for(gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10,
+                  capacities));
   require(solve.has_value(), "distributional category-history-v10 solve completes");
-  require(solve.value().abstraction_id.find(
-              "category_equity_ordered_profile_category_history_v10") != std::string::npos &&
-              solve.value().postflop_policy.representation ==
-                  gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthCategoryHistoryV10 &&
-              solve.value().postflop_policy.minor == 9U &&
-              gtosd::validate_hu_preflop_sampled_postflop_policy(
-                  tree, solve.value().postflop_policy)
-                  .has_value(),
-          "category-history-v10 has a distinct identity and valid policy format 1.9");
+  require(
+      solve.value().abstraction_id.find("category_equity_ordered_profile_category_history_v10") !=
+              std::string::npos &&
+          solve.value().postflop_policy.representation ==
+              gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 &&
+          solve.value().postflop_policy.minor == 9U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "category-history-v10 has a distinct identity and valid policy format 1.9");
 
   std::array<std::uint64_t, 3> entries_by_street{};
   const auto unset = gtosd::hu_preflop_sampled_postflop_unset_bucket;
@@ -668,17 +810,17 @@ void test_distributional_category_history_v10_policy(const gtosd::HuPreflopTree 
 
   const auto path =
       std::filesystem::temp_directory_path() / "gtosd_r6_category_history_v10_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "category-history-v10 policy saves atomically");
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "category-history-v10 policy saves atomically");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
-  require(loaded.has_value() && loaded.value().minor == 9U &&
-              loaded.value().representation ==
-                  gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthCategoryHistoryV10 &&
-              loaded.value().fingerprint == solve.value().postflop_policy.fingerprint,
-          "category-history-v10 policy survives checksum validation and reload");
+  require(
+      loaded.has_value() && loaded.value().minor == 9U &&
+          loaded.value().representation ==
+              gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 &&
+          loaded.value().fingerprint == solve.value().postflop_policy.fingerprint,
+      "category-history-v10 policy survives checksum validation and reload");
   std::filesystem::remove(path);
 
   auto old_version = solve.value().postflop_policy;
@@ -688,9 +830,10 @@ void test_distributional_category_history_v10_policy(const gtosd::HuPreflopTree 
               !gtosd::serialize_hu_preflop_sampled_postflop_policy(old_version),
           "category-history-v10 cannot be mislabeled as policy format 1.8");
 
-  const auto river = std::ranges::find_if(
-      solve.value().postflop_policy.entries,
-      [](const auto &entry) { return entry.key.street == gtosd::Street::River; });
+  const auto river =
+      std::ranges::find_if(solve.value().postflop_policy.entries, [](const auto &entry) {
+        return entry.key.street == gtosd::Street::River;
+      });
   require(river != solve.value().postflop_policy.entries.end(),
           "category-history-v10 policy contains a River entry");
   auto invalid_key = river->key;
@@ -701,43 +844,39 @@ void test_distributional_category_history_v10_policy(const gtosd::HuPreflopTree 
           "category-history-v10 rejects an out-of-domain historical category");
 }
 
-void test_distributional_adaptive_category_history_v11_policy(
-    const gtosd::HuPreflopTree &tree) {
+void test_distributional_adaptive_category_history_v11_policy(const gtosd::HuPreflopTree &tree) {
   constexpr std::array<std::uint16_t, 3> capacities{32U, 128U, 512U};
   constexpr auto partition_seed = 0x5235'5041'5254'0001ULL;
   const std::array hole{gtosd::parse_card("Ah").value(), gtosd::parse_card("Kh").value()};
   const std::array board{gtosd::parse_card("Qh").value(), gtosd::parse_card("9c").value(),
                          gtosd::parse_card("7d").value(), gtosd::parse_card("8s").value(),
                          gtosd::parse_card("6c").value()};
-  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn,
-                               gtosd::Street::River};
+  constexpr std::array streets{gtosd::Street::Flop, gtosd::Street::Turn, gtosd::Street::River};
   for (const auto street : streets) {
     const auto v8 = gtosd::compute_hu_preflop_distributional_street_adaptive_v8_bucket(
         hole, board, street, 8U, partition_seed, capacities);
-    const auto v11 =
-        gtosd::compute_hu_preflop_distributional_adaptive_category_history_v11_bucket(
-            hole, board, street, 8U, partition_seed, capacities);
+    const auto v11 = gtosd::compute_hu_preflop_distributional_adaptive_category_history_v11_bucket(
+        hole, board, street, 8U, partition_seed, capacities);
     require(v8.has_value() && v11.has_value() && v8.value() == v11.value(),
             "adaptive-category-history-v11 preserves the exact v8 current-street mapping");
   }
 
   const auto solve = gtosd::solve_hu_preflop_sampled(
       tree,
-      options_for(gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthAdaptiveCategoryHistoryV11,
-                  capacities));
+      options_for(
+          gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11,
+          capacities));
   require(solve.has_value(), "distributional adaptive-category-history-v11 solve completes");
-  require(solve.value().abstraction_id.find(
-              "street_adaptive_category_equity_profile_category_history_v11") !=
-                  std::string::npos &&
-              solve.value().postflop_policy.representation ==
-                  gtosd::HuPreflopPostflopRepresentation::
-                      DistributionalStrengthAdaptiveCategoryHistoryV11 &&
-              solve.value().postflop_policy.minor == 10U &&
-              gtosd::validate_hu_preflop_sampled_postflop_policy(
-                  tree, solve.value().postflop_policy)
-                  .has_value(),
-          "adaptive-category-history-v11 has a distinct identity and valid policy format 1.10");
+  require(
+      solve.value().abstraction_id.find(
+          "street_adaptive_category_equity_profile_category_history_v11") != std::string::npos &&
+          solve.value().postflop_policy.representation ==
+              gtosd::HuPreflopPostflopRepresentation::
+                  DistributionalStrengthAdaptiveCategoryHistoryV11 &&
+          solve.value().postflop_policy.minor == 10U &&
+          gtosd::validate_hu_preflop_sampled_postflop_policy(tree, solve.value().postflop_policy)
+              .has_value(),
+      "adaptive-category-history-v11 has a distinct identity and valid policy format 1.10");
 
   std::array<std::uint64_t, 3> entries_by_street{};
   const auto unset = gtosd::hu_preflop_sampled_postflop_unset_bucket;
@@ -764,12 +903,12 @@ void test_distributional_adaptive_category_history_v11_policy(
   require(std::ranges::all_of(entries_by_street, [](const auto count) { return count > 0U; }),
           "adaptive-category-history-v11 exercises Flop, Turn and River keys");
 
-  const auto path = std::filesystem::temp_directory_path() /
-                    "gtosd_r6_adaptive_category_history_v11_policy.bin";
-  require(gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy,
-                                                          path.string())
-              .has_value(),
-          "adaptive-category-history-v11 policy saves atomically");
+  const auto path =
+      std::filesystem::temp_directory_path() / "gtosd_r6_adaptive_category_history_v11_policy.bin";
+  require(
+      gtosd::save_hu_preflop_sampled_postflop_policy(solve.value().postflop_policy, path.string())
+          .has_value(),
+      "adaptive-category-history-v11 policy saves atomically");
   const auto loaded = gtosd::load_hu_preflop_sampled_postflop_policy(tree, path.string());
   require(loaded.has_value() && loaded.value().minor == 10U &&
               loaded.value().representation ==
@@ -786,9 +925,10 @@ void test_distributional_adaptive_category_history_v11_policy(
               !gtosd::serialize_hu_preflop_sampled_postflop_policy(old_version),
           "adaptive-category-history-v11 cannot be mislabeled as policy format 1.9");
 
-  const auto river = std::ranges::find_if(
-      solve.value().postflop_policy.entries,
-      [](const auto &entry) { return entry.key.street == gtosd::Street::River; });
+  const auto river =
+      std::ranges::find_if(solve.value().postflop_policy.entries, [](const auto &entry) {
+        return entry.key.street == gtosd::Street::River;
+      });
   require(river != solve.value().postflop_policy.entries.end(),
           "adaptive-category-history-v11 policy contains a River entry");
   auto invalid_key = river->key;
@@ -804,6 +944,7 @@ void test_distributional_adaptive_category_history_v11_policy(
 int main() {
   try {
     test_mapping_contract();
+    test_recall_contract_audit();
     test_distributional_structured_v7_mapping();
     test_distributional_street_adaptive_v8_mapping();
     const auto tree = gtosd::build_hu_preflop_tree(gtosd::make_hu_co40_benchmark_config());
@@ -816,6 +957,7 @@ int main() {
     test_distributional_profile_v6(tree.value());
     test_distributional_structured_v7_policy(tree.value());
     test_distributional_street_adaptive_v8_policy(tree.value());
+    test_distributional_street_adaptive_v23_perfect_recall_policy(tree.value());
     test_distributional_selective_history_v9_policy(tree.value());
     test_distributional_category_history_v10_policy(tree.value());
     test_distributional_adaptive_category_history_v11_policy(tree.value());

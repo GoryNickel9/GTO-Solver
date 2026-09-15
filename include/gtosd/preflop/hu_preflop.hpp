@@ -95,6 +95,7 @@ struct HuPostflopPublicStats {
   std::uint64_t represented_nodes{0};
   std::uint64_t action_edges{0};
   std::uint64_t decision_nodes{0};
+  std::array<std::uint64_t, 3> decision_nodes_by_street{};
   std::uint64_t chance_frontiers{0};
   std::uint64_t terminal_folds{0};
   std::uint64_t terminal_showdowns{0};
@@ -1175,7 +1176,39 @@ enum class HuPreflopPostflopRepresentation : std::uint8_t {
   DistributionalStrengthStreetAdaptiveV8,
   DistributionalStrengthSelectiveHistoryV9,
   DistributionalStrengthCategoryHistoryV10,
-  DistributionalStrengthAdaptiveCategoryHistoryV11
+  DistributionalStrengthAdaptiveCategoryHistoryV11,
+  // V23 preserves the V8 bucket mapping while retaining the preflop class
+  // and every postflop bucket observed by the acting player.
+  DistributionalStrengthStreetAdaptivePerfectRecallV23
+};
+
+enum class HuPreflopRecallObservationKind : std::uint8_t { PreflopClass, PostflopBucket };
+
+struct HuPreflopRecallWitness {
+  HuPreflopRecallObservationKind kind{HuPreflopRecallObservationKind::PreflopClass};
+  Street decision_street{Street::Flop};
+  Street forgotten_observation_street{Street::Preflop};
+
+  friend bool operator==(const HuPreflopRecallWitness &, const HuPreflopRecallWitness &) = default;
+};
+
+constexpr std::size_t hu_preflop_maximum_recall_witnesses = 6U;
+
+// Structural audit of the private-observation contract used by a postflop
+// representation. A true lower-triangular matrix entry means the decision
+// street retains that exact earlier abstract bucket. Public action recall is
+// represented separately because it is carried by public_history.
+struct HuPreflopRecallAudit {
+  HuPreflopPostflopRepresentation representation{
+      HuPreflopPostflopRepresentation::CategoryEquityMonteCarlo};
+  bool retains_complete_public_history{true};
+  bool retains_preflop_class{false};
+  std::array<std::array<bool, 3>, 3> retains_bucket_observation{};
+  bool perfect_recall{false};
+  std::uint8_t witness_count{0U};
+  std::array<HuPreflopRecallWitness, hu_preflop_maximum_recall_witnesses> witnesses{};
+
+  friend bool operator==(const HuPreflopRecallAudit &, const HuPreflopRecallAudit &) = default;
 };
 
 enum class HuPreflopSamplingAlgorithm : std::uint8_t {
@@ -1201,9 +1234,7 @@ struct HuPreflopPostflopAllInEquity {
   std::uint64_t ties{0U};
   std::uint64_t losses{0U};
 
-  [[nodiscard]] constexpr std::uint64_t runouts() const noexcept {
-    return wins + ties + losses;
-  }
+  [[nodiscard]] constexpr std::uint64_t runouts() const noexcept { return wins + ties + losses; }
 
   friend bool operator==(const HuPreflopPostflopAllInEquity &,
                          const HuPreflopPostflopAllInEquity &) = default;
@@ -1284,7 +1315,7 @@ struct HuPreflopSampledPostflopPolicyEntry {
 struct HuPreflopSampledPostflopPolicy {
   static constexpr std::uint32_t format_major = 1U;
   static constexpr std::uint32_t minimum_supported_minor = 5U;
-  static constexpr std::uint32_t format_minor = 11U;
+  static constexpr std::uint32_t format_minor = 12U;
 
   std::uint32_t major{format_major};
   std::uint32_t minor{format_minor};
@@ -1395,6 +1426,41 @@ struct HuPreflopSolveOptions {
       HuPreflopPostflopRepresentation::CategoryEquityMonteCarlo};
 };
 
+// Versioned identity and resource census for the exact abstract game consumed
+// by V23 training and, once its chance kernel is compiled, certification.
+// Cartesian counts are conservative upper bounds rather than reachable-state
+// counts; the distinction is explicit so they cannot be reported as a solved
+// or certified information-set census.
+struct HuPreflopAbstractGameDefinition {
+  static constexpr std::uint32_t format_major = 1U;
+  static constexpr std::uint32_t format_minor = 0U;
+
+  std::uint32_t major{format_major};
+  std::uint32_t minor{format_minor};
+  std::string rules_fingerprint;
+  std::string tree_fingerprint;
+  std::string abstraction_fingerprint;
+  std::string abstraction_id;
+  std::string chance_model_id{"online_physical_deal_sampling_not_compiled_v1"};
+  std::uint64_t partition_seed{0U};
+  std::uint32_t equity_samples_per_bucket{0U};
+  std::array<std::uint16_t, 3> distributional_bucket_capacities{};
+  HuPreflopPostflopRepresentation representation{
+      HuPreflopPostflopRepresentation::CategoryEquityMonteCarlo};
+  HuPreflopRecallAudit recall_contract{};
+  HuPreflopTreeStats preflop_tree{};
+  HuPostflopPublicStats postflop_public_tree{};
+  std::uint64_t preflop_information_set_cartesian_upper_bound{0U};
+  std::array<std::uint64_t, 3> private_observation_cartesian_upper_bound_by_street{};
+  std::array<std::uint64_t, 3> information_set_cartesian_upper_bound_by_street{};
+  std::uint64_t total_information_set_cartesian_upper_bound{0U};
+  bool cartesian_upper_bound_overflow{false};
+  bool reachable_information_set_census_complete{false};
+  bool exact_chance_model_compiled{false};
+  bool exact_abstract_nashconv_certifiable{false};
+  std::string fingerprint;
+};
+
 struct HuPreflopRootActionAdvantageDiagnostic {
   std::uint64_t observations{0U};
   double weight_sum{0.0};
@@ -1483,8 +1549,7 @@ struct HuPreflopRootDecisionTraceAction {
 };
 
 struct HuPreflopRootDecisionTracePolicy {
-  HuPreflopRootDecisionTracePolicyView policy_view{
-      HuPreflopRootDecisionTracePolicyView::Average};
+  HuPreflopRootDecisionTracePolicyView policy_view{HuPreflopRootDecisionTracePolicyView::Average};
   std::array<HuPreflopRootDecisionTraceAction, 5> actions{};
   std::array<std::array<double, 5>, 5> paired_difference_mean_ante{};
   std::array<std::array<double, 5>, 5> paired_difference_standard_error_ante{};
@@ -1608,6 +1673,7 @@ struct HuPreflopSolveResult {
   std::uint64_t compiled_betting_bytes{0};
   std::string tree_fingerprint;
   std::string abstraction_id;
+  std::string abstract_game_fingerprint;
   std::string algorithm_id;
   HuPreflopBlueprint preflop_blueprint;
   std::vector<HuPreflopDecisionEvaluation> preflop_decision_evaluations;
@@ -1630,13 +1696,12 @@ compute_hu_preflop_category_equity_bucket(const std::array<CardId, 2> &hole,
 // Enumerates every legal unordered future board for one physical HU matchup.
 // Only the visible board prefix for the selected street is conditioned upon.
 [[nodiscard]] Result<HuPreflopPostflopAllInEquity, HuPreflopError>
-enumerate_hu_preflop_postflop_all_in_equity(
-    const std::array<std::array<CardId, 2>, 2> &holes,
-    const std::array<CardId, 5> &board, Street street, const IHandEvaluator &evaluator);
+enumerate_hu_preflop_postflop_all_in_equity(const std::array<std::array<CardId, 2>, 2> &holes,
+                                            const std::array<CardId, 5> &board, Street street,
+                                            const IHandEvaluator &evaluator);
 [[nodiscard]] Result<HuPreflopPostflopAllInEquity, HuPreflopError>
-enumerate_hu_preflop_postflop_all_in_equity(
-    const std::array<std::array<CardId, 2>, 2> &holes,
-    const std::array<CardId, 5> &board, Street street);
+enumerate_hu_preflop_postflop_all_in_equity(const std::array<std::array<CardId, 2>, 2> &holes,
+                                            const std::array<CardId, 5> &board, Street street);
 // Maps visible cards only into the requested Flop/Turn/River capacities. The
 // mapping is total for legal observations and frozen by partition_seed; it
 // never reads the actual future runout.
@@ -1685,6 +1750,20 @@ compute_hu_preflop_distributional_adaptive_category_history_v11_bucket(
     std::uint32_t samples, std::uint64_t partition_seed,
     const std::array<std::uint16_t, 3> &capacities);
 
+// Audits which private observations the selected representation retains.
+// This proves the key-schema contract; reachability witnesses are a separate
+// whole-game check performed by the V23 game compiler.
+[[nodiscard]] Result<HuPreflopRecallAudit, HuPreflopError>
+audit_hu_preflop_postflop_recall_contract(HuPreflopPostflopRepresentation representation);
+[[nodiscard]] std::string
+fingerprint_hu_preflop_abstract_game_definition(const HuPreflopAbstractGameDefinition &definition);
+[[nodiscard]] Result<bool, HuPreflopError>
+validate_hu_preflop_abstract_game_definition(const HuPreflopTree &tree,
+                                             const HuPreflopAbstractGameDefinition &definition);
+[[nodiscard]] Result<HuPreflopAbstractGameDefinition, HuPreflopError>
+make_hu_preflop_abstract_game_definition(const HuPreflopTree &tree,
+                                         const HuPreflopSolveOptions &options);
+
 // R6 diagnostic primitive shared with the public-board stratified trainer.
 // For sample_count <= C(31,2), every traverser hole combination is unique;
 // each position is marginally uniform and the opponent hand is sampled
@@ -1730,15 +1809,16 @@ query_hu_preflop_sampled_postflop_policy(const HuPreflopSampledPostflopPolicy &p
                                          std::uint8_t action_count,
                                          HuPreflopSampledPolicyView view);
 [[nodiscard]] Result<HuPreflopSampledPostflopPublicDecision, HuPreflopError>
-derive_hu_preflop_sampled_postflop_public_decision(
-    const HuPreflopTree &tree, std::uint32_t entry_node,
-    const std::array<CardId, 5> &board, const PublicState &state,
-    std::span<const Action> action_prefix);
+derive_hu_preflop_sampled_postflop_public_decision(const HuPreflopTree &tree,
+                                                   std::uint32_t entry_node,
+                                                   const std::array<CardId, 5> &board,
+                                                   const PublicState &state,
+                                                   std::span<const Action> action_prefix);
 [[nodiscard]] Result<HuPreflopSampledPostflopPolicyKey, HuPreflopError>
 derive_hu_preflop_sampled_postflop_policy_key(
     const HuPreflopSampledPostflopPolicy &policy,
-    const HuPreflopSampledPostflopPublicDecision &decision,
-    const std::array<CardId, 5> &board, ComboId combo);
+    const HuPreflopSampledPostflopPublicDecision &decision, const std::array<CardId, 5> &board,
+    ComboId combo);
 // Replays one concrete history and returns the complete average strategy in
 // legal-action order. Batch evaluators use this form to derive the expensive
 // abstraction key once per combo and decision instead of once per action.

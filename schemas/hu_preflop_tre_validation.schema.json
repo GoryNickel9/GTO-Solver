@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gtosd.local/schemas/hu_preflop_tre_validation.schema.json",
+  "title": "GTOSD HU preflop T/R/E validation certificate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "game_id",
+    "protocol",
+    "training",
+    "response_search",
+    "evaluation",
+    "claims",
+    "timing",
+    "limitations"
+  ],
+  "properties": {
+    "schema": {"const": "gtosd.hu_preflop_tre_validation.v1"},
+    "status": {
+      "enum": [
+        "STATISTICAL_PRECISION_TARGET_MET",
+        "MAXIMUM_EVALUATION_CORPUS_REACHED"
+      ]
+    },
+    "game_id": {"type": "string", "minLength": 1},
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "training_corpus",
+        "response_search_corpus",
+        "evaluation_corpus",
+        "corpus_seeds_are_distinct",
+        "training_policy_frozen_before_R",
+        "responses_frozen_before_E",
+        "paired_common_random_numbers_on_E",
+        "policy_completion_contract"
+      ],
+      "properties": {
+        "training_corpus": {"const": "T"},
+        "response_search_corpus": {"const": "R"},
+        "evaluation_corpus": {"const": "E"},
+        "corpus_seeds_are_distinct": {"const": true},
+        "training_policy_frozen_before_R": {"const": true},
+        "responses_frozen_before_E": {"const": true},
+        "paired_common_random_numbers_on_E": {"const": true},
+        "policy_completion_contract": {"const": "uniform_unseen_v1"}
+      }
+    },
+    "training": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "game",
+        "algorithm",
+        "strategy",
+        "iterations",
+        "solver_seed",
+        "traversed_nodes",
+        "maximum_strategy_normalization_error"
+      ],
+      "properties": {
+        "game": {"$ref": "#/$defs/game"},
+        "algorithm": {"const": "linear_mccfr"},
+        "strategy": {"const": "average"},
+        "iterations": {"type": "integer", "minimum": 1},
+        "solver_seed": {"type": "integer", "minimum": 1},
+        "traversed_nodes": {"type": "integer", "minimum": 1},
+        "maximum_strategy_normalization_error": {"type": "number", "minimum": 0}
+      }
+    },
+    "response_search": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "game",
+        "training_policy_coverage",
+        "players",
+        "best_response_method",
+        "exact_completed_policy_nashconv_ante",
+        "physical_best_response_error_bound"
+      ],
+      "properties": {
+        "game": {"$ref": "#/$defs/game"},
+        "training_policy_coverage": {"$ref": "#/$defs/coverage"},
+        "players": {
+          "type": "array",
+          "prefixItems": [
+            {"$ref": "#/$defs/response_search_player"},
+            {"$ref": "#/$defs/response_search_player"}
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "best_response_method": {"const": "exact_dynamic_programming_on_finite_R"},
+        "exact_completed_policy_nashconv_ante": {"type": "number", "minimum": 0},
+        "physical_best_response_error_bound": {"type": "null"}
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sampling",
+        "conditional_sampling",
+        "planned_looks",
+        "completed_looks",
+        "initial_deals_per_co_class",
+        "maximum_deals_per_co_class",
+        "final_deals_per_co_class",
+        "confidence_method",
+        "family_wise_confidence_level",
+        "simultaneous_metrics",
+        "bonferroni_comparisons",
+        "per_interval_alpha",
+        "critical_value",
+        "normalized_half_width_target",
+        "precision_target_met",
+        "looks",
+        "final"
+      ],
+      "properties": {
+        "sampling": {
+          "const": "stratified_by_CO_hand_class_with_exact_physical_class_mass"
+        },
+        "conditional_sampling": {
+          "const": "independent_BTN_holes_and_complete_board_with_replacement"
+        },
+        "planned_looks": {"type": "integer", "minimum": 1, "maximum": 16},
+        "completed_looks": {"type": "integer", "minimum": 1, "maximum": 16},
+        "initial_deals_per_co_class": {"type": "integer", "minimum": 2},
+        "maximum_deals_per_co_class": {"type": "integer", "minimum": 2},
+        "final_deals_per_co_class": {"type": "integer", "minimum": 2},
+        "confidence_method": {
+          "const": "normal_approximation_stratified_paired_bonferroni_v1"
+        },
+        "family_wise_confidence_level": {"const": 0.95},
+        "simultaneous_metrics": {"const": 5},
+        "bonferroni_comparisons": {"type": "integer", "minimum": 5, "maximum": 80},
+        "per_interval_alpha": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.01},
+        "critical_value": {"type": "number", "minimum": 1.959},
+        "normalized_half_width_target": {"type": "number", "exclusiveMinimum": 0},
+        "precision_target_met": {"type": "boolean"},
+        "looks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": {"$ref": "#/$defs/evaluation_look"}
+        },
+        "final": {"$ref": "#/$defs/evaluation_look"}
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exact_best_response_on_R",
+        "candidate_response_gain_estimated_on_independent_E",
+        "abstract_empirical_R_nashconv_available",
+        "physical_nashconv_certified",
+        "candidate_gain_is_physical_exploitability_upper_bound"
+      ],
+      "properties": {
+        "exact_best_response_on_R": {"const": true},
+        "candidate_response_gain_estimated_on_independent_E": {"const": true},
+        "abstract_empirical_R_nashconv_available": {"const": true},
+        "physical_nashconv_certified": {"const": false},
+        "candidate_gain_is_physical_exploitability_upper_bound": {"const": false}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "training_compile_seconds",
+        "training_solve_seconds",
+        "response_compile_seconds",
+        "response_search_seconds",
+        "evaluation_compile_seconds",
+        "evaluation_seconds",
+        "total_seconds"
+      ],
+      "properties": {
+        "training_compile_seconds": {"type": "number", "minimum": 0},
+        "training_solve_seconds": {"type": "number", "minimum": 0},
+        "response_compile_seconds": {"type": "number", "minimum": 0},
+        "response_search_seconds": {"type": "number", "minimum": 0},
+        "evaluation_compile_seconds": {"type": "number", "minimum": 0},
+        "evaluation_seconds": {"type": "number", "minimum": 0},
+        "total_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  },
+  "$defs": {
+    "number_pair": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "nonnegative_integer_pair": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "integer", "minimum": 0},
+        {"type": "integer", "minimum": 0}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "coverage_pair": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number", "minimum": 0, "maximum": 1},
+        {"type": "number", "minimum": 0, "maximum": 1}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "nonnegative_number_pair": {
+      "type": "array",
+      "prefixItems": [
+        {"type": "number", "minimum": 0},
+        {"type": "number", "minimum": 0}
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "game": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "abstract_game_definition_fingerprint",
+        "chance_corpus_fingerprint",
+        "finite_game_fingerprint",
+        "seed",
+        "deals_per_co_class",
+        "outcomes",
+        "nodes",
+        "terminal_nodes",
+        "chance_nodes",
+        "decision_nodes",
+        "information_sets",
+        "maximum_depth",
+        "compile_seconds"
+      ],
+      "properties": {
+        "abstract_game_definition_fingerprint": {"type": "string", "minLength": 1},
+        "chance_corpus_fingerprint": {"type": "string", "minLength": 1},
+        "finite_game_fingerprint": {"type": "string", "minLength": 1},
+        "seed": {"type": "integer", "minimum": 1},
+        "deals_per_co_class": {"type": "integer", "minimum": 1},
+        "outcomes": {"type": "integer", "minimum": 81},
+        "nodes": {"type": "integer", "minimum": 1},
+        "terminal_nodes": {"type": "integer", "minimum": 1},
+        "chance_nodes": {"type": "integer", "minimum": 1},
+        "decision_nodes": {"type": "integer", "minimum": 1},
+        "information_sets": {"type": "integer", "minimum": 1},
+        "maximum_depth": {"type": "integer", "minimum": 1},
+        "compile_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "target_game_fingerprint",
+        "supplied_information_sets",
+        "required_information_sets",
+        "matched_information_sets",
+        "unseen_information_sets",
+        "unused_supplied_information_sets",
+        "required_information_sets_by_player",
+        "unseen_information_sets_by_player",
+        "decision_nodes",
+        "unseen_decision_nodes",
+        "exact_key_coverage",
+        "total_decision_reach_mass",
+        "unseen_decision_reach_mass",
+        "reach_weighted_coverage",
+        "total_decision_reach_mass_by_player",
+        "unseen_decision_reach_mass_by_player",
+        "reach_weighted_coverage_by_player"
+      ],
+      "properties": {
+        "contract": {"const": "uniform_unseen_v1"},
+        "target_game_fingerprint": {"type": "string", "minLength": 1},
+        "supplied_information_sets": {"type": "integer", "minimum": 0},
+        "required_information_sets": {"type": "integer", "minimum": 0},
+        "matched_information_sets": {"type": "integer", "minimum": 0},
+        "unseen_information_sets": {"type": "integer", "minimum": 0},
+        "unused_supplied_information_sets": {"type": "integer", "minimum": 0},
+        "required_information_sets_by_player": {"$ref": "#/$defs/nonnegative_integer_pair"},
+        "unseen_information_sets_by_player": {"$ref": "#/$defs/nonnegative_integer_pair"},
+        "decision_nodes": {"type": "integer", "minimum": 0},
+        "unseen_decision_nodes": {"type": "integer", "minimum": 0},
+        "exact_key_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "total_decision_reach_mass": {"type": "number", "minimum": 0},
+        "unseen_decision_reach_mass": {"type": "number", "minimum": 0},
+        "reach_weighted_coverage": {"type": "number", "minimum": 0, "maximum": 1},
+        "total_decision_reach_mass_by_player": {"$ref": "#/$defs/nonnegative_number_pair"},
+        "unseen_decision_reach_mass_by_player": {"$ref": "#/$defs/nonnegative_number_pair"},
+        "reach_weighted_coverage_by_player": {"$ref": "#/$defs/coverage_pair"}
+      }
+    },
+    "response_search_player": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "player",
+        "baseline_ev_ante",
+        "exact_best_response_ev_ante",
+        "exact_response_gain_ante",
+        "response_information_sets",
+        "exact_on_response_corpus"
+      ],
+      "properties": {
+        "player": {"type": "integer", "minimum": 0, "maximum": 1},
+        "baseline_ev_ante": {"type": "number"},
+        "exact_best_response_ev_ante": {"type": "number"},
+        "exact_response_gain_ante": {"type": "number", "minimum": 0},
+        "response_information_sets": {"type": "integer", "minimum": 1},
+        "exact_on_response_corpus": {"const": true}
+      }
+    },
+    "estimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mean_ante",
+        "standard_error_ante",
+        "confidence_half_width_ante",
+        "confidence_interval_ante",
+        "normalized_mean",
+        "normalized_confidence_half_width",
+        "normalized_confidence_interval"
+      ],
+      "properties": {
+        "mean_ante": {"type": "number"},
+        "standard_error_ante": {"type": "number", "minimum": 0},
+        "confidence_half_width_ante": {"type": "number", "minimum": 0},
+        "confidence_interval_ante": {"$ref": "#/$defs/number_pair"},
+        "normalized_mean": {"type": "number"},
+        "normalized_confidence_half_width": {"type": "number", "minimum": 0},
+        "normalized_confidence_interval": {"$ref": "#/$defs/number_pair"}
+      }
+    },
+    "evaluation_look": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "look",
+        "game",
+        "training_policy_coverage",
+        "response_policy_coverage",
+        "profile_ev",
+        "candidate_response_gain",
+        "candidate_response_gain_sum",
+        "maximum_normalized_confidence_half_width",
+        "precision_target_met",
+        "evaluation_seconds"
+      ],
+      "properties": {
+        "look": {"type": "integer", "minimum": 1, "maximum": 16},
+        "game": {"$ref": "#/$defs/game"},
+        "training_policy_coverage": {"$ref": "#/$defs/coverage"},
+        "response_policy_coverage": {
+          "type": "array",
+          "prefixItems": [
+            {"$ref": "#/$defs/response_coverage"},
+            {"$ref": "#/$defs/response_coverage"}
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "profile_ev": {
+          "type": "array",
+          "prefixItems": [
+            {"$ref": "#/$defs/estimate"},
+            {"$ref": "#/$defs/estimate"}
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "candidate_response_gain": {
+          "type": "array",
+          "prefixItems": [
+            {"$ref": "#/$defs/estimate"},
+            {"$ref": "#/$defs/estimate"}
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "candidate_response_gain_sum": {"$ref": "#/$defs/estimate"},
+        "maximum_normalized_confidence_half_width": {"type": "number", "minimum": 0},
+        "precision_target_met": {"type": "boolean"},
+        "evaluation_seconds": {"type": "number", "minimum": 0}
+      }
+    },
+    "response_coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["player", "coverage"],
+      "properties": {
+        "player": {"type": "integer", "minimum": 0, "maximum": 1},
+        "coverage": {"$ref": "#/$defs/coverage"}
+      }
+    }
+  }
+}

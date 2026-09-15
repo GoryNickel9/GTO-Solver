@@ -42,3 +42,18 @@ target_link_libraries(gtosd_preflop
   PRIVATE nlohmann_json::nlohmann_json)
 set_target_properties(gtosd_preflop PROPERTIES EXPORT_NAME preflop)
 gtosd_set_warnings(gtosd_preflop)
+
+add_library(gtosd_preflop_certifier
+  src/hu_preflop_abstract_game.cpp)
+add_library(gtosd::preflop_certifier ALIAS gtosd_preflop_certifier)
+
+target_include_directories(gtosd_preflop_certifier
+  PUBLIC
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/generated>
+    $<INSTALL_INTERFACE:include>)
+target_compile_features(gtosd_preflop_certifier PUBLIC cxx_std_20)
+target_link_libraries(gtosd_preflop_certifier
+  PUBLIC gtosd::preflop gtosd::solver)
+set_target_properties(gtosd_preflop_certifier PROPERTIES EXPORT_NAME preflop_certifier)
+gtosd_set_warnings(gtosd_preflop_certifier)

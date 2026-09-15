@@ -39,9 +39,15 @@ bool supported_policy_version(const HuPreflopSampledPostflopPolicy &policy) noex
          (policy.representation !=
               HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
           policy.minor >= 9U) &&
+         (policy.representation !=
+              HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+          policy.minor >= 10U) &&
          (policy.representation != HuPreflopPostflopRepresentation::
-                                       DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-          policy.minor >= 10U);
+                                       DistributionalStrengthStreetAdaptivePerfectRecallV23 ||
+          policy.minor >= 12U) &&
+         (policy.minor != 12U || policy.representation ==
+                                     HuPreflopPostflopRepresentation::
+                                         DistributionalStrengthStreetAdaptivePerfectRecallV23);
 }
 
 std::string checksum(const std::string_view bytes) {
@@ -162,22 +168,22 @@ Json policy_json(const HuPreflopSampledPostflopPolicy &policy) {
     }
     entries.push_back(std::move(item));
   }
-  Json result{{"schema", "gtosd.hu_preflop_sampled_postflop_policy.v1"},
-              {"major", policy.major},
-              {"minor", policy.minor},
-              {"tree_fingerprint", policy.tree_fingerprint},
-              {"algorithm", policy.algorithm},
-              {"abstraction_id", policy.abstraction_id},
-              {"iterations", policy.iterations},
-              {"seed", policy.seed},
-              {"partition_seed", policy.partition_seed},
-              {"equity_samples_per_bucket", policy.equity_samples_per_bucket},
-              {"distributional_bucket_capacities", policy.distributional_bucket_capacities},
-              {"representation", static_cast<std::uint8_t>(policy.representation)},
-              {"missing_infoset_fallback",
-               static_cast<std::uint8_t>(policy.missing_infoset_fallback)},
-              {"entries", std::move(entries)},
-              {"fingerprint", policy.fingerprint}};
+  Json result{
+      {"schema", "gtosd.hu_preflop_sampled_postflop_policy.v1"},
+      {"major", policy.major},
+      {"minor", policy.minor},
+      {"tree_fingerprint", policy.tree_fingerprint},
+      {"algorithm", policy.algorithm},
+      {"abstraction_id", policy.abstraction_id},
+      {"iterations", policy.iterations},
+      {"seed", policy.seed},
+      {"partition_seed", policy.partition_seed},
+      {"equity_samples_per_bucket", policy.equity_samples_per_bucket},
+      {"distributional_bucket_capacities", policy.distributional_bucket_capacities},
+      {"representation", static_cast<std::uint8_t>(policy.representation)},
+      {"missing_infoset_fallback", static_cast<std::uint8_t>(policy.missing_infoset_fallback)},
+      {"entries", std::move(entries)},
+      {"fingerprint", policy.fingerprint}};
   if (policy.minor >= 11U) {
     result["current_policy_present"] = policy.current_policy_present;
   }
@@ -236,28 +242,32 @@ deserialize_hu_preflop_sampled_postflop_policy(const HuPreflopTree &tree,
     const auto representation = source.at("representation").get<std::uint8_t>();
     const auto fallback = source.at("missing_infoset_fallback").get<std::uint8_t>();
     if (representation >
-            static_cast<std::uint8_t>(
-                HuPreflopPostflopRepresentation::
-                    DistributionalStrengthAdaptiveCategoryHistoryV11) ||
-        (representation == static_cast<std::uint8_t>(
-                               HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7) &&
+            static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                          DistributionalStrengthStreetAdaptivePerfectRecallV23) ||
+        (representation ==
+             static_cast<std::uint8_t>(
+                 HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7) &&
          result.minor < 6U) ||
-        (representation == static_cast<std::uint8_t>(
-                               HuPreflopPostflopRepresentation::
-                                   DistributionalStrengthStreetAdaptiveV8) &&
+        (representation ==
+             static_cast<std::uint8_t>(
+                 HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8) &&
          result.minor < 7U) ||
-        (representation == static_cast<std::uint8_t>(
-                               HuPreflopPostflopRepresentation::
-                                   DistributionalStrengthSelectiveHistoryV9) &&
+        (representation ==
+             static_cast<std::uint8_t>(
+                 HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9) &&
          result.minor < 8U) ||
-        (representation == static_cast<std::uint8_t>(
-                               HuPreflopPostflopRepresentation::
-                                   DistributionalStrengthCategoryHistoryV10) &&
+        (representation ==
+             static_cast<std::uint8_t>(
+                 HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10) &&
          result.minor < 9U) ||
-        (representation == static_cast<std::uint8_t>(
-                               HuPreflopPostflopRepresentation::
-                                   DistributionalStrengthAdaptiveCategoryHistoryV11) &&
+        (representation ==
+             static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                           DistributionalStrengthAdaptiveCategoryHistoryV11) &&
          result.minor < 10U) ||
+        (representation ==
+             static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                           DistributionalStrengthStreetAdaptivePerfectRecallV23) &&
+         result.minor < 12U) ||
         fallback != static_cast<std::uint8_t>(HuPreflopSampledPolicyFallback::Uniform) ||
         !source.at("entries").is_array()) {
       return Result<HuPreflopSampledPostflopPolicy, HuPreflopError>::failure(

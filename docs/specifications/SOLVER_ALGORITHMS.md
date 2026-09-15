@@ -9,7 +9,8 @@
 - Linear CFR;
 - Discounted CFR (DCFR);
 - ProductionDcfr con schedule bounded `1.5/0/3`;
-- External Sampling MCCFR.
+- External Sampling MCCFR;
+- Linear MCCFR.
 
 Questo laboratorio valida formule, checkpoint, averaging e best response su
 Kuhn, Leduc e giochi ridotti. Non implica che ogni algoritmo sia disponibile
@@ -52,12 +53,22 @@ dall'accumulatore reach-weighted.
 | DCFR | discount separato positivo/negativo/strategy | parametrico `1.5/0/2` di default | laboratorio/comparator |
 | Production DCFR | DCFR signed, reset bounded e pesi cubici | contratto fisso `1.5/0/3` | postflop production |
 | External Sampling MCCFR | stima campionata | dipende dal campione | laboratorio |
+| Linear MCCFR | external sampling con peso `t` su regret e average | lineare | preflop V23 e laboratorio |
 
 DCFR continua a esporre `alpha=1.5`, `beta=0`, `gamma=2` come variante
 parametrica versionata. `ProductionDcfr` ha identità distinta sia nel checkpoint
 postflop (`11`) sia nel laboratorio `FiniteGame`; non accetta una gamma
 alternativa. Il resume generico attraverso il confine d'epoca è byte-identico
 al run continuo. MCCFR registra seed e non può essere chiamato exact.
+
+Il percorso campionato del `FiniteGame` calcola la strategia corrente soltanto per gli
+information set visitati e applica delta sparse. Gli information set non visitati non ricevono
+né regret né massa media, quindi questa riduzione non cambia l'algoritmo. Sul gioco HU10 V23
+`K=2`, 512 iterazioni producono lo stesso checkpoint SHA-256 del percorso denso; il tempo di
+training scende da 64,2828711 s a 1,7173435 s. Il lookup precompilato nodo→information set e i
+delta indicizzati dal buffer riducono inoltre K=8/100k da 22,5572053 s a 12,5287590 s, con
+checkpoint SHA-256 invariato. Costruzione della strategia media completa, validazione e best
+response restano operazioni dense eseguite ai checkpoint dichiarati.
 
 ## Parallelismo
 
@@ -105,6 +116,56 @@ blocker vengono applicati quando la street avanza. Il provider della strategia
 La frequenza della certificazione cambia il tempo osservato e deve essere
 pubblicata. Non è lecito confrontare il solo traversal GTOSD con il tempo
 end-to-end GTO+.
+
+### Completamento e copertura della policy
+
+Una policy portata su un altro corpus può non definire tutti gli information set del gioco
+target. `complete_strategy_profile` offre due contratti: `reject_missing` rifiuta la policy;
+`uniform_unseen_v1` completa le sole chiavi mancanti con una distribuzione uniforme sulle azioni
+legali. Le chiavi sorgente estranee al target vengono contate ma non copiate nel profilo completo.
+Una voce malformata viene respinta anche quando non compare nel gioco target.
+
+L'audit usa due metriche complementari. Se `I` è l'insieme delle chiavi richieste e `M` quello
+delle chiavi presenti e compatibili:
+
+```text
+exact_key_coverage = |M| / |I|
+```
+
+Sia `r(v)` la probabilità on-policy di raggiungere il nodo decisionale `v`, incluse chance e
+azioni di entrambi i giocatori. Indicando con `U` i nodi la cui chiave è stata completata:
+
+```text
+reach_weighted_coverage = 1 - sum(v in U, r(v)) / sum(v decisionale, r(v))
+```
+
+La seconda quantità misura la quota delle visite decisionali attese coperta dalla policy appresa;
+non è una counterfactual reach e non sostituisce `exact_key_coverage`. Entrambe sono riportate
+anche per giocatore. La versione corrente opera sul `FiniteGame` HU; l'estensione multiway
+richiede prima la generalizzazione delle utility e degli indici giocatore del core.
+
+### Protocollo training/response/evaluation
+
+Il runner HU10 usa tre campioni indipendenti della stessa definizione astratta:
+
+1. T addestra la strategia media con Linear MCCFR;
+2. R completa e congela la policy T, quindi calcola una best response esatta per giocatore nel
+   gioco finito R;
+3. E completa la policy e le due risposte con `uniform_unseen_v1`, poi valuta baseline e deviazione
+   sugli stessi outcome;
+4. il confronto paired usa `gain_i(x) = u_i(response_i, sigma_-i; x) - u_i(sigma; x)`;
+5. le medie per classe CO vengono ricomposte con `class_mass / 630`.
+
+La best response su R produce una NashConv esatta della policy completata nel solo gioco finito R.
+Su E la risposta resta congelata: ottimizzarla di nuovo su E contaminerebbe il campione di
+valutazione. Un gain negativo su E è ammesso e segnala che la risposta R non generalizza; non viene
+troncato a zero.
+
+Il piano adattivo raddoppia K mantenendo il prefisso deterministico di ogni strato. La correzione
+Bonferroni copre i cinque intervalli usati dallo stop e tutti i look dichiarati. Gli intervalli
+restano basati su un'approssimazione normale; K piccolo serve solo allo smoke engineering. Il gain
+della risposta candidata non è un upper bound dell'exploitability fisica, perché R non enumera
+tutte le chance e il completamento uniforme interviene sulle chiavi non osservate.
 
 `RbpReadOnlyTelemetry` può osservare checkpoint DCFR legacy e ProductionDcfr,
 ma non cambia la traversata. Sul profilo product D/V alle iterazioni 20 e 32 non

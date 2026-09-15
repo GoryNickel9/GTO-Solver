@@ -7,12 +7,15 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace gtosd {
 namespace {
+
+constexpr double probability_tolerance = 1.0e-12;
 
 const InformationSetStrategy *find_strategy(const StrategyProfile &profile,
                                             const std::string &information_set) {
@@ -156,7 +159,175 @@ best_response_node_value(const FiniteGame &game, const GameNodeId node_id,
   return Result<double, SolverError>::success(value);
 }
 
+bool valid_partial_strategy(const InformationSetStrategy &strategy) {
+  if (strategy.player > 1U || strategy.actions.empty() ||
+      strategy.actions.size() != strategy.probabilities.size()) {
+    return false;
+  }
+  std::set<GameActionId> actions;
+  double probability_sum = 0.0;
+  for (std::size_t index = 0U; index < strategy.actions.size(); ++index) {
+    const double probability = strategy.probabilities[index];
+    if (!actions.insert(strategy.actions[index]).second || !std::isfinite(probability) ||
+        probability < 0.0 || probability > 1.0) {
+      return false;
+    }
+    probability_sum += probability;
+  }
+  return std::abs(probability_sum - 1.0) <= probability_tolerance;
+}
+
+Result<bool, SolverError>
+populate_reach_coverage(const FiniteGame &game, const StrategyProfile &profile,
+                        const std::set<std::string> &unseen_information_sets,
+                        PolicyCoverageAudit &audit) {
+  std::vector<std::size_t> incoming_edges(game.nodes.size(), 0U);
+  for (const auto &node : game.nodes) {
+    for (const auto &edge : node.edges) {
+      ++incoming_edges[edge.child];
+    }
+  }
+
+  std::vector<GameNodeId> ready;
+  ready.reserve(game.nodes.size());
+  for (GameNodeId node_id = 0U; node_id < game.nodes.size(); ++node_id) {
+    if (incoming_edges[node_id] == 0U) {
+      ready.push_back(node_id);
+    }
+  }
+  std::vector<GameNodeId> order;
+  order.reserve(game.nodes.size());
+  while (!ready.empty()) {
+    const GameNodeId node_id = ready.back();
+    ready.pop_back();
+    order.push_back(node_id);
+    for (const auto &edge : game.nodes[node_id].edges) {
+      if (--incoming_edges[edge.child] == 0U) {
+        ready.push_back(edge.child);
+      }
+    }
+  }
+  if (order.size() != game.nodes.size()) {
+    return Result<bool, SolverError>::failure(SolverError::InvalidGame);
+  }
+
+  std::vector<double> reach(game.nodes.size(), 0.0);
+  reach[game.root] = 1.0;
+  for (const GameNodeId node_id : order) {
+    const auto &node = game.nodes[node_id];
+    const double node_reach = reach[node_id];
+    if (!std::isfinite(node_reach) || node_reach < 0.0) {
+      return Result<bool, SolverError>::failure(SolverError::NumericalFailure);
+    }
+    if (node.kind == GameNodeKind::Terminal) {
+      continue;
+    }
+    if (node.kind == GameNodeKind::Chance) {
+      for (const auto &edge : node.edges) {
+        reach[edge.child] += node_reach * edge.probability;
+      }
+      continue;
+    }
+
+    ++audit.decision_nodes;
+    audit.total_decision_reach_mass += node_reach;
+    audit.total_decision_reach_mass_by_player[node.player] += node_reach;
+    if (unseen_information_sets.contains(node.information_set)) {
+      ++audit.unseen_decision_nodes;
+      audit.unseen_decision_reach_mass += node_reach;
+      audit.unseen_decision_reach_mass_by_player[node.player] += node_reach;
+    }
+    const auto &strategy = profile.at(node.information_set);
+    for (std::size_t index = 0U; index < node.edges.size(); ++index) {
+      reach[node.edges[index].child] += node_reach * strategy.probabilities[index];
+    }
+  }
+
+  const auto coverage = [](const double total, const double unseen) {
+    return total == 0.0 ? 1.0 : std::clamp(1.0 - unseen / total, 0.0, 1.0);
+  };
+  audit.reach_weighted_coverage =
+      coverage(audit.total_decision_reach_mass, audit.unseen_decision_reach_mass);
+  for (std::size_t player = 0U; player < 2U; ++player) {
+    audit.reach_weighted_coverage_by_player[player] =
+        coverage(audit.total_decision_reach_mass_by_player[player],
+                 audit.unseen_decision_reach_mass_by_player[player]);
+  }
+  return Result<bool, SolverError>::success(true);
+}
+
 } // namespace
+
+Result<CompletedStrategyProfile, SolverError>
+complete_strategy_profile(const FiniteGame &game, const StrategyProfile &partial_profile,
+                          const PolicyCompletionRule completion_rule) {
+  if (completion_rule != PolicyCompletionRule::RejectMissing &&
+      completion_rule != PolicyCompletionRule::UniformUnseenV1) {
+    return Result<CompletedStrategyProfile, SolverError>::failure(
+        SolverError::InvalidConfiguration);
+  }
+  auto target_profile = uniform_strategy_profile(game);
+  if (!target_profile) {
+    return Result<CompletedStrategyProfile, SolverError>::failure(target_profile.error());
+  }
+  for (const auto &[key, strategy] : partial_profile) {
+    static_cast<void>(key);
+    if (!valid_partial_strategy(strategy)) {
+      return Result<CompletedStrategyProfile, SolverError>::failure(SolverError::InvalidStrategy);
+    }
+  }
+
+  CompletedStrategyProfile result;
+  result.profile = std::move(target_profile.value());
+  result.coverage.completion_rule = completion_rule;
+  result.coverage.target_game_fingerprint = finite_game_fingerprint(game);
+  result.coverage.supplied_information_sets = partial_profile.size();
+  result.coverage.required_information_sets = result.profile.size();
+  std::set<std::string> unseen_information_sets;
+
+  for (auto &[key, expected] : result.profile) {
+    ++result.coverage.required_information_sets_by_player[expected.player];
+    const auto found = partial_profile.find(key);
+    if (found == partial_profile.end()) {
+      if (completion_rule == PolicyCompletionRule::RejectMissing) {
+        return Result<CompletedStrategyProfile, SolverError>::failure(SolverError::InvalidStrategy);
+      }
+      unseen_information_sets.insert(key);
+      ++result.coverage.unseen_information_sets;
+      ++result.coverage.unseen_information_sets_by_player[expected.player];
+      continue;
+    }
+    if (found->second.player != expected.player || found->second.actions != expected.actions) {
+      return Result<CompletedStrategyProfile, SolverError>::failure(SolverError::InvalidStrategy);
+    }
+    expected = found->second;
+    ++result.coverage.matched_information_sets;
+  }
+
+  result.coverage.unused_supplied_information_sets =
+      result.coverage.supplied_information_sets - result.coverage.matched_information_sets;
+  result.coverage.exact_key_coverage =
+      result.coverage.required_information_sets == 0U
+          ? 1.0
+          : static_cast<double>(result.coverage.matched_information_sets) /
+                static_cast<double>(result.coverage.required_information_sets);
+  const auto reach =
+      populate_reach_coverage(game, result.profile, unseen_information_sets, result.coverage);
+  if (!reach) {
+    return Result<CompletedStrategyProfile, SolverError>::failure(reach.error());
+  }
+  return Result<CompletedStrategyProfile, SolverError>::success(std::move(result));
+}
+
+const char *policy_completion_rule_name(const PolicyCompletionRule rule) noexcept {
+  switch (rule) {
+  case PolicyCompletionRule::RejectMissing:
+    return "reject_missing";
+  case PolicyCompletionRule::UniformUnseenV1:
+    return "uniform_unseen_v1";
+  }
+  return "unknown_policy_completion";
+}
 
 Result<std::array<double, 2>, SolverError>
 evaluate_strategy_profile(const FiniteGame &game, const StrategyProfile &profile) {
@@ -165,6 +336,41 @@ evaluate_strategy_profile(const FiniteGame &game, const StrategyProfile &profile
     return Result<std::array<double, 2>, SolverError>::failure(valid.error());
   }
   return evaluate_node(game, game.root, profile);
+}
+
+Result<RootChanceProfileEvaluation, SolverError>
+evaluate_strategy_profile_by_root_chance(const FiniteGame &game, const StrategyProfile &profile) {
+  const auto valid = validate_strategy_profile(game, profile);
+  if (!valid) {
+    return Result<RootChanceProfileEvaluation, SolverError>::failure(valid.error());
+  }
+  const auto &root = game.nodes[game.root];
+  if (root.kind != GameNodeKind::Chance) {
+    return Result<RootChanceProfileEvaluation, SolverError>::failure(
+        SolverError::InvalidConfiguration);
+  }
+
+  RootChanceProfileEvaluation result;
+  result.outcome_values.reserve(root.edges.size());
+  result.probabilities.reserve(root.edges.size());
+  for (const auto &edge : root.edges) {
+    const auto outcome = evaluate_node(game, edge.child, profile);
+    if (!outcome) {
+      return Result<RootChanceProfileEvaluation, SolverError>::failure(outcome.error());
+    }
+    if (!std::isfinite(outcome.value()[0]) || !std::isfinite(outcome.value()[1])) {
+      return Result<RootChanceProfileEvaluation, SolverError>::failure(
+          SolverError::NumericalFailure);
+    }
+    result.outcome_values.push_back(outcome.value());
+    result.probabilities.push_back(edge.probability);
+    result.profile_value[0] += edge.probability * outcome.value()[0];
+    result.profile_value[1] += edge.probability * outcome.value()[1];
+  }
+  if (!std::isfinite(result.profile_value[0]) || !std::isfinite(result.profile_value[1])) {
+    return Result<RootChanceProfileEvaluation, SolverError>::failure(SolverError::NumericalFailure);
+  }
+  return Result<RootChanceProfileEvaluation, SolverError>::success(std::move(result));
 }
 
 Result<BestResponseResult, SolverError> exact_best_response(const FiniteGame &game,

@@ -247,6 +247,7 @@ struct SubtreeStats {
   std::uint64_t represented_nodes{0};
   std::uint64_t action_edges{0};
   std::uint64_t decision_nodes{0};
+  std::array<std::uint64_t, 3> decision_nodes_by_street{};
   std::uint64_t chance_frontiers{0};
   std::uint64_t terminal_folds{0};
   std::uint64_t terminal_showdowns{0};
@@ -257,6 +258,12 @@ struct SubtreeStats {
 };
 
 bool merge(SubtreeStats &target, const SubtreeStats &source) {
+  for (std::size_t street = 0U; street < target.decision_nodes_by_street.size(); ++street) {
+    if (!add_count(target.decision_nodes_by_street[street],
+                   source.decision_nodes_by_street[street])) {
+      return false;
+    }
+  }
   return add_count(target.represented_nodes, source.represented_nodes) &&
          add_count(target.action_edges, source.action_edges) &&
          add_count(target.decision_nodes, source.decision_nodes) &&
@@ -314,6 +321,11 @@ public:
           result.safety_limit_reached || child.value().safety_limit_reached;
     } else if (state.status == HandStatus::InProgress) {
       ++result.decision_nodes;
+      if (state.street < Street::Flop || state.street > Street::River) {
+        return Result<SubtreeStats, HuPreflopError>::failure(HuPreflopError::GameFailure);
+      }
+      ++result.decision_nodes_by_street[static_cast<std::size_t>(state.street) -
+                                        static_cast<std::size_t>(Street::Flop)];
       const auto actions = legal_actions(state, action_config_);
       if (!actions || actions.value().empty()) {
         return Result<SubtreeStats, HuPreflopError>::failure(HuPreflopError::GameFailure);
@@ -500,6 +512,7 @@ analyze_hu_postflop_public_skeleton(const HuPreflopTree &tree) {
   result.represented_nodes = aggregate.represented_nodes;
   result.action_edges = aggregate.action_edges;
   result.decision_nodes = aggregate.decision_nodes;
+  result.decision_nodes_by_street = aggregate.decision_nodes_by_street;
   result.chance_frontiers = aggregate.chance_frontiers;
   result.terminal_folds = aggregate.terminal_folds;
   result.terminal_showdowns = aggregate.terminal_showdowns;

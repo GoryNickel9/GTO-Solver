@@ -16,7 +16,8 @@
   ],
   "properties": {
     "schema": {"const": "gtosd.hu_preflop_candidate.v1"},
-    "benchmark_id": {"const": "GTP-HU-PREFLOP-CO40-001"},
+    "benchmark_id": {"type": "string", "minLength": 1},
+    "game_id": {"type": "string", "minLength": 1},
     "tree_fingerprint": {"type": "string", "minLength": 1},
     "rake_mode": {"type": "string", "minLength": 1},
     "root_ev_ante": {"type": "number"},

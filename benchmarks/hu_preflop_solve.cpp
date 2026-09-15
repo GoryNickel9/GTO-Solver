@@ -13,6 +13,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -23,8 +24,8 @@ namespace {
 
 using Json = nlohmann::json;
 
-constexpr std::array<std::string_view, 5> root_action_ids{"all_in", "raise_6", "raise_10",
-                                                          "call", "fold"};
+constexpr std::array<std::string_view, 5> root_action_ids{"all_in", "raise_6", "raise_10", "call",
+                                                          "fold"};
 
 std::uint64_t parse_integer(const std::string_view value, const std::string_view name) {
   std::uint64_t parsed = 0;
@@ -76,6 +77,7 @@ std::vector<gtosd::HandClassId> parse_hand_classes(const std::string_view value)
 struct Arguments {
   std::string config;
   std::string output;
+  std::string abstract_game_output;
   std::string postflop_policy_output;
   std::string action_conditioned_telemetry_output;
   std::string root_decision_trace_output;
@@ -132,6 +134,11 @@ Arguments parse_arguments(const int argc, char **argv) {
           gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
       continue;
     }
+    if (token == "--postflop-distributional-street-adaptive-perfect-recall-v23") {
+      arguments.options.postflop_representation = gtosd::HuPreflopPostflopRepresentation::
+          DistributionalStrengthStreetAdaptivePerfectRecallV23;
+      continue;
+    }
     if (token == "--postflop-distributional-selective-history-v9") {
       arguments.options.postflop_representation =
           gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9;
@@ -143,8 +150,8 @@ Arguments parse_arguments(const int argc, char **argv) {
       continue;
     }
     if (token == "--postflop-distributional-adaptive-category-history-v11") {
-      arguments.options.postflop_representation = gtosd::HuPreflopPostflopRepresentation::
-          DistributionalStrengthAdaptiveCategoryHistoryV11;
+      arguments.options.postflop_representation =
+          gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11;
       continue;
     }
     if (token == "--reference-betting") {
@@ -215,6 +222,8 @@ Arguments parse_arguments(const int argc, char **argv) {
       arguments.config = value;
     } else if (token == "--output") {
       arguments.output = value;
+    } else if (token == "--abstract-game-output") {
+      arguments.abstract_game_output = value;
     } else if (token == "--postflop-policy-output") {
       arguments.postflop_policy_output = value;
     } else if (token == "--action-conditioned-telemetry-output") {
@@ -229,8 +238,7 @@ Arguments parse_arguments(const int argc, char **argv) {
       if (parsed > std::numeric_limits<std::uint32_t>::max()) {
         throw std::runtime_error("root decision trace deals per class exceed uint32");
       }
-      arguments.options.root_decision_trace_deals_per_class =
-          static_cast<std::uint32_t>(parsed);
+      arguments.options.root_decision_trace_deals_per_class = static_cast<std::uint32_t>(parsed);
     } else if (token == "--iterations") {
       arguments.options.iterations = parse_integer(value, "iterations");
     } else if (token == "--preflop-refinement-iterations") {
@@ -330,8 +338,13 @@ Arguments parse_arguments(const int argc, char **argv) {
   }
   if (!arguments.root_decision_trace_output.empty() &&
       arguments.options.root_decision_trace_hand_classes.empty()) {
-    throw std::runtime_error(
-        "--root-decision-trace-output requires --root-decision-trace-classes");
+    throw std::runtime_error("--root-decision-trace-output requires --root-decision-trace-classes");
+  }
+  if (!arguments.abstract_game_output.empty() &&
+      arguments.options.postflop_representation !=
+          gtosd::HuPreflopPostflopRepresentation::
+              DistributionalStrengthStreetAdaptivePerfectRecallV23) {
+    throw std::runtime_error("--abstract-game-output requires the V23 perfect-recall mode");
   }
   arguments.options.export_postflop_policy = !arguments.postflop_policy_output.empty();
   return arguments;
@@ -503,10 +516,8 @@ Json serialize_full_preflop_charts(const gtosd::HuPreflopTree &tree,
         frequencies[identifier] = decision.strategy[class_id][action];
         current_frequencies[identifier] = training->current_strategy[class_id][action];
         state_actions[identifier] = {
-            {"cumulative_weighted_regret",
-             training->cumulative_weighted_regret[class_id][action]},
-            {"cumulative_average_weight",
-             training->cumulative_average_weight[class_id][action]}};
+            {"cumulative_weighted_regret", training->cumulative_weighted_regret[class_id][action]},
+            {"cumulative_average_weight", training->cumulative_average_weight[class_id][action]}};
         const auto effective_samples = evaluation->action_ev_effective_samples[class_id][action];
         if (effective_samples > 0.0) {
           evs[identifier] = {
@@ -545,26 +556,25 @@ Json serialize_full_preflop_charts(const gtosd::HuPreflopTree &tree,
           {"last_update_iteration", training->last_iteration[class_id]},
           {"actions", std::move(state_actions)}};
     }
-    output[chart_id] = {{"id", chart_id},
-                        {"tree_node_id", decision.node_id},
-                        {"player", player_id(decision.player)},
-                        {"history", std::move(history)},
-                        {"strategy", std::move(strategy)},
-                        {"current_strategy", std::move(current_strategy)},
-                        {"action_ev", std::move(action_ev)},
-                        {"current_action_ev",
-                         solved.current_profile_evaluated ? std::move(current_action_ev)
-                                                          : Json(nullptr)},
-                        {"training_state", std::move(training_state)},
-                        {"training_state_scope",
-                         "final_regret_matching_policy_and_linear_weighted_average_state"},
-                        {"ev_scope", "forced_node_action_then_sampled_average_policy_continuation_"
-                                     "opponent_path_importance_weighted_physical_deals"},
-                        {"current_ev_scope",
-                         solved.current_profile_evaluated
-                             ? Json("forced_node_action_then_sampled_current_policy_continuation_"
-                                    "opponent_path_importance_weighted_physical_deals")
-                             : Json(nullptr)}};
+    output[chart_id] = {
+        {"id", chart_id},
+        {"tree_node_id", decision.node_id},
+        {"player", player_id(decision.player)},
+        {"history", std::move(history)},
+        {"strategy", std::move(strategy)},
+        {"current_strategy", std::move(current_strategy)},
+        {"action_ev", std::move(action_ev)},
+        {"current_action_ev",
+         solved.current_profile_evaluated ? std::move(current_action_ev) : Json(nullptr)},
+        {"training_state", std::move(training_state)},
+        {"training_state_scope", "final_regret_matching_policy_and_linear_weighted_average_state"},
+        {"ev_scope", "forced_node_action_then_sampled_average_policy_continuation_"
+                     "opponent_path_importance_weighted_physical_deals"},
+        {"current_ev_scope",
+         solved.current_profile_evaluated
+             ? Json("forced_node_action_then_sampled_current_policy_continuation_"
+                    "opponent_path_importance_weighted_physical_deals")
+             : Json(nullptr)}};
   }
   if (output.size() != tree.stats.decision_nodes) {
     throw std::runtime_error("full preflop chart export has the wrong node count");
@@ -572,33 +582,31 @@ Json serialize_full_preflop_charts(const gtosd::HuPreflopTree &tree,
   return output;
 }
 
-Json serialize_action_conditioned_telemetry(
-    const gtosd::HuPreflopSolveResult &solved) {
+Json serialize_action_conditioned_telemetry(const gtosd::HuPreflopSolveResult &solved) {
   Json rows = Json::array();
   for (const auto &row : solved.action_conditioned_telemetry) {
-    rows.push_back({
-        {"node_id", row.node_id},
-        {"player", player_id(row.player)},
-        {"history", row.history},
-        {"hand_class", gtosd::class_name(row.hand_class)},
-        {"physical_combo_mass", row.physical_combo_mass},
-        {"public_reach", row.public_reach},
-        {"own_reach", row.own_reach},
-        {"action_id", row.action_id},
-        {"sample_count", row.sample_count},
-        {"mean_action_value", row.mean_action_value},
-        {"variance_action_value", row.variance_action_value},
-        {"standard_error_action_value", row.standard_error_action_value},
-        {"mean_action_advantage", row.mean_action_advantage},
-        {"bucket_key", row.bucket_key},
-        {"bucket_occupancy", row.bucket_occupancy},
-        {"postflop_street", telemetry_street_id(row.postflop_street)},
-        {"terminal_type", telemetry_terminal_id(row.terminal_type)},
-        {"all_in_exact_count", row.all_in_exact_count},
-        {"all_in_sampled_count", row.all_in_sampled_count},
-        {"minimum_action_value", row.minimum_action_value},
-        {"maximum_action_value", row.maximum_action_value},
-        {"spread_action_value", row.spread_action_value}});
+    rows.push_back({{"node_id", row.node_id},
+                    {"player", player_id(row.player)},
+                    {"history", row.history},
+                    {"hand_class", gtosd::class_name(row.hand_class)},
+                    {"physical_combo_mass", row.physical_combo_mass},
+                    {"public_reach", row.public_reach},
+                    {"own_reach", row.own_reach},
+                    {"action_id", row.action_id},
+                    {"sample_count", row.sample_count},
+                    {"mean_action_value", row.mean_action_value},
+                    {"variance_action_value", row.variance_action_value},
+                    {"standard_error_action_value", row.standard_error_action_value},
+                    {"mean_action_advantage", row.mean_action_advantage},
+                    {"bucket_key", row.bucket_key},
+                    {"bucket_occupancy", row.bucket_occupancy},
+                    {"postflop_street", telemetry_street_id(row.postflop_street)},
+                    {"terminal_type", telemetry_terminal_id(row.terminal_type)},
+                    {"all_in_exact_count", row.all_in_exact_count},
+                    {"all_in_sampled_count", row.all_in_sampled_count},
+                    {"minimum_action_value", row.minimum_action_value},
+                    {"maximum_action_value", row.maximum_action_value},
+                    {"spread_action_value", row.spread_action_value}});
   }
   return rows;
 }
@@ -650,8 +658,7 @@ Json serialize_root_decision_traces(const gtosd::HuPreflopTree &tree,
             {"weighted_mean_ante",
              trace.training_action_advantage.pairwise_weighted_mean_ante[action][other]},
             {"weighted_standard_error_ante",
-             trace.training_action_advantage
-                 .pairwise_weighted_standard_error_ante[action][other]}};
+             trace.training_action_advantage.pairwise_weighted_standard_error_ante[action][other]}};
       }
       training_pairwise[action_name] = std::move(paired_row);
     }
@@ -675,16 +682,15 @@ Json serialize_root_decision_traces(const gtosd::HuPreflopTree &tree,
                 step.edge_index >= node.edges.size() || step.player != node.state.player_to_act) {
               throw std::runtime_error("root decision trace step edge is invalid");
             }
-            continuation.push_back({
-                {"node_id", step.node_id},
-                {"player", player_id(step.player)},
-                {"action", preflop_action_id(tree, node, node.edges[step.edge_index].action)}});
+            continuation.push_back(
+                {{"node_id", step.node_id},
+                 {"player", player_id(step.player)},
+                 {"action", preflop_action_id(tree, node, node.edges[step.edge_index].action)}});
           }
-          branches.push_back({
-              {"preflop_continuation", std::move(continuation)},
-              {"terminal_type", telemetry_terminal_id(branch.terminal_type)},
-              {"terminal_street", telemetry_street_id(branch.terminal_street)},
-              {"value", serialize_trace_value(branch.value)}});
+          branches.push_back({{"preflop_continuation", std::move(continuation)},
+                              {"terminal_type", telemetry_terminal_id(branch.terminal_type)},
+                              {"terminal_street", telemetry_street_id(branch.terminal_street)},
+                              {"value", serialize_trace_value(branch.value)}});
         }
         Json streets = Json::array();
         for (const auto &street : action.street_reach) {
@@ -710,29 +716,99 @@ Json serialize_root_decision_traces(const gtosd::HuPreflopTree &tree,
         for (std::size_t right = 0U; right < root_action_ids.size(); ++right) {
           paired_row[std::string(root_action_ids[right])] = {
               {"mean_ante", policy.paired_difference_mean_ante[left][right]},
-              {"standard_error_ante",
-               policy.paired_difference_standard_error_ante[left][right]}};
+              {"standard_error_ante", policy.paired_difference_standard_error_ante[left][right]}};
         }
         paired[std::string(root_action_ids[left])] = std::move(paired_row);
       }
       policies[trace_policy_view_id(policy.policy_view)] = {
-          {"actions", std::move(actions)},
-          {"paired_action_differences", std::move(paired)}};
+          {"actions", std::move(actions)}, {"paired_action_differences", std::move(paired)}};
     }
-    rows.push_back({
-        {"hand_class", gtosd::class_name(trace.hand_class)},
-        {"deals_per_action", trace.deals_per_action},
-        {"training_state",
-         {{"last_update_iteration", trace.last_update_iteration},
-          {"observations", trace.training_action_advantage.observations},
-          {"weight_sum", trace.training_action_advantage.weight_sum},
-          {"effective_samples", trace.training_action_advantage.effective_samples},
-          {"actions", std::move(training_actions)},
-          {"action_advantages", std::move(training_advantages)},
-          {"paired_action_differences", std::move(training_pairwise)}}},
-        {"policies", std::move(policies)}});
+    rows.push_back({{"hand_class", gtosd::class_name(trace.hand_class)},
+                    {"deals_per_action", trace.deals_per_action},
+                    {"training_state",
+                     {{"last_update_iteration", trace.last_update_iteration},
+                      {"observations", trace.training_action_advantage.observations},
+                      {"weight_sum", trace.training_action_advantage.weight_sum},
+                      {"effective_samples", trace.training_action_advantage.effective_samples},
+                      {"actions", std::move(training_actions)},
+                      {"action_advantages", std::move(training_advantages)},
+                      {"paired_action_differences", std::move(training_pairwise)}}},
+                    {"policies", std::move(policies)}});
   }
   return rows;
+}
+
+Json serialize_abstract_game_manifest(const gtosd::HuPreflopAbstractGameDefinition &definition,
+                                      const std::string &game_id,
+                                      const double compilation_seconds) {
+  Json recall_matrix = Json::array();
+  for (std::size_t decision = 0U;
+       decision < definition.recall_contract.retains_bucket_observation.size(); ++decision) {
+    recall_matrix.push_back(definition.recall_contract.retains_bucket_observation[decision]);
+  }
+  return {
+      {"schema", "gtosd.hu_preflop_abstract_game_definition.v1"},
+      {"status", "STRUCTURE_COMPILED_CHANCE_MODEL_PENDING"},
+      {"game_id", game_id},
+      {"format", {definition.major, definition.minor}},
+      {"fingerprint", definition.fingerprint},
+      {"rules_fingerprint", definition.rules_fingerprint},
+      {"tree_fingerprint", definition.tree_fingerprint},
+      {"abstraction_fingerprint", definition.abstraction_fingerprint},
+      {"abstraction_id", definition.abstraction_id},
+      {"chance_model",
+       {{"id", definition.chance_model_id},
+        {"exact_compiled", definition.exact_chance_model_compiled}}},
+      {"mapping",
+       {{"partition_seed", definition.partition_seed},
+        {"equity_samples_per_bucket", definition.equity_samples_per_bucket},
+        {"bucket_capacities", definition.distributional_bucket_capacities}}},
+      {"recall_contract",
+       {{"perfect_recall", definition.recall_contract.perfect_recall},
+        {"retains_complete_public_history",
+         definition.recall_contract.retains_complete_public_history},
+        {"retains_preflop_class", definition.recall_contract.retains_preflop_class},
+        {"retains_bucket_observation_matrix", std::move(recall_matrix)}}},
+      {"public_tree_census",
+       {{"preflop",
+         {{"nodes", definition.preflop_tree.node_count},
+          {"edges", definition.preflop_tree.edge_count},
+          {"decision_nodes", definition.preflop_tree.decision_nodes},
+          {"postflop_entries", definition.preflop_tree.postflop_entries},
+          {"terminal_folds", definition.preflop_tree.terminal_folds},
+          {"terminal_all_ins", definition.preflop_tree.terminal_all_ins},
+          {"maximum_depth", definition.preflop_tree.maximum_depth}}},
+        {"postflop",
+         {{"represented_nodes", definition.postflop_public_tree.represented_nodes},
+          {"action_edges", definition.postflop_public_tree.action_edges},
+          {"decision_nodes", definition.postflop_public_tree.decision_nodes},
+          {"decision_nodes_by_street", definition.postflop_public_tree.decision_nodes_by_street},
+          {"chance_frontiers", definition.postflop_public_tree.chance_frontiers},
+          {"terminal_folds", definition.postflop_public_tree.terminal_folds},
+          {"terminal_showdowns", definition.postflop_public_tree.terminal_showdowns},
+          {"terminal_all_in_runouts", definition.postflop_public_tree.terminal_all_in_runouts},
+          {"memoized_states", definition.postflop_public_tree.memoized_states},
+          {"maximum_subtree_depth", definition.postflop_public_tree.maximum_subtree_depth},
+          {"maximum_observed_raise_count",
+           definition.postflop_public_tree.maximum_observed_raise_count},
+          {"core_raise_safety_limit_reached",
+           definition.postflop_public_tree.core_raise_safety_limit_reached},
+          {"natural_stack_termination_proven",
+           definition.postflop_public_tree.natural_stack_termination_proven}}}}},
+      {"information_set_census",
+       {{"scope", "cartesian_upper_bound_not_reachable_state_census"},
+        {"preflop_upper_bound", definition.preflop_information_set_cartesian_upper_bound},
+        {"private_observation_upper_bound_by_street",
+         definition.private_observation_cartesian_upper_bound_by_street},
+        {"postflop_upper_bound_by_street",
+         definition.information_set_cartesian_upper_bound_by_street},
+        {"total_upper_bound", definition.total_information_set_cartesian_upper_bound},
+        {"overflow", definition.cartesian_upper_bound_overflow},
+        {"reachable_census_complete", definition.reachable_information_set_census_complete}}},
+      {"certification_readiness",
+       {{"exact_abstract_nashconv_certifiable", definition.exact_abstract_nashconv_certifiable},
+        {"blocking_component", "finite_abstract_chance_transition_kernel"}}},
+      {"compilation_seconds", compilation_seconds}};
 }
 
 int run(const int argc, char **argv) {
@@ -743,6 +819,14 @@ int run(const int argc, char **argv) {
   }
   const std::string serialized_config{std::istreambuf_iterator<char>(config_input),
                                       std::istreambuf_iterator<char>()};
+  const auto config_document = Json::parse(serialized_config);
+  if (!config_document.is_object() || !config_document.contains("id") ||
+      !config_document["id"].is_string() || config_document["id"].get<std::string>().empty()) {
+    throw std::runtime_error("config id must be a non-empty string");
+  }
+  const auto game_id = config_document["id"].get<std::string>();
+  const auto benchmark_id =
+      game_id == "HU-PREFLOP-CO40-GAME-001" ? std::string{"GTP-HU-PREFLOP-CO40-001"} : game_id;
   const auto config = gtosd::deserialize_hu_preflop_config_json(serialized_config);
   if (!config) {
     throw std::runtime_error(gtosd::hu_preflop_error_name(config.error()));
@@ -750,6 +834,22 @@ int run(const int argc, char **argv) {
   const auto tree = gtosd::build_hu_preflop_tree(config.value());
   if (!tree) {
     throw std::runtime_error(gtosd::hu_preflop_error_name(tree.error()));
+  }
+  std::optional<gtosd::HuPreflopAbstractGameDefinition> abstract_game;
+  double abstract_game_compilation_seconds = 0.0;
+  if (arguments.options.postflop_representation ==
+      gtosd::HuPreflopPostflopRepresentation::
+          DistributionalStrengthStreetAdaptivePerfectRecallV23) {
+    const auto started = std::chrono::steady_clock::now();
+    const auto compiled =
+        gtosd::make_hu_preflop_abstract_game_definition(tree.value(), arguments.options);
+    abstract_game_compilation_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    if (!compiled) {
+      throw std::runtime_error(std::string{"cannot compile V23 abstract game definition: "} +
+                               gtosd::hu_preflop_error_name(compiled.error()));
+    }
+    abstract_game = compiled.value();
   }
   double all_in_oracle_build_seconds = 0.0;
   if (arguments.exact_preflop_all_in_expectation) {
@@ -771,8 +871,7 @@ int run(const int argc, char **argv) {
         std::make_shared<const gtosd::HuPreflopAllInTrainingOracle>(oracle.value());
     all_in_oracle_build_seconds =
         std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
-    std::cout << "HU_PREFLOP_EXACT_ALL_IN_ORACLE=READY fingerprint="
-              << table.value().fingerprint
+    std::cout << "HU_PREFLOP_EXACT_ALL_IN_ORACLE=READY fingerprint=" << table.value().fingerprint
               << " seconds=" << all_in_oracle_build_seconds << '\n';
   }
   std::cout
@@ -811,8 +910,9 @@ int run(const int argc, char **argv) {
           : arguments.options.postflop_representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory
               ? "distributional_strength_bucket_history"
-          : arguments.options.postflop_representation == gtosd::HuPreflopPostflopRepresentation::
-                                                              DistributionalStrengthAdaptiveCategoryHistoryV11
+          : arguments.options.postflop_representation ==
+                  gtosd::HuPreflopPostflopRepresentation::
+                      DistributionalStrengthAdaptiveCategoryHistoryV11
               ? "distributional_strength_adaptive_category_history_v11"
           : arguments.options.postflop_representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10
@@ -820,6 +920,10 @@ int run(const int argc, char **argv) {
           : arguments.options.postflop_representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9
               ? "distributional_strength_selective_history_v9"
+          : arguments.options.postflop_representation ==
+                  gtosd::HuPreflopPostflopRepresentation::
+                      DistributionalStrengthStreetAdaptivePerfectRecallV23
+              ? "distributional_strength_street_adaptive_perfect_recall_v23"
           : arguments.options.postflop_representation ==
                   gtosd::HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8
               ? "distributional_strength_street_adaptive_v8"
@@ -843,22 +947,17 @@ int run(const int argc, char **argv) {
       << " training_batch_iterations=" << arguments.options.training_batch_iterations
       << " root_action_value_rollouts="
       << static_cast<unsigned>(arguments.options.root_action_value_rollouts)
-      << " root_continuation_mean_updates="
-      << arguments.options.root_continuation_mean_updates
-      << " symmetric_traverser_mean_updates="
-      << arguments.options.symmetric_traverser_mean_updates
-      << " root_common_random_numbers="
-      << arguments.options.root_common_random_numbers
-      << " global_common_random_numbers="
-      << arguments.options.global_common_random_numbers
+      << " root_continuation_mean_updates=" << arguments.options.root_continuation_mean_updates
+      << " symmetric_traverser_mean_updates=" << arguments.options.symmetric_traverser_mean_updates
+      << " root_common_random_numbers=" << arguments.options.root_common_random_numbers
+      << " global_common_random_numbers=" << arguments.options.global_common_random_numbers
       << " root_first_opponent_response_stratification="
       << arguments.options.root_first_opponent_response_stratification
       << " evaluate_current_profile=" << arguments.options.evaluate_current_profile
       << " maximum_parallel_updates_per_job=" << arguments.options.maximum_parallel_updates_per_job
       << " maximum_parallel_scratch_bytes=" << arguments.options.maximum_parallel_scratch_bytes
       << " opponent_value_baseline=" << arguments.options.use_opponent_value_baseline
-      << " exact_preflop_all_in_expectation="
-      << arguments.exact_preflop_all_in_expectation
+      << " exact_preflop_all_in_expectation=" << arguments.exact_preflop_all_in_expectation
       << " postflop_all_in_expectation="
       << (arguments.options.postflop_all_in_expectation_mode ==
                   gtosd::HuPreflopPostflopAllInExpectationMode::ExactTurn
@@ -876,8 +975,7 @@ int run(const int argc, char **argv) {
       << " distributional_capacities=" << arguments.options.distributional_bucket_capacities[0]
       << ',' << arguments.options.distributional_bucket_capacities[1] << ','
       << arguments.options.distributional_bucket_capacities[2]
-      << " telemetry_max_entries="
-      << arguments.options.maximum_action_conditioned_telemetry_entries
+      << " telemetry_max_entries=" << arguments.options.maximum_action_conditioned_telemetry_entries
       << " root_decision_trace_classes="
       << arguments.options.root_decision_trace_hand_classes.size()
       << " root_decision_trace_deals_per_class="
@@ -885,6 +983,24 @@ int run(const int argc, char **argv) {
   const auto solved = gtosd::solve_hu_preflop_sampled(tree.value(), arguments.options);
   if (!solved) {
     throw std::runtime_error(gtosd::hu_preflop_error_name(solved.error()));
+  }
+  if (abstract_game.has_value() &&
+      solved.value().abstract_game_fingerprint != abstract_game->fingerprint) {
+    throw std::runtime_error("trainer and V23 abstract game fingerprints differ");
+  }
+  if (!arguments.abstract_game_output.empty()) {
+    std::ofstream abstract_game_output(arguments.abstract_game_output,
+                                       std::ios::binary | std::ios::trunc);
+    if (!abstract_game_output) {
+      throw std::runtime_error("cannot open abstract game output");
+    }
+    abstract_game_output << serialize_abstract_game_manifest(abstract_game.value(), game_id,
+                                                             abstract_game_compilation_seconds)
+                                .dump(2)
+                         << '\n';
+    if (!abstract_game_output) {
+      throw std::runtime_error("cannot write abstract game output");
+    }
   }
   if (!arguments.postflop_policy_output.empty()) {
     const auto saved = gtosd::save_hu_preflop_sampled_postflop_policy(
@@ -920,8 +1036,7 @@ int run(const int argc, char **argv) {
             {"ev_ante", solved.value().current_profile_root_action_ev_ante[class_id][action]},
             {"standard_error_ante",
              solved.value().current_profile_root_action_ev_standard_error_ante[class_id][action]},
-            {"samples",
-             solved.value().current_profile_root_action_ev_samples[class_id][action]}};
+            {"samples", solved.value().current_profile_root_action_ev_samples[class_id][action]}};
       }
       diagnostic_actions[std::string(root_action_ids[action])] = {
           {"average_strategy", solved.value().root_strategy[class_id][action]},
@@ -950,8 +1065,7 @@ int run(const int argc, char **argv) {
     strategy[gtosd::class_name(class_id)] = std::move(row);
     root_action_ev[gtosd::class_name(class_id)] = std::move(ev_row);
     if (solved.value().current_profile_evaluated) {
-      current_profile_root_action_ev[gtosd::class_name(class_id)] =
-          std::move(current_ev_row);
+      current_profile_root_action_ev[gtosd::class_name(class_id)] = std::move(current_ev_row);
     }
     root_regret_diagnostics[gtosd::class_name(class_id)] = {
         {"last_update_iteration", solved.value().root_information_last_iteration[class_id]},
@@ -978,9 +1092,37 @@ int run(const int argc, char **argv) {
   const std::array sampled_response_value_sum_confidence_interval{
       sampled_response_value_sum - normal_95 * sampled_response_value_sum_standard_error,
       sampled_response_value_sum + normal_95 * sampled_response_value_sum_standard_error};
+  const auto recall_audit =
+      gtosd::audit_hu_preflop_postflop_recall_contract(arguments.options.postflop_representation);
+  if (!recall_audit) {
+    throw std::runtime_error("cannot audit postflop recall contract");
+  }
+  Json recall_matrix = Json::array();
+  for (std::size_t decision = 0U; decision < recall_audit.value().retains_bucket_observation.size();
+       ++decision) {
+    const auto decision_street =
+        static_cast<gtosd::Street>(static_cast<std::size_t>(gtosd::Street::Flop) + decision);
+    recall_matrix.push_back(
+        {{"decision_street", telemetry_street_id(decision_street)},
+         {"retains_flop_bucket", recall_audit.value().retains_bucket_observation[decision][0]},
+         {"retains_turn_bucket", recall_audit.value().retains_bucket_observation[decision][1]},
+         {"retains_river_bucket", recall_audit.value().retains_bucket_observation[decision][2]}});
+  }
+  Json recall_witnesses = Json::array();
+  for (std::size_t index = 0U; index < recall_audit.value().witness_count; ++index) {
+    const auto &witness = recall_audit.value().witnesses[index];
+    recall_witnesses.push_back(
+        {{"kind", witness.kind == gtosd::HuPreflopRecallObservationKind::PreflopClass
+                      ? "preflop_class"
+                      : "postflop_bucket"},
+         {"decision_street", telemetry_street_id(witness.decision_street)},
+         {"forgotten_observation_street",
+          telemetry_street_id(witness.forgotten_observation_street)}});
+  }
   Json candidate{
       {"schema", "gtosd.hu_preflop_candidate.v1"},
-      {"benchmark_id", "GTP-HU-PREFLOP-CO40-001"},
+      {"benchmark_id", benchmark_id},
+      {"game_id", game_id},
       {"game_config", arguments.config},
       {"tree_fingerprint", solved.value().tree_fingerprint},
       {"rake_mode", rake_mode},
@@ -993,20 +1135,16 @@ int run(const int argc, char **argv) {
       {"root_ev_ante", solved.value().root_ev_ante},
       {"root_ev_standard_error_ante", solved.value().root_ev_standard_error_ante},
       {"current_profile_evaluated", solved.value().current_profile_evaluated},
-      {"action_conditioned_telemetry_enabled",
-       solved.value().action_conditioned_telemetry_enabled},
-      {"action_conditioned_telemetry_entries",
-       solved.value().action_conditioned_telemetry.size()},
-      {"action_conditioned_telemetry_dropped",
-       solved.value().action_conditioned_telemetry_dropped},
+      {"action_conditioned_telemetry_enabled", solved.value().action_conditioned_telemetry_enabled},
+      {"action_conditioned_telemetry_entries", solved.value().action_conditioned_telemetry.size()},
+      {"action_conditioned_telemetry_dropped", solved.value().action_conditioned_telemetry_dropped},
       {"root_decision_trace_enabled", !solved.value().root_decision_traces.empty()},
       {"root_decision_trace_classes", solved.value().root_decision_traces.size()},
       {"root_decision_trace_deals_per_class",
        arguments.options.root_decision_trace_deals_per_class},
-      {"current_profile_root_ev_ante",
-       solved.value().current_profile_evaluated
-           ? Json(solved.value().current_profile_root_ev_ante)
-           : Json(nullptr)},
+      {"current_profile_root_ev_ante", solved.value().current_profile_evaluated
+                                           ? Json(solved.value().current_profile_root_ev_ante)
+                                           : Json(nullptr)},
       {"current_profile_root_ev_standard_error_ante",
        solved.value().current_profile_evaluated
            ? Json(solved.value().current_profile_root_ev_standard_error_ante)
@@ -1015,9 +1153,9 @@ int run(const int argc, char **argv) {
       {"nashconv_certified", false},
       {"strategy", std::move(strategy)},
       {"root_action_ev", std::move(root_action_ev)},
-      {"current_profile_root_action_ev",
-       solved.value().current_profile_evaluated ? std::move(current_profile_root_action_ev)
-                                                : Json(nullptr)},
+      {"current_profile_root_action_ev", solved.value().current_profile_evaluated
+                                             ? std::move(current_profile_root_action_ev)
+                                             : Json(nullptr)},
       {"root_regret_diagnostics", std::move(root_regret_diagnostics)},
       {"root_regret_diagnostics_scope",
        "linear_weighted_training_state_current_policy_is_positive_regret_normalized_"
@@ -1035,6 +1173,24 @@ int run(const int argc, char **argv) {
            : Json(nullptr)},
       {"algorithm", solved.value().algorithm_id},
       {"abstraction", solved.value().abstraction_id},
+      {"abstract_game_fingerprint",
+       abstract_game.has_value() ? Json(abstract_game->fingerprint) : Json(nullptr)},
+      {"abstract_game_definition_status",
+       abstract_game.has_value() ? Json("STRUCTURE_COMPILED_CHANCE_MODEL_PENDING") : Json(nullptr)},
+      {"abstract_game_compilation_seconds",
+       abstract_game.has_value() ? Json(abstract_game_compilation_seconds) : Json(nullptr)},
+      {"abstract_game_file", arguments.abstract_game_output.empty()
+                                 ? Json(nullptr)
+                                 : Json(arguments.abstract_game_output)},
+      {"postflop_recall_contract",
+       {{"scope", "structural_key_schema_audit_v1"},
+        {"status",
+         recall_audit.value().perfect_recall ? "PASS_PERFECT_RECALL" : "FAILED_PERFECT_RECALL"},
+        {"retains_complete_public_history", recall_audit.value().retains_complete_public_history},
+        {"retains_preflop_class", recall_audit.value().retains_preflop_class},
+        {"perfect_recall", recall_audit.value().perfect_recall},
+        {"bucket_observation_matrix", std::move(recall_matrix)},
+        {"witnesses", std::move(recall_witnesses)}}},
       {"iterations", solved.value().iterations},
       {"postflop_training_iterations", solved.value().postflop_training_iterations},
       {"preflop_refinement_iterations", solved.value().preflop_refinement_iterations},
@@ -1079,20 +1235,16 @@ int run(const int argc, char **argv) {
       {"peak_parallel_scratch_payload_bytes", solved.value().peak_parallel_scratch_payload_bytes},
       {"variance_baseline_information_sets", solved.value().variance_baseline_information_sets},
       {"variance_baseline_payload_bytes", solved.value().variance_baseline_payload_bytes},
-      {"exact_preflop_all_in_expectation",
-       solved.value().exact_preflop_all_in_expectation},
+      {"exact_preflop_all_in_expectation", solved.value().exact_preflop_all_in_expectation},
       {"preflop_all_in_equity_table_fingerprint",
        solved.value().preflop_all_in_equity_table_fingerprint},
       {"preflop_all_in_oracle_build_seconds", all_in_oracle_build_seconds},
       {"postflop_all_in_expectation", solved.value().postflop_all_in_expectation_id},
-      {"exact_postflop_all_in_evaluations",
-       solved.value().exact_postflop_all_in_evaluations},
+      {"exact_postflop_all_in_evaluations", solved.value().exact_postflop_all_in_evaluations},
       {"exact_postflop_all_in_runouts", solved.value().exact_postflop_all_in_runouts},
       {"exact_postflop_all_in_seconds", solved.value().exact_postflop_all_in_seconds},
-      {"exact_postflop_all_in_cache_hits",
-       solved.value().exact_postflop_all_in_cache_hits},
-      {"exact_postflop_all_in_cache_misses",
-       solved.value().exact_postflop_all_in_cache_misses},
+      {"exact_postflop_all_in_cache_hits", solved.value().exact_postflop_all_in_cache_hits},
+      {"exact_postflop_all_in_cache_misses", solved.value().exact_postflop_all_in_cache_misses},
       {"exact_postflop_all_in_cache_peak_entries",
        solved.value().exact_postflop_all_in_cache_peak_entries},
       {"exact_postflop_all_in_cache_evictions",
@@ -1112,12 +1264,10 @@ int run(const int argc, char **argv) {
       {"abstract_nashconv_ante", solved.value().abstract_nashconv_ante},
       {"best_response_co_ev_ante", solved.value().best_response_co_ev_ante},
       {"best_response_btn_ev_ante", solved.value().best_response_btn_ev_ante},
-      {"best_response_co_standard_error_ante",
-       solved.value().best_response_co_standard_error_ante},
+      {"best_response_co_standard_error_ante", solved.value().best_response_co_standard_error_ante},
       {"best_response_btn_standard_error_ante",
        solved.value().best_response_btn_standard_error_ante},
-      {"sampled_response_lower_bound_ante",
-       solved.value().sampled_response_lower_bound_ante},
+      {"sampled_response_lower_bound_ante", solved.value().sampled_response_lower_bound_ante},
       {"normalized_sampled_response_lower_bound",
        solved.value().normalized_sampled_response_lower_bound},
       {"current_profile_best_response_co_ev_ante",
@@ -1157,8 +1307,7 @@ int run(const int argc, char **argv) {
         {"target_strategy", "average"},
         {"method", "independent_mccfr_response_training_holdout_evaluation_v1"},
         {"response_value_sum_ante", sampled_response_value_sum},
-        {"response_value_sum_standard_error_ante",
-         sampled_response_value_sum_standard_error},
+        {"response_value_sum_standard_error_ante", sampled_response_value_sum_standard_error},
         {"response_value_sum_normal_95_confidence_interval_ante",
          sampled_response_value_sum_confidence_interval},
         {"confidence_scope", "conditional_on_the_two_frozen_sampled_response_policies"},
@@ -1215,18 +1364,17 @@ int run(const int argc, char **argv) {
       if (!trace_output) {
         throw std::runtime_error("cannot open root decision trace output");
       }
-      const Json trace_document = {
-          {"schema", "gtosd.hu_preflop_root_decision_trace.v1"},
-          {"tree_fingerprint", solved.value().tree_fingerprint},
-          {"algorithm", solved.value().algorithm_id},
-          {"abstraction", solved.value().abstraction_id},
-          {"iterations", solved.value().iterations},
-          {"seed", solved.value().seed},
-          {"partition_seed", solved.value().partition_seed},
-          {"evaluation_seed", solved.value().evaluation_seed},
-          {"evaluator_backend", solved.value().evaluator_backend_id},
-          {"scope", candidate["root_decision_trace_scope"]},
-          {"rows", traces}};
+      const Json trace_document = {{"schema", "gtosd.hu_preflop_root_decision_trace.v1"},
+                                   {"tree_fingerprint", solved.value().tree_fingerprint},
+                                   {"algorithm", solved.value().algorithm_id},
+                                   {"abstraction", solved.value().abstraction_id},
+                                   {"iterations", solved.value().iterations},
+                                   {"seed", solved.value().seed},
+                                   {"partition_seed", solved.value().partition_seed},
+                                   {"evaluation_seed", solved.value().evaluation_seed},
+                                   {"evaluator_backend", solved.value().evaluator_backend_id},
+                                   {"scope", candidate["root_decision_trace_scope"]},
+                                   {"rows", traces}};
       trace_output << trace_document.dump(2) << '\n';
       if (!trace_output) {
         throw std::runtime_error("cannot write root decision trace output");

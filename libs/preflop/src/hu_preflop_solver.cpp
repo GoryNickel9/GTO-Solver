@@ -458,12 +458,10 @@ class BoundedExactAllInEquityCache {
 public:
   void set_capacity(const std::uint64_t capacity) { capacity_ = capacity; }
 
-  [[nodiscard]] std::optional<HuPreflopPostflopAllInEquity>
-  find(const std::uint64_t key) const {
+  [[nodiscard]] std::optional<HuPreflopPostflopAllInEquity> find(const std::uint64_t key) const {
     const auto found = values_.find(key);
-    return found == values_.end()
-               ? std::nullopt
-               : std::optional<HuPreflopPostflopAllInEquity>{found->second};
+    return found == values_.end() ? std::nullopt
+                                  : std::optional<HuPreflopPostflopAllInEquity>{found->second};
   }
 
   void insert(const std::uint64_t key, const HuPreflopPostflopAllInEquity &value) {
@@ -497,22 +495,18 @@ std::uint64_t canonical_exact_all_in_equity_key(const Deal &deal, const Street s
   auto minimum_key = std::numeric_limits<std::uint64_t>::max();
   do {
     const auto transform = [&permutation](const CardId card) {
-      return static_cast<std::uint8_t>(
-          static_cast<std::uint8_t>(card.rank()) * 4U +
-          permutation[static_cast<std::uint8_t>(card.suit())]);
+      return static_cast<std::uint8_t>(static_cast<std::uint8_t>(card.rank()) * 4U +
+                                       permutation[static_cast<std::uint8_t>(card.suit())]);
     };
-    std::array<std::uint8_t, 2> first{transform(deal.holes[0][0]),
-                                      transform(deal.holes[0][1])};
-    std::array<std::uint8_t, 2> second{transform(deal.holes[1][0]),
-                                       transform(deal.holes[1][1])};
+    std::array<std::uint8_t, 2> first{transform(deal.holes[0][0]), transform(deal.holes[0][1])};
+    std::array<std::uint8_t, 2> second{transform(deal.holes[1][0]), transform(deal.holes[1][1])};
     std::array<std::uint8_t, 4> board{};
     for (std::size_t index = 0U; index < visible_board_count; ++index) {
       board[index] = transform(deal.board[index]);
     }
     std::sort(first.begin(), first.end());
     std::sort(second.begin(), second.end());
-    std::sort(board.begin(), board.begin() +
-                                 static_cast<std::ptrdiff_t>(visible_board_count));
+    std::sort(board.begin(), board.begin() + static_cast<std::ptrdiff_t>(visible_board_count));
     std::uint64_t key = street == Street::Flop ? 0U : 1U;
     const auto append = [&key](const std::uint8_t card) { key = (key << 6U) | card; };
     for (const auto card : first) {
@@ -559,8 +553,7 @@ std::string chance_sampling_id(const HuPreflopChanceSamplingMode mode) {
   return "unknown";
 }
 
-std::string postflop_all_in_expectation_id(
-    const HuPreflopPostflopAllInExpectationMode mode) {
+std::string postflop_all_in_expectation_id(const HuPreflopPostflopAllInExpectationMode mode) {
   switch (mode) {
   case HuPreflopPostflopAllInExpectationMode::SampledRunout:
     return "sampled_runout_v1";
@@ -579,11 +572,16 @@ bool is_distributional_strength_representation(
          representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory ||
          representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
          representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-         representation == HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-         representation == HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-         representation == HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
          representation ==
-             HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11;
+             HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23;
 }
 
 bool uses_distributional_profile_v6(const HuPreflopPostflopRepresentation representation) noexcept {
@@ -593,15 +591,47 @@ bool uses_distributional_profile_v6(const HuPreflopPostflopRepresentation repres
 bool uses_distributional_structured_v7(
     const HuPreflopPostflopRepresentation representation) noexcept {
   return representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-         representation == HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-         representation == HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10;
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10;
 }
 
 bool uses_distributional_street_adaptive_v8(
     const HuPreflopPostflopRepresentation representation) noexcept {
-  return representation == HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
+  return representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
          representation ==
-             HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11;
+             HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23;
+}
+
+bool representation_uses_current_street_only(
+    const HuPreflopPostflopRepresentation representation) noexcept {
+  return representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
+         representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+}
+
+bool representation_forgets_preflop_class(
+    const HuPreflopPostflopRepresentation representation) noexcept {
+  return representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
+         representation ==
+             HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+         representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
 }
 
 bool uses_distributional_selective_history_v9(
@@ -646,9 +676,15 @@ bool supported_sampled_policy_version(const HuPreflopSampledPostflopPolicy &poli
          (policy.representation !=
               HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
           policy.minor >= 9U) &&
+         (policy.representation !=
+              HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+          policy.minor >= 10U) &&
          (policy.representation != HuPreflopPostflopRepresentation::
-                                       DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-          policy.minor >= 10U);
+                                       DistributionalStrengthStreetAdaptivePerfectRecallV23 ||
+          policy.minor >= 12U) &&
+         (policy.minor != 12U || policy.representation ==
+                                     HuPreflopPostflopRepresentation::
+                                         DistributionalStrengthStreetAdaptivePerfectRecallV23);
 }
 
 bool sampled_policy_key_less(const HuPreflopSampledPostflopPolicyKey &left,
@@ -702,6 +738,147 @@ std::string finish_policy_fingerprint(const std::uint64_t hash) {
   return stream.str();
 }
 
+std::string postflop_abstraction_id(const HuPreflopSolveOptions &options) {
+  if (options.postflop_representation == HuPreflopPostflopRepresentation::ExactPhysical) {
+    return "preflop_exact81_postflop_physical_lossless_suit_isomorphism_v2";
+  }
+  if (is_distributional_strength_representation(options.postflop_representation)) {
+    return "preflop_exact81_postflop_distributional_strength_mc" +
+           std::to_string(options.equity_samples_per_bucket) + "_capacity_" +
+           std::to_string(options.distributional_bucket_capacities[0]) + "_" +
+           std::to_string(options.distributional_bucket_capacities[1]) + "_" +
+           std::to_string(options.distributional_bucket_capacities[2]) +
+           (options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::
+                        DistributionalStrengthStreetAdaptivePerfectRecallV23
+                ? "_street_adaptive_category_equity_profile_v8_full_history_v23_perfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::
+                        DistributionalStrengthAdaptiveCategoryHistoryV11
+                ? "_street_adaptive_category_equity_profile_category_history_v11_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10
+                ? "_category_equity_ordered_profile_category_history_v10_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9
+                ? "_category_equity_ordered_profile_selective_history_v9_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8
+                ? "_street_adaptive_category_equity_profile_v8_current_observation_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7
+                ? "_category_equity_ordered_profile_v7_current_observation_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6
+                ? "_profile_hash_v6_current_observation_imperfect_recall"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthPerfectRecall
+                ? "_hierarchical_feature_perfect_recall_v5"
+            : options.postflop_representation ==
+                    HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory
+                ? "_hierarchical_feature_bucket_history_imperfect_recall_v5"
+                : "_current_observation_imperfect_recall_v2");
+  }
+  if (options.postflop_representation ==
+      HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless) {
+    return "preflop_exact81_postflop_category_equity_mc" +
+           std::to_string(options.equity_samples_per_bucket) +
+           "_memoryless_imperfect_recall_suit_invariant_v2";
+  }
+  if (options.postflop_representation ==
+      HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet) {
+    return "preflop_exact81_postflop_category_equity_mc" +
+           std::to_string(options.equity_samples_per_bucket) +
+           "_current_street_imperfect_recall_suit_invariant_v2";
+  }
+  return "preflop_exact81_postflop_category_equity_mc" +
+         std::to_string(options.equity_samples_per_bucket) + "_perfect_recall_suit_invariant_v2";
+}
+
+std::string abstract_game_rules_fingerprint(const HuPreflopConfig &config) {
+  auto hash = policy_fingerprint_offset;
+  mix_policy_fingerprint_string(
+      hash, "gtosd.hu_preflop_rules.v1|short_deck_36_flush_over_full_house_a6789");
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint64_t>(config.effective_stack.units()));
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint64_t>(config.ante.units()));
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint8_t>(config.rake.enabled));
+  mix_policy_fingerprint_unsigned(hash, config.rake.percentage.basis_points());
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint64_t>(config.rake.cap.units()));
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint8_t>(config.rake.no_flop_no_drop));
+  mix_policy_fingerprint_unsigned(hash,
+                                  static_cast<std::uint64_t>(config.rake.minimum_pot.units()));
+  return finish_policy_fingerprint(hash);
+}
+
+std::string
+abstract_game_abstraction_fingerprint(const HuPreflopAbstractGameDefinition &definition) {
+  auto hash = policy_fingerprint_offset;
+  mix_policy_fingerprint_string(hash, "gtosd.hu_preflop_abstraction.v1");
+  mix_policy_fingerprint_string(hash, definition.abstraction_id);
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint8_t>(definition.representation));
+  mix_policy_fingerprint_unsigned(hash, definition.partition_seed);
+  mix_policy_fingerprint_unsigned(hash, definition.equity_samples_per_bucket);
+  for (const auto capacity : definition.distributional_bucket_capacities) {
+    mix_policy_fingerprint_unsigned(hash, capacity);
+  }
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.recall_contract.retains_complete_public_history));
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.recall_contract.retains_preflop_class));
+  for (const auto &decision : definition.recall_contract.retains_bucket_observation) {
+    for (const auto retained : decision) {
+      mix_policy_fingerprint_unsigned(hash, static_cast<std::uint8_t>(retained));
+    }
+  }
+  return finish_policy_fingerprint(hash);
+}
+
+bool checked_multiply_or_saturate(const std::uint64_t left, const std::uint64_t right,
+                                  std::uint64_t &output) noexcept {
+  if (left != 0U && right > std::numeric_limits<std::uint64_t>::max() / left) {
+    output = std::numeric_limits<std::uint64_t>::max();
+    return false;
+  }
+  output = left * right;
+  return true;
+}
+
+bool checked_add_or_saturate(const std::uint64_t left, const std::uint64_t right,
+                             std::uint64_t &output) noexcept {
+  if (right > std::numeric_limits<std::uint64_t>::max() - left) {
+    output = std::numeric_limits<std::uint64_t>::max();
+    return false;
+  }
+  output = left + right;
+  return true;
+}
+
+bool same_preflop_tree_stats(const HuPreflopTreeStats &left,
+                             const HuPreflopTreeStats &right) noexcept {
+  return left.node_count == right.node_count && left.edge_count == right.edge_count &&
+         left.decision_nodes == right.decision_nodes &&
+         left.postflop_entries == right.postflop_entries &&
+         left.terminal_folds == right.terminal_folds &&
+         left.terminal_all_ins == right.terminal_all_ins &&
+         left.maximum_depth == right.maximum_depth;
+}
+
+bool same_postflop_public_stats(const HuPostflopPublicStats &left,
+                                const HuPostflopPublicStats &right) noexcept {
+  return left.represented_nodes == right.represented_nodes &&
+         left.action_edges == right.action_edges && left.decision_nodes == right.decision_nodes &&
+         left.decision_nodes_by_street == right.decision_nodes_by_street &&
+         left.chance_frontiers == right.chance_frontiers &&
+         left.terminal_folds == right.terminal_folds &&
+         left.terminal_showdowns == right.terminal_showdowns &&
+         left.terminal_all_in_runouts == right.terminal_all_in_runouts &&
+         left.memoized_states == right.memoized_states &&
+         left.maximum_subtree_depth == right.maximum_subtree_depth &&
+         left.maximum_observed_raise_count == right.maximum_observed_raise_count &&
+         left.core_raise_safety_limit_reached == right.core_raise_safety_limit_reached &&
+         left.natural_stack_termination_proven == right.natural_stack_termination_proven;
+}
+
 bool valid_sampled_policy_key(const HuPreflopSampledPostflopPolicyKey &key,
                               const HuPreflopPostflopRepresentation representation) noexcept {
   if (key.player > 1U || key.preflop_class >= hu_preflop_hand_class_count ||
@@ -718,43 +895,26 @@ bool valid_sampled_policy_key(const HuPreflopSampledPostflopPolicyKey &key,
   if (key.physical_cards != std::numeric_limits<std::uint64_t>::max()) {
     return false;
   }
-  const bool current_street_only =
-      representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
-      representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+  const bool current_street_only = representation_uses_current_street_only(representation);
   for (std::size_t index = 0U; index < key.bucket_history.size(); ++index) {
     const bool selective_history = uses_one_street_history(representation);
-    const bool expected =
-        selective_history
-            ? index <= street_index && (street_index == 0U || index + 1U >= street_index)
-            : current_street_only ? index == street_index : index <= street_index;
+    const bool expected = selective_history ? index <= street_index &&
+                                                  (street_index == 0U || index + 1U >= street_index)
+                          : current_street_only ? index == street_index
+                                                : index <= street_index;
     if ((key.bucket_history[index] != unset_bucket) != expected) {
       return false;
     }
   }
   if ((uses_distributional_category_history_v10(representation) ||
-       representation == HuPreflopPostflopRepresentation::
-                             DistributionalStrengthAdaptiveCategoryHistoryV11) &&
+       representation ==
+           HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11) &&
       street_index > 0U &&
       key.bucket_history[street_index - 1U] >
           static_cast<std::uint16_t>(HandCategory::StraightFlush)) {
     return false;
   }
-  const bool forgets_preflop_class =
-      representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-      representation == HuPreflopPostflopRepresentation::
-                            DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-      representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
-  return !forgets_preflop_class || key.preflop_class == 0U;
+  return !representation_forgets_preflop_class(representation) || key.preflop_class == 0U;
 }
 
 std::uint64_t mix_history(std::uint64_t history, const std::uint64_t value) {
@@ -772,11 +932,10 @@ std::size_t sample_action(const std::array<double, maximum_actions> &strategy,
 }
 
 double root_response_stratified_quantile(const std::uint64_t traversal_seed,
-                                         const std::uint64_t iteration,
-                                         const std::uint8_t rollout,
+                                         const std::uint64_t iteration, const std::uint8_t rollout,
                                          const std::uint8_t rollout_count) {
-  const auto seed = mix_history(traversal_seed ^ 0x5253'504E'5354'5254ULL,
-                                (iteration << 8U) | rollout);
+  const auto seed =
+      mix_history(traversal_seed ^ 0x5253'504E'5354'5254ULL, (iteration << 8U) | rollout);
   std::mt19937_64 random(seed);
   const auto within_stratum = std::generate_canonical<double, 53>(random);
   return external_sampling_stratified_quantile(rollout, rollout_count, within_stratum);
@@ -1008,18 +1167,15 @@ Result<HandCategory, HuPreflopError> visible_category(const Deal &deal, const st
   return Result<HandCategory, HuPreflopError>::success(best.category);
 }
 
-Result<std::uint16_t, HuPreflopError> exact_visible_category_code(const Deal &deal,
-                                                                 const std::uint8_t player,
-                                                                 const Street street) {
+Result<std::uint16_t, HuPreflopError>
+exact_visible_category_code(const Deal &deal, const std::uint8_t player, const Street street) {
   if (player > 1U || street < Street::Flop || street > Street::River) {
-    return Result<std::uint16_t, HuPreflopError>::failure(
-        HuPreflopError::InvalidConfiguration);
+    return Result<std::uint16_t, HuPreflopError>::failure(HuPreflopError::InvalidConfiguration);
   }
   const auto board_count = street == Street::Flop ? 3U : street == Street::Turn ? 4U : 5U;
   if (static_cast<std::size_t>(std::popcount(visible_mask(deal, player, board_count))) !=
       board_count + 2U) {
-    return Result<std::uint16_t, HuPreflopError>::failure(
-        HuPreflopError::InvalidConfiguration);
+    return Result<std::uint16_t, HuPreflopError>::failure(HuPreflopError::InvalidConfiguration);
   }
   const auto category = visible_category(deal, player, board_count);
   return category ? Result<std::uint16_t, HuPreflopError>::success(
@@ -1375,8 +1531,8 @@ struct RootDecisionTraceMoments {
     squared_total += payoff * payoff;
   }
 
-  HuPreflopRootDecisionTraceValueSummary summarize(
-      const std::uint64_t action_samples) const noexcept {
+  HuPreflopRootDecisionTraceValueSummary
+  summarize(const std::uint64_t action_samples) const noexcept {
     HuPreflopRootDecisionTraceValueSummary output;
     output.samples = samples;
     if (samples == 0U || action_samples == 0U) {
@@ -1386,10 +1542,8 @@ struct RootDecisionTraceMoments {
     output.probability = denominator / static_cast<double>(action_samples);
     output.mean_payoff_ante = total / denominator;
     if (samples > 1U) {
-      const auto centered_sum =
-          std::max(0.0, squared_total - total * total / denominator);
-      output.standard_error_ante =
-          std::sqrt(centered_sum / (denominator * (denominator - 1.0)));
+      const auto centered_sum = std::max(0.0, squared_total - total * total / denominator);
+      output.standard_error_ante = std::sqrt(centered_sum / (denominator * (denominator - 1.0)));
     }
     output.ev_contribution_ante = total / static_cast<double>(action_samples);
     return output;
@@ -1448,8 +1602,7 @@ struct RootDecisionTraceBucketKey {
   friend bool operator<(const RootDecisionTraceBucketKey &left,
                         const RootDecisionTraceBucketKey &right) noexcept {
     if (left.street != right.street) {
-      return static_cast<std::uint8_t>(left.street) <
-             static_cast<std::uint8_t>(right.street);
+      return static_cast<std::uint8_t>(left.street) < static_cast<std::uint8_t>(right.street);
     }
     if (left.player != right.player) {
       return left.player < right.player;
@@ -1685,8 +1838,8 @@ struct ActionConditionedTelemetryAccumulator {
   std::uint64_t all_in_exact_count{0U};
   std::uint64_t all_in_sampled_count{0U};
 
-  void observe(const double action_value, const double action_advantage,
-               const double public_reach, const double own_reach,
+  void observe(const double action_value, const double action_advantage, const double public_reach,
+               const double own_reach,
                const HuPreflopTelemetryTerminalType terminal_type) noexcept {
     ++sample_count;
     physical_combo_mass += 1.0;
@@ -1720,8 +1873,8 @@ struct ActionConditionedTelemetryAccumulator {
     const auto right_count = static_cast<double>(other.sample_count);
     const auto total_count = left_count + right_count;
     const auto mean_delta = other.action_value_mean - action_value_mean;
-    action_value_m2 += other.action_value_m2 + mean_delta * mean_delta * left_count * right_count /
-                       total_count;
+    action_value_m2 +=
+        other.action_value_m2 + mean_delta * mean_delta * left_count * right_count / total_count;
     action_value_mean += mean_delta * right_count / total_count;
     sample_count += other.sample_count;
     physical_combo_mass += other.physical_combo_mass;
@@ -1750,9 +1903,9 @@ struct ActionConditionedTelemetryKeyHash {
   }
 };
 
-using ActionConditionedTelemetryMap = std::unordered_map<
-    ActionConditionedTelemetryKey, ActionConditionedTelemetryAccumulator,
-    ActionConditionedTelemetryKeyHash>;
+using ActionConditionedTelemetryMap =
+    std::unordered_map<ActionConditionedTelemetryKey, ActionConditionedTelemetryAccumulator,
+                       ActionConditionedTelemetryKeyHash>;
 
 struct ParallelWorkerContext {
   std::array<std::array<BoundedBucketCache, 3>, 2> bucket_cache;
@@ -1794,8 +1947,7 @@ public:
         cache.set_capacity(cache_capacity_per_partition);
       }
     }
-    exact_postflop_all_in_cache_.set_capacity(
-        options_.maximum_exact_postflop_all_in_cache_entries);
+    exact_postflop_all_in_cache_.set_capacity(options_.maximum_exact_postflop_all_in_cache_entries);
     if (!options_.seven_card_table_path.empty()) {
       auto loaded = SevenCardLookupTable::load(options_.seven_card_table_path);
       if (!loaded) {
@@ -1807,8 +1959,7 @@ public:
       }
     }
     if (options_.preflop_all_in_training_oracle &&
-        !validate_hu_preflop_all_in_training_oracle(
-            *options_.preflop_all_in_training_oracle)) {
+        !validate_hu_preflop_all_in_training_oracle(*options_.preflop_all_in_training_oracle)) {
       failure_ = HuPreflopError::IntegrityFailure;
     }
   }
@@ -1885,8 +2036,8 @@ public:
     const auto blueprint_bytes = blueprint_.size() * payload_bytes;
     const auto remaining_states =
         (options_.maximum_numeric_state_bytes - blueprint_bytes) / payload_bytes;
-    const auto average_response = evaluate_sampled_response_profile(
-        SolverPolicyView::Average, remaining_states, 0U);
+    const auto average_response =
+        evaluate_sampled_response_profile(SolverPolicyView::Average, remaining_states, 0U);
     if (!average_response) {
       return Result<HuPreflopSolveResult, HuPreflopError>::failure(average_response.error());
     }
@@ -1913,17 +2064,16 @@ public:
     std::vector<HuPreflopDecisionEvaluation> current_preflop_decision_evaluations;
     if (options_.evaluate_current_profile) {
       constexpr std::array current_views{SolverPolicyView::Current, SolverPolicyView::Current};
-      const auto evaluated_current = evaluate(
-          blueprint_, blueprint_, options_.evaluation_deals,
-          options_.evaluation_seed ^ 0x4355'5252'454E'5401ULL, current_views);
+      const auto evaluated_current =
+          evaluate(blueprint_, blueprint_, options_.evaluation_deals,
+                   options_.evaluation_seed ^ 0x4355'5252'454E'5401ULL, current_views);
       if (!evaluated_current) {
-        return Result<HuPreflopSolveResult, HuPreflopError>::failure(
-            evaluated_current.error());
+        return Result<HuPreflopSolveResult, HuPreflopError>::failure(evaluated_current.error());
       }
       current_baseline = evaluated_current.value();
-      const auto current_actions = evaluate_root_actions(
-          blueprint_, blueprint_, options_.evaluation_deals,
-          options_.evaluation_seed ^ 0x4355'5241'4354'0001ULL, current_views);
+      const auto current_actions =
+          evaluate_root_actions(blueprint_, blueprint_, options_.evaluation_deals,
+                                options_.evaluation_seed ^ 0x4355'5241'4354'0001ULL, current_views);
       if (!current_actions) {
         return Result<HuPreflopSolveResult, HuPreflopError>::failure(current_actions.error());
       }
@@ -1931,15 +2081,14 @@ public:
       const auto evaluated_response = evaluate_sampled_response_profile(
           SolverPolicyView::Current, remaining_states, 0x4355'5252'454E'5401ULL);
       if (!evaluated_response) {
-        return Result<HuPreflopSolveResult, HuPreflopError>::failure(
-            evaluated_response.error());
+        return Result<HuPreflopSolveResult, HuPreflopError>::failure(evaluated_response.error());
       }
       current_response = evaluated_response.value();
       if (options_.evaluate_preflop_decisions) {
-        const auto evaluated = evaluate_preflop_decisions(
-            blueprint_, blueprint_, options_.evaluation_deals,
-            options_.evaluation_seed ^ 0x4355'5052'4546'0001ULL,
-            current_root_action_evaluation, current_views);
+        const auto evaluated =
+            evaluate_preflop_decisions(blueprint_, blueprint_, options_.evaluation_deals,
+                                       options_.evaluation_seed ^ 0x4355'5052'4546'0001ULL,
+                                       current_root_action_evaluation, current_views);
         if (!evaluated) {
           return Result<HuPreflopSolveResult, HuPreflopError>::failure(evaluated.error());
         }
@@ -1988,15 +2137,12 @@ public:
     result.root_action_ev_samples = root_action_evaluation.value().samples;
     result.best_response_co_ev_ante = average_response.value().co.mean;
     result.best_response_btn_ev_ante = average_response.value().btn.mean;
-    result.best_response_co_standard_error_ante =
-        average_response.value().co.standard_error;
-    result.best_response_btn_standard_error_ante =
-        average_response.value().btn.standard_error;
+    result.best_response_co_standard_error_ante = average_response.value().co.standard_error;
+    result.best_response_btn_standard_error_ante = average_response.value().btn.standard_error;
     result.abstract_nashconv_ante =
         std::max(0.0, result.best_response_co_ev_ante + result.best_response_btn_ev_ante);
-    const auto effective_stack_ante =
-        static_cast<double>(tree_.config.effective_stack.units()) /
-        static_cast<double>(Money::units_per_ante);
+    const auto effective_stack_ante = static_cast<double>(tree_.config.effective_stack.units()) /
+                                      static_cast<double>(Money::units_per_ante);
     result.normalized_abstract_nashconv = result.abstract_nashconv_ante / effective_stack_ante;
     result.sampled_response_lower_bound_ante =
         std::max(0.0, result.best_response_co_ev_ante - result.root_ev_ante) +
@@ -2008,8 +2154,7 @@ public:
       result.current_profile_root_ev_ante = current_baseline.mean;
       result.current_profile_root_ev_standard_error_ante = current_baseline.standard_error;
       result.current_profile_root_action_ev_ante.assign(
-          current_root_action_evaluation.means.begin(),
-          current_root_action_evaluation.means.end());
+          current_root_action_evaluation.means.begin(), current_root_action_evaluation.means.end());
       result.current_profile_root_action_ev_standard_error_ante.assign(
           current_root_action_evaluation.standard_errors.begin(),
           current_root_action_evaluation.standard_errors.end());
@@ -2095,8 +2240,7 @@ public:
         std::max(parallel_exact_postflop_all_in_cache_peak_entries_,
                  exact_postflop_all_in_cache_.peak_entries());
     result.exact_postflop_all_in_cache_evictions =
-        parallel_exact_postflop_all_in_cache_evictions_ +
-        exact_postflop_all_in_cache_.evictions();
+        parallel_exact_postflop_all_in_cache_evictions_ + exact_postflop_all_in_cache_.evictions();
     result.chance_sampling_id = chance_sampling_id(options_.chance_sampling_mode);
     for (std::size_t street = 0U; street < occupied_distributional_buckets_.size(); ++street) {
       result.occupied_distributional_buckets[street] =
@@ -2109,54 +2253,14 @@ public:
           compiled_betting_->history_to_node.size() * (sizeof(std::uint64_t) + sizeof(std::size_t));
     }
     result.tree_fingerprint = tree_.fingerprint;
-    if (options_.postflop_representation == HuPreflopPostflopRepresentation::ExactPhysical) {
-      result.abstraction_id = "preflop_exact81_postflop_physical_lossless_suit_isomorphism_v2";
-    } else if (is_distributional_strength_representation(options_.postflop_representation)) {
-      result.abstraction_id =
-          "preflop_exact81_postflop_distributional_strength_mc" +
-          std::to_string(options_.equity_samples_per_bucket) + "_capacity_" +
-          std::to_string(options_.distributional_bucket_capacities[0]) + "_" +
-          std::to_string(options_.distributional_bucket_capacities[1]) + "_" +
-          std::to_string(options_.distributional_bucket_capacities[2]) +
-          (options_.postflop_representation == HuPreflopPostflopRepresentation::
-                                                     DistributionalStrengthAdaptiveCategoryHistoryV11
-               ? "_street_adaptive_category_equity_profile_category_history_v11_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10
-               ? "_category_equity_ordered_profile_category_history_v10_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9
-               ? "_category_equity_ordered_profile_selective_history_v9_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8
-               ? "_street_adaptive_category_equity_profile_v8_current_observation_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7
-               ? "_category_equity_ordered_profile_v7_current_observation_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6
-               ? "_profile_hash_v6_current_observation_imperfect_recall"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthPerfectRecall
-               ? "_hierarchical_feature_perfect_recall_v5"
-           : options_.postflop_representation ==
-                   HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory
-               ? "_hierarchical_feature_bucket_history_imperfect_recall_v5"
-               : "_current_observation_imperfect_recall_v2");
-    } else if (options_.postflop_representation ==
-               HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless) {
-      result.abstraction_id = "preflop_exact81_postflop_category_equity_mc" +
-                              std::to_string(options_.equity_samples_per_bucket) +
-                              "_memoryless_imperfect_recall_suit_invariant_v2";
-    } else if (options_.postflop_representation ==
-               HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet) {
-      result.abstraction_id = "preflop_exact81_postflop_category_equity_mc" +
-                              std::to_string(options_.equity_samples_per_bucket) +
-                              "_current_street_imperfect_recall_suit_invariant_v2";
-    } else {
-      result.abstraction_id = "preflop_exact81_postflop_category_equity_mc" +
-                              std::to_string(options_.equity_samples_per_bucket) +
-                              "_perfect_recall_suit_invariant_v2";
+    result.abstraction_id = postflop_abstraction_id(options_);
+    if (options_.postflop_representation ==
+        HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23) {
+      const auto abstract_game = make_hu_preflop_abstract_game_definition(tree_, options_);
+      if (!abstract_game) {
+        return Result<HuPreflopSolveResult, HuPreflopError>::failure(abstract_game.error());
+      }
+      result.abstract_game_fingerprint = abstract_game.value().fingerprint;
     }
     result.algorithm_id = sampled_algorithm_id(options_.sampling_algorithm);
     if (options_.training_batch_iterations != 0U) {
@@ -2224,8 +2328,7 @@ public:
     if (options_.evaluate_preflop_decisions) {
       extract_preflop_training_diagnostics(result.preflop_decision_training_diagnostics);
     }
-    result.action_conditioned_telemetry_enabled =
-        options_.collect_action_conditioned_telemetry;
+    result.action_conditioned_telemetry_enabled = options_.collect_action_conditioned_telemetry;
     result.action_conditioned_telemetry_dropped = action_conditioned_telemetry_dropped_;
     if (result.action_conditioned_telemetry_enabled) {
       extract_action_conditioned_telemetry(result.action_conditioned_telemetry);
@@ -2282,8 +2385,7 @@ private:
 
   bool append_scaled_pending_updates(PendingTraversal &target, PendingTraversal &source,
                                      const double scale) const {
-    if (source.updates.size() >
-        options_.maximum_parallel_updates_per_job - target.updates.size()) {
+    if (source.updates.size() > options_.maximum_parallel_updates_per_job - target.updates.size()) {
       target.error = HuPreflopError::MemoryFailure;
       return false;
     }
@@ -2310,24 +2412,7 @@ private:
     key.player = state.player_to_act;
     key.street = state.street;
     const bool forgets_preflop_class =
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-        options_.postflop_representation == HuPreflopPostflopRepresentation::
-                                                   DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
+        representation_forgets_preflop_class(options_.postflop_representation);
     key.preflop_class =
         forgets_preflop_class ? HandClassId{0U} : deal_class(deal, state.player_to_act);
     if (options_.postflop_representation == HuPreflopPostflopRepresentation::ExactPhysical) {
@@ -2337,22 +2422,12 @@ private:
     const auto final_index =
         static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
     const bool current_street_only =
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+        representation_uses_current_street_only(options_.postflop_representation);
     const auto first_index =
         uses_one_street_history(options_.postflop_representation) && final_index > 0U
             ? final_index - 1U
-            : current_street_only ? final_index : 0U;
+        : current_street_only ? final_index
+                              : 0U;
     for (std::size_t index = first_index; index <= final_index; ++index) {
       ++context.bucket_mapping_visits[index];
       const auto bucket_street =
@@ -2413,8 +2488,8 @@ private:
     return value;
   }
 
-  HuPreflopTelemetryTerminalType preflop_telemetry_terminal(
-      const HuPreflopNode &child) const noexcept {
+  HuPreflopTelemetryTerminalType
+  preflop_telemetry_terminal(const HuPreflopNode &child) const noexcept {
     if (child.kind == HuPreflopNodeKind::TerminalFold) {
       return HuPreflopTelemetryTerminalType::PreflopFold;
     }
@@ -2426,8 +2501,8 @@ private:
     return HuPreflopTelemetryTerminalType::PostflopContinuation;
   }
 
-  HuPreflopTelemetryTerminalType postflop_telemetry_terminal(
-      const PublicState &state, const PublicState &next) const noexcept {
+  HuPreflopTelemetryTerminalType
+  postflop_telemetry_terminal(const PublicState &state, const PublicState &next) const noexcept {
     if (next.status == HandStatus::Folded) {
       return HuPreflopTelemetryTerminalType::PostflopFold;
     }
@@ -2445,13 +2520,14 @@ private:
     return HuPreflopTelemetryTerminalType::PostflopContinuation;
   }
 
-  void observe_action_conditioned_telemetry(
-      ActionConditionedTelemetryMap &target, const std::uint32_t node_id,
-      const InformationKey &key, const PublicState &state, const std::uint8_t action_id,
-      const HuPreflopTelemetryTerminalType terminal_type, const Deal &deal,
-      const std::array<double, 2> &reach, const double action_value,
-      const double node_value, std::uint64_t &dropped,
-      const std::uint64_t maximum_entries) const {
+  void observe_action_conditioned_telemetry(ActionConditionedTelemetryMap &target,
+                                            const std::uint32_t node_id, const InformationKey &key,
+                                            const PublicState &state, const std::uint8_t action_id,
+                                            const HuPreflopTelemetryTerminalType terminal_type,
+                                            const Deal &deal, const std::array<double, 2> &reach,
+                                            const double action_value, const double node_value,
+                                            std::uint64_t &dropped,
+                                            const std::uint64_t maximum_entries) const {
     if (!options_.collect_action_conditioned_telemetry) {
       return;
     }
@@ -2461,25 +2537,23 @@ private:
       return;
     }
     try {
-      const ActionConditionedTelemetryKey telemetry_key{
-          node_id,
-          state.player_to_act,
-          key.public_history,
-          deal_class(deal, state.player_to_act),
-          action_id,
-          telemetry_bucket_key(key),
-          state.street,
-          terminal_type};
+      const ActionConditionedTelemetryKey telemetry_key{node_id,
+                                                        state.player_to_act,
+                                                        key.public_history,
+                                                        deal_class(deal, state.player_to_act),
+                                                        action_id,
+                                                        telemetry_bucket_key(key),
+                                                        state.street,
+                                                        terminal_type};
       auto entry = target.find(telemetry_key);
-      if (entry == target.end() &&
-          target.size() >= maximum_entries) {
+      if (entry == target.end() && target.size() >= maximum_entries) {
         ++dropped;
         return;
       }
-      auto &accumulator = entry == target.end() ? target.emplace(telemetry_key,
-                                                                  ActionConditionedTelemetryAccumulator{})
-                                                     .first->second
-                                                : entry->second;
+      auto &accumulator =
+          entry == target.end()
+              ? target.emplace(telemetry_key, ActionConditionedTelemetryAccumulator{}).first->second
+              : entry->second;
       accumulator.observe(action_value, action_value - node_value, reach[0] * reach[1],
                           reach[state.player_to_act], terminal_type);
     } catch (const std::bad_alloc &) {
@@ -2500,33 +2574,31 @@ private:
       row.history = key.history;
       row.hand_class = key.hand_class;
       row.physical_combo_mass = accumulator.physical_combo_mass;
-      row.public_reach = accumulator.public_reach_total /
-                         static_cast<double>(accumulator.sample_count);
-      row.own_reach = accumulator.own_reach_total /
-                      static_cast<double>(accumulator.sample_count);
+      row.public_reach =
+          accumulator.public_reach_total / static_cast<double>(accumulator.sample_count);
+      row.own_reach = accumulator.own_reach_total / static_cast<double>(accumulator.sample_count);
       row.action_id = key.action_id;
       row.sample_count = accumulator.sample_count;
       row.mean_action_value = accumulator.action_value_mean;
-      row.variance_action_value = accumulator.sample_count > 1U
-                                       ? std::max(0.0, accumulator.action_value_m2 /
-                                                          static_cast<double>(accumulator.sample_count - 1U))
-                                       : 0.0;
+      row.variance_action_value =
+          accumulator.sample_count > 1U
+              ? std::max(0.0, accumulator.action_value_m2 /
+                                  static_cast<double>(accumulator.sample_count - 1U))
+              : 0.0;
       row.standard_error_action_value =
           std::sqrt(row.variance_action_value / static_cast<double>(row.sample_count));
-      row.mean_action_advantage = accumulator.action_advantage_total /
-                                  static_cast<double>(accumulator.sample_count);
+      row.mean_action_advantage =
+          accumulator.action_advantage_total / static_cast<double>(accumulator.sample_count);
       row.bucket_key = key.bucket_key;
       row.bucket_occupancy = accumulator.bucket_occupancy;
       row.postflop_street = key.postflop_street;
       row.terminal_type = key.terminal_type;
       row.all_in_exact_count = accumulator.all_in_exact_count;
       row.all_in_sampled_count = accumulator.all_in_sampled_count;
-      row.minimum_action_value = std::isfinite(accumulator.minimum_action_value)
-                                     ? accumulator.minimum_action_value
-                                     : 0.0;
-      row.maximum_action_value = std::isfinite(accumulator.maximum_action_value)
-                                     ? accumulator.maximum_action_value
-                                     : 0.0;
+      row.minimum_action_value =
+          std::isfinite(accumulator.minimum_action_value) ? accumulator.minimum_action_value : 0.0;
+      row.maximum_action_value =
+          std::isfinite(accumulator.maximum_action_value) ? accumulator.maximum_action_value : 0.0;
       row.spread_action_value = row.maximum_action_value - row.minimum_action_value;
       output.push_back(row);
     }
@@ -2565,8 +2637,7 @@ private:
       const auto started = std::chrono::steady_clock::now();
       const auto expected = exact_postflop_all_in_payoff(
           state, deal, player, context.exact_postflop_all_in_cache,
-          context.exact_postflop_all_in_cache_hits,
-          context.exact_postflop_all_in_cache_misses);
+          context.exact_postflop_all_in_cache_hits, context.exact_postflop_all_in_cache_misses);
       context.exact_postflop_all_in_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
       if (!expected) {
@@ -2602,8 +2673,9 @@ private:
                       : Result<double, HuPreflopError>::failure(HuPreflopError::GameFailure);
   }
 
-  Result<double, HuPreflopError> exact_preflop_all_in_payoff(
-      const PublicState &state, const Deal &deal, const std::uint8_t player) const {
+  Result<double, HuPreflopError> exact_preflop_all_in_payoff(const PublicState &state,
+                                                             const Deal &deal,
+                                                             const std::uint8_t player) const {
     if (!options_.preflop_all_in_training_oracle || player > 1U) {
       return Result<double, HuPreflopError>::failure(HuPreflopError::InvalidConfiguration);
     }
@@ -2655,10 +2727,8 @@ private:
 
   Result<std::pair<double, std::uint64_t>, HuPreflopError>
   exact_postflop_all_in_payoff(const PublicState &state, const Deal &deal,
-                               const std::uint8_t player,
-                               BoundedExactAllInEquityCache &cache,
-                               std::uint64_t &cache_hits,
-                               std::uint64_t &cache_misses) const {
+                               const std::uint8_t player, BoundedExactAllInEquityCache &cache,
+                               std::uint64_t &cache_hits, std::uint64_t &cache_misses) const {
     if (player > 1U || !should_integrate_postflop_all_in(state)) {
       return Result<std::pair<double, std::uint64_t>, HuPreflopError>::failure(
           HuPreflopError::InvalidConfiguration);
@@ -2691,12 +2761,9 @@ private:
     const auto win_count = player == 0U ? equity.wins : equity.losses;
     const auto loss_count = player == 0U ? equity.losses : equity.wins;
     const auto expected_units =
-        (static_cast<double>(win_count) *
-             static_cast<double>(win.value().payoff_units[player]) +
-         static_cast<double>(equity.ties) *
-             static_cast<double>(tie.value().payoff_units[player]) +
-         static_cast<double>(loss_count) *
-             static_cast<double>(loss.value().payoff_units[player])) /
+        (static_cast<double>(win_count) * static_cast<double>(win.value().payoff_units[player]) +
+         static_cast<double>(equity.ties) * static_cast<double>(tie.value().payoff_units[player]) +
+         static_cast<double>(loss_count) * static_cast<double>(loss.value().payoff_units[player])) /
         static_cast<double>(equity.runouts());
     const auto expected_antes = expected_units / static_cast<double>(Money::units_per_ante);
     return std::isfinite(expected_antes)
@@ -2706,14 +2773,12 @@ private:
                      HuPreflopError::NumericalFailure);
   }
 
-  Result<double, HuPreflopError>
-  collect_parallel_postflop(const PublicState &state, Deal &deal, const std::uint64_t history,
-                            const std::uint32_t entry_node_id,
-                            const std::uint8_t traverser, const std::uint64_t iteration,
-                            const std::array<double, 2> &reach, std::mt19937_64 &random,
-                            ParallelWorkerContext &context, PendingTraversal &pending,
-                            const std::optional<double> forced_opponent_response_quantile =
-                                std::nullopt) const {
+  Result<double, HuPreflopError> collect_parallel_postflop(
+      const PublicState &state, Deal &deal, const std::uint64_t history,
+      const std::uint32_t entry_node_id, const std::uint8_t traverser,
+      const std::uint64_t iteration, const std::array<double, 2> &reach, std::mt19937_64 &random,
+      ParallelWorkerContext &context, PendingTraversal &pending,
+      const std::optional<double> forced_opponent_response_quantile = std::nullopt) const {
     if (state.status == HandStatus::Folded || state.status == HandStatus::AllInRunout ||
         state.status == HandStatus::Showdown) {
       return parallel_terminal_payoff(state, deal, traverser, context);
@@ -2761,11 +2826,11 @@ private:
                                  strategy_delta)) {
         return Result<double, HuPreflopError>::failure(pending.error);
       }
-      const auto selected = forced_opponent_response_quantile.has_value()
-                                ? external_sampling_action_from_quantile(
-                                      strategy.value(), action_count,
-                                      *forced_opponent_response_quantile)
-                                : sample_action(strategy.value(), action_count, random);
+      const auto selected =
+          forced_opponent_response_quantile.has_value()
+              ? external_sampling_action_from_quantile(strategy.value(), action_count,
+                                                       *forced_opponent_response_quantile)
+              : sample_action(strategy.value(), action_count, random);
       const auto next = apply_postflop_action(state, actions.value(), selected);
       if (!next) {
         return Result<double, HuPreflopError>::failure(next.error());
@@ -2774,8 +2839,7 @@ private:
       next_reach[actor] *= strategy.value()[selected];
       const auto child = collect_parallel_postflop(
           next.value(), deal, next_action_history(history, actions.value().actions[selected]),
-          entry_node_id, traverser, iteration, next_reach, random, context, pending,
-          std::nullopt);
+          entry_node_id, traverser, iteration, next_reach, random, context, pending, std::nullopt);
       if (!child || !options_.use_opponent_value_baseline) {
         return child;
       }
@@ -2792,11 +2856,10 @@ private:
       pending.first_traverser_decision_seen = true;
     }
     const auto child_opponent_response_quantile =
-        forced_opponent_response_quantile.has_value()
-            ? forced_opponent_response_quantile
-            : stratify_after_this_decision
-                  ? std::optional<double>{pending.root_response_stratified_quantile}
-                  : std::nullopt;
+        forced_opponent_response_quantile.has_value() ? forced_opponent_response_quantile
+        : stratify_after_this_decision
+            ? std::optional<double>{pending.root_response_stratified_quantile}
+            : std::nullopt;
     std::array<double, maximum_actions> action_values{};
     std::array<HuPreflopTelemetryTerminalType, maximum_actions> terminal_types{};
     double node_value = 0.0;
@@ -2810,9 +2873,8 @@ private:
       }
       auto next_reach = reach;
       next_reach[actor] *= strategy.value()[action];
-      std::mt19937_64 action_random = use_global_common_random_numbers
-                                          ? common_random_state
-                                          : random;
+      std::mt19937_64 action_random =
+          use_global_common_random_numbers ? common_random_state : random;
       const auto value = collect_parallel_postflop(
           next.value(), deal, next_action_history(history, actions.value().actions[action]),
           entry_node_id, traverser, iteration, next_reach, action_random, context, pending,
@@ -2862,13 +2924,11 @@ private:
     return Result<double, HuPreflopError>::success(node_value);
   }
 
-  Result<double, HuPreflopError>
-  collect_parallel_preflop(const std::uint32_t node_id, Deal &deal, const std::uint8_t traverser,
-                           const std::uint64_t iteration, const std::array<double, 2> &reach,
-                           std::mt19937_64 &random, ParallelWorkerContext &context,
-                           PendingTraversal &pending,
-                           const std::optional<double> forced_opponent_response_quantile =
-                               std::nullopt) const {
+  Result<double, HuPreflopError> collect_parallel_preflop(
+      const std::uint32_t node_id, Deal &deal, const std::uint8_t traverser,
+      const std::uint64_t iteration, const std::array<double, 2> &reach, std::mt19937_64 &random,
+      ParallelWorkerContext &context, PendingTraversal &pending,
+      const std::optional<double> forced_opponent_response_quantile = std::nullopt) const {
     if (node_id >= tree_.nodes.size()) {
       return Result<double, HuPreflopError>::failure(HuPreflopError::GameFailure);
     }
@@ -2886,10 +2946,9 @@ private:
       if (!advanced) {
         return Result<double, HuPreflopError>::failure(advanced.error());
       }
-      return collect_parallel_postflop(advanced.value(), deal,
-                                       mix_history(postflop_history_seed, node.id), node.id,
-                                       traverser, iteration, reach, random, context, pending,
-                                       forced_opponent_response_quantile);
+      return collect_parallel_postflop(
+          advanced.value(), deal, mix_history(postflop_history_seed, node.id), node.id, traverser,
+          iteration, reach, random, context, pending, forced_opponent_response_quantile);
     }
     const auto actor = node.state.player_to_act;
     const auto key = preflop_key(node, deal);
@@ -2918,16 +2977,16 @@ private:
                                  strategy_delta)) {
         return Result<double, HuPreflopError>::failure(pending.error);
       }
-      const auto selected = forced_opponent_response_quantile.has_value()
-                                ? external_sampling_action_from_quantile(
-                                      strategy.value(), action_count,
-                                      *forced_opponent_response_quantile)
-                                : sample_action(strategy.value(), action_count, random);
+      const auto selected =
+          forced_opponent_response_quantile.has_value()
+              ? external_sampling_action_from_quantile(strategy.value(), action_count,
+                                                       *forced_opponent_response_quantile)
+              : sample_action(strategy.value(), action_count, random);
       auto next_reach = reach;
       next_reach[actor] *= strategy.value()[selected];
-      const auto child = collect_parallel_preflop(node.edges[selected].child, deal, traverser,
-                                                  iteration, next_reach, random, context, pending,
-                                                  std::nullopt);
+      const auto child =
+          collect_parallel_preflop(node.edges[selected].child, deal, traverser, iteration,
+                                   next_reach, random, context, pending, std::nullopt);
       if (!child || !options_.use_opponent_value_baseline) {
         return child;
       }
@@ -2944,11 +3003,10 @@ private:
       pending.first_traverser_decision_seen = true;
     }
     const auto child_opponent_response_quantile =
-        forced_opponent_response_quantile.has_value()
-            ? forced_opponent_response_quantile
-            : stratify_after_this_decision
-                  ? std::optional<double>{pending.root_response_stratified_quantile}
-                  : std::nullopt;
+        forced_opponent_response_quantile.has_value() ? forced_opponent_response_quantile
+        : stratify_after_this_decision
+            ? std::optional<double>{pending.root_response_stratified_quantile}
+            : std::nullopt;
     const auto continuation_update_begin = pending.updates.size();
     std::array<double, maximum_actions> action_values{};
     double node_value = 0.0;
@@ -2962,16 +3020,14 @@ private:
     for (std::size_t action = 0U; action < action_count; ++action) {
       auto next_reach = reach;
       next_reach[actor] *= strategy.value()[action];
-      std::mt19937_64 action_random = use_global_common_random_numbers
-                                          ? common_random_state
-                                          : random;
+      std::mt19937_64 action_random =
+          use_global_common_random_numbers ? common_random_state : random;
       if (use_root_common_random_numbers) {
         action_random.seed(common_root_action_seed);
       }
       const auto value = collect_parallel_preflop(node.edges[action].child, deal, traverser,
-                                                  iteration, next_reach, action_random,
-                                                  context, pending,
-                                                  child_opponent_response_quantile);
+                                                  iteration, next_reach, action_random, context,
+                                                  pending, child_opponent_response_quantile);
       if (!value) {
         return value;
       }
@@ -3009,23 +3065,21 @@ private:
           shadow.first_traverser_decision_seen = true;
           shadow.root_response_stratified_quantile =
               options_.root_first_opponent_response_stratification
-                  ? root_response_stratified_quantile(
-                        pending.random_seed, iteration, rollout,
-                        options_.root_action_value_rollouts)
+                  ? root_response_stratified_quantile(pending.random_seed, iteration, rollout,
+                                                      options_.root_action_value_rollouts)
                   : 0.0;
           auto action_deal = conditioned.value();
-          const auto action_seed = options_.root_common_random_numbers
-                                       ? mix_history(deal_seed ^ 0x4352'4E53'4844'5700ULL, rollout)
-                                       : mix_history(deal_seed ^ 0x524F'4F54'4143'544EULL,
-                                                     action + 1U);
+          const auto action_seed =
+              options_.root_common_random_numbers
+                  ? mix_history(deal_seed ^ 0x4352'4E53'4844'5700ULL, rollout)
+                  : mix_history(deal_seed ^ 0x524F'4F54'4143'544EULL, action + 1U);
           std::mt19937_64 action_random(action_seed);
-          const auto value =
-              collect_parallel_preflop(node.edges[action].child, action_deal, traverser, iteration,
-                                       reach, action_random, context, shadow,
-                                       options_.root_first_opponent_response_stratification
-                                           ? std::optional<double>{
-                                                 shadow.root_response_stratified_quantile}
-                                           : std::nullopt);
+          const auto value = collect_parallel_preflop(
+              node.edges[action].child, action_deal, traverser, iteration, reach, action_random,
+              context, shadow,
+              options_.root_first_opponent_response_stratification
+                  ? std::optional<double>{shadow.root_response_stratified_quantile}
+                  : std::nullopt);
           context.peak_shadow_updates =
               std::max<std::uint64_t>(context.peak_shadow_updates, shadow.updates.capacity());
           if (!value) {
@@ -3065,14 +3119,13 @@ private:
     return Result<double, HuPreflopError>::success(node_value);
   }
 
-  Result<bool, HuPreflopError>
-  collect_parallel_btn_mean_rollouts(const Deal &primary_deal, ParallelWorkerContext &context,
-                                     PendingTraversal &pending) const {
+  Result<bool, HuPreflopError> collect_parallel_btn_mean_rollouts(const Deal &primary_deal,
+                                                                  ParallelWorkerContext &context,
+                                                                  PendingTraversal &pending) const {
     if (pending.traverser != 1U) {
       return Result<bool, HuPreflopError>::failure(HuPreflopError::InvalidConfiguration);
     }
-    const auto continuation_scale =
-        1.0 / static_cast<double>(options_.root_action_value_rollouts);
+    const auto continuation_scale = 1.0 / static_cast<double>(options_.root_action_value_rollouts);
     scale_pending_updates(pending, 0U, continuation_scale);
     const auto class_id = deal_class(primary_deal, pending.traverser);
     PendingTraversal shadow;
@@ -3093,17 +3146,15 @@ private:
       shadow.first_traverser_decision_seen = false;
       shadow.root_response_stratified_quantile =
           options_.root_first_opponent_response_stratification
-              ? root_response_stratified_quantile(
-                    pending.random_seed, pending.iteration, rollout,
-                    options_.root_action_value_rollouts)
+              ? root_response_stratified_quantile(pending.random_seed, pending.iteration, rollout,
+                                                  options_.root_action_value_rollouts)
               : 0.0;
       auto deal = conditioned.value();
-      std::mt19937_64 traversal_random(
-          mix_history(deal_seed ^ 0x4254'4E54'5241'5652ULL, rollout));
+      std::mt19937_64 traversal_random(mix_history(deal_seed ^ 0x4254'4E54'5241'5652ULL, rollout));
       const std::array<double, 2> reach{1.0, 1.0};
-      const auto value = collect_parallel_preflop(tree_.root, deal, pending.traverser,
-                                                  pending.iteration, reach, traversal_random,
-                                                  context, shadow);
+      const auto value =
+          collect_parallel_preflop(tree_.root, deal, pending.traverser, pending.iteration, reach,
+                                   traversal_random, context, shadow);
       context.peak_shadow_updates =
           std::max<std::uint64_t>(context.peak_shadow_updates, shadow.updates.capacity());
       if (!value) {
@@ -3147,9 +3198,9 @@ private:
           jobs[job_index].random_seed = random_();
           jobs[job_index].root_response_stratified_quantile =
               options_.root_first_opponent_response_stratification
-                  ? root_response_stratified_quantile(
-                        jobs[job_index].random_seed, jobs[job_index].iteration, 0U,
-                        options_.root_action_value_rollouts)
+                  ? root_response_stratified_quantile(jobs[job_index].random_seed,
+                                                      jobs[job_index].iteration, 0U,
+                                                      options_.root_action_value_rollouts)
                   : 0.0;
         }
         if (options_.chance_sampling_mode == HuPreflopChanceSamplingMode::PublicBoardStratified) {
@@ -3291,8 +3342,7 @@ private:
         for (std::size_t street = 0U; street < 2U; ++street) {
           exact_postflop_all_in_evaluations_[street] +=
               context.exact_postflop_all_in_evaluations[street];
-          exact_postflop_all_in_runouts_[street] +=
-              context.exact_postflop_all_in_runouts[street];
+          exact_postflop_all_in_runouts_[street] += context.exact_postflop_all_in_runouts[street];
         }
         exact_postflop_all_in_seconds_ += context.exact_postflop_all_in_seconds;
         exact_postflop_all_in_cache_hits_ += context.exact_postflop_all_in_cache_hits;
@@ -3308,8 +3358,7 @@ private:
         peak_parallel_shadow_updates_per_worker_ =
             std::max(peak_parallel_shadow_updates_per_worker_, context.peak_shadow_updates);
         if (options_.collect_action_conditioned_telemetry) {
-          action_conditioned_telemetry_dropped_ +=
-              context.action_conditioned_telemetry_dropped;
+          action_conditioned_telemetry_dropped_ += context.action_conditioned_telemetry_dropped;
           for (const auto &[key, accumulator] : context.action_conditioned_telemetry) {
             auto entry = action_conditioned_telemetry_.find(key);
             if (entry == action_conditioned_telemetry_.end() &&
@@ -3395,24 +3444,7 @@ private:
     key.player = state.player_to_act;
     key.street = state.street;
     const bool forgets_preflop_class =
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-        options_.postflop_representation == HuPreflopPostflopRepresentation::
-                                                   DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
+        representation_forgets_preflop_class(options_.postflop_representation);
     key.preflop_class =
         forgets_preflop_class ? HandClassId{0U} : deal_class(deal, state.player_to_act);
     if (options_.postflop_representation == HuPreflopPostflopRepresentation::ExactPhysical) {
@@ -3422,22 +3454,12 @@ private:
     const auto final_index =
         static_cast<std::size_t>(state.street) - static_cast<std::size_t>(Street::Flop);
     const auto current_street_only =
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        options_.postflop_representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+        representation_uses_current_street_only(options_.postflop_representation);
     const auto first_index =
         uses_one_street_history(options_.postflop_representation) && final_index > 0U
             ? final_index - 1U
-            : current_street_only ? final_index : 0U;
+        : current_street_only ? final_index
+                              : 0U;
     for (std::size_t index = first_index; index <= final_index; ++index) {
       ++bucket_mapping_visits_[index];
       const auto bucket_street =
@@ -3511,8 +3533,8 @@ private:
     if (should_integrate_postflop_all_in(state)) {
       const auto started = std::chrono::steady_clock::now();
       const auto expected = exact_postflop_all_in_payoff(
-          state, deal, player, exact_postflop_all_in_cache_,
-          exact_postflop_all_in_cache_hits_, exact_postflop_all_in_cache_misses_);
+          state, deal, player, exact_postflop_all_in_cache_, exact_postflop_all_in_cache_hits_,
+          exact_postflop_all_in_cache_misses_);
       exact_postflop_all_in_seconds_ +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
       if (!expected) {
@@ -3552,10 +3574,8 @@ private:
            static_cast<double>(Money::units_per_ante);
   }
 
-  double preflop_terminal_payoff(const HuPreflopNode &node, Deal &deal,
-                                 const std::uint8_t player) {
-    if (node.kind == HuPreflopNodeKind::TerminalAllIn &&
-        options_.preflop_all_in_training_oracle) {
+  double preflop_terminal_payoff(const HuPreflopNode &node, Deal &deal, const std::uint8_t player) {
+    if (node.kind == HuPreflopNodeKind::TerminalAllIn && options_.preflop_all_in_training_oracle) {
       const auto expected = exact_preflop_all_in_payoff(node.state, deal, player);
       if (!expected) {
         failure_ = expected.error();
@@ -3680,9 +3700,10 @@ private:
     return node_value;
   }
 
-  std::array<double, maximum_actions>
-  policy_strategy(const DcfrTable &policy, const InformationKey &key,
-                  const std::size_t action_count, const SolverPolicyView view) {
+  std::array<double, maximum_actions> policy_strategy(const DcfrTable &policy,
+                                                      const InformationKey &key,
+                                                      const std::size_t action_count,
+                                                      const SolverPolicyView view) {
     if (view == SolverPolicyView::Average) {
       return policy.average_strategy(key, action_count);
     }
@@ -3698,8 +3719,7 @@ private:
                           const DcfrTable *fixed, const std::uint8_t traverser,
                           const std::uint64_t iteration, const std::array<double, 2> &reach,
                           const bool response_mode,
-                          const SolverPolicyView fixed_policy_view =
-                              SolverPolicyView::Average) {
+                          const SolverPolicyView fixed_policy_view = SolverPolicyView::Average) {
     if (node_id >= tree_.nodes.size()) {
       failure_ = HuPreflopError::GameFailure;
       return 0.0;
@@ -3716,8 +3736,8 @@ private:
         return 0.0;
       }
       const auto history = mix_history(postflop_history_seed, node.id);
-      return traverse_postflop(advanced.value(), deal, history, node.id, training, fixed,
-                               traverser, iteration, reach, response_mode, fixed_policy_view);
+      return traverse_postflop(advanced.value(), deal, history, node.id, training, fixed, traverser,
+                               iteration, reach, response_mode, fixed_policy_view);
     }
 
     const auto actor = node.state.player_to_act;
@@ -3757,9 +3777,9 @@ private:
     for (std::size_t action = 0; action < action_count; ++action) {
       auto next_reach = reach;
       next_reach[actor] *= strategy[action];
-      action_values[action] = traverse_preflop(node.edges[action].child, deal, training, fixed,
-                                               traverser, iteration, next_reach, response_mode,
-                                               fixed_policy_view);
+      action_values[action] =
+          traverse_preflop(node.edges[action].child, deal, training, fixed, traverser, iteration,
+                           next_reach, response_mode, fixed_policy_view);
       terminal_types[action] = preflop_telemetry_terminal(tree_.nodes[node.edges[action].child]);
       node_value += strategy[action] * action_values[action];
     }
@@ -3845,11 +3865,10 @@ private:
 
   double traverse_postflop(const PublicState &state, Deal &deal, const std::uint64_t history,
                            const std::uint32_t entry_node_id, DcfrTable &training,
-                           const DcfrTable *fixed,
-                           const std::uint8_t traverser, const std::uint64_t iteration,
-                           const std::array<double, 2> &reach, const bool response_mode,
-                           const SolverPolicyView fixed_policy_view =
-                               SolverPolicyView::Average) {
+                           const DcfrTable *fixed, const std::uint8_t traverser,
+                           const std::uint64_t iteration, const std::array<double, 2> &reach,
+                           const bool response_mode,
+                           const SolverPolicyView fixed_policy_view = SolverPolicyView::Average) {
     if (state.status == HandStatus::Folded || state.status == HandStatus::AllInRunout ||
         state.status == HandStatus::Showdown) {
       return terminal_payoff(state, deal, traverser);
@@ -4003,10 +4022,12 @@ private:
     return HuPreflopTelemetryTerminalType::PostflopShowdown;
   }
 
-  double play_postflop_for_root_decision_trace(
-      const PublicState &state, Deal &deal, const std::uint64_t history,
-      const DcfrTable &policy_co, const DcfrTable &policy_btn, std::mt19937_64 &random,
-      const std::array<SolverPolicyView, 2> policy_views, RootDecisionTraceSample &trace) {
+  double play_postflop_for_root_decision_trace(const PublicState &state, Deal &deal,
+                                               const std::uint64_t history,
+                                               const DcfrTable &policy_co,
+                                               const DcfrTable &policy_btn, std::mt19937_64 &random,
+                                               const std::array<SolverPolicyView, 2> policy_views,
+                                               RootDecisionTraceSample &trace) {
     if (!observe_root_decision_trace_street(state, deal, history, trace)) {
       return 0.0;
     }
@@ -4036,8 +4057,8 @@ private:
     }
     const auto actor = state.player_to_act;
     const auto &policy = actor == 0U ? policy_co : policy_btn;
-    const auto strategy = policy_strategy(policy, key.value(), actions.value().action_count,
-                                          policy_views[actor]);
+    const auto strategy =
+        policy_strategy(policy, key.value(), actions.value().action_count, policy_views[actor]);
     if (failure_ != HuPreflopError::InvalidConfiguration) {
       return 0.0;
     }
@@ -4052,10 +4073,11 @@ private:
         policy_co, policy_btn, random, policy_views, trace);
   }
 
-  double play_preflop_for_root_decision_trace(
-      const std::uint32_t node_id, Deal &deal, const DcfrTable &policy_co,
-      const DcfrTable &policy_btn, std::mt19937_64 &random,
-      const std::array<SolverPolicyView, 2> policy_views, RootDecisionTraceSample &trace) {
+  double play_preflop_for_root_decision_trace(const std::uint32_t node_id, Deal &deal,
+                                              const DcfrTable &policy_co,
+                                              const DcfrTable &policy_btn, std::mt19937_64 &random,
+                                              const std::array<SolverPolicyView, 2> policy_views,
+                                              RootDecisionTraceSample &trace) {
     if (node_id >= tree_.nodes.size()) {
       failure_ = HuPreflopError::GameFailure;
       return 0.0;
@@ -4063,12 +4085,11 @@ private:
     const auto &node = tree_.nodes[node_id];
     if (node.kind == HuPreflopNodeKind::TerminalFold ||
         node.kind == HuPreflopNodeKind::TerminalAllIn) {
-      trace.terminal_type =
-          node.kind == HuPreflopNodeKind::TerminalFold
-              ? HuPreflopTelemetryTerminalType::PreflopFold
-              : options_.preflop_all_in_training_oracle
-                    ? HuPreflopTelemetryTerminalType::PreflopAllInExact
-                    : HuPreflopTelemetryTerminalType::PreflopAllInSampled;
+      trace.terminal_type = node.kind == HuPreflopNodeKind::TerminalFold
+                                ? HuPreflopTelemetryTerminalType::PreflopFold
+                            : options_.preflop_all_in_training_oracle
+                                ? HuPreflopTelemetryTerminalType::PreflopAllInExact
+                                : HuPreflopTelemetryTerminalType::PreflopAllInSampled;
       trace.terminal_street = Street::Preflop;
       return preflop_terminal_payoff(node, deal, 0U);
     }
@@ -4085,23 +4106,20 @@ private:
     const auto key = preflop_key(node, deal);
     const auto actor = node.state.player_to_act;
     const auto &policy = actor == 0U ? policy_co : policy_btn;
-    const auto strategy =
-        policy_strategy(policy, key, node.edges.size(), policy_views[actor]);
+    const auto strategy = policy_strategy(policy, key, node.edges.size(), policy_views[actor]);
     if (failure_ != HuPreflopError::InvalidConfiguration) {
       return 0.0;
     }
     const auto selected = sample_action(strategy, node.edges.size(), random);
-    trace.preflop_continuation.push_back(HuPreflopRootDecisionTraceStep{
-        node.id, actor, static_cast<std::uint8_t>(selected)});
-    return play_preflop_for_root_decision_trace(
-        node.edges[selected].child, deal, policy_co, policy_btn, random, policy_views, trace);
+    trace.preflop_continuation.push_back(
+        HuPreflopRootDecisionTraceStep{node.id, actor, static_cast<std::uint8_t>(selected)});
+    return play_preflop_for_root_decision_trace(node.edges[selected].child, deal, policy_co,
+                                                policy_btn, random, policy_views, trace);
   }
 
-  Result<HuPreflopRootDecisionTracePolicy, HuPreflopError>
-  evaluate_root_decision_trace_policy(const HandClassId hand_class_id,
-                                      const HuPreflopRootDecisionTracePolicyView public_view,
-                                      const std::uint32_t deals_per_action,
-                                      const std::uint64_t seed) {
+  Result<HuPreflopRootDecisionTracePolicy, HuPreflopError> evaluate_root_decision_trace_policy(
+      const HandClassId hand_class_id, const HuPreflopRootDecisionTracePolicyView public_view,
+      const std::uint32_t deals_per_action, const std::uint64_t seed) {
     struct Accumulators {
       std::array<RootDecisionTraceMoments, 5> actions{};
       std::array<std::map<RootDecisionTraceBranchKey, RootDecisionTraceMoments>, 5> branches;
@@ -4152,18 +4170,17 @@ private:
             root.edges[source].child, deal, blueprint_, blueprint_, action_random, policy_views,
             sample_trace);
         if (failure_ != HuPreflopError::InvalidConfiguration ||
-            sample_trace.terminal_type ==
-                HuPreflopTelemetryTerminalType::PostflopContinuation) {
+            sample_trace.terminal_type == HuPreflopTelemetryTerminalType::PostflopContinuation) {
           return Result<HuPreflopRootDecisionTracePolicy, HuPreflopError>::failure(
-              failure_ != HuPreflopError::InvalidConfiguration
-                  ? failure_
-                  : HuPreflopError::IntegrityFailure);
+              failure_ != HuPreflopError::InvalidConfiguration ? failure_
+                                                               : HuPreflopError::IntegrityFailure);
         }
         payoffs[destination] = payoff;
         accumulators.actions[destination].observe(payoff);
-        accumulators.branches[destination][RootDecisionTraceBranchKey{
-            sample_trace.preflop_continuation, sample_trace.terminal_type,
-            sample_trace.terminal_street}]
+        accumulators
+            .branches[destination][RootDecisionTraceBranchKey{sample_trace.preflop_continuation,
+                                                              sample_trace.terminal_type,
+                                                              sample_trace.terminal_street}]
             .observe(payoff);
         for (std::size_t street = 0U; street < sample_trace.street_reached.size(); ++street) {
           if (sample_trace.street_reached[street]) {
@@ -4173,10 +4190,11 @@ private:
             if (!sample_trace.bucket_seen[player][street]) {
               continue;
             }
-            const auto street_id = static_cast<Street>(
-                static_cast<std::size_t>(Street::Flop) + street);
-            accumulators.buckets[destination][RootDecisionTraceBucketKey{
-                street_id, player, sample_trace.bucket_keys[player][street]}]
+            const auto street_id =
+                static_cast<Street>(static_cast<std::size_t>(Street::Flop) + street);
+            accumulators
+                .buckets[destination][RootDecisionTraceBucketKey{
+                    street_id, player, sample_trace.bucket_keys[player][street]}]
                 .observe(payoff);
           }
         }
@@ -4221,16 +4239,13 @@ private:
         const auto summary =
             accumulators.paired_differences[left][right].summarize(deals_per_action);
         output.paired_difference_mean_ante[left][right] = summary.mean_payoff_ante;
-        output.paired_difference_standard_error_ante[left][right] =
-            summary.standard_error_ante;
+        output.paired_difference_standard_error_ante[left][right] = summary.standard_error_ante;
       }
     }
-    return Result<HuPreflopRootDecisionTracePolicy, HuPreflopError>::success(
-        std::move(output));
+    return Result<HuPreflopRootDecisionTracePolicy, HuPreflopError>::success(std::move(output));
   }
 
-  Result<std::vector<HuPreflopRootDecisionTrace>, HuPreflopError>
-  evaluate_root_decision_traces() {
+  Result<std::vector<HuPreflopRootDecisionTrace>, HuPreflopError> evaluate_root_decision_traces() {
     try {
       std::vector<HuPreflopRootDecisionTrace> output;
       output.reserve(options_.root_decision_trace_hand_classes.size());
@@ -4238,10 +4253,9 @@ private:
         HuPreflopRootDecisionTrace trace;
         trace.hand_class = hand_class_id;
         trace.deals_per_action = options_.root_decision_trace_deals_per_class;
-        const auto trace_seed =
-            (options_.evaluation_seed ^ 0x5452'4143'4500'0001ULL ^
-             (static_cast<std::uint64_t>(hand_class_id) << 32U)) |
-            1U;
+        const auto trace_seed = (options_.evaluation_seed ^ 0x5452'4143'4500'0001ULL ^
+                                 (static_cast<std::uint64_t>(hand_class_id) << 32U)) |
+                                1U;
         const auto average = evaluate_root_decision_trace_policy(
             hand_class_id, HuPreflopRootDecisionTracePolicyView::Average,
             options_.root_decision_trace_deals_per_class, trace_seed);
@@ -4344,20 +4358,16 @@ private:
                          policy_btn, random, payoff_player, policy_views);
   }
 
-  Result<EvaluationSummary, HuPreflopError> evaluate(const DcfrTable &policy_co,
-                                                     const DcfrTable &policy_btn,
-                                                     const std::uint64_t deals,
-                                                     const std::uint64_t seed,
-                                                     const std::array<SolverPolicyView, 2>
-                                                         policy_views = {}) {
+  Result<EvaluationSummary, HuPreflopError>
+  evaluate(const DcfrTable &policy_co, const DcfrTable &policy_btn, const std::uint64_t deals,
+           const std::uint64_t seed, const std::array<SolverPolicyView, 2> policy_views = {}) {
     std::mt19937_64 evaluation_random(seed);
     double total = 0.0;
     double squared_total = 0.0;
     for (std::uint64_t index = 0; index < deals; ++index) {
       auto deal = sample_deal(evaluation_random);
-      const auto payoff =
-          play_preflop(tree_.root, deal, policy_co, policy_btn, evaluation_random, 0U,
-                       policy_views);
+      const auto payoff = play_preflop(tree_.root, deal, policy_co, policy_btn, evaluation_random,
+                                       0U, policy_views);
       if (failure_ != HuPreflopError::InvalidConfiguration) {
         return Result<EvaluationSummary, HuPreflopError>::failure(failure_);
       }
@@ -4445,13 +4455,10 @@ private:
                                          iteration);
   }
 
-  Result<RootActionEvaluation, HuPreflopError> evaluate_root_actions(const DcfrTable &policy_co,
-                                                                     const DcfrTable &policy_btn,
-                                                                     const std::uint64_t deals,
-                                                                     const std::uint64_t seed,
-                                                                     const std::array<
-                                                                         SolverPolicyView, 2>
-                                                                         policy_views = {}) {
+  Result<RootActionEvaluation, HuPreflopError>
+  evaluate_root_actions(const DcfrTable &policy_co, const DcfrTable &policy_btn,
+                        const std::uint64_t deals, const std::uint64_t seed,
+                        const std::array<SolverPolicyView, 2> policy_views = {}) {
     const auto &root = tree_.nodes[tree_.root];
     if (root.kind != HuPreflopNodeKind::Decision || root.edges.size() != 5U) {
       return Result<RootActionEvaluation, HuPreflopError>::failure(
@@ -4491,8 +4498,7 @@ private:
         const auto destination = destinations[source];
         auto action_deal = sampled_deal;
         const auto payoff = play_preflop(root.edges[source].child, action_deal, policy_co,
-                                         policy_btn, action_randoms[destination], 0U,
-                                         policy_views);
+                                         policy_btn, action_randoms[destination], 0U, policy_views);
         if (failure_ != HuPreflopError::InvalidConfiguration) {
           return Result<RootActionEvaluation, HuPreflopError>::failure(failure_);
         }
@@ -4623,9 +4629,9 @@ private:
             continue;
           }
           const auto &policy = prior.state.player_to_act == 0U ? policy_co : policy_btn;
-          const auto strategy = policy_strategy(
-              policy, preflop_key(prior, sampled_deal), prior.edges.size(),
-              policy_views[prior.state.player_to_act]);
+          const auto strategy =
+              policy_strategy(policy, preflop_key(prior, sampled_deal), prior.edges.size(),
+                              policy_views[prior.state.player_to_act]);
           if (failure_ != HuPreflopError::InvalidConfiguration) {
             return Result<std::vector<HuPreflopDecisionEvaluation>, HuPreflopError>::failure(
                 failure_);
@@ -4642,9 +4648,9 @@ private:
 
         for (std::size_t action = 0U; action < node.edges.size(); ++action) {
           auto action_deal = sampled_deal;
-          const auto payoff = play_preflop(node.edges[action].child, action_deal, policy_co,
-                                           policy_btn, action_randoms[action], evaluated.player,
-                                           policy_views);
+          const auto payoff =
+              play_preflop(node.edges[action].child, action_deal, policy_co, policy_btn,
+                           action_randoms[action], evaluated.player, policy_views);
           if (failure_ != HuPreflopError::InvalidConfiguration || !std::isfinite(payoff)) {
             return Result<std::vector<HuPreflopDecisionEvaluation>, HuPreflopError>::failure(
                 failure_ != HuPreflopError::InvalidConfiguration
@@ -4823,8 +4829,7 @@ private:
           continue;
         }
         const auto current = blueprint_.current_strategy(*information);
-        std::copy_n(current.begin(), node.edges.size(),
-                    diagnostic.current_strategy[hand].begin());
+        std::copy_n(current.begin(), node.edges.size(), diagnostic.current_strategy[hand].begin());
         diagnostic.last_iteration[hand] = information->last_iteration;
         for (std::size_t action = 0U; action < node.edges.size(); ++action) {
           diagnostic.cumulative_weighted_regret[hand][action] = information->regrets[action];
@@ -4843,11 +4848,9 @@ private:
                           remaining_states / 2U);
     DcfrTable response_btn(options_.best_response_iterations, options_.sampling_algorithm,
                            remaining_states - remaining_states / 2U);
-    train_response(0U, response_co,
-                   options_.seed ^ 0x4252'434F'0000'0001ULL ^ seed_salt,
+    train_response(0U, response_co, options_.seed ^ 0x4252'434F'0000'0001ULL ^ seed_salt,
                    fixed_policy_view);
-    train_response(1U, response_btn,
-                   options_.seed ^ 0x4252'4254'4E00'0001ULL ^ seed_salt,
+    train_response(1U, response_btn, options_.seed ^ 0x4252'4254'4E00'0001ULL ^ seed_salt,
                    fixed_policy_view);
     if (failure_ != HuPreflopError::InvalidConfiguration || !response_co.valid() ||
         !response_btn.valid()) {
@@ -4858,15 +4861,15 @@ private:
     }
     const std::array co_views{SolverPolicyView::Average, fixed_policy_view};
     const std::array btn_views{fixed_policy_view, SolverPolicyView::Average};
-    const auto br_co = evaluate(
-        response_co, blueprint_, options_.best_response_evaluation_deals,
-        options_.evaluation_seed ^ 0x4252'4556'434F'0001ULL ^ seed_salt, co_views);
-    const auto br_btn = evaluate(
-        blueprint_, response_btn, options_.best_response_evaluation_deals,
-        options_.evaluation_seed ^ 0x4252'4556'4254'4E01ULL ^ seed_salt, btn_views);
+    const auto br_co =
+        evaluate(response_co, blueprint_, options_.best_response_evaluation_deals,
+                 options_.evaluation_seed ^ 0x4252'4556'434F'0001ULL ^ seed_salt, co_views);
+    const auto br_btn =
+        evaluate(blueprint_, response_btn, options_.best_response_evaluation_deals,
+                 options_.evaluation_seed ^ 0x4252'4556'4254'4E01ULL ^ seed_salt, btn_views);
     if (!br_co || !br_btn) {
-      return Result<SampledResponseSummary, HuPreflopError>::failure(
-          !br_co ? br_co.error() : br_btn.error());
+      return Result<SampledResponseSummary, HuPreflopError>::failure(!br_co ? br_co.error()
+                                                                            : br_btn.error());
     }
     SampledResponseSummary result;
     result.co = br_co.value();
@@ -4919,24 +4922,27 @@ private:
     }
     output.tree_fingerprint = tree_.fingerprint;
     output.major = HuPreflopSampledPostflopPolicy::format_major;
-    output.minor = options_.evaluate_current_profile
-                       ? HuPreflopSampledPostflopPolicy::format_minor
-                       : options_.postflop_representation == HuPreflopPostflopRepresentation::
-                                                       DistributionalStrengthAdaptiveCategoryHistoryV11
-                       ? 10U
-                   : options_.postflop_representation ==
-                           HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10
-                       ? 9U
-                   : options_.postflop_representation ==
-                           HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9
-                       ? 8U
-                   : options_.postflop_representation ==
-                           HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8
-                       ? 7U
-                   : options_.postflop_representation ==
-                           HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7
-                       ? 6U
-                       : HuPreflopSampledPostflopPolicy::minimum_supported_minor;
+    output.minor =
+        options_.postflop_representation == HuPreflopPostflopRepresentation::
+                                                DistributionalStrengthStreetAdaptivePerfectRecallV23
+            ? 12U
+        : options_.evaluate_current_profile ? 11U
+        : options_.postflop_representation ==
+                HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11
+            ? 10U
+        : options_.postflop_representation ==
+                HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10
+            ? 9U
+        : options_.postflop_representation ==
+                HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9
+            ? 8U
+        : options_.postflop_representation ==
+                HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8
+            ? 7U
+        : options_.postflop_representation ==
+                HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7
+            ? 6U
+            : HuPreflopSampledPostflopPolicy::minimum_supported_minor;
     output.algorithm = algorithm;
     output.abstraction_id = abstraction_id;
     output.iterations = iterations;
@@ -5020,15 +5026,13 @@ private:
 } // namespace
 
 Result<HuPreflopPostflopAllInEquity, HuPreflopError>
-enumerate_hu_preflop_postflop_all_in_equity(
-    const std::array<std::array<CardId, 2>, 2> &holes,
-    const std::array<CardId, 5> &board, const Street street,
-    const IHandEvaluator &evaluator) {
-  const std::size_t visible_board_count = street == Street::Flop   ? 3U
-                                          : street == Street::Turn ? 4U
-                                          : street == Street::River
-                                              ? 5U
-                                              : 0U;
+enumerate_hu_preflop_postflop_all_in_equity(const std::array<std::array<CardId, 2>, 2> &holes,
+                                            const std::array<CardId, 5> &board, const Street street,
+                                            const IHandEvaluator &evaluator) {
+  const std::size_t visible_board_count = street == Street::Flop    ? 3U
+                                          : street == Street::Turn  ? 4U
+                                          : street == Street::River ? 5U
+                                                                    : 0U;
   if (visible_board_count == 0U) {
     return Result<HuPreflopPostflopAllInEquity, HuPreflopError>::failure(
         HuPreflopError::InvalidConfiguration);
@@ -5072,10 +5076,10 @@ enumerate_hu_preflop_postflop_all_in_equity(
   HuPreflopPostflopAllInEquity result;
   auto complete_board = board;
   const auto evaluate_runout = [&]() {
-    const std::array<CardId, 7> first{holes[0][0], holes[0][1], complete_board[0],
+    const std::array<CardId, 7> first{holes[0][0],       holes[0][1],       complete_board[0],
                                       complete_board[1], complete_board[2], complete_board[3],
                                       complete_board[4]};
-    const std::array<CardId, 7> second{holes[1][0], holes[1][1], complete_board[0],
+    const std::array<CardId, 7> second{holes[1][0],       holes[1][1],       complete_board[0],
                                        complete_board[1], complete_board[2], complete_board[3],
                                        complete_board[4]};
     const auto first_value = evaluator.evaluate_seven(first);
@@ -5119,9 +5123,7 @@ enumerate_hu_preflop_postflop_all_in_equity(
     }
   }
 
-  const auto expected_runouts = street == Street::Flop   ? 406U
-                                : street == Street::Turn ? 28U
-                                                        : 1U;
+  const auto expected_runouts = street == Street::Flop ? 406U : street == Street::Turn ? 28U : 1U;
   return result.runouts() == expected_runouts
              ? Result<HuPreflopPostflopAllInEquity, HuPreflopError>::success(result)
              : Result<HuPreflopPostflopAllInEquity, HuPreflopError>::failure(
@@ -5129,9 +5131,9 @@ enumerate_hu_preflop_postflop_all_in_equity(
 }
 
 Result<HuPreflopPostflopAllInEquity, HuPreflopError>
-enumerate_hu_preflop_postflop_all_in_equity(
-    const std::array<std::array<CardId, 2>, 2> &holes,
-    const std::array<CardId, 5> &board, const Street street) {
+enumerate_hu_preflop_postflop_all_in_equity(const std::array<std::array<CardId, 2>, 2> &holes,
+                                            const std::array<CardId, 5> &board,
+                                            const Street street) {
   static const ExactHandEvaluator evaluator;
   return enumerate_hu_preflop_postflop_all_in_equity(holes, board, street, evaluator);
 }
@@ -5208,8 +5210,8 @@ validate_hu_preflop_sampled_postflop_policy(const HuPreflopTree &tree,
                                    !std::has_single_bit(capacity);
                           }) ||
       static_cast<std::uint8_t>(policy.representation) >
-          static_cast<std::uint8_t>(
-              HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11) ||
+          static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                        DistributionalStrengthStreetAdaptivePerfectRecallV23) ||
       ((policy.representation ==
             HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
         policy.representation ==
@@ -5218,12 +5220,15 @@ validate_hu_preflop_sampled_postflop_policy(const HuPreflopTree &tree,
             HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
         policy.representation ==
             HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
+        policy.representation ==
+            HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
         policy.representation == HuPreflopPostflopRepresentation::
-                                     DistributionalStrengthAdaptiveCategoryHistoryV11) &&
+                                     DistributionalStrengthStreetAdaptivePerfectRecallV23) &&
        std::ranges::any_of(policy.distributional_bucket_capacities,
                            [](const auto capacity) { return capacity < 32U; })) ||
       policy.missing_infoset_fallback != HuPreflopSampledPolicyFallback::Uniform ||
-      (policy.minor >= 11U ? !policy.current_policy_present : policy.current_policy_present) ||
+      (policy.minor < 11U && policy.current_policy_present) ||
+      (policy.minor == 11U && !policy.current_policy_present) ||
       (policy.representation == HuPreflopPostflopRepresentation::ExactPhysical
            ? policy.equity_samples_per_bucket != 0U
            : policy.equity_samples_per_bucket == 0U) ||
@@ -5261,8 +5266,7 @@ validate_hu_preflop_sampled_postflop_policy(const HuPreflopTree &tree,
           total += probability;
         }
       }
-      return required ? std::isfinite(total) && std::abs(total - 1.0) <= 1.0e-9
-                      : total == 0.0;
+      return required ? std::isfinite(total) && std::abs(total - 1.0) <= 1.0e-9 : total == 0.0;
     };
     if (!validate_probabilities(entry.probabilities, true) ||
         !validate_probabilities(entry.current_probabilities, policy.current_policy_present)) {
@@ -5276,8 +5280,8 @@ Result<std::array<double, hu_preflop_sampled_postflop_maximum_actions>, HuPreflo
 query_hu_preflop_sampled_postflop_policy(const HuPreflopSampledPostflopPolicy &policy,
                                          const HuPreflopSampledPostflopPolicyKey &key,
                                          const std::uint8_t action_count) {
-  return query_hu_preflop_sampled_postflop_policy(
-      policy, key, action_count, HuPreflopSampledPolicyView::Average);
+  return query_hu_preflop_sampled_postflop_policy(policy, key, action_count,
+                                                  HuPreflopSampledPolicyView::Average);
 }
 
 Result<std::array<double, hu_preflop_sampled_postflop_maximum_actions>, HuPreflopError>
@@ -5288,8 +5292,8 @@ query_hu_preflop_sampled_postflop_policy(const HuPreflopSampledPostflopPolicy &p
   using Strategy = std::array<double, hu_preflop_sampled_postflop_maximum_actions>;
   if (!supported_sampled_policy_version(policy) || policy.fingerprint.empty() ||
       static_cast<std::uint8_t>(policy.representation) >
-          static_cast<std::uint8_t>(
-              HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11) ||
+          static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                        DistributionalStrengthStreetAdaptivePerfectRecallV23) ||
       action_count == 0U || action_count > hu_preflop_sampled_postflop_maximum_actions ||
       static_cast<std::uint8_t>(view) >
           static_cast<std::uint8_t>(HuPreflopSampledPolicyView::Current) ||
@@ -5306,9 +5310,8 @@ query_hu_preflop_sampled_postflop_policy(const HuPreflopSampledPostflopPolicy &p
   if (found != policy.entries.end() && found->key == key) {
     return found->action_count == action_count
                ? Result<Strategy, HuPreflopError>::success(
-                     view == HuPreflopSampledPolicyView::Current
-                         ? found->current_probabilities
-                         : found->probabilities)
+                     view == HuPreflopSampledPolicyView::Current ? found->current_probabilities
+                                                                 : found->probabilities)
                : Result<Strategy, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
   }
   if (policy.missing_infoset_fallback != HuPreflopSampledPolicyFallback::Uniform) {
@@ -5329,10 +5332,11 @@ Result<double, HuPreflopError> query_hu_preflop_sampled_postflop_action_probabil
 }
 
 Result<HuPreflopSampledPostflopPublicDecision, HuPreflopError>
-derive_hu_preflop_sampled_postflop_public_decision(
-    const HuPreflopTree &tree, const std::uint32_t entry_node,
-    const std::array<CardId, 5> &board, const PublicState &state,
-    const std::span<const Action> action_prefix) {
+derive_hu_preflop_sampled_postflop_public_decision(const HuPreflopTree &tree,
+                                                   const std::uint32_t entry_node,
+                                                   const std::array<CardId, 5> &board,
+                                                   const PublicState &state,
+                                                   const std::span<const Action> action_prefix) {
   if (entry_node >= tree.nodes.size() ||
       tree.nodes[entry_node].kind != HuPreflopNodeKind::PostflopEntry ||
       action_prefix.size() > 256U) {
@@ -5414,12 +5418,12 @@ derive_hu_preflop_sampled_postflop_public_decision(
 Result<HuPreflopSampledPostflopPolicyKey, HuPreflopError>
 derive_hu_preflop_sampled_postflop_policy_key(
     const HuPreflopSampledPostflopPolicy &policy,
-    const HuPreflopSampledPostflopPublicDecision &decision,
-    const std::array<CardId, 5> &board, const ComboId combo) {
+    const HuPreflopSampledPostflopPublicDecision &decision, const std::array<CardId, 5> &board,
+    const ComboId combo) {
   static const auto combos = all_combos();
-  if (!supported_sampled_policy_version(policy) || combo >= combos.size() ||
-      decision.player > 1U || decision.street < Street::Flop ||
-      decision.street > Street::River || decision.action_count == 0U ||
+  if (!supported_sampled_policy_version(policy) || combo >= combos.size() || decision.player > 1U ||
+      decision.street < Street::Flop || decision.street > Street::River ||
+      decision.action_count == 0U ||
       decision.action_count > hu_preflop_sampled_postflop_maximum_actions) {
     return Result<HuPreflopSampledPostflopPolicyKey, HuPreflopError>::failure(
         HuPreflopError::InvalidConfiguration);
@@ -5436,44 +5440,18 @@ derive_hu_preflop_sampled_postflop_policy_key(
   key.public_history = decision.public_history;
   key.player = decision.player;
   key.street = decision.street;
-  const bool forgets_preflop_class =
-      policy.representation ==
-          HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-      policy.representation == HuPreflopPostflopRepresentation::
-                                     DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
+  const bool forgets_preflop_class = representation_forgets_preflop_class(policy.representation);
   key.preflop_class = forgets_preflop_class ? HandClassId{0U} : hand_class(hole);
   if (policy.representation == HuPreflopPostflopRepresentation::ExactPhysical) {
     key.physical_cards = physical_cards_key(deal, decision.player, decision.street);
   } else {
     const auto final_index =
         static_cast<std::size_t>(decision.street) - static_cast<std::size_t>(Street::Flop);
-    const bool current_street_only =
-        policy.representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+    const bool current_street_only = representation_uses_current_street_only(policy.representation);
     const auto first_index = uses_one_street_history(policy.representation) && final_index > 0U
                                  ? final_index - 1U
-                                 : current_street_only ? final_index : 0U;
+                             : current_street_only ? final_index
+                                                   : 0U;
     for (std::size_t index = first_index; index <= final_index; ++index) {
       const auto bucket_street =
           static_cast<Street>(static_cast<std::size_t>(Street::Flop) + index);
@@ -5584,8 +5562,7 @@ query_hu_preflop_sampled_postflop_strategy(
   if (!legal) {
     return Result<Strategy, HuPreflopError>::failure(HuPreflopError::GameFailure);
   }
-  if (legal.value().empty() ||
-      legal.value().size() > hu_preflop_sampled_postflop_maximum_actions) {
+  if (legal.value().empty() || legal.value().size() > hu_preflop_sampled_postflop_maximum_actions) {
     return Result<Strategy, HuPreflopError>::failure(HuPreflopError::InvalidConfiguration);
   }
 
@@ -5596,42 +5573,18 @@ query_hu_preflop_sampled_postflop_strategy(
   key.public_history = history;
   key.player = replayed.player_to_act;
   key.street = replayed.street;
-  const bool forgets_preflop_class =
-      policy.representation ==
-          HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
-      policy.representation ==
-          HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-      policy.representation == HuPreflopPostflopRepresentation::
-                                     DistributionalStrengthAdaptiveCategoryHistoryV11 ||
-      policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory;
+  const bool forgets_preflop_class = representation_forgets_preflop_class(policy.representation);
   key.preflop_class = forgets_preflop_class ? HandClassId{0U} : hand_class(hole);
   if (policy.representation == HuPreflopPostflopRepresentation::ExactPhysical) {
     key.physical_cards = physical_cards_key(deal, replayed.player_to_act, replayed.street);
   } else {
     const auto final_index =
         static_cast<std::size_t>(replayed.street) - static_cast<std::size_t>(Street::Flop);
-    const bool current_street_only =
-        policy.representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloCurrentStreet ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::CategoryEquityMonteCarloMemoryless ||
-        policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthPrototype ||
-        policy.representation == HuPreflopPostflopRepresentation::DistributionalStrengthProfileV6 ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
-        policy.representation ==
-            HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptiveV8;
+    const bool current_street_only = representation_uses_current_street_only(policy.representation);
     const auto first_index = uses_one_street_history(policy.representation) && final_index > 0U
                                  ? final_index - 1U
-                                 : current_street_only ? final_index : 0U;
+                             : current_street_only ? final_index
+                                                   : 0U;
     for (std::size_t index = first_index; index <= final_index; ++index) {
       const auto bucket_street =
           static_cast<Street>(static_cast<std::size_t>(Street::Flop) + index);
@@ -5666,8 +5619,8 @@ query_hu_preflop_sampled_postflop_strategy(
       return Result<Strategy, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
     }
   }
-  return query_hu_preflop_sampled_postflop_policy(
-      policy, key, static_cast<std::uint8_t>(legal.value().size()));
+  return query_hu_preflop_sampled_postflop_policy(policy, key,
+                                                  static_cast<std::uint8_t>(legal.value().size()));
 }
 
 Result<double, HuPreflopError> query_hu_preflop_sampled_postflop_action_probability(
@@ -5805,8 +5758,278 @@ compute_hu_preflop_distributional_adaptive_category_history_v11_bucket(
     const std::array<CardId, 2> &hole, const std::array<CardId, 5> &board, const Street street,
     const std::uint32_t samples, const std::uint64_t partition_seed,
     const std::array<std::uint16_t, 3> &capacities) {
-  return compute_hu_preflop_distributional_street_adaptive_v8_bucket(
-      hole, board, street, samples, partition_seed, capacities);
+  return compute_hu_preflop_distributional_street_adaptive_v8_bucket(hole, board, street, samples,
+                                                                     partition_seed, capacities);
+}
+
+Result<HuPreflopRecallAudit, HuPreflopError>
+audit_hu_preflop_postflop_recall_contract(const HuPreflopPostflopRepresentation representation) {
+  if (static_cast<std::uint8_t>(representation) >
+      static_cast<std::uint8_t>(
+          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23)) {
+    return Result<HuPreflopRecallAudit, HuPreflopError>::failure(
+        HuPreflopError::InvalidConfiguration);
+  }
+
+  HuPreflopRecallAudit audit;
+  audit.representation = representation;
+  audit.retains_complete_public_history = true;
+  audit.retains_preflop_class = !representation_forgets_preflop_class(representation);
+
+  const bool retains_all_private_observations =
+      representation == HuPreflopPostflopRepresentation::ExactPhysical ||
+      representation == HuPreflopPostflopRepresentation::CategoryEquityMonteCarlo ||
+      representation == HuPreflopPostflopRepresentation::DistributionalStrengthPerfectRecall ||
+      representation == HuPreflopPostflopRepresentation::DistributionalStrengthBucketHistory ||
+      representation ==
+          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23;
+  const bool retains_previous_exact_bucket =
+      representation == HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9;
+
+  for (std::size_t decision = 0U; decision < audit.retains_bucket_observation.size(); ++decision) {
+    for (std::size_t observation = 0U; observation <= decision; ++observation) {
+      audit.retains_bucket_observation[decision][observation] =
+          observation == decision || retains_all_private_observations ||
+          (retains_previous_exact_bucket && observation + 1U == decision);
+    }
+  }
+
+  const auto add_witness = [&audit](const HuPreflopRecallObservationKind kind,
+                                    const Street decision_street,
+                                    const Street forgotten_observation_street) {
+    if (audit.witness_count >= audit.witnesses.size()) {
+      return;
+    }
+    audit.witnesses[audit.witness_count++] =
+        HuPreflopRecallWitness{kind, decision_street, forgotten_observation_street};
+  };
+
+  for (std::size_t decision = 0U; decision < audit.retains_bucket_observation.size(); ++decision) {
+    const auto decision_street =
+        static_cast<Street>(static_cast<std::size_t>(Street::Flop) + decision);
+    if (!audit.retains_preflop_class) {
+      add_witness(HuPreflopRecallObservationKind::PreflopClass, decision_street, Street::Preflop);
+    }
+    for (std::size_t observation = 0U; observation < decision; ++observation) {
+      if (!audit.retains_bucket_observation[decision][observation]) {
+        add_witness(HuPreflopRecallObservationKind::PostflopBucket, decision_street,
+                    static_cast<Street>(static_cast<std::size_t>(Street::Flop) + observation));
+      }
+    }
+  }
+
+  audit.perfect_recall = audit.retains_complete_public_history && audit.retains_preflop_class;
+  for (std::size_t decision = 0U;
+       decision < audit.retains_bucket_observation.size() && audit.perfect_recall; ++decision) {
+    for (std::size_t observation = 0U; observation < decision; ++observation) {
+      audit.perfect_recall =
+          audit.perfect_recall && audit.retains_bucket_observation[decision][observation];
+    }
+  }
+  return Result<HuPreflopRecallAudit, HuPreflopError>::success(audit);
+}
+
+std::string
+fingerprint_hu_preflop_abstract_game_definition(const HuPreflopAbstractGameDefinition &definition) {
+  auto hash = policy_fingerprint_offset;
+  mix_policy_fingerprint_string(hash, "gtosd.hu_preflop_abstract_game_definition.v1");
+  mix_policy_fingerprint_unsigned(hash, definition.major);
+  mix_policy_fingerprint_unsigned(hash, definition.minor);
+  mix_policy_fingerprint_string(hash, definition.rules_fingerprint);
+  mix_policy_fingerprint_string(hash, definition.tree_fingerprint);
+  mix_policy_fingerprint_string(hash, definition.abstraction_fingerprint);
+  mix_policy_fingerprint_string(hash, definition.abstraction_id);
+  mix_policy_fingerprint_string(hash, definition.chance_model_id);
+  mix_policy_fingerprint_unsigned(hash, definition.partition_seed);
+  mix_policy_fingerprint_unsigned(hash, definition.equity_samples_per_bucket);
+  for (const auto capacity : definition.distributional_bucket_capacities) {
+    mix_policy_fingerprint_unsigned(hash, capacity);
+  }
+  mix_policy_fingerprint_unsigned(hash, static_cast<std::uint8_t>(definition.representation));
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.recall_contract.perfect_recall));
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.node_count);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.edge_count);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.decision_nodes);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.postflop_entries);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.terminal_folds);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.terminal_all_ins);
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_tree.maximum_depth);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.represented_nodes);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.action_edges);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.decision_nodes);
+  for (const auto decisions : definition.postflop_public_tree.decision_nodes_by_street) {
+    mix_policy_fingerprint_unsigned(hash, decisions);
+  }
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.chance_frontiers);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.terminal_folds);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.terminal_showdowns);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.terminal_all_in_runouts);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.memoized_states);
+  mix_policy_fingerprint_unsigned(hash, definition.postflop_public_tree.maximum_subtree_depth);
+  mix_policy_fingerprint_unsigned(hash,
+                                  definition.postflop_public_tree.maximum_observed_raise_count);
+  mix_policy_fingerprint_unsigned(
+      hash,
+      static_cast<std::uint8_t>(definition.postflop_public_tree.core_raise_safety_limit_reached));
+  mix_policy_fingerprint_unsigned(
+      hash,
+      static_cast<std::uint8_t>(definition.postflop_public_tree.natural_stack_termination_proven));
+  mix_policy_fingerprint_unsigned(hash, definition.preflop_information_set_cartesian_upper_bound);
+  for (const auto value : definition.private_observation_cartesian_upper_bound_by_street) {
+    mix_policy_fingerprint_unsigned(hash, value);
+  }
+  for (const auto value : definition.information_set_cartesian_upper_bound_by_street) {
+    mix_policy_fingerprint_unsigned(hash, value);
+  }
+  mix_policy_fingerprint_unsigned(hash, definition.total_information_set_cartesian_upper_bound);
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.cartesian_upper_bound_overflow));
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.reachable_information_set_census_complete));
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.exact_chance_model_compiled));
+  mix_policy_fingerprint_unsigned(
+      hash, static_cast<std::uint8_t>(definition.exact_abstract_nashconv_certifiable));
+  return finish_policy_fingerprint(hash);
+}
+
+Result<bool, HuPreflopError>
+validate_hu_preflop_abstract_game_definition(const HuPreflopTree &tree,
+                                             const HuPreflopAbstractGameDefinition &definition) {
+  const auto public_tree = analyze_hu_postflop_public_skeleton(tree);
+  if (!public_tree) {
+    return Result<bool, HuPreflopError>::failure(public_tree.error());
+  }
+  const auto decision_total = std::accumulate(
+      definition.postflop_public_tree.decision_nodes_by_street.begin(),
+      definition.postflop_public_tree.decision_nodes_by_street.end(), std::uint64_t{0U});
+  if (definition.major != HuPreflopAbstractGameDefinition::format_major ||
+      definition.minor != HuPreflopAbstractGameDefinition::format_minor ||
+      definition.representation !=
+          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23 ||
+      definition.rules_fingerprint != abstract_game_rules_fingerprint(tree.config) ||
+      definition.tree_fingerprint != tree.fingerprint || definition.abstraction_id.empty() ||
+      definition.abstraction_fingerprint != abstract_game_abstraction_fingerprint(definition) ||
+      definition.chance_model_id != "online_physical_deal_sampling_not_compiled_v1" ||
+      definition.partition_seed == 0U || definition.equity_samples_per_bucket == 0U ||
+      std::ranges::any_of(definition.distributional_bucket_capacities,
+                          [](const auto capacity) {
+                            return capacity < 32U || capacity > 32'768U ||
+                                   !std::has_single_bit(capacity);
+                          }) ||
+      !definition.recall_contract.perfect_recall ||
+      definition.recall_contract.representation != definition.representation ||
+      !same_preflop_tree_stats(definition.preflop_tree, tree.stats) ||
+      !same_postflop_public_stats(definition.postflop_public_tree, public_tree.value()) ||
+      decision_total != definition.postflop_public_tree.decision_nodes ||
+      definition.cartesian_upper_bound_overflow ||
+      definition.reachable_information_set_census_complete ||
+      definition.exact_chance_model_compiled || definition.exact_abstract_nashconv_certifiable ||
+      definition.fingerprint.empty() ||
+      definition.fingerprint != fingerprint_hu_preflop_abstract_game_definition(definition)) {
+    return Result<bool, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
+  }
+
+  std::uint64_t expected_private_states = hu_preflop_hand_class_count;
+  std::uint64_t expected_total = 0U;
+  std::uint64_t expected_preflop = 0U;
+  if (!checked_multiply_or_saturate(tree.stats.decision_nodes, hu_preflop_hand_class_count,
+                                    expected_preflop) ||
+      expected_preflop != definition.preflop_information_set_cartesian_upper_bound) {
+    return Result<bool, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
+  }
+  expected_total = expected_preflop;
+  for (std::size_t street = 0U; street < definition.distributional_bucket_capacities.size();
+       ++street) {
+    std::uint64_t next_private_states = 0U;
+    std::uint64_t street_information_sets = 0U;
+    std::uint64_t next_total = 0U;
+    if (!checked_multiply_or_saturate(expected_private_states,
+                                      definition.distributional_bucket_capacities[street],
+                                      next_private_states) ||
+        !checked_multiply_or_saturate(
+            next_private_states, definition.postflop_public_tree.decision_nodes_by_street[street],
+            street_information_sets) ||
+        !checked_add_or_saturate(expected_total, street_information_sets, next_total) ||
+        definition.private_observation_cartesian_upper_bound_by_street[street] !=
+            next_private_states ||
+        definition.information_set_cartesian_upper_bound_by_street[street] !=
+            street_information_sets) {
+      return Result<bool, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
+    }
+    expected_private_states = next_private_states;
+    expected_total = next_total;
+  }
+  if (expected_total != definition.total_information_set_cartesian_upper_bound) {
+    return Result<bool, HuPreflopError>::failure(HuPreflopError::IntegrityFailure);
+  }
+  return Result<bool, HuPreflopError>::success(true);
+}
+
+Result<HuPreflopAbstractGameDefinition, HuPreflopError>
+make_hu_preflop_abstract_game_definition(const HuPreflopTree &tree,
+                                         const HuPreflopSolveOptions &options) {
+  if (!validate_hu_preflop_config(tree.config) || tree.nodes.empty() ||
+      tree.root >= tree.nodes.size() || tree.fingerprint.empty() ||
+      options.postflop_representation !=
+          HuPreflopPostflopRepresentation::DistributionalStrengthStreetAdaptivePerfectRecallV23 ||
+      options.partition_seed == 0U || options.equity_samples_per_bucket == 0U ||
+      std::ranges::any_of(options.distributional_bucket_capacities, [](const auto capacity) {
+        return capacity < 32U || capacity > 32'768U || !std::has_single_bit(capacity);
+      })) {
+    return Result<HuPreflopAbstractGameDefinition, HuPreflopError>::failure(
+        HuPreflopError::InvalidConfiguration);
+  }
+  const auto recall = audit_hu_preflop_postflop_recall_contract(options.postflop_representation);
+  const auto public_tree = analyze_hu_postflop_public_skeleton(tree);
+  if (!recall || !recall.value().perfect_recall || !public_tree) {
+    return Result<HuPreflopAbstractGameDefinition, HuPreflopError>::failure(
+        !recall        ? recall.error()
+        : !public_tree ? public_tree.error()
+                       : HuPreflopError::IntegrityFailure);
+  }
+
+  HuPreflopAbstractGameDefinition result;
+  result.rules_fingerprint = abstract_game_rules_fingerprint(tree.config);
+  result.tree_fingerprint = tree.fingerprint;
+  result.abstraction_id = postflop_abstraction_id(options);
+  result.partition_seed = options.partition_seed;
+  result.equity_samples_per_bucket = options.equity_samples_per_bucket;
+  result.distributional_bucket_capacities = options.distributional_bucket_capacities;
+  result.representation = options.postflop_representation;
+  result.recall_contract = recall.value();
+  result.preflop_tree = tree.stats;
+  result.postflop_public_tree = public_tree.value();
+  result.abstraction_fingerprint = abstract_game_abstraction_fingerprint(result);
+
+  bool exact = checked_multiply_or_saturate(tree.stats.decision_nodes, hu_preflop_hand_class_count,
+                                            result.preflop_information_set_cartesian_upper_bound);
+  result.total_information_set_cartesian_upper_bound =
+      result.preflop_information_set_cartesian_upper_bound;
+  std::uint64_t private_states = hu_preflop_hand_class_count;
+  for (std::size_t street = 0U; street < result.distributional_bucket_capacities.size(); ++street) {
+    exact = checked_multiply_or_saturate(
+                private_states, result.distributional_bucket_capacities[street],
+                result.private_observation_cartesian_upper_bound_by_street[street]) &&
+            exact;
+    private_states = result.private_observation_cartesian_upper_bound_by_street[street];
+    exact = checked_multiply_or_saturate(
+                private_states, result.postflop_public_tree.decision_nodes_by_street[street],
+                result.information_set_cartesian_upper_bound_by_street[street]) &&
+            exact;
+    std::uint64_t next_total = 0U;
+    exact = checked_add_or_saturate(result.total_information_set_cartesian_upper_bound,
+                                    result.information_set_cartesian_upper_bound_by_street[street],
+                                    next_total) &&
+            exact;
+    result.total_information_set_cartesian_upper_bound = next_total;
+  }
+  result.cartesian_upper_bound_overflow = !exact;
+  result.fingerprint = fingerprint_hu_preflop_abstract_game_definition(result);
+  const auto valid = validate_hu_preflop_abstract_game_definition(tree, result);
+  return valid ? Result<HuPreflopAbstractGameDefinition, HuPreflopError>::success(std::move(result))
+               : Result<HuPreflopAbstractGameDefinition, HuPreflopError>::failure(valid.error());
 }
 
 Result<HuPreflopSolveResult, HuPreflopError>
@@ -5833,12 +6056,10 @@ solve_hu_preflop_sampled(const HuPreflopTree &tree, const HuPreflopSolveOptions 
            parallel_update_budget / (2U * sizeof(PendingInformationUpdate)));
   std::bitset<hu_preflop_hand_class_count> traced_hand_classes;
   bool invalid_root_decision_trace =
-      options.root_decision_trace_hand_classes.size() >
-          maximum_root_decision_trace_hand_classes ||
+      options.root_decision_trace_hand_classes.size() > maximum_root_decision_trace_hand_classes ||
       (!options.root_decision_trace_hand_classes.empty() &&
        (options.root_decision_trace_deals_per_class == 0U ||
-        options.root_decision_trace_deals_per_class >
-            maximum_root_decision_trace_deals_per_class ||
+        options.root_decision_trace_deals_per_class > maximum_root_decision_trace_deals_per_class ||
         options.root_decision_trace_hand_classes.size() *
                 static_cast<std::uint64_t>(options.root_decision_trace_deals_per_class) >
             maximum_root_decision_trace_class_deals));
@@ -5855,20 +6076,17 @@ solve_hu_preflop_sampled(const HuPreflopTree &tree, const HuPreflopSolveOptions 
       options.evaluation_seed == 0U || options.maximum_bucket_cache_entries < 6U ||
       (options.collect_action_conditioned_telemetry &&
        options.maximum_action_conditioned_telemetry_entries == 0U) ||
-      invalid_root_decision_trace ||
-      options.root_action_value_rollouts == 0U || options.root_action_value_rollouts > 8U ||
+      invalid_root_decision_trace || options.root_action_value_rollouts == 0U ||
+      options.root_action_value_rollouts > 8U ||
       (options.root_continuation_mean_updates &&
        (options.root_action_value_rollouts <= 1U || options.use_opponent_value_baseline ||
         options.sampling_algorithm != HuPreflopSamplingAlgorithm::LinearMccfr)) ||
-      (options.symmetric_traverser_mean_updates &&
-       !options.root_continuation_mean_updates) ||
+      (options.symmetric_traverser_mean_updates && !options.root_continuation_mean_updates) ||
       (options.root_common_random_numbers && options.training_batch_iterations == 0U) ||
       (options.global_common_random_numbers && options.training_batch_iterations == 0U) ||
       (options.root_first_opponent_response_stratification &&
-       (options.root_action_value_rollouts <= 1U ||
-        !options.root_continuation_mean_updates ||
-        !options.symmetric_traverser_mean_updates ||
-        options.training_batch_iterations == 0U ||
+       (options.root_action_value_rollouts <= 1U || !options.root_continuation_mean_updates ||
+        !options.symmetric_traverser_mean_updates || options.training_batch_iterations == 0U ||
         options.chance_sampling_mode != HuPreflopChanceSamplingMode::IndependentPhysical)) ||
       (options.root_action_value_rollouts > 1U &&
        (options.training_batch_iterations == 0U ||
@@ -5882,8 +6100,7 @@ solve_hu_preflop_sampled(const HuPreflopTree &tree, const HuPreflopSolveOptions 
       static_cast<std::uint8_t>(options.chance_sampling_mode) >
           static_cast<std::uint8_t>(HuPreflopChanceSamplingMode::PublicBoardStratified) ||
       static_cast<std::uint8_t>(options.postflop_all_in_expectation_mode) >
-          static_cast<std::uint8_t>(
-              HuPreflopPostflopAllInExpectationMode::ExactFlopAndTurn) ||
+          static_cast<std::uint8_t>(HuPreflopPostflopAllInExpectationMode::ExactFlopAndTurn) ||
       (options.chance_sampling_mode == HuPreflopChanceSamplingMode::PublicBoardStratified &&
        (options.training_batch_iterations == 0U || options.training_batch_iterations > 465U)) ||
       (options.training_batch_iterations == 0U && options.worker_threads != 1U) ||
@@ -5905,8 +6122,8 @@ solve_hu_preflop_sampled(const HuPreflopTree &tree, const HuPreflopSolveOptions 
       static_cast<std::uint8_t>(options.sampling_algorithm) >
           static_cast<std::uint8_t>(HuPreflopSamplingAlgorithm::ChanceSampledCfr) ||
       static_cast<std::uint8_t>(options.postflop_representation) >
-          static_cast<std::uint8_t>(
-              HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11) ||
+          static_cast<std::uint8_t>(HuPreflopPostflopRepresentation::
+                                        DistributionalStrengthStreetAdaptivePerfectRecallV23) ||
       ((options.postflop_representation ==
             HuPreflopPostflopRepresentation::DistributionalStrengthStructuredV7 ||
         options.postflop_representation ==
@@ -5915,8 +6132,11 @@ solve_hu_preflop_sampled(const HuPreflopTree &tree, const HuPreflopSolveOptions 
             HuPreflopPostflopRepresentation::DistributionalStrengthSelectiveHistoryV9 ||
         options.postflop_representation ==
             HuPreflopPostflopRepresentation::DistributionalStrengthCategoryHistoryV10 ||
-        options.postflop_representation == HuPreflopPostflopRepresentation::
-                                              DistributionalStrengthAdaptiveCategoryHistoryV11) &&
+        options.postflop_representation ==
+            HuPreflopPostflopRepresentation::DistributionalStrengthAdaptiveCategoryHistoryV11 ||
+        options.postflop_representation ==
+            HuPreflopPostflopRepresentation::
+                DistributionalStrengthStreetAdaptivePerfectRecallV23) &&
        std::ranges::any_of(options.distributional_bucket_capacities,
                            [](const auto capacity) { return capacity < 32U; })) ||
       (options.postflop_representation != HuPreflopPostflopRepresentation::ExactPhysical &&

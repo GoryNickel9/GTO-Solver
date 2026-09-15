@@ -136,6 +136,22 @@ target_link_libraries(gtosd_hu_preflop_nashconv_probe
     gtosd::preflop
     nlohmann_json::nlohmann_json)
 gtosd_set_warnings(gtosd_hu_preflop_nashconv_probe)
+
+add_executable(gtosd_hu_preflop_abstract_nashconv hu_preflop_abstract_nashconv.cpp)
+target_link_libraries(gtosd_hu_preflop_abstract_nashconv
+  PRIVATE
+    gtosd::preflop_certifier
+    gtosd::best_response
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_abstract_nashconv)
+
+add_executable(gtosd_hu_preflop_tre_validation hu_preflop_tre_validation.cpp)
+target_link_libraries(gtosd_hu_preflop_tre_validation
+  PRIVATE
+    gtosd::preflop_certifier
+    gtosd::solver_validation
+    nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_hu_preflop_tre_validation)
 add_test(NAME gtosd_hu_preflop_decomposition
   COMMAND gtosd_hu_preflop_decomposition)
 set_tests_properties(gtosd_hu_preflop_decomposition PROPERTIES

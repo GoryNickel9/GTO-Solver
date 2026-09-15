@@ -1,5 +1,41 @@
 # Stato implementazione roadmap HU Short Deck
 
+> **V23 T/R/E validator 2026-09-15 — ENGINEERING PASS; QUALIFICA NON ESEGUITA.** Il runner
+> `gtosd_hu_preflop_tre_validation` addestra su T, cerca due best response esatte sul gioco finito
+> R e valuta policy e risposte congelate su E con confronti paired. E cresce per raddoppio; gli
+> intervalli usano pesi fisici delle 81 classi CO e Bonferroni su cinque metriche e tutti i look.
+> Lo smoke `T=K1/R=K1/E=K2→K4`, 16 iterazioni, completa due look in 58,38 s e passa lo schema v1.
+> Il target di precisione volutamente impossibile non viene raggiunto. La copertura T→E K4 è
+> `0,02094` per chiavi e `0,69393` per reach; i gain candidati sono negativi. Questi numeri
+> verificano reporting e isolamento dei corpus, non la qualità della soluzione. Il certificato
+> dichiara `physical_nashconv_certified=false`. Report:
+> [`V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md`](research/preflop_r6_20260910/V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md).
+
+> **V23 NashConv astratta 2026-09-15 — HU10 K8 TARGET RAGGIUNTO.** La chiave V23
+> conserva classe preflop e history bucket `32/128/512`; l'audit V8 espone sei omissioni, quello
+> V23 nessuna. La fixture HU10 compila un gioco finito con corpus chance stratificato e fingerprint
+> condiviso fra Linear MCCFR e best response. Il candidato K=8/MC8 contiene 1.334.233 nodi e
+> 490.050 information set. A 5.000.000 iterazioni la best response esatta misura
+> `normalized_dev=0,00811735`, sotto il target `<0,01`; il gate viene attraversato a 4.500.000.
+> Il resume è byte-identico al run continuo e l'hot path sparse conserva lo stesso SHA-256 del
+> percorso denso. `physical_nashconv_certified=false`: il certificato vale soltanto per il corpus
+> finito `fnv1a64:139ff63a167164ef`. Un secondo corpus K=8 raggiunge
+> `normalized_dev=0,00945510` a 5.000.000 iterazioni e verifica l'early-stop. V17 resta baseline
+> mentre proseguono i benchmark 20a/40a. La sensibilità K=2/4/8 è completata: tutti i giochi
+> raggiungono `normalized_dev < 0,01`, rispettivamente a 1,5M/3M/5M iterazioni, ma il profile EV
+> CO passa da `+0,08630` a `-0,14366` e `-0,29854` ante. L'esito è quindi
+> `NOT_STABLE_FOR_PHYSICAL_VALUE_ESTIMATION`. Il nuovo lookup diretto nodo→information set
+> conserva lo SHA-256 del checkpoint e riduce il training K=8/100k da 22,56 s a 12,53 s.
+> `PolicyCompletion` introduce i contratti `reject_missing` e `uniform_unseen_v1`; il coverage
+> audit misura chiavi e reach on-policy mancanti, anche per giocatore, e il certificato V23 v2 ne
+> persiste i risultati. Il test cross-corpus K=1 misura `exact_key_coverage=0,149305`,
+> `reach_weighted_coverage=0,765321` e 55.450 chiavi mancanti: il cambio di chance seed espone
+> supporto non appreso invece di nasconderlo dietro un lookup implicito. Il runner T/R/E ora usa
+> lo stesso contratto per validare fuori campione risposte congelate.
+> Protocollo e report:
+> [`V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md`](research/preflop_r6_20260910/V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md) e
+> [`V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md`](research/preflop_r6_20260910/V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md).
+
 > **V20 trace paired V18 AA 2026-09-14 — PASS; EV LOCALE INCONCLUSIVO.** La replica V18 seed 1
 > coincide bit per bit per strategia, regret, vantaggi root, algoritmo e root EV. Con 10.000 deal
 > `AA` per azione, Call precede Raise 6 di `0,2267a` sulla continuation media, con IC simultaneo
