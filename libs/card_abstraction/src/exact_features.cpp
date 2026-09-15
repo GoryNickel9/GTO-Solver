@@ -163,11 +163,19 @@ OpponentGroups OpponentGroups::build(const AllInTable &all_in) {
   std::stable_sort(order.begin(), order.end(), [&](const std::uint8_t left, const std::uint8_t right) {
     return groups.class_equity[left] > groups.class_equity[right];
   });
+  return from_ranking(order, groups.class_equity, all_in.fingerprint());
+}
+
+OpponentGroups OpponentGroups::from_ranking(const std::array<std::uint8_t, 81> &ranking,
+                                            const std::array<double, 81> &class_equity,
+                                            const std::string &source_fingerprint) {
+  OpponentGroups groups;
+  groups.class_equity = class_equity;
   // Greedy cut into eight groups of similar combo mass (630 / 8 = 78.75).
   const double target = static_cast<double>(combo_count) / opponent_group_count;
   std::uint8_t group = 0U;
   double cumulative = 0.0;
-  for (const auto hand_class_id : order) {
+  for (const auto hand_class_id : ranking) {
     const auto mass = static_cast<double>(class_mass(hand_class_id));
     if (group + 1U < opponent_group_count &&
         cumulative + mass / 2.0 >= target * static_cast<double>(group + 1U)) {
@@ -182,7 +190,7 @@ OpponentGroups OpponentGroups::build(const AllInTable &all_in) {
     payload.push_back(value);
   }
   auto hash = detail::fnv1a_text("gtosd.card_abstraction.opponent_groups.v1|");
-  hash = detail::fnv1a_text(all_in.fingerprint(), hash);
+  hash = detail::fnv1a_text(source_fingerprint, hash);
   hash = detail::fnv1a(payload, hash);
   groups.fingerprint = "fnv1a64:" + detail::hex64(hash);
   return groups;
