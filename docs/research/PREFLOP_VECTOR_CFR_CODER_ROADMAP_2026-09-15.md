@@ -541,7 +541,7 @@ registrato e ogni fallimento ha una diagnosi.
 1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D26), questa roadmap,
    l'analisi tecnica per le motivazioni, il template del diario.
 2. La politica dei branch è confermata (D21): creare da `main` il branch di integrazione
-   `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint/p0-scaffolding` in
+   `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint-p0-scaffolding` in
    un worktree separato dal working tree dell'utente.
 3. Eseguire P0 e registrare la prima voce del diario con commit, ambiente e tag.
 4. Procedere fase per fase secondo §3.3. Ogni gate produce una riga nel registro dei gate e un
