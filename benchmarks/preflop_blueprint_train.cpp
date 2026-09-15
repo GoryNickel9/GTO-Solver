@@ -11,6 +11,7 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -83,11 +84,16 @@ int main(const int argc, char **argv) {
     // form a fixed, equally weighted board list processed in full every
     // iteration and evaluated exactly.
     std::uint32_t fixed_boards = 0U;
+    bool permute_suits = false;
     pb::TrainerConfig config;
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
       if (name == "--resume") {
         resume = true;
+        continue;
+      }
+      if (name == "--permute-suits") {
+        permute_suits = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -178,8 +184,23 @@ int main(const int argc, char **argv) {
       boards.emplace();
       ca::DeterministicRandom random(config.training_seed);
       for (std::uint32_t board = 0; board < fixed_boards; ++board) {
-        boards->histories.push_back(catalog.sample_physical_history(random));
+        const auto history = catalog.sample_physical_history(random);
+        boards->histories.push_back(history);
         boards->weights.push_back(1.0);
+        if (permute_suits) {
+          // Diagnostic: a suit-rotated copy is the same canonical board, so
+          // the pair must behave exactly like the single board.
+          const ca::SuitPermutation rotation{1U, 2U, 3U, 0U};
+          ca::BoardHistory rotated;
+          for (std::size_t index = 0; index < 3U; ++index) {
+            rotated.flop[index] = ca::permute_card(history.flop[index], rotation);
+          }
+          std::sort(rotated.flop.begin(), rotated.flop.end());
+          rotated.turn = ca::permute_card(history.turn, rotation);
+          rotated.river = ca::permute_card(history.river, rotation);
+          boards->histories.push_back(rotated);
+          boards->weights.push_back(1.0);
+        }
       }
       boards->sample = false;
     }
