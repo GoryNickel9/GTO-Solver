@@ -1,7 +1,12 @@
 add_library(gtosd_card_abstraction
+  src/all_in_table.cpp
   src/canonical_boards.cpp
   src/card_abstraction.cpp
-  src/combinatorics.cpp)
+  src/combinatorics.cpp
+  src/exact_features.cpp
+  src/rank_table.cpp
+  src/resource_file.cpp
+  src/showdown_counts.cpp)
 add_library(gtosd::card_abstraction ALIAS gtosd_card_abstraction)
 
 target_include_directories(gtosd_card_abstraction

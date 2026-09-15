@@ -302,3 +302,17 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_resources preflop_blueprint_resources.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_resources PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_resources)
+  add_test(NAME gtosd_preflop_blueprint_resources
+    COMMAND gtosd_preflop_blueprint_resources --threads 8 --verify-oracle 20000)
+  set_tests_properties(gtosd_preflop_blueprint_resources
+    PROPERTIES LABELS "preflop_blueprint;p2;resources")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_resources PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
