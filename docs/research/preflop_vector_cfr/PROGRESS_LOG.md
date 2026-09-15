@@ -11,14 +11,14 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P2 (risorse esatte), in avvio |
-| Ultimo gate | P1 PASS (2026-09-15) |
+| Fase in corso | P3 (clustering e tabelle bucket), in avvio |
+| Ultimo gate | P2 PASS (2026-09-15) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p2-resources` (P0 e P1 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p3-clustering` (P0–P2 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
-| Prossimo passo | P2: tabella a 7 carte (riuso), tabella all-in preflop per coppia di combo, feature esatte flop/turn (istogrammi) e river (OCHS) |
+| Prossimo passo | P3: k-means (EMD sugli istogrammi flop/turn, L2 sull'OCHS river), tabelle bucket per board canonico, lookup a tempo costante, diagnostica di occupazione e dispersione |
 
 ## 2. Registro dei gate
 
@@ -26,7 +26,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 |---|---|---|---|---|
 | P0 Contratto e scaffolding | PASS | 2026-09-15 | `ef6f691` | [P0_SCAFFOLDING.md](P0_SCAFFOLDING.md) |
 | P1 Canonicalizzazione e cataloghi | PASS | 2026-09-15 | `ca80dab` | [P1_CANONICAL_BOARDS.md](P1_CANONICAL_BOARDS.md) |
-| P2 Risorse esatte | NOT_RUN | | | |
+| P2 Risorse esatte | PASS | 2026-09-15 | `9f8a6d3` | [P2_EXACT_RESOURCES.md](P2_EXACT_RESOURCES.md) |
 | P3 Clustering e tabelle bucket | NOT_RUN | | | |
 | P4 Modello di gioco e albero compilato | NOT_RUN | | | |
 | P5 Kernel vettoriale HU | NOT_RUN | | | |
@@ -51,6 +51,28 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-15 — P2 — risorse esatte, gate PASS
+
+Fatto: tabella di rank ordinali a 16 bit derivata dall'oracolo esatto a 5 carte (1.404 rank
+distinti); kernel di conteggio degli esiti con blocker in n log n più riferimento pairwise;
+tabella all-in preflop esatta per le 176.715 coppie disgiunte; 8 gruppi avversari per equity;
+istogrammi esatti flop (465 runout) e turn (30 river) e equity river per gruppi, per board
+canonico e combo nel frame canonico; contenitore di risorse con checksum; eseguibile con report,
+verifica oracolo, scrittura e ricaricamento. Report: [P2_EXACT_RESOURCES.md](P2_EXACT_RESOURCES.md).
+Comandi: build dei target P2; `ctest -L p2 -V`; eseguibile con `--output-dir` e
+`--verify-oracle 200000`; `ctest -L preflop_blueprint`.
+Risultati: 9.868.560 asserzioni PASS in 84 s; 0 discrepanze con l'oracolo su 200.000 campioni;
+tempi con 8 thread: rank 1,4 s, all-in 53 s, flop 2,1–2,4 s, turn 3,3–4,1 s, river 4,7–4,8 s;
+7 file per 404.579.533 B scritti e ricaricati; regressione P0–P2 7/7 in 171 s; equity AA contro
+mano casuale 0,7308; masse dei gruppi `78, 74, 84, 78, 76, 78, 88, 74`.
+Fallimenti: (1) costante attesa delle coppie disgiunte errata (156.240 invece di 176.715: C(32,2)
+al posto di C(34,2)); il test l'ha rifiutata, corretta. (2) Soglia di plausibilità dell'equity di
+AA calibrata sul mazzo intero (> 0,80) mentre nello Short Deck vale 0,7308; sostituita da un
+controllo strutturale più un intervallo largo. Nessun errore nel codice di calcolo.
+Dubbi: il costo della tabella all-in (53 s) è il più alto delle risorse; accettabile come una
+tantum, da non ricalcolare a ogni build.
+Prossimo passo: P3 sul branch `feature/preflop-blueprint-p3-clustering`.
 
 ### 2026-09-15 — P1 — canonicalizzazione e cataloghi, gate PASS
 
@@ -126,3 +148,7 @@ Prossimo passo: P0.
 | 8 | 2026-09-15 | P1 | Canonicalizzazione per minimo su 24 permutazioni di un codice a 6 bit per carta, cataloghi per enumerazione esaustiva | verificabile con la dimensione dell'orbita; 2,6 s di costruzione |
 | 9 | 2026-09-15 | P1 | Conteggio dei flop+turn canonici fissato a 13.761; il caricamento del catalogo è fail-closed sui quattro conteggi | misura ottenuta dall'enumerazione; sostituisce il limite inferiore della roadmap |
 | 10 | 2026-09-15 | P1 | Il file del catalogo non viene distribuito | ricostruzione in 2,6 s; il file salvato serve come identità verificabile con checksum |
+| 11 | 2026-09-15 | P2 | Rank ordinali a 16 bit derivati dall'oracolo a 5 carte invece di caricare la tabella R3 a 32 bit | stesso ordine dei `HandValue`, metà memoria, 1,4 s di costruzione, nessun file esterno; l'oracolo resta l'unico evaluator |
+| 12 | 2026-09-15 | P2 | Kernel sweep per flop e turn, pairwise per il river | il river richiede conteggi per gruppo avversario; il pairwise è un controllo indipendente del kernel |
+| 13 | 2026-09-15 | P2 | File delle feature (365 MB) come artefatti offline non distribuiti; equity river in virgola fissa a 16 bit | servono solo al clustering P3; dimensione dimezzata rispetto a float32 con errore 1/131070 |
+| 14 | 2026-09-15 | P2 | Tabella all-in triangolare con voci vuote per le coppie sovrapposte | indirizzamento O(1) senza mappa |
