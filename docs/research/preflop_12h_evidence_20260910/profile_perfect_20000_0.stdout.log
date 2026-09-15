@@ -1,2 +1,0 @@
-HU_PREFLOP_SOLVE_START iterations=20000 preflop_refinement_iterations=0 evaluation_deals=20000 br_iterations=5000 br_evaluation_deals=10000 equity_samples=8 postflop_representation=category_equity_mc_perfect_recall seed=5207644666046803969
-HU_PREFLOP_SOLVE=PASS output=C:\Users\GoryNickel\Documents\GitHub\GTO-Solver\.tmp\preflop-research-20260910\profile_perfect_20000_0.json root_ev_ante=0.557953 root_ev_se_ante=0.168565 normalized_abstract_nashconv=0 infosets=1396374 seconds=15.7658

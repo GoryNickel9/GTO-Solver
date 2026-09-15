@@ -1,3 +1,0 @@
-HU_PREFLOP_REFERENCE_PREFLIGHT=PASS id=GTP-HU-PREFLOP-CO40-001 classes=81 physical_combos=630 actions=5 root_ev_ante=-0.3 rake=DISABLED_USER_CONFIRMED rounded_101_rows=14 rounded_classes=JJ,TT,88,77,K9s,K8s,K7s,QJs,Q9s,Q8s,J8s,T7s,QTo,98o fingerprint=fnv1a64:bcd91f8001ef744f
-HU_PREFLOP_REFERENCE_ROOT_MARGINALS all_in=40.7789 raise_6=2.40789 raise_10=4.71957 call=7.56675 fold=44.5269
-HU_PREFLOP_CHANCE_LOWER_BOUND ordered_private_deals=353430 private_flop_outcomes=1753012800 private_complete_board_outcomes=71172319680 minimum_flop_orbits_under_24_suits=73042200 minimum_complete_board_orbits_under_24_suits=2965513320

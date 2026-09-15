@@ -1,6 +1,0 @@
-HU_PREFLOP_SOLVE_START iterations=50000 preflop_refinement_iterations=0 evaluation_deals=10000 br_iterations=2500 br_evaluation_deals=5000 equity_samples=8 algorithm=external_sampling postflop_representation=distributional_strength_prototype training_seed=5923736619020283393 partition_seed=5923736619020287489 evaluation_seed=5923736619020279297 evaluator=oracle betting=compiled numeric_state_budget_bytes=8589934592 bucket_cache_budget_entries=1000000 worker_threads=1 training_batch_iterations=0 maximum_parallel_updates_per_job=10000 distributional_capacities=256,1024,4096
-HU_PREFLOP_SOLVE=PASS output=docs/research/preflop_r5_20260910/standard.json root_ev_ante=0.489873 root_ev_se_ante=0.240928 normalized_abstract_nashconv=0 infosets=823633 seconds=19.6928
-WALL_SECONDS=19.9267788
-PEAK_WORKING_SET_BYTES=241999872
-PEAK_PRIVATE_BYTES=244097024
-EXIT_CODE=0

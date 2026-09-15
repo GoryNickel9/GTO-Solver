@@ -1079,3 +1079,19 @@ shape dello stesso board. L'enumerazione strided riduce la materializzazione del
 salto richiesto è il riuso dei prefissi pubblici e del reach fra history, non altra cache del board.
 
 Dettagli: [V22 reducer board-batched](research/preflop_r6_20260910/V22_CROSS_ROOT_BOARD_BATCHED_REDUCER_REPORT_2026-09-14.md).
+
+## Riavvio del programma preflop — 2026-09-15
+
+Il programma preflop external sampling (R0–R6, V1–V23) è chiuso senza candidato qualificato. I
+suoi documenti sono stati rimossi dal working tree e restano al tag
+`preflop-legacy-es-2026-09-15`; l'indice è in
+[PREFLOP_LEGACY_INDEX.md](research/PREFLOP_LEGACY_INDEX.md). I link delle sezioni precedenti di
+questo file verso `research/preflop_r*` si risolvono a quel tag.
+
+Il nuovo programma è definito da tre documenti: l'[analisi](research/HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md)
+(diagnosi e architettura: astrazione precalcolata con feature esatte, CFR vettoriale con
+campionamento del board, best response esatta nel gioco fisico), il
+[registro delle decisioni](research/PREFLOP_ARCHITECTURE_DECISION_LOG.md) e la
+[roadmap P0–P10](research/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). Lo stato di
+avanzamento è nel [diario dell'agent](research/preflop_vector_cfr/PROGRESS_LOG.md). Il codice
+legacy in `libs/preflop/` resta in build come oracolo fino allo stadio 1 dell'archiviazione (D20).

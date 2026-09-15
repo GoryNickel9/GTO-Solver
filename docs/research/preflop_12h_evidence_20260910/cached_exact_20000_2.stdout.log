@@ -1,2 +1,0 @@
-HU_PREFLOP_SOLVE_START iterations=20000 preflop_refinement_iterations=0 evaluation_deals=20000 br_iterations=5000 br_evaluation_deals=10000 equity_samples=8 postflop_representation=exact_physical seed=5207644666046803969
-HU_PREFLOP_SOLVE=PASS output=C:\Users\GoryNickel\Documents\GitHub\GTO-Solver\.tmp\preflop-research-20260910\cached_exact_20000_2.json root_ev_ante=0.613548 root_ev_se_ante=0.16951 normalized_abstract_nashconv=0 infosets=1699846 seconds=5.98591

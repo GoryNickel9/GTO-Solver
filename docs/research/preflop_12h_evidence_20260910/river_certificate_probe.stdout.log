@@ -1,3 +1,0 @@
-SETUP seconds=3.9566154 root_ordinal=16800 stack_units=16208 public_history_actions=7
-RIVER_EVAL mode=profile seconds=13.0935067 p0=4.7974 p1=-4.7974 rows0=465 rows1=465 recomposition_error=0
-RIVER_EVAL mode=best_response seconds=16.1053202 p0=19.1896 p1=9.60915176863 rows0=465 rows1=465 recomposition_error=0

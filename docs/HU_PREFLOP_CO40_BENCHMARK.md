@@ -4,6 +4,13 @@ Data di acquisizione: 2026-09-06. Stato all'11 settembre 2026: **gate monetario
 PASS; V6/V7 sono stati rigenerati a 2M sul fingerprint corrente, ma il gate
 scientifico resta FAIL**.
 
+> **Aggiornamento del 2026-09-15.** Il programma external sampling descritto dalla sezione
+> "Primo solve R9-C v1" in giù è chiuso. I gate di questo documento basati sulle frequenze Monker
+> non sono più in vigore: valgono le decisioni D1–D3 del
+> [registro](research/PREFLOP_ARCHITECTURE_DECISION_LOG.md). Restano validi fixture, contratto
+> monetario, provenienza e conteggi dell'albero. Evidenze rimosse: vedi
+> [PREFLOP_LEGACY_INDEX.md](research/PREFLOP_LEGACY_INDEX.md).
+
 Fixture SHA-256:
 `D835898479493B24FAC3CE2686B43119CBBED40B5CEF40A01E25BC62B2DBE811`.
 Configurazione del gioco SHA-256:
@@ -94,10 +101,20 @@ originale. Le frequenze root risultanti, pesate sulle 630 combo fisiche, sono:
 | Call | 7,56675% |
 | Fold | 44,5269% |
 
-## Gate provvisori
+## Gate
 
-Il futuro candidato deve riportare strategia completa, EV, NashConv, rake
-effettiva e fingerprint dell'albero. La fixture fissa questi limiti iniziali:
+Gate in vigore dal 2026-09-15 (decisioni D1–D4 del registro):
+
+| Metrica | Ruolo |
+|---|---|
+| Massimo guadagno di deviazione per giocatore nel gioco fisico CO40, best response esatta della strategia sollevata | gate di qualificazione: ≤ 0,1 ante per mano (D2); si riportano anche NashConv, la normalizzazione sul pot iniziale (3a) e sullo stack (40a) |
+| Massimo guadagno nel gioco astratto, stimato sui board campionati | criterio di arresto del training: ≤ 1 % del pot iniziale (D3) |
+| EV CO con intervallo al 95 % | descrittivo; il valore Monker −0,3a è un controllo di sanità (D4) |
+| Distanza dalle frequenze Monker (WMAE, TV, P95, root), pesata per perdita EV | descrittiva; stato permanente `EXTERNAL_CONTRACT_INCOMPLETE` (D1) |
+| Rake | disabilitata (`0%`), invariata |
+
+La tabella seguente è il gate storico del programma external sampling, conservata per
+riferimento e non più in vigore:
 
 | Metrica | Limite |
 |---|---:|
@@ -109,8 +126,9 @@ effettiva e fingerprint dell'albero. La fixture fissa questi limiti iniziali:
 | Delta EV root CO | <= 0,05a |
 | NashConv normalizzata sullo stack effettivo | <= 1% e certificata |
 
-La vicinanza al riferimento è un gate di prodotto, non una certificazione GTO.
-NashConv e test matematici restano obbligatori anche se il benchmark coincide.
+La vicinanza al riferimento non certifica nulla: due equilibri diversi, o due astrazioni
+diverse, producono frequenze diverse sulle azioni quasi indifferenti con lo stesso EV. Il
+comparatore verrà aggiornato alle nuove semantiche nella fase P8 della roadmap.
 
 ## Preflight
 
@@ -173,6 +191,12 @@ pubblico postflop, 11.308 decisioni e 29.112 archi azione. La profondità
 massima è 15 e il massimo osservato è quattro raise per street. Il limite
 interno di sicurezza è 63: nessun ramo lo raggiunge e lo stack 40a dimostra la
 terminazione naturale.
+
+## Storico del programma external sampling (chiuso il 2026-09-15)
+
+Le sezioni seguenti descrivono i candidati del programma chiuso. Sono conservate come storia
+del benchmark; i loro gate, le loro baseline e le loro proiezioni non guidano il nuovo lavoro.
+I documenti e gli artefatti citati sono al tag `preflop-legacy-es-2026-09-15`.
 
 ## Primo solve R9-C v1
 
