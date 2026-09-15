@@ -137,10 +137,11 @@ Dipendono solo da mazzo e ranking, non da stack, size o numero di giocatori.
 
 | Risorsa | Contenuto | Dimensione | Uso |
 |---|---|---|---|
-| Tabella a 7 carte | valore di ogni insieme di 7 carte (8.347.680 voci) | 33 MB | rank al river per board (465 lookup); costruzione offline delle feature |
-| Tabelle bucket per street | bucket di ogni combo (630) per ogni board canonico: 573 flop, ≈ 11.000 flop+turn, 19.998 board da cinque carte | ≈ 40 MB | lookup a runtime |
-| Tabella all-in preflop | equity esatta per ciascuna delle ≈ 156.000 coppie di combo disgiunte | 1,3 MB | terminali all-in preflop |
-| Cataloghi canonici | board canonici con molteplicità per street | < 1 MB | passata esatta e campionamento stratificato |
+| Tabella di rank ordinali | rank ordinale a 16 bit di ogni insieme di 7 carte (8.347.680) e di 5 carte (376.992), derivato dall'evaluator esatto; 1.404 rank distinti | 17,4 MB | rank al river per board (465 lookup); costruzione offline delle feature |
+| Tabelle bucket per street | bucket di ogni combo (630) per ogni board canonico: 573 flop, 13.761 flop+turn, 19.998 board da cinque carte | ≈ 40 MB | lookup a runtime |
+| Tabella all-in preflop | conteggi win/tie/lose esatti sui 201.376 runout per ciascuna delle 176.715 coppie di combo disgiunte (tabella triangolare da 198.135 voci) | 2,4 MB | terminali all-in preflop |
+| Feature esatte (offline, non distribuite) | istogrammi a 16 bin dell'equity al river per flop (465 runout) e turn (30 river); equity esatta al river contro tutti e contro 8 gruppi avversari | 11,6 + 138,7 + 226,8 MB | input del clustering P3 |
+| Cataloghi canonici | board canonici con molteplicità per street (573 / 13.761 / 19.998 / 369.072) | 7,7 MB su file, ricostruibili in 2,6 s | passata esatta e campionamento stratificato |
 | Tabelle a 5 e 6 carte (opzionali) | valori di mano fatta a flop e turn | 1,5 + 7,8 MB | accelerano solo la costruzione offline delle feature |
 | Rank ordinati per board al river (opzionale) | 465 rank ordinati per ciascuno dei 19.998 board | 37 MB | elimina ordinamento e lookup per board; a runtime costano comunque poco |
 
