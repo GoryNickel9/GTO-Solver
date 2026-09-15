@@ -16,6 +16,8 @@ option(GTOSD_WARNINGS_AS_ERRORS "Treat first-party warnings as errors" ON)
 option(GTOSD_ENABLE_CLANG_TIDY "Run clang-tidy while compiling first-party targets" OFF)
 option(GTOSD_BUILD_RANGE_ORBIT_ORACLE
   "Build the diagnostic asymmetric-range physical-orbit counterexample" OFF)
+option(GTOSD_BUILD_PREFLOP_BLUEPRINT
+  "Build the vector CFR preflop blueprint solver and its card abstraction" ON)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -93,6 +95,10 @@ add_subdirectory(libs/memory)
 add_subdirectory(libs/postflop)
 add_subdirectory(libs/postflop_subgame)
 add_subdirectory(libs/preflop)
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_subdirectory(libs/card_abstraction)
+  add_subdirectory(libs/preflop_blueprint)
+endif()
 add_subdirectory(libs/storage)
 add_subdirectory(libs/gui_prototype)
 add_subdirectory(apps/gto_cli)
@@ -138,6 +144,15 @@ install(TARGETS
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  install(TARGETS
+      gtosd_card_abstraction
+      gtosd_preflop_blueprint
+    EXPORT gtosdTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
   PATTERN "*.in" EXCLUDE)
 install(FILES ${PROJECT_BINARY_DIR}/generated/gtosd/version.hpp
@@ -151,6 +166,7 @@ install(FILES schemas/postflop_tree_config.schema.json
               schemas/hu_preflop_v23_abstract_nashconv.schema.json
               schemas/hu_preflop_tre_validation.schema.json
               schemas/hu_preflop_game.schema.json
+              schemas/preflop_blueprint_game.schema.json
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/schemas)
 install(DIRECTORY benchmarks/fixtures/
   DESTINATION ${CMAKE_INSTALL_DATADIR}/gtosd/benchmarks)
