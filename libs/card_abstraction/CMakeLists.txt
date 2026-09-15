@@ -1,5 +1,7 @@
 add_library(gtosd_card_abstraction
-  src/card_abstraction.cpp)
+  src/canonical_boards.cpp
+  src/card_abstraction.cpp
+  src/combinatorics.cpp)
 add_library(gtosd::card_abstraction ALIAS gtosd_card_abstraction)
 
 target_include_directories(gtosd_card_abstraction
