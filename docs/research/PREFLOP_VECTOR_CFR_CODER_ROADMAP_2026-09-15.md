@@ -3,7 +3,7 @@
 Data: 2026-09-15
 Stato: `ROADMAP CONGELATA / IMPLEMENTAZIONE NON AVVIATA`
 Documenti vincolanti: [analisi](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md) e
-[registro decisioni](PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D21). In caso di
+[registro decisioni](PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D26). In caso di
 conflitto fra questo documento e il registro, vale il registro, che è più recente.
 
 ## 1. Mandato e risultato richiesto
@@ -538,7 +538,7 @@ registrato e ogni fallimento ha una diagnosi.
 
 ## 9. Istruzioni di avvio per l'agent coder (D23)
 
-1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D24), questa roadmap,
+1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D26), questa roadmap,
    l'analisi tecnica per le motivazioni, il template del diario.
 2. La politica dei branch è confermata (D21): creare da `main` il branch di integrazione
    `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint/p0-scaffolding` in

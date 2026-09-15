@@ -14,7 +14,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Fase in corso | nessuna (roadmap congelata, implementazione non avviata) |
 | Ultimo gate | — |
 | Branch di lavoro | — |
-| Commit di partenza | `04aa687` |
+| Commit di partenza | `main` dopo i commit di documentazione del 2026-09-15 (`bb45824` o successivo); il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Prossimo passo | P0: snapshot, tag, target CMake vuoti, fixture |
 
 ## 2. Registro dei gate
