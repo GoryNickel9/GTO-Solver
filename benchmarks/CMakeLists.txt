@@ -289,3 +289,16 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_benchmark_runner_smoke PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_catalog preflop_blueprint_catalog.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_catalog PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_catalog)
+  add_test(NAME gtosd_preflop_blueprint_catalog COMMAND gtosd_preflop_blueprint_catalog)
+  set_tests_properties(gtosd_preflop_blueprint_catalog
+    PROPERTIES LABELS "preflop_blueprint;p1;catalog")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_catalog PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
