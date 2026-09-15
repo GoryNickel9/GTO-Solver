@@ -316,3 +316,19 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_buckets preflop_blueprint_buckets.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_buckets PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_buckets)
+  add_test(NAME gtosd_preflop_blueprint_buckets_smoke
+    COMMAND gtosd_preflop_blueprint_buckets --synthetic-groups --threads 8
+      --flop 8 --turn 16 --river 32 --restarts 2 --screening-iterations 3
+      --max-iterations 4 --screening-sample 50000)
+  set_tests_properties(gtosd_preflop_blueprint_buckets_smoke
+    PROPERTIES LABELS "preflop_blueprint;p3;buckets")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_buckets_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()

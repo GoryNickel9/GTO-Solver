@@ -479,3 +479,17 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_card_abstraction_bucket_tests card_abstraction_bucket_tests.cpp)
+  target_link_libraries(gtosd_card_abstraction_bucket_tests PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_card_abstraction_bucket_tests)
+  add_test(NAME gtosd_card_abstraction_bucket_tests
+    COMMAND gtosd_card_abstraction_bucket_tests)
+  set_tests_properties(gtosd_card_abstraction_bucket_tests
+    PROPERTIES LABELS "preflop_blueprint;p3;buckets")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_card_abstraction_bucket_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()

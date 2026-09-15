@@ -40,6 +40,12 @@ struct OpponentGroups {
   std::string fingerprint;
 
   [[nodiscard]] static OpponentGroups build(const AllInTable &all_in);
+  // Groups from an explicit strength ranking of the 81 classes (strongest
+  // first) and their equities; `build` uses this with the all-in table, tests
+  // may supply a synthetic ranking.
+  [[nodiscard]] static OpponentGroups from_ranking(const std::array<std::uint8_t, 81> &ranking,
+                                                   const std::array<double, 81> &class_equity,
+                                                   const std::string &source_fingerprint);
   [[nodiscard]] static Result<OpponentGroups, ResourceError>
   load(const std::filesystem::path &path);
   [[nodiscard]] Result<bool, ResourceError> save(const std::filesystem::path &path) const;

@@ -11,14 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P3 (clustering e tabelle bucket), in avvio |
-| Ultimo gate | P2 PASS (2026-09-15) |
+| Fase in corso | P4 (modello di gioco e albero compilato), in avvio |
+| Ultimo gate | P3 PASS (2026-09-15) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p3-clustering` (P0–P2 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p4-game-model` (P0–P3 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
-| Prossimo passo | P3: k-means (EMD sugli istogrammi flop/turn, L2 sull'OCHS river), tabelle bucket per board canonico, lookup a tempo costante, diagnostica di occupazione e dispersione |
+| Merge su `main` | in attesa dell'utente (Q2): il gate P3 prevede il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
+| Prossimo passo | P4: modello di gioco N-player, albero preflop guidato dallo stato con fingerprint legacy riprodotto, albero pubblico postflop compilato per ingresso con payoff settled, layout dello stato |
 
 ## 2. Registro dei gate
 
@@ -27,7 +28,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P0 Contratto e scaffolding | PASS | 2026-09-15 | `ef6f691` | [P0_SCAFFOLDING.md](P0_SCAFFOLDING.md) |
 | P1 Canonicalizzazione e cataloghi | PASS | 2026-09-15 | `ca80dab` | [P1_CANONICAL_BOARDS.md](P1_CANONICAL_BOARDS.md) |
 | P2 Risorse esatte | PASS | 2026-09-15 | `9f8a6d3` | [P2_EXACT_RESOURCES.md](P2_EXACT_RESOURCES.md) |
-| P3 Clustering e tabelle bucket | NOT_RUN | | | |
+| P3 Clustering e tabelle bucket | PASS | 2026-09-15 | `c7bb762` | [P3_BUCKET_TABLES.md](P3_BUCKET_TABLES.md) |
 | P4 Modello di gioco e albero compilato | NOT_RUN | | | |
 | P5 Kernel vettoriale HU | NOT_RUN | | | |
 | P6 Trainer con campionamento del board | NOT_RUN | | | |
@@ -51,6 +52,39 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-15 — P3 — clustering e tabelle bucket, gate PASS
+
+Fatto: k-means intero con k-means++ e riavvii su campione sistematico; EMD esatta (L1 delle
+cumulate, centroidi mediane pesate) per flop e turn, L2 sui vettori OCHS al river; tabelle
+`uint16` per (board canonico, combo) con centroidi, parametri e fingerprint incorporati; lookup a
+tempo costante da board fisico e mano; diagnostica di occupazione, inerzia e distanza media;
+gruppi avversari da ranking per test e smoke; eseguibile con report JSON, salvataggio e verifica
+di ricaricamento. Report: [P3_BUCKET_TABLES.md](P3_BUCKET_TABLES.md).
+Comandi: build dei target P3; `ctest -L p3 -V`; costruzione completa con
+`--flop 200 --turn 500 --river 1000 --restarts 10 --screening-iterations 10 --max-iterations 25
+--screening-sample 500000` dalle risorse P2; `ctest -L preflop_blueprint`.
+Risultati: 16.431.981 asserzioni PASS in 47,85 s (flop K=32, turn e river K=64, indipendenza dai
+thread 1/3/8, invarianza ai semi, persistenza, rifiuto dei file corrotti); smoke 21,7 s PASS.
+Tabelle 200/500/1.000 a 8 thread: flop 25 iterazioni, inerzia 5,68·10⁸, distanza media 150,7
+(2,2 % del massimo), occupazione 449–3.035 righe, 55,5 s; turn 8 iterazioni (convergenza),
+inerzia 9,49·10⁸, distanza media 8,12 (1,8 %), occupazione 2.399–102.648, 416 s; river 25
+iterazioni, inerzia 1,68·10¹⁶, RMS per coordinata 0,050 di equity, occupazione 1.239–326.951,
+814 s; nessun bucket vuoto; 43,3 MB in tre file; ricaricamento verificato; totale 1.294 s.
+Fingerprint flop `fnv1a64:33f06cf437f8f26d`, turn `fnv1a64:51814338fcf1236c`, river
+`fnv1a64:2e59aa76f59c0fcd`. Regressione `preflop_blueprint` P0–P3: 9/9 PASS (223 s con i test
+P4 in corso; il controllo di isolamento è fallito una volta su un commento del codice P4, non su
+P3, ed è stato ripetuto dopo la correzione).
+Fallimenti: (1) accesso ai membri privati dal builder tramite classe derivata: non compila,
+sostituito dal pattern attorney. (2) Lancio in background tramite il wrapper Visual Studio:
+messaggio non fatale su `vswhere.exe` e log apparentemente vuoto mentre il processo girava; un
+rilancio diretto ha fallito per il lock del log; un terzo lancio ha creato un processo duplicato,
+terminato dopo 30 s. Il run originale è arrivato a PASS. Regola adottata: controllare i processi
+con `Get-Process` prima di rilanciare.
+Dubbi: flop e river si fermano al limite di 25 iterazioni (il turn converge in 8); per le tabelle
+finali di P9 misurare 50 e 100 iterazioni. Il merge in `main` previsto da D21 al gate P3 non può
+essere eseguito dall'agent senza toccare il working tree dell'utente: domanda Q2.
+Prossimo passo: P4 sul branch `feature/preflop-blueprint-p4-game-model`.
 
 ### 2026-09-15 — P2 — risorse esatte, gate PASS
 
@@ -133,6 +167,7 @@ Prossimo passo: P0.
 | # | Data | Domanda | Stato | Risposta |
 |---|---|---|---|---|
 | Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. | aperta | |
+| Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Prima del merge l'agent esegue la suite CTest completa sull'integrazione e ne registra l'esito. In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 procede sull'integrazione. | aperta | |
 
 ## 5. Decisioni prese dall'agent
 
@@ -152,3 +187,6 @@ Prossimo passo: P0.
 | 12 | 2026-09-15 | P2 | Kernel sweep per flop e turn, pairwise per il river | il river richiede conteggi per gruppo avversario; il pairwise è un controllo indipendente del kernel |
 | 13 | 2026-09-15 | P2 | File delle feature (365 MB) come artefatti offline non distribuiti; equity river in virgola fissa a 16 bit | servono solo al clustering P3; dimensione dimezzata rispetto a float32 con errore 1/131070 |
 | 14 | 2026-09-15 | P2 | Tabella all-in triangolare con voci vuote per le coppie sovrapposte | indirizzamento O(1) senza mappa |
+| 15 | 2026-09-15 | P3 | k-means intero: istogrammi e cumulate come conteggi, centroidi come mediane pesate (EMD) o medie arrotondate (L2), partizione statica del lavoro | nessuna dipendenza dall'ordine di riduzione in virgola mobile: risultato identico a 1, 3 e 8 thread (D14) |
+| 16 | 2026-09-15 | P3 | Riavvii valutati su un campione sistematico di 500.000 osservazioni per 10 iterazioni, solo il migliore rifinito sull'intero insieme | 10 riavvii completi costerebbero dieci volte il river (814 s); il campione sistematico è deterministico e copre tutte le righe |
+| 17 | 2026-09-15 | P3 | Bucket rietichettati per forza crescente del centroide dopo la convergenza | id confrontabili fra costruzioni e leggibili nei report; l'assegnazione non cambia |

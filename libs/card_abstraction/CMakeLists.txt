@@ -1,5 +1,6 @@
 add_library(gtosd_card_abstraction
   src/all_in_table.cpp
+  src/bucket_tables.cpp
   src/canonical_boards.cpp
   src/card_abstraction.cpp
   src/combinatorics.cpp
