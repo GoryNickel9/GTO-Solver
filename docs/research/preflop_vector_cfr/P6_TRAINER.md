@@ -111,6 +111,19 @@ best response fisica domina quella del gioco astratto a bucket.
 | `ctest -L p6`: test (187 s) e smoke dell'eseguibile (14 s) | PASS |
 | Suite `preflop_blueprint` P0–P6 | PASS: 16/16 in 318 s (`ctest -L preflop_blueprint`, Release, dopo il rebuild finale) |
 
+### 3.1 Portata dell'oracolo esatto e limiti (nota 2026-09-16)
+
+L'oracolo `FiniteGame` gira **solo sulla fixture HU10 ridotta**: è l'unica verifica dei valori del
+CFR vettoriale (regret, somme di strategia, media) e della best response fisica contro una sorgente
+indipendente. Non copre nessuno dei rami che CO40 attraversa: più di una size di apertura, risposta
+indicizzata sull'open (`response_targets[index]`), rilancio incompleto configurato, livello ≥ 2
+raggiunto dopo un rilancio configurato, `maximum_raise_count` maggiore di 1, postflop con stack
+profondo. Dal 2026-09-16 la fixture HU10 ha una sola size di apertura e nessuna size di risposta,
+quindi l'oracolo copre meno di quanto coprisse quando questo report è stato scritto (allora
+3 a / 5 a con risposte 6 a / 8 a). Su CO40 esistono solo verifiche strutturali (P4) e di kernel su
+sottogiochi river (P5 §2). Elenco completo e conseguenze nel diario, voce del 2026-09-16
+"mappa della copertura".
+
 ## 4. Costo
 
 HU10 ridotto (571 nodi): 0,19 s per iterazione con `B = 32`, 8 thread; HU10 completo (2.059 nodi):

@@ -29,6 +29,11 @@ Convenzioni. I valori sono in ante: `v[h] = Σ_z Σ_{o ∌ h} reach_avv(o, z) ·
 | AddressSanitizer (`windows-asan`, RelWithDebInfo, `/fsanitize=address`): test del gioco, dei kernel e dell'oracolo | PASS, nessuna diagnostica |
 | `ctest -L p5` in Release: test dei kernel, oracolo, report della traversata | PASS |
 
+> **Nota (2026-09-16).** Su CO40 queste verifiche coprono i kernel per board, non il CFR: i
+> sottogiochi dell'oracolo sono tre **river** con al massimo tre rilanci e strategia per mano, e il
+> confronto bucket/mano è un'uguaglianza interna fra due implementazioni della stessa policy. I
+> valori del CFR vettoriale su CO40 non sono confrontati con nessuna sorgente esatta (P6 §3.1).
+
 ## 3. Tempo per board (CO40, 27.061 nodi, 15.922 terminali, policy uniforme)
 
 Misura con `gtosd_preflop_blueprint_traversal --boards 20` a macchina libera, un thread, Release.
