@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gtosd.local/schemas/preflop_blueprint_game.schema.json",
+  "title": "GTOSD preflop blueprint game configuration",
+  "description": "Declarative Short Deck preflop game for the vector CFR blueprint solver. Dead antes for every player, one live button blind posted by the BTN, live commitment targets for the first raise and its index-matched re-raise, variable-length postflop size lists. Cross-field constraints (strictly increasing targets, response above open, positions ending with BTN) are enforced by the C++ loader.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "monetary_contract_revision",
+    "ante_accounting",
+    "preflop_target_basis",
+    "player_count",
+    "positions",
+    "effective_stack_units",
+    "ante_units",
+    "button_blind_units",
+    "open_target_units",
+    "response_target_units",
+    "allow_configured_incomplete_raise",
+    "postflop_sizes_basis_points",
+    "postflop_minimum_bet_units",
+    "include_all_in",
+    "raise_termination",
+    "rake_mode"
+  ],
+  "properties": {
+    "schema": {"const": "gtosd.preflop_blueprint_game.v1"},
+    "id": {"type": "string", "minLength": 1},
+    "monetary_contract_revision": {"const": 2},
+    "ante_accounting": {"const": "dead_initial_pot_contribution"},
+    "preflop_target_basis": {"const": "live_commitment_excluding_dead_ante"},
+    "player_count": {"type": "integer", "minimum": 2, "maximum": 6},
+    "positions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 6,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "effective_stack_units": {"type": "integer", "minimum": 1},
+    "ante_units": {"type": "integer", "minimum": 1},
+    "button_blind_units": {"type": "integer", "minimum": 1},
+    "open_target_units": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {"type": "integer", "minimum": 1}
+    },
+    "response_target_units": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {"type": "integer", "minimum": 1}
+    },
+    "allow_configured_incomplete_raise": {"type": "boolean"},
+    "postflop_sizes_basis_points": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"type": "integer", "minimum": 1, "maximum": 100000}
+    },
+    "postflop_minimum_bet_units": {"type": "integer", "minimum": 1},
+    "include_all_in": {"const": true},
+    "raise_termination": {"const": "natural_stack"},
+    "rake_mode": {"const": "disabled"}
+  }
+}

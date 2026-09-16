@@ -200,6 +200,16 @@ avversaria. Il valore di best response del gioco è la media sui board (esatta c
 campionata con intervallo altrimenti); `gain_p = BR_p − EV_p(σ̄)`. La scomposizione per board è
 esatta perché il board è pubblico e nessun information set attraversa due board.
 
+> **Erratum (2026-09-15, P6).** L'ultima frase vale per l'EV della strategia media, non per la
+> best response: gli information set del preflop (mano), del flop (mano + flop) e del turn (mano +
+> flop + turn) attraversano tutti i board che condividono quel prefisso. Prendere il massimo per
+> board ai nodi sopra il river dà un responder chiaroveggente sulle carte future e sovrastima
+> l'exploitability (circa 1 a/mano su HU10, P6_TRAINER.md §4). La best response fisica corretta
+> aggrega i valori delle azioni sulle carte ancora da distribuire prima del massimo: river massimo
+> per board; turn somma sui river poi massimo; flop somma sui turn poi massimo; preflop somma sui
+> flop poi massimo (`best_response.hpp`, decisione 30 del diario). Lo stimatore campionato (P6.3)
+> campiona flop ed enumera tutti i loro runout; P7 deve usare la stessa aggregazione.
+
 **Metriche.** `nashconv = gain_CO + gain_BTN`; `normalized_dev = max(gain) / pot_iniziale`;
 `normalized_stack = max(gain) / stack_effettivo`. Tutte in ante per mano, con intervallo al 95 %
 quando campionate.
@@ -541,7 +551,7 @@ registrato e ogni fallimento ha una diagnosi.
 1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D26), questa roadmap,
    l'analisi tecnica per le motivazioni, il template del diario.
 2. La politica dei branch è confermata (D21): creare da `main` il branch di integrazione
-   `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint/p0-scaffolding` in
+   `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint-p0-scaffolding` in
    un worktree separato dal working tree dell'utente.
 3. Eseguire P0 e registrare la prima voce del diario con commit, ambiente e tag.
 4. Procedere fase per fase secondo §3.3. Ogni gate produce una riga nel registro dei gate e un

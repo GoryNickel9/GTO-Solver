@@ -289,3 +289,167 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
   set_tests_properties(gtosd_benchmark_runner_smoke PROPERTIES
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_catalog preflop_blueprint_catalog.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_catalog PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_catalog)
+  add_test(NAME gtosd_preflop_blueprint_catalog COMMAND gtosd_preflop_blueprint_catalog)
+  set_tests_properties(gtosd_preflop_blueprint_catalog
+    PROPERTIES LABELS "preflop_blueprint;p1;catalog")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_catalog PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_resources preflop_blueprint_resources.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_resources PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_resources)
+  add_test(NAME gtosd_preflop_blueprint_resources
+    COMMAND gtosd_preflop_blueprint_resources --threads 8 --verify-oracle 20000)
+  set_tests_properties(gtosd_preflop_blueprint_resources
+    PROPERTIES LABELS "preflop_blueprint;p2;resources")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_resources PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_buckets preflop_blueprint_buckets.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_buckets PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_buckets)
+  add_test(NAME gtosd_preflop_blueprint_buckets_smoke
+    COMMAND gtosd_preflop_blueprint_buckets --synthetic-groups --threads 8
+      --flop 8 --turn 16 --river 32 --restarts 2 --screening-iterations 3
+      --max-iterations 4 --screening-sample 50000)
+  set_tests_properties(gtosd_preflop_blueprint_buckets_smoke
+    PROPERTIES LABELS "preflop_blueprint;p3;buckets")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_buckets_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_game preflop_blueprint_game.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_game PRIVATE gtosd::preflop_blueprint)
+  gtosd_set_warnings(gtosd_preflop_blueprint_game)
+  add_test(NAME gtosd_preflop_blueprint_game_report
+    COMMAND gtosd_preflop_blueprint_game
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
+  set_tests_properties(gtosd_preflop_blueprint_game_report
+    PROPERTIES LABELS "preflop_blueprint;p4;game")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_game_report PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_traversal preflop_blueprint_traversal.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_traversal
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_traversal)
+  add_test(NAME gtosd_preflop_blueprint_traversal_report
+    COMMAND gtosd_preflop_blueprint_traversal
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --boards 10)
+  set_tests_properties(gtosd_preflop_blueprint_traversal_report
+    PROPERTIES LABELS "preflop_blueprint;p5;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_traversal_report PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_train preflop_blueprint_train.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_train
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_train)
+  add_test(NAME gtosd_preflop_blueprint_train_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10
+      --policy-out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin)
+  set_tests_properties(gtosd_preflop_blueprint_train_smoke
+    PROPERTIES LABELS "preflop_blueprint;p6;trainer"
+               FIXTURES_SETUP preflop_blueprint_smoke_policy)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_train_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
+  add_executable(gtosd_preflop_blueprint_certify preflop_blueprint_certify.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_certify
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_certify)
+  add_test(NAME gtosd_preflop_blueprint_certify_smoke
+    COMMAND gtosd_preflop_blueprint_certify
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --uniform --threads 4 --flop-limit 4 --chunk 2
+      --output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_certify_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_certify_smoke
+    PROPERTIES LABELS "preflop_blueprint;p7;certifier")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_certify_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
+  add_executable(gtosd_preflop_blueprint_export preflop_blueprint_export.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_export
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_export)
+  add_test(NAME gtosd_preflop_blueprint_export_smoke
+    COMMAND gtosd_preflop_blueprint_export
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --eval-flops 2 --threads 4 --iterations 20
+      --output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json)
+  set_tests_properties(gtosd_preflop_blueprint_export_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;export"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy
+               FIXTURES_SETUP preflop_blueprint_smoke_chart)
+  add_test(NAME gtosd_preflop_blueprint_query_smoke
+    COMMAND gtosd_preflop_blueprint_export
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --query-history raise_3,call --query-hand AhKs --query-board 7s8d9c)
+  set_tests_properties(gtosd_preflop_blueprint_query_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;export"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy)
+
+  add_executable(gtosd_preflop_blueprint_compare preflop_blueprint_compare.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_compare PRIVATE gtosd::preflop_blueprint gtosd::core)
+  gtosd_set_warnings(gtosd_preflop_blueprint_compare)
+  add_test(NAME gtosd_preflop_blueprint_compare_smoke
+    COMMAND gtosd_preflop_blueprint_compare
+      --candidate ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json
+      --baseline ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json
+      --reference ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/hu_preflop_co40_reference_v1.json
+      --max-gain 100
+      --output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_compare_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_compare_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;comparator"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
+  foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
+                gtosd_preflop_blueprint_compare_smoke)
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(${smoke} PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
+  endforeach()
+endif()

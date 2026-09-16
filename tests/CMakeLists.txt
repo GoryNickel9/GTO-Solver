@@ -412,3 +412,210 @@ if(GTOSD_BUILD_FRAMEWORK_TESTS)
       DISCOVERY_TIMEOUT 30)
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_scaffold_tests preflop_blueprint_scaffold_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_scaffold_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  target_compile_definitions(gtosd_preflop_blueprint_scaffold_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_scaffold_tests)
+  add_test(NAME gtosd_preflop_blueprint_scaffold_tests
+    COMMAND gtosd_preflop_blueprint_scaffold_tests)
+  set_tests_properties(gtosd_preflop_blueprint_scaffold_tests
+    PROPERTIES LABELS "preflop_blueprint;p0")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_scaffold_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
+  add_test(NAME gtosd_preflop_blueprint_dependency_check
+    COMMAND ${CMAKE_COMMAND}
+      -DGTOSD_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+      -P ${PROJECT_SOURCE_DIR}/tests/verify_preflop_blueprint_isolation.cmake)
+  set_tests_properties(gtosd_preflop_blueprint_dependency_check
+    PROPERTIES LABELS "preflop_blueprint;p0;dependencies")
+
+  find_package(Python3 COMPONENTS Interpreter QUIET)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME gtosd_preflop_blueprint_fixture_schema
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/validate_preflop_blueprint_fixtures.py
+        --schema ${PROJECT_SOURCE_DIR}/schemas/preflop_blueprint_game.schema.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_full_v1.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
+    set_tests_properties(gtosd_preflop_blueprint_fixture_schema
+      PROPERTIES LABELS "preflop_blueprint;p0;schema" SKIP_RETURN_CODE 77)
+  else()
+    message(STATUS "Python3 not found: preflop blueprint fixture schema test not registered")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_card_abstraction_canonical_tests card_abstraction_canonical_tests.cpp)
+  target_link_libraries(gtosd_card_abstraction_canonical_tests PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_card_abstraction_canonical_tests)
+  add_test(NAME gtosd_card_abstraction_canonical_tests
+    COMMAND gtosd_card_abstraction_canonical_tests)
+  set_tests_properties(gtosd_card_abstraction_canonical_tests
+    PROPERTIES LABELS "preflop_blueprint;p1;canonical")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_card_abstraction_canonical_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_card_abstraction_features_tests card_abstraction_features_tests.cpp)
+  target_link_libraries(gtosd_card_abstraction_features_tests PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_card_abstraction_features_tests)
+  add_test(NAME gtosd_card_abstraction_features_tests
+    COMMAND gtosd_card_abstraction_features_tests)
+  set_tests_properties(gtosd_card_abstraction_features_tests
+    PROPERTIES LABELS "preflop_blueprint;p2;features")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_card_abstraction_features_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_card_abstraction_bucket_tests card_abstraction_bucket_tests.cpp)
+  target_link_libraries(gtosd_card_abstraction_bucket_tests PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_card_abstraction_bucket_tests)
+  add_test(NAME gtosd_card_abstraction_bucket_tests
+    COMMAND gtosd_card_abstraction_bucket_tests)
+  set_tests_properties(gtosd_card_abstraction_bucket_tests
+    PROPERTIES LABELS "preflop_blueprint;p3;buckets")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_card_abstraction_bucket_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_game_tests preflop_blueprint_game_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_game_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_game_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_game_tests)
+  add_test(NAME gtosd_preflop_blueprint_game_tests COMMAND gtosd_preflop_blueprint_game_tests)
+  set_tests_properties(gtosd_preflop_blueprint_game_tests
+    PROPERTIES LABELS "preflop_blueprint;p4;game")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_game_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_kernel_tests preflop_blueprint_kernel_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_kernel_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_kernel_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_kernel_tests)
+  # The exact rank and all-in tables are loaded from the P2 output directory
+  # when present and rebuilt otherwise; bucket tables are optional.
+  add_test(NAME gtosd_preflop_blueprint_kernel_tests
+    COMMAND gtosd_preflop_blueprint_kernel_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_kernel_tests
+    PROPERTIES LABELS "preflop_blueprint;p5;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_kernel_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  # Oracle: the standalone postflop solver is linked by this test only (D5).
+  add_executable(gtosd_preflop_blueprint_oracle_tests preflop_blueprint_oracle_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_oracle_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::postflop gtosd::tree
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_oracle_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_oracle_tests)
+  add_test(NAME gtosd_preflop_blueprint_oracle_tests
+    COMMAND gtosd_preflop_blueprint_oracle_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_oracle_tests
+    PROPERTIES LABELS "preflop_blueprint;p5;oracle")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_oracle_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  # Oracle: the FiniteGame solver is linked by this test only (roadmap 2.2).
+  add_executable(gtosd_preflop_blueprint_trainer_tests preflop_blueprint_trainer_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer_tests
+    COMMAND gtosd_preflop_blueprint_trainer_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer_tests
+    PROPERTIES LABELS "preflop_blueprint;p6;trainer")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
+  add_executable(gtosd_preflop_blueprint_certifier_tests preflop_blueprint_certifier_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_certifier_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_certifier_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_certifier_tests)
+  add_test(NAME gtosd_preflop_blueprint_certifier_tests
+    COMMAND gtosd_preflop_blueprint_certifier_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_certifier_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_certifier_tests
+    PROPERTIES LABELS "preflop_blueprint;p7;certifier")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_certifier_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
+  find_package(nlohmann_json CONFIG REQUIRED)
+  add_executable(gtosd_preflop_blueprint_export_tests preflop_blueprint_export_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_export_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core nlohmann_json::nlohmann_json)
+  target_compile_definitions(gtosd_preflop_blueprint_export_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_export_tests)
+  add_test(NAME gtosd_preflop_blueprint_export_tests
+    COMMAND gtosd_preflop_blueprint_export_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_export_tests
+    PROPERTIES LABELS "preflop_blueprint;p8;export")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_export_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME gtosd_preflop_blueprint_chart_schema
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/validate_preflop_blueprint_chart.py
+        ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_export_smoke_chart.json)
+    set_tests_properties(gtosd_preflop_blueprint_chart_schema
+      PROPERTIES LABELS "preflop_blueprint;p8;schema" SKIP_RETURN_CODE 77
+                 FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
+  endif()
+endif()

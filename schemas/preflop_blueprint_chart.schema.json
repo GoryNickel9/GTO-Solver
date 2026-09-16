@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "gtosd.preflop_blueprint_chart.v1",
+  "title": "Preflop blueprint chart export",
+  "description": "Average strategy of a preflop blueprint policy at every preflop decision node: 81 hand classes with action frequencies, action EVs in antes with standard errors (estimated on sampled flops with all their runouts), fingerprints of rules, tree, abstraction and policy, exploitability status and checksum.",
+  "type": "object",
+  "required": [
+    "schema", "config_id", "tree_fingerprint", "fingerprints", "game", "capacities", "algorithm",
+    "abstraction", "iterations", "status", "evaluation", "root_ev_ante",
+    "root_ev_standard_error_ante", "strategy", "root_action_ev", "preflop_nodes", "checksum"
+  ],
+  "properties": {
+    "schema": {"const": "gtosd.preflop_blueprint_chart.v1"},
+    "config_id": {"type": "string"},
+    "tree_fingerprint": {"type": "string", "pattern": "^fnv1a64:[0-9a-f]{16}$"},
+    "fingerprints": {
+      "type": "object",
+      "required": ["rules", "tree", "catalog", "flop_table", "turn_table", "river_table", "policy"],
+      "additionalProperties": {"type": "string", "pattern": "^fnv1a64:[0-9a-f]{16}$"}
+    },
+    "game": {
+      "type": "object",
+      "required": ["positions", "effective_stack_antes", "ante_antes", "button_blind_antes", "initial_pot_antes"],
+      "properties": {
+        "positions": {"type": "array", "items": {"type": "string"}, "minItems": 2},
+        "effective_stack_antes": {"type": "number"},
+        "ante_antes": {"type": "number"},
+        "button_blind_antes": {"type": "number"},
+        "initial_pot_antes": {"type": "number"}
+      }
+    },
+    "capacities": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 3, "maxItems": 3},
+    "algorithm": {"type": "string"},
+    "abstraction": {"type": "string"},
+    "iterations": {"type": "integer", "minimum": 0},
+    "policy_source": {"type": "string"},
+    "has_current_strategy": {"type": "boolean"},
+    "status": {
+      "type": "object",
+      "required": ["badge", "exploitability"],
+      "properties": {
+        "badge": {"enum": ["ESTIMATED", "CERTIFIED_EXACT"]},
+        "exploitability": {
+          "type": "object",
+          "required": ["exact", "max_gain_antes", "max_gain_lower_antes", "max_gain_half_width_antes", "nashconv_antes", "gain_antes", "flops", "boards", "normalized_dev"],
+          "properties": {
+            "exact": {"type": "boolean"},
+            "max_gain_antes": {"type": "number"},
+            "max_gain_lower_antes": {"type": "number"},
+            "max_gain_half_width_antes": {"type": "number", "minimum": 0},
+            "nashconv_antes": {"type": "number"},
+            "gain_antes": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
+            "flops": {"type": "integer", "minimum": 1},
+            "physical_flops": {"type": "integer", "minimum": 1},
+            "boards": {"type": "integer", "minimum": 1},
+            "certificate_policy_fingerprint": {"type": "string"},
+            "certificate_ignored": {"type": "string"},
+            "normalized_dev": {"type": "number"}
+          }
+        }
+      }
+    },
+    "evaluation": {
+      "type": "object",
+      "required": ["flops", "boards", "seed", "ev_scope"],
+      "properties": {
+        "flops": {"type": "integer", "minimum": 1},
+        "boards": {"type": "integer", "minimum": 1},
+        "seed": {"type": "integer"},
+        "ev_scope": {"type": "string"}
+      }
+    },
+    "root_ev_ante": {"type": "number"},
+    "root_ev_standard_error_ante": {"type": "number", "minimum": 0},
+    "root_action_ev_scope": {"type": "string"},
+    "strategy": {"$ref": "#/definitions/class_strategy"},
+    "root_action_ev": {"$ref": "#/definitions/class_action_ev"},
+    "preflop_nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["id", "player", "node", "history", "actions", "strategy", "action_ev", "ev_scope"],
+        "properties": {
+          "id": {"type": "string"},
+          "player": {"type": "string"},
+          "node": {"type": "integer", "minimum": 0},
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["player", "action"],
+              "properties": {"player": {"type": "string"}, "action": {"type": "string"}}
+            }
+          },
+          "actions": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "strategy": {"$ref": "#/definitions/class_strategy"},
+          "action_ev": {"$ref": "#/definitions/class_action_ev"},
+          "ev_scope": {"type": "string"}
+        }
+      }
+    },
+    "checksum": {"type": "string", "pattern": "^fnv1a64:[0-9a-f]{16}$"}
+  },
+  "definitions": {
+    "class_strategy": {
+      "type": "object",
+      "minProperties": 81,
+      "maxProperties": 81,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {"type": "number", "minimum": 0, "maximum": 1}
+      }
+    },
+    "class_action_ev": {
+      "type": "object",
+      "minProperties": 81,
+      "maxProperties": 81,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": ["ev_ante", "standard_error_ante", "samples"],
+          "properties": {
+            "ev_ante": {"type": "number"},
+            "standard_error_ante": {"type": "number", "minimum": 0},
+            "samples": {"type": "integer", "minimum": 1}
+          }
+        }
+      }
+    }
+  }
+}
