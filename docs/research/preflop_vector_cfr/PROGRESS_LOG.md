@@ -72,7 +72,7 @@ Risultati: albero 637 nodi (256 decisioni), preflop 34 nodi / 12 decisioni /
 5 entry postflop (prima 1.129 nodi, 456 decisioni, preflop 58 / 20 / 9); stato 9.7 MB;
 training 7 min (0.205 s per iterazione), stima a 20 flop
 all'iterazione 2.000 0,6668 ± 0,1075 a; certificato esatto
-**0,6516 a** (21.7 % del piatto, 1.63 % dello stack), nashconv 1,0257 a, limite
+**0,6516 a** (21,7 % del piatto, 1,63 % dello stack), nashconv 1,0257 a, limite
 inferiore dal flop 0,2638 a, EV di CO -0,1429 a, certificazione 12 min
 (1.3 s per flop). Confronto con le due aperture (stesso protocollo, 2.000 iterazioni):
 0,6569 a. Quindi **la riduzione non risolve**: da 0,6569 a 0,6516 a, cioè lo stesso ordine di grandezza, con un albero quasi dimezzato (637 nodi contro 1.129) e una parte preflop di 12 decisioni contro 20. Radice CO: all in 34.8 %, fold 33.0 %, call 31.1 %, raise 5 1.1 %; EV di radice -0,1397 a;
