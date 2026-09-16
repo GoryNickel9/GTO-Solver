@@ -19,7 +19,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Prossimo passo | P9: qualificazione CO40 (albero completo: certificato esatto ≈ 10 h a 8 thread; variante di test a una size postflop: ≈ 20 min) secondo l'indicazione dell'utente; export e confronto Monker descrittivo |
+| Prossimo passo | P9: diagnosi della non convergenza su CO40 test (esperimento con tabelle 500/1.000/2.000 in corso; oracolo esatto a 40 a; fixture a 20 a) prima di qualsiasi run lungo; poi qualificazione (CO40 completo: certificato esatto ≈ 10 h a 8 thread) |
 
 ## 2. Registro dei gate
 
@@ -52,6 +52,56 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P9 (diagnosi) — perché CO40 test non converge e piano per la convergenza
+
+Fatto: analisi delle tre certificazioni esatte di CO40 test (voce precedente) per rispondere
+all'utente sul perché non si raggiunge l'1 % del piatto; lanciato il primo esperimento
+discriminante (tabelle 500/1.000/2.000, stesso protocollo, certificazione esatta). Nessuna
+modifica al codice.
+Comandi: `gtosd_preflop_blueprint_train …co40_test_v1.json --buckets-dir out/preflop_blueprint_buckets_500_1000_2000
+--iterations 2000 --batch 32 --threads 8 --eval-flops 20 --eval-every 500 --policy-out out/policy_co40t_b500.bin`;
+`certify … --buckets-dir …500_1000_2000 --policy out/policy_co40t_b500.bin --threads 8 --chunk 16`.
+Risultati (evidenze già disponibili): (1) budget escluso: da 2.000 a 10.000 iterazioni la
+exploitability esatta sale (0,657 → 0,841 a); con un CFR corretto la strategia media si avvicina
+all'equilibrio del gioco astratto come `1/√T`. (2) Schema di aggiornamento escluso: Linear
+simultaneo, la variante verificata contro l'oracolo esatto su HU10, dà 1,086 a ed è piatto fra
+500 e 2.000 iterazioni. (3) La perdita è distribuita: con il preflop fisso e best response solo
+dal flop restano 0,26–0,36 a (9–12 % del piatto); il preflop è assurdo: CO limpa il 31 % (AA
+97 %) e spinge 40 a con il 33 % delle mani; BTN chiama lo shove di 13 piatti con il 29 % del
+range e rilancia all-in sull'open 6 a con il 26 % (sull'open 10 a 26 %): entrambi preferiscono
+chiudere la mano preflop, come se il postflop valesse poco o fosse valutato male. (4) Su HU10
+lo stesso codice e le stesse tabelle danno 0,13 % del piatto a 2.000 iterazioni.
+Ipotesi residue: (A) **astrazione**: tabelle 200/500/1.000 identiche a HU10, dove perdono 1–3
+millesimi di ante; a 40 a il postflop pesa molto di più (34 a dietro dopo l'open, tre street,
+due rilanci) e la best response fisica sfrutta ogni mano nel bucket sbagliato; la exploitability
+fisica può salire mentre quella astratta scende (patologia dell'astrazione, Waugh et al. 2009).
+(B) **difetto del trainer sulle strutture proprie di CO40** (due open con risposte indicizzate,
+rilancio incompleto, nodi di livello 2 con solo all-in, payoff fino a ±40 a): l'oracolo esatto
+del trainer (P6 §3) copre solo HU10 ridotto; i test P4 su CO40 verificano albero e payoff, non i
+valori del CFR vettoriale; il certificatore misura nello stesso gioco compilato, quindi un errore
+nei regret di quei nodi produrrebbe esattamente questo quadro.
+Piano per la convergenza (proposta, in ordine di costo):
+1. Esperimento in corso: CO40 test con 500/1.000/2.000, 2.000 iterazioni, certificazione
+   esatta (≈ 35 min). Discesa netta → (A); invariata → (B).
+2. Oracolo esatto a 40 a: gioco ridotto `FiniteGame` con la struttura preflop di CO40 (due
+   open, risposte, rilancio incompleto, livello 2) e postflop minimo; confronto di regret e
+   strategia media con `solve_finite_game` come in P6 §3. È il test che manca; costa un test
+   nuovo e qualche ora.
+3. Fixture intermedia (stack 20 a, stesse size) per misurare come cresce la exploitability con
+   la profondità e separare le ipotesi anche sul preflop.
+4. Se (A): tabelle per stack profondi — più bucket (punto 1), feature diverse (distribuzione
+   dell'equity contro range invece che contro mano casuale, "potential-aware" al turn), river
+   senza astrazione dove la memoria lo consente; poi capacità e batch più grandi e regola di
+   arresto con il certificatore esatto (22 min sull'albero di test).
+5. Se (B): correzione del trainer, ripetizione di P6 con l'oracolo a 40 a, poi il protocollo
+   HU10 su CO40 test.
+6. Solo dopo: CO40 completo (tre size), certificazione 10,2 h a 8 thread (≈ 2 h su EPYC 7443).
+Fallimenti: nessuno nuovo.
+Dubbi: la variante di test (una size postflop) è più facile del CO40 completo: se non converge
+questa, il completo non convergerà con lo stesso trainer e le stesse tabelle.
+Prossimo passo: risultato dell'esperimento 1 (voce successiva), poi decisione dell'utente
+sull'ordine dei punti 2–5.
 
 ### 2026-09-16 — P8 — soluzione CO40 a una size nel viewer, DCFR contro Linear su CO40, risposte su exploitability/tempo e sui nodi fuori percorso
 
