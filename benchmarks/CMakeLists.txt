@@ -377,7 +377,7 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
       --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
       --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
-      --iterations 20 --batch 8 --threads 4 --eval-boards 100 --eval-every 10)
+      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10)
   set_tests_properties(gtosd_preflop_blueprint_train_smoke
     PROPERTIES LABELS "preflop_blueprint;p6;trainer")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)

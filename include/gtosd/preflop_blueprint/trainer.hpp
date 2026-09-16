@@ -103,15 +103,26 @@ struct SubtreePartition {
                                               std::uint32_t target_nodes);
 };
 
+// Physical best response with the information structure of the physical game
+// (see best_response.hpp): the responder's decisions aggregate over the
+// cards still to come. Sampled evaluation draws flops and enumerates their
+// runouts.
 struct ExploitabilityEstimate {
+  std::uint32_t flops{0U};
   std::uint32_t boards{0U};
   bool exact{false};
   // Mean over boards, in antes per hand.
   std::array<double, 2> ev{};
   std::array<double, 2> best_response{};
   std::array<double, 2> gain{};
+  // Gain of the average preflop strategy with an exact best response from
+  // the flop on (best_response.hpp): unbiased lower bound of the physical
+  // gain; gain also selects the preflop choice on the sampled flops and is
+  // biased upwards. The stop rule uses the upper one.
+  std::array<double, 2> gain_lower{};
   std::array<double, 2> gain_standard_error{};
   double max_gain{0.0};
+  double max_gain_lower{0.0};
   // 1.96 standard errors of the player with the maximum gain; 0 when exact.
   double max_gain_half_width{0.0};
   double nashconv{0.0};
@@ -140,12 +151,13 @@ public:
          const TrainingBoards *boards = nullptr, const HandSubsets *subsets = nullptr);
 
   [[nodiscard]] Result<IterationTelemetry, TrainerError> iterate();
-  // Sampled estimate on `boards` independent boards. The evaluation is exact
-  // (all listed boards with their weights) when the trainer runs on an
-  // explicit non-sampled board list, or when exact_on_list is requested for a
-  // trainer that samples from an explicit list.
+  // Sampled estimate on `flops` independently drawn flops with all their
+  // runouts. The evaluation is exact (all listed boards with their weights)
+  // when the trainer runs on an explicit non-sampled board list, or when
+  // exact_on_list is requested for a trainer that samples from a list; a
+  // sampling trainer on a list draws `flops` boards from it instead.
   [[nodiscard]] Result<ExploitabilityEstimate, TrainerError>
-  estimate_exploitability(std::uint32_t boards, bool exact_on_list = false);
+  estimate_exploitability(std::uint32_t flops, bool exact_on_list = false);
 
   [[nodiscard]] BucketPolicy average_policy() const;
   [[nodiscard]] BucketPolicy current_policy() const;
@@ -173,6 +185,9 @@ public:
   // Restores iteration, RNG states and tables into a trainer created with the
   // same game, resources, configuration and hooks.
   [[nodiscard]] Result<bool, TrainerError> load_checkpoint(const std::filesystem::path &path);
+  // Restarts the evaluation RNG from a seed, for example to re-evaluate a
+  // restored checkpoint on fresh flops; training is unaffected.
+  void reseed_evaluation(const std::uint64_t seed) noexcept { evaluation_random_.reseed(seed); }
 
   ~Trainer();
   Trainer(const Trainer &) = delete;
@@ -203,9 +218,6 @@ private:
                                          const BoardContext &context) const noexcept;
   [[nodiscard]] std::uint64_t cell_offset(std::uint32_t node, std::uint16_t hand,
                                           const BoardContext &context) const noexcept;
-  std::array<double, 2> evaluate_board(const BoardWork &board, const BucketPolicy &average,
-                                       std::array<double, 2> &best_response,
-                                       Workspace &workspace) const;
   card_abstraction::BoardHistory sample_history(card_abstraction::DeterministicRandom &random,
                                                 double &weight) const;
 

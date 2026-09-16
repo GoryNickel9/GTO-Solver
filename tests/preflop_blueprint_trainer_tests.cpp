@@ -4,6 +4,7 @@
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/exact_features.hpp"
 #include "gtosd/card_abstraction/rank_table.hpp"
+#include "gtosd/preflop_blueprint/best_response.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
@@ -216,8 +217,16 @@ pb::HandSubsets oracle_subsets() {
 // information sets are keyed by (player, compiled node, bucket row).
 class FiniteGameBuilder {
 public:
-  FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources)
-      : game_(game), resources_(resources) {}
+  // Bucket mode keys the information sets by (player, node, bucket row): the
+  // abstract game solved by the trainer. Lossless mode keys them by (player,
+  // node, combo, public cards dealt so far): the physical game restricted to
+  // the listed boards, whose exact best response is the physical one. With an
+  // average policy the builder also records the lifted strategy profile.
+  FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
+                    const bool lossless = false, const pb::BucketPolicy *average = nullptr)
+      : game_(game), resources_(resources), lossless_(lossless), average_(average) {}
+
+  [[nodiscard]] const gtosd::StrategyProfile &profile() const noexcept { return profile_; }
 
   gtosd::FiniteGame build(const pb::TrainingBoards &boards, const pb::HandSubsets &subsets) {
     gtosd::FiniteGame finite;
@@ -334,8 +343,36 @@ private:
     finite.kind = gtosd::GameNodeKind::Decision;
     finite.player = node.actor;
     const auto acting_hand = node.actor == 0U ? hero_hand : opponent_hand;
-    finite.information_set =
-        information_set(node.actor, node_id, context.row(node.street, acting_hand));
+    const auto row = context.row(node.street, acting_hand);
+    if (lossless_) {
+      std::string key = "p" + std::to_string(node.actor) + "|n" + std::to_string(node_id) + "|c" +
+                        std::to_string(context.combo_ids()[acting_hand]);
+      const auto &history = context.history();
+      if (node.street >= gtosd::Street::Flop) {
+        key += "|F" + std::to_string(history.flop[0].value()) + "." +
+               std::to_string(history.flop[1].value()) + "." +
+               std::to_string(history.flop[2].value());
+      }
+      if (node.street >= gtosd::Street::Turn) {
+        key += "|T" + std::to_string(history.turn.value());
+      }
+      if (node.street >= gtosd::Street::River) {
+        key += "|R" + std::to_string(history.river.value());
+      }
+      finite.information_set = key;
+    } else {
+      finite.information_set = information_set(node.actor, node_id, row);
+    }
+    if (average_ != nullptr) {
+      gtosd::InformationSetStrategy strategy;
+      strategy.player = node.actor;
+      const auto probabilities = average_->row(node_id, row);
+      for (std::size_t action = 0; action < probabilities.size(); ++action) {
+        strategy.actions.push_back(static_cast<gtosd::GameActionId>(action));
+        strategy.probabilities.push_back(probabilities[action]);
+      }
+      profile_[finite.information_set] = std::move(strategy);
+    }
     const auto id = add(std::move(finite));
     const auto edges = game_.edges_of(node_id);
     for (std::size_t action = 0; action < edges.size(); ++action) {
@@ -351,6 +388,9 @@ private:
 
   const pb::CompiledGame &game_;
   const Resources &resources_;
+  bool lossless_{false};
+  const pb::BucketPolicy *average_{nullptr};
+  gtosd::StrategyProfile profile_;
   std::vector<gtosd::GameNode> nodes_;
 };
 
@@ -620,36 +660,85 @@ void test_resume(const Resources &resources) {
             << resumed.value()->state_fingerprint() << '\n';
 }
 
-void test_sampled_estimator(const Resources &resources) {
+// The physical best response of the lifted strategy: the responder decides
+// per hand and per public prefix, never per full board. On the reduced game
+// the exact value is the best response of the lossless FiniteGame (information
+// sets by combo and cards dealt so far) against the lifted strategy profile.
+void test_physical_best_response(const Resources &resources) {
+  const auto started = Clock::now();
   const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
   require(game.has_value(), "HU10 reduced compiles");
-  auto boards = oracle_boards();
-  boards.sample = true;
+  const auto boards = oracle_boards();
+  const auto subsets = oracle_subsets();
   auto config = resources.config();
-  config.threads = 4U;
-  config.batch_boards = 6U;
-  auto trainer = pb::Trainer::create(game.value(), resources.view(), config, &boards);
-  require(trainer.has_value(), "list-sampling trainer creates");
-  for (int iteration = 0; iteration < 12; ++iteration) {
+  config.threads = 2U;
+  auto trainer = pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets);
+  require(trainer.has_value(), "exact-mode trainer creates");
+  for (int iteration = 0; iteration < 10; ++iteration) {
     require(trainer.value()->iterate().has_value(), "iteration succeeds");
   }
-  const auto exact = trainer.value()->estimate_exploitability(0U, true);
-  require(exact.has_value() && exact.value().exact && exact.value().boards == 3U,
-          "exact evaluation over the listed boards");
-  require(exact.value().gain[0] >= -1e-9 && exact.value().gain[1] >= -1e-9,
-          "best response never loses to the average strategy");
-  const auto sampled = trainer.value()->estimate_exploitability(400U);
-  require(sampled.has_value() && !sampled.value().exact && sampled.value().boards == 400U,
-          "sampled evaluation over 400 boards");
-  for (std::uint8_t player = 0; player < 2U; ++player) {
-    const auto error = std::abs(sampled.value().gain[player] - exact.value().gain[player]);
-    require(error <= 3.0 * sampled.value().gain_standard_error[player] + 1e-9,
-            "sampled gain is within three standard errors of the exact gain");
+  const auto average = trainer.value()->average_policy();
+
+  FiniteGameBuilder lossless(game.value(), resources, true, &average);
+  const auto physical = lossless.build(boards, subsets);
+  const auto summary = gtosd::validate_finite_game(physical);
+  require(summary.has_value(), "lossless finite game validates");
+  require(gtosd::validate_strategy_profile(physical, lossless.profile()).has_value(),
+          "lifted strategy profile is valid on the lossless game");
+  const auto oracle = gtosd::calculate_nash_conv(physical, lossless.profile());
+  require(oracle.has_value(), "lossless NashConv computes");
+
+  std::vector<pb::WeightedBoard> weighted;
+  for (std::size_t index = 0; index < boards.histories.size(); ++index) {
+    weighted.push_back({boards.histories[index], boards.weights[index]});
   }
-  std::cout << "estimator: exact gains [" << exact.value().gain[0] << ", " << exact.value().gain[1]
-            << "], sampled [" << sampled.value().gain[0] << " +- "
-            << sampled.value().gain_standard_error[0] << ", " << sampled.value().gain[1] << " +- "
-            << sampled.value().gain_standard_error[1] << "]\n";
+  pb::BestResponseResources response_resources;
+  response_resources.ranks = &resources.ranks.value();
+  response_resources.all_in = &resources.all_in.value();
+  response_resources.catalog = &resources.catalog.value();
+  response_resources.flop = &resources.flop.value();
+  response_resources.turn = &resources.turn.value();
+  response_resources.river = &resources.river.value();
+  pb::BestResponseOptions options;
+  options.threads = 2U;
+  options.hand_subsets = subsets.combos;
+  const auto report = pb::evaluate_best_response(game.value(), average, response_resources,
+                                                 pb::group_by_flop(weighted), options);
+  require(report.has_value(), "physical best response evaluates");
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    require(close(report.value().ev[player], oracle.value().profile_value[player], 1e-9),
+            "profile value equals the lossless FiniteGame within 1e-9");
+    require(close(report.value().best_response[player], oracle.value().best_response_value[player],
+                  1e-9),
+            "physical best response equals the lossless FiniteGame best response within 1e-9");
+    require(report.value().gain[player] >= -1e-9, "best response never loses to the average");
+  }
+  require(close(report.value().nashconv, oracle.value().nash_conv, 1e-9),
+          "nashconv equals the lossless FiniteGame");
+
+  // The trainer reports the same exact evaluation on its board list.
+  const auto estimate = trainer.value()->estimate_exploitability(0U);
+  require(estimate.has_value() && estimate.value().exact && estimate.value().boards == 3U &&
+              estimate.value().flops == 3U,
+          "trainer evaluates the listed boards exactly");
+  require(close(estimate.value().max_gain, report.value().max_gain, 1e-12) &&
+              close(estimate.value().ev[0], report.value().ev[0], 1e-12),
+          "trainer estimate equals the evaluator report");
+
+  // The bucket-constrained best response of the abstract game is dominated.
+  FiniteGameBuilder bucketed(game.value(), resources, false, &average);
+  const auto abstract = bucketed.build(boards, subsets);
+  const auto abstract_oracle = gtosd::calculate_nash_conv(abstract, bucketed.profile());
+  require(abstract_oracle.has_value(), "abstract NashConv computes");
+  require(report.value().nashconv >= abstract_oracle.value().nash_conv - 1e-9,
+          "physical best response dominates the abstract-game best response");
+  std::cout << "physical best response: EV [" << report.value().ev[0] << ", "
+            << report.value().ev[1] << "], BR [" << report.value().best_response[0] << ", "
+            << report.value().best_response[1] << "], nashconv " << report.value().nashconv
+            << " (lossless oracle " << oracle.value().nash_conv << ", abstract oracle "
+            << abstract_oracle.value().nash_conv << "), lossless game " << summary.value().nodes
+            << " nodes, " << summary.value().information_sets << " information sets, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
 void test_exploitability_decreases(const Resources &resources) {
@@ -663,12 +752,16 @@ void test_exploitability_decreases(const Resources &resources) {
   std::vector<double> curve;
   double training_seconds = 0.0;
   for (int checkpoint = 0; checkpoint <= 3; ++checkpoint) {
-    const auto estimate = trainer.value()->estimate_exploitability(300U);
+    const auto estimate = trainer.value()->estimate_exploitability(4U);
     require(estimate.has_value(), "estimate succeeds");
+    require(estimate.value().flops == 4U && estimate.value().boards == 4U * 33U * 32U,
+            "sampled evaluation enumerates every runout of the sampled flops");
     curve.push_back(estimate.value().max_gain);
     std::cout << "curve: iteration " << trainer.value()->iteration() << " max gain "
               << estimate.value().max_gain << " +- " << estimate.value().max_gain_half_width
-              << " nashconv " << estimate.value().nashconv << " (training " << training_seconds
+              << " (cross-fit " << estimate.value().max_gain_lower << ")"
+              << " nashconv " << estimate.value().nashconv << " EV [" << estimate.value().ev[0]
+              << ", " << estimate.value().ev[1] << "] (training " << training_seconds
               << " s, evaluation " << estimate.value().seconds << " s)\n";
     if (checkpoint == 3) {
       break;
@@ -707,7 +800,7 @@ int main(const int argc, char **argv) {
     test_finite_game_oracle(resources);
     test_determinism(resources);
     test_resume(resources);
-    test_sampled_estimator(resources);
+    test_physical_best_response(resources);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

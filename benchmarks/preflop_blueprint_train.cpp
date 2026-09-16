@@ -51,15 +51,17 @@ void print_estimate(const std::uint64_t iteration, const double elapsed,
                     const std::uint64_t boards_processed) {
   std::cout << "{\"event\": \"evaluation\", \"iteration\": " << iteration
             << ", \"elapsed_seconds\": " << elapsed << ", \"boards_processed\": " << boards_processed
-            << ", \"evaluation_boards\": " << estimate.boards
+            << ", \"evaluation_flops\": " << estimate.flops << ", \"evaluation_boards\": " << estimate.boards
             << ", \"exact\": " << (estimate.exact ? "true" : "false")
             << ", \"ev\": [" << estimate.ev[0] << ", " << estimate.ev[1] << "]"
             << ", \"best_response\": [" << estimate.best_response[0] << ", "
             << estimate.best_response[1] << "]"
             << ", \"gain\": [" << estimate.gain[0] << ", " << estimate.gain[1] << "]"
+            << ", \"gain_lower\": [" << estimate.gain_lower[0] << ", " << estimate.gain_lower[1] << "]"
             << ", \"gain_standard_error\": [" << estimate.gain_standard_error[0] << ", "
             << estimate.gain_standard_error[1] << "]"
             << ", \"max_gain\": " << estimate.max_gain
+            << ", \"max_gain_lower\": " << estimate.max_gain_lower
             << ", \"max_gain_half_width\": " << estimate.max_gain_half_width
             << ", \"nashconv\": " << estimate.nashconv
             << ", \"normalized_dev\": " << estimate.normalized_dev
@@ -78,14 +80,25 @@ int main(const int argc, char **argv) {
     std::filesystem::path checkpoint_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
-    std::uint32_t evaluation_boards = 2'000U;
+    std::uint32_t evaluation_flops = 20U;
     std::uint64_t evaluate_every = 10U;
     // Diagnostic exact mode: the first N boards drawn with the training seed
     // form a fixed, equally weighted board list processed in full every
     // iteration and evaluated exactly.
     std::uint32_t fixed_boards = 0U;
     bool permute_suits = false;
+    // Evaluate the (resumed) state once with --eval-flops and exit: used to
+    // compare checkpoints on the same evaluation flops (same --eval-seed).
+    bool evaluate_only = false;
+    // --eval-seed: applied after a checkpoint load (the identity of a resumed
+    // run keeps the configured seed), so a restored state can be evaluated on
+    // fresh flops.
+    std::optional<std::uint64_t> evaluation_seed;
     pb::TrainerConfig config;
+    // Blueprint defaults (P6 report section 5): DCFR with alternating updates
+    // converges two to three times faster than Linear simultaneous on HU10.
+    config.scheme = pb::WeightingScheme::Dcfr;
+    config.update_mode = pb::UpdateMode::Alternating;
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
       if (name == "--resume") {
@@ -94,6 +107,10 @@ int main(const int argc, char **argv) {
       }
       if (name == "--permute-suits") {
         permute_suits = true;
+        continue;
+      }
+      if (name == "--eval-only") {
+        evaluate_only = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -114,8 +131,8 @@ int main(const int argc, char **argv) {
         config.batch_boards = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--threads") {
         config.threads = static_cast<unsigned>(parse_unsigned(value));
-      } else if (name == "--eval-boards") {
-        evaluation_boards = static_cast<std::uint32_t>(parse_unsigned(value));
+      } else if (name == "--eval-flops") {
+        evaluation_flops = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--eval-every") {
         evaluate_every = parse_unsigned(value);
       } else if (name == "--scheme") {
@@ -137,7 +154,7 @@ int main(const int argc, char **argv) {
       } else if (name == "--seed") {
         config.training_seed = parse_unsigned(value);
       } else if (name == "--eval-seed") {
-        config.evaluation_seed = parse_unsigned(value);
+        evaluation_seed = parse_unsigned(value);
       } else if (name == "--partition-target") {
         config.partition_target_nodes = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--fixed-boards") {
@@ -218,6 +235,9 @@ int main(const int argc, char **argv) {
                                  pb::trainer_error_name(loaded.error()));
       }
     }
+    if (evaluation_seed.has_value()) {
+      trainer.reseed_evaluation(*evaluation_seed);
+    }
     const auto &stats = compiled.value().stats();
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id
               << "\", \"tree_fingerprint\": \"" << compiled.value().fingerprint()
@@ -240,6 +260,18 @@ int main(const int argc, char **argv) {
     double evaluation_seconds = 0.0;
     bool converged = false;
     std::uint64_t process_bytes = 0U;
+    if (evaluate_only) {
+      const auto estimate = trainer.estimate_exploitability(evaluation_flops);
+      if (!estimate) {
+        throw std::runtime_error("evaluation failed");
+      }
+      evaluation_seconds += estimate.value().seconds;
+      print_estimate(trainer.iteration(),
+                     std::chrono::duration<double>(Clock::now() - started).count(),
+                     estimate.value(), pb::process_working_set_bytes(), trainer.boards_processed());
+      converged = estimate.value().meets_stop_rule(trainer.initial_pot_antes());
+      iterations = trainer.iteration();
+    }
     while (trainer.iteration() < iterations && !converged) {
       const auto telemetry = trainer.iterate();
       if (!telemetry) {
@@ -253,7 +285,7 @@ int main(const int argc, char **argv) {
       if (!evaluate) {
         continue;
       }
-      const auto estimate = trainer.estimate_exploitability(evaluation_boards);
+      const auto estimate = trainer.estimate_exploitability(evaluation_flops);
       if (!estimate) {
         throw std::runtime_error("evaluation failed");
       }

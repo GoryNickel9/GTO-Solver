@@ -1,5 +1,7 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
 
+#include "gtosd/preflop_blueprint/best_response.hpp"
+
 #include "hashing.hpp"
 
 #include <algorithm>
@@ -859,99 +861,78 @@ BucketPolicy Trainer::current_policy() const {
   return policy;
 }
 
-std::array<double, 2> Trainer::evaluate_board(const BoardWork &board, const BucketPolicy &average,
-                                              std::array<double, 2> &best_response,
-                                              Workspace &) const {
-  ValueTraversal traversal(*game_, board.context, kernel_,
-                           board.has_all_in ? &board.all_in : nullptr);
-  std::array<double, 2> ev{};
-  std::array<double, live_hand_count> values{};
-  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-    const auto opponent = static_cast<std::uint8_t>(1U - hero);
-    const ConstHandSpan reach(board.initial_reach[opponent].data(), live_hand_count);
-    static_cast<void>(traversal.evaluate(average, hero, reach, values));
-    double policy_value = 0.0;
-    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
-      policy_value +=
-          board.hand_probability[hero][hand] * board.pair_probability[hero][hand] * values[hand];
-    }
-    TraversalOptions options;
-    options.best_response = true;
-    static_cast<void>(traversal.evaluate(average, hero, reach, values, options));
-    double response_value = 0.0;
-    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
-      response_value +=
-          board.hand_probability[hero][hand] * board.pair_probability[hero][hand] * values[hand];
-    }
-    ev[hero] = policy_value;
-    best_response[hero] = response_value;
-  }
-  return ev;
-}
-
 Result<ExploitabilityEstimate, TrainerError>
-Trainer::estimate_exploitability(const std::uint32_t boards, const bool exact_on_list) {
+Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_list) {
   using Outcome = Result<ExploitabilityEstimate, TrainerError>;
   const auto started = Clock::now();
   const auto average = average_policy();
-  ExploitabilityEstimate estimate;
   const bool exact = !board_list_.empty() && (!sample_boards_ || exact_on_list);
-  const auto count = exact ? board_list_.size() : static_cast<std::size_t>(boards);
-  if (count == 0U) {
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-  }
-  std::vector<card_abstraction::BoardHistory> histories(count);
-  std::vector<double> weights(count, 1.0 / static_cast<double>(count));
+  std::vector<FlopGroup> groups;
   if (exact) {
-    histories = board_list_;
-    weights = board_weights_;
-  } else {
-    for (auto &history : histories) {
+    std::vector<WeightedBoard> boards;
+    for (std::size_t index = 0; index < board_list_.size(); ++index) {
+      boards.push_back({board_list_[index], board_weights_[index]});
+    }
+    groups = group_by_flop(boards);
+  } else if (!board_list_.empty()) {
+    if (flops == 0U) {
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    }
+    std::vector<WeightedBoard> boards;
+    for (std::uint32_t draw = 0; draw < flops; ++draw) {
       double weight = 1.0;
-      history = sample_history(evaluation_random_, weight);
+      boards.push_back({sample_history(evaluation_random_, weight), 1.0});
+    }
+    groups = group_by_flop(boards);
+  } else {
+    if (flops == 0U) {
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    }
+    for (std::uint32_t draw = 0; draw < flops; ++draw) {
+      double weight = 1.0;
+      const auto history = sample_history(evaluation_random_, weight);
+      groups.push_back(full_runouts(history.flop));
     }
   }
-  std::vector<std::array<double, 2>> evs(count);
-  std::vector<std::array<double, 2>> responses(count);
-  std::atomic<bool> failed{false};
-  run_parallel(config_.threads, count, [&](const std::size_t index, const unsigned thread) {
-    BoardWork work;
-    if (!prepare_board(histories[index], weights[index], work)) {
-      failed.store(true);
-      return;
+  BestResponseResources resources;
+  resources.ranks = resources_.ranks;
+  resources.all_in = resources_.all_in;
+  resources.catalog = resources_.catalog;
+  resources.flop = resources_.flop;
+  resources.turn = resources_.turn;
+  resources.river = resources_.river;
+  BestResponseOptions options;
+  options.threads = config_.threads;
+  if (subsets_) {
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      for (std::uint16_t combo = 0; combo < 630U; ++combo) {
+        if (hand_masks_[player][combo] != 0U) {
+          options.hand_subsets[player].push_back(combo);
+        }
+      }
     }
-    evs[index] = evaluate_board(work, average, responses[index], *workspaces_[thread]);
-  });
-  if (failed.load()) {
+  }
+  const auto report = evaluate_best_response(*game_, average, resources, groups, options);
+  if (!report) {
     return Outcome::failure(TrainerError::BoardFailure);
   }
-  estimate.boards = static_cast<std::uint32_t>(count);
+  ExploitabilityEstimate estimate;
+  estimate.flops = report.value().flops;
+  estimate.boards = report.value().boards;
   estimate.exact = exact;
   for (std::uint8_t player = 0; player < 2U; ++player) {
-    double ev_mean = 0.0;
-    double response_mean = 0.0;
-    double gain_mean = 0.0;
-    for (std::size_t index = 0; index < count; ++index) {
-      ev_mean += weights[index] * evs[index][player];
-      response_mean += weights[index] * responses[index][player];
-      gain_mean += weights[index] * (responses[index][player] - evs[index][player]);
-    }
-    double variance = 0.0;
-    if (!exact && count > 1U) {
-      for (std::size_t index = 0; index < count; ++index) {
-        const double gain = responses[index][player] - evs[index][player];
-        variance += (gain - gain_mean) * (gain - gain_mean);
-      }
-      variance /= static_cast<double>(count - 1U);
-    }
-    estimate.ev[player] = ev_mean;
-    estimate.best_response[player] = response_mean;
-    estimate.gain[player] = gain_mean;
+    estimate.ev[player] = report.value().ev[player];
+    estimate.best_response[player] = report.value().best_response[player];
+    estimate.gain[player] = report.value().gain[player];
+    estimate.gain_lower[player] = report.value().gain_lower[player];
+    const auto response_error = report.value().best_response_standard_error[player];
+    const auto ev_error = report.value().ev_standard_error[player];
     estimate.gain_standard_error[player] =
-        exact ? 0.0 : std::sqrt(variance / static_cast<double>(count));
+        exact ? 0.0 : std::sqrt(response_error * response_error + ev_error * ev_error);
   }
   const auto worst = estimate.gain[0] >= estimate.gain[1] ? 0U : 1U;
   estimate.max_gain = estimate.gain[worst];
+  estimate.max_gain_lower = report.value().max_gain_lower;
   estimate.max_gain_half_width = 1.96 * estimate.gain_standard_error[worst];
   estimate.nashconv = estimate.gain[0] + estimate.gain[1];
   estimate.normalized_dev = initial_pot_antes_ > 0.0 ? estimate.max_gain / initial_pot_antes_ : 0.0;
