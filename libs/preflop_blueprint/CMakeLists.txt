@@ -14,7 +14,9 @@ add_library(gtosd_preflop_blueprint
   src/action_labels.cpp
   src/policy_query.cpp
   src/chart_export.cpp
-  src/comparator.cpp)
+  src/comparator.cpp
+  src/postflop_tree_export.cpp
+  src/query_worker.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
 
 target_include_directories(gtosd_preflop_blueprint

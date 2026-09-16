@@ -141,6 +141,26 @@ struct PreflopActionValues {
   std::vector<std::vector<double>> class_weight;
 };
 
+// Probe of one postflop node during the evaluation of a flop group (query
+// worker, P8): the opponent reach at the node and, for a decision node of
+// the hero on the flop or turn street, the counterfactual value of every
+// action per hero combo under the average strategy, aggregated over the
+// runouts of the group. Values follow the preflop convention (opponent reach
+// and P(o|h) inside): the EV of an action given the combo is
+// action_values[a][h] / opponent_mass[h]. Chance nodes can be probed for
+// their reach only (river nodes are evaluated by the worker on the board).
+struct NodeProbe {
+  std::uint32_t node{no_node};
+  std::uint8_t hero{0U};
+  bool found{false};
+  // 630 entries: P(opponent reaches the node with a hand disjoint from h | h).
+  std::vector<double> opponent_mass;
+  // 630 entries: opponent reach at the node per opponent combo (0 when dead).
+  std::vector<double> opponent_reach;
+  // [action][630], decision nodes of the hero only.
+  std::vector<std::vector<double>> action_values;
+};
+
 // Fixed part of an evaluation: game, average strategy, resources, hand
 // subsets and the opponent reach at the preflop leaves. Copies share the
 // state and may be used from several threads for evaluate_flop.
@@ -153,6 +173,9 @@ public:
 
   // Stage one, for one flop group (thread-safe).
   [[nodiscard]] Result<FlopValues, KernelError> evaluate_flop(const FlopGroup &group) const;
+  // Stage one with a probe of one flop or turn node (see NodeProbe).
+  [[nodiscard]] Result<NodeProbe, KernelError> probe_node(const FlopGroup &group, std::uint32_t node,
+                                                         std::uint8_t hero) const;
   // Stage two over a set of flop values. With exact = true every combo must
   // be compatible with the same total weight of images (the whole catalog):
   // the standard errors are zero and the report is the exact best response.

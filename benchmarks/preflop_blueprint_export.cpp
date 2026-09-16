@@ -4,6 +4,9 @@
 //           --eval-flops M --threads T --output chart.json [--iterations N --algorithm ...]
 //   query:  ... --query-history "raise_6,call" --query-hand AhKs [--query-board 7s8d9c]
 //           prints the action distribution as JSON.
+//   tree:   ... --postflop-tree tree.json   writes the public postflop tree for the viewer.
+//   serve:  ... --serve                     persistent worker: one JSON request per stdin line
+//           ({entryNode, actionIndices, board, samplesPerAction, seed}), one JSON response per line.
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/bucket_tables.hpp"
 #include "gtosd/card_abstraction/canonical_boards.hpp"
@@ -14,6 +17,8 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/policy_query.hpp"
+#include "gtosd/preflop_blueprint/postflop_tree_export.hpp"
+#include "gtosd/preflop_blueprint/query_worker.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -115,10 +120,19 @@ int main(const int argc, char **argv) {
     std::string query_history;
     std::string query_hand;
     std::string query_board;
+    std::filesystem::path postflop_tree_path;
+    bool serve = false;
     pb::ChartExportOptions options;
-    for (int index = 1; index + 1 < argc; index += 2) {
+    for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
-      const std::string_view value = argv[index + 1];
+      if (name == "--serve") {
+        serve = true;
+        continue;
+      }
+      if (index + 1 >= argc) {
+        throw std::runtime_error("missing value for " + std::string{name});
+      }
+      const std::string_view value = argv[++index];
       if (name == "--config") {
         config_path = std::filesystem::path(value);
       } else if (name == "--resources-dir") {
@@ -147,6 +161,8 @@ int main(const int argc, char **argv) {
         query_hand = std::string(value);
       } else if (name == "--query-board") {
         query_board = std::string(value);
+      } else if (name == "--postflop-tree") {
+        postflop_tree_path = std::filesystem::path(value);
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -182,6 +198,90 @@ int main(const int argc, char **argv) {
     options.abstraction = "kmeans_buckets_" + std::to_string(info.flop_capacity) + "_" +
                           std::to_string(info.turn_capacity) + "_" +
                           std::to_string(info.river_capacity);
+
+    if (!postflop_tree_path.empty()) {
+      const auto tree = pb::export_postflop_tree(compiled.value());
+      const auto written = pb::write_text_atomically(postflop_tree_path, tree.json);
+      if (!written) {
+        throw std::runtime_error("cannot write " + postflop_tree_path.string());
+      }
+      std::cout << "{\"event\": \"postflop_tree\", \"entries\": " << compiled.value().postflop_entries().size()
+                << ", \"decision_nodes\": " << tree.stats.decision_nodes
+                << ", \"action_edges\": " << tree.stats.action_edges
+                << ", \"terminal_folds\": " << tree.stats.terminal_folds
+                << ", \"terminal_showdowns\": " << tree.stats.terminal_showdowns
+                << ", \"terminal_all_in_runouts\": " << tree.stats.terminal_all_in_runouts
+                << ", \"bytes\": " << tree.json.size() << "}\n";
+      if (output_path.empty() && query_hand.empty() && !serve) {
+        std::cout << "PREFLOP_BLUEPRINT_EXPORT=POSTFLOP_TREE\n";
+        return 0;
+      }
+    }
+
+    if (serve) {
+      auto ranks = ca::RankTable::load(resources_dir / "rank_table_v1.bin");
+      auto all_in = ca::AllInTable::load(resources_dir / "preflop_all_in_v1.bin");
+      if (!ranks || !all_in) {
+        throw std::runtime_error("resources missing");
+      }
+      pb::BestResponseResources resources;
+      resources.ranks = &ranks.value();
+      resources.all_in = &all_in.value();
+      resources.catalog = &catalog;
+      resources.flop = &flop.value();
+      resources.turn = &turn.value();
+      resources.river = &river.value();
+      const pb::QueryWorker worker(compiled.value(), policy, resources, options.threads);
+      Json ready;
+      ready["status"] = "ready";
+      ready["backend"] = "preflop_blueprint";
+      ready["configId"] = game_config.value().id;
+      ready["treeFingerprint"] = compiled.value().fingerprint();
+      ready["policyFingerprint"] = pb::policy_fingerprint(policy);
+      ready["policySource"] = info.source;
+      ready["iterations"] = options.iterations;
+      ready["capacities"] = {info.flop_capacity, info.turn_capacity, info.river_capacity};
+      std::cout << ready.dump() << '\n' << std::flush;
+      std::string line;
+      while (std::getline(std::cin, line)) {
+        if (line.empty()) {
+          continue;
+        }
+        Json reply;
+        try {
+          const auto request_json = Json::parse(line);
+          pb::QueryWorkerRequest request;
+          request.entry_node = request_json.at("entryNode").get<std::uint32_t>();
+          for (const auto &index : request_json.value("actionIndices", Json::array())) {
+            request.action_indices.push_back(index.get<std::uint32_t>());
+          }
+          for (const auto &card : request_json.value("board", Json::array())) {
+            const auto parsed = gtosd::parse_card(card.get<std::string>());
+            if (!parsed) {
+              throw std::runtime_error("invalid board card " + card.get<std::string>());
+            }
+            request.board.push_back(parsed.value());
+          }
+          request.samples_per_action = request_json.value("samplesPerAction", 64U);
+          request.seed = request_json.value("seed", 20260913ULL);
+          const auto response = worker.query(request);
+          if (!response) {
+            throw std::runtime_error(std::string("query failed: ") +
+                                     pb::query_worker_error_name(response.error()));
+          }
+          std::vector<gtosd::CardId> visible(request.board.begin(),
+                                             request.board.begin() + response.value().visible_board_cards);
+          reply = Json::parse(pb::query_worker_response_json(response.value(), compiled.value(), visible));
+          reply["samplesPerAction"] = request.samples_per_action;
+          reply["iterations"] = options.iterations;
+          reply["backend"] = "preflop_blueprint";
+        } catch (const std::exception &error) {
+          reply = Json{{"error", error.what()}};
+        }
+        std::cout << reply.dump() << '\n' << std::flush;
+      }
+      return 0;
+    }
 
     if (!query_hand.empty()) {
       pb::QueryTables tables;

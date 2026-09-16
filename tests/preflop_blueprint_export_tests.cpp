@@ -10,6 +10,8 @@
 #include "gtosd/preflop_blueprint/comparator.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/policy_query.hpp"
+#include "gtosd/preflop_blueprint/postflop_tree_export.hpp"
+#include "gtosd/preflop_blueprint/query_worker.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -463,6 +465,183 @@ void test_comparator(const std::filesystem::path &scratch) {
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+
+// Postflop tree export (viewer schema) and query worker: structure, counts,
+// exactness flags and the EV of the flop root against the evaluator.
+void test_postflop_tree_and_worker(const Resources &resources) {
+  const auto started = Clock::now();
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_full_v1.json"));
+  require(game.has_value(), "HU10 full compiles");
+  const auto policy = random_policy(game.value(), resources, 9U);
+  const auto tree = pb::export_postflop_tree(game.value());
+  const auto json = Json::parse(tree.json);
+  require(json["schema"] == "gtosd.hu_postflop_public_tree.v1", "tree schema");
+  require(json["treeFingerprint"] == game.value().fingerprint(), "tree fingerprint");
+  const auto entries = game.value().postflop_entries();
+  require(json["entries"].size() == entries.size(), "one export entry per postflop entry");
+  std::size_t decisions = 0U;
+  std::size_t edges = 0U;
+  for (const auto &node : game.value().nodes()) {
+    if (node.postflop_entry != pb::no_entry && node.kind == pb::NodeKind::Decision) {
+      ++decisions;
+      edges += node.action_count;
+    }
+  }
+  require(json["nodes"].size() == decisions && tree.stats.decision_nodes == decisions, "decision node count");
+  require(tree.stats.action_edges == edges && json["stats"]["actionEdges"] == edges, "action edge count");
+  for (std::size_t index = 0; index < json["nodes"].size(); ++index) {
+    const auto &node = json["nodes"][index];
+    require(node["id"] == index, "contiguous export ids");
+    require(tree.export_id[node["compiledNode"].get<std::uint32_t>()] == index, "export id map");
+    const std::string street = node["state"]["street"];
+    require(street == "flop" || street == "turn" || street == "river", "postflop street");
+    for (const auto &action : node["actions"]) {
+      const std::string kind = action["target"]["kind"];
+      require(kind == "decision" || kind == "chance" || kind == "terminal", "target kind");
+    }
+  }
+  for (const auto &entry : json["entries"]) {
+    require(entry["target"]["kind"] == "chance" && entry["target"]["deals"] == "flop", "entries deal the flop");
+  }
+
+  const auto view = response_resources(resources);
+  const pb::QueryWorker worker(game.value(), policy, view, 4U);
+  const auto entry = entries.front();
+  const auto flop_root = game.value().edges_of(entry)[0].child;
+  const auto board = std::vector<gtosd::CardId>{card("7s"), card("8d"), card("9c"), card("Kh"), card("Ac")};
+
+  pb::QueryWorkerRequest request;
+  request.entry_node = entry;
+  request.board = board;
+  request.samples_per_action = 16U;
+  const auto flop = worker.query(request);
+  require(flop.has_value(), "flop query succeeds");
+  require(flop.value().node == flop_root && flop.value().street == gtosd::Street::Flop, "flop node");
+  require(!flop.value().exact && flop.value().runouts == 16U, "flop EVs use the sampled runouts");
+  require(flop.value().visible_board_cards == 3U, "flop shows three cards");
+  std::size_t live_classes = 0U;
+  for (const auto &row : flop.value().rows) {
+    if (row.live_physical_combos == 0U) {
+      continue;
+    }
+    ++live_classes;
+    double total = 0.0;
+    for (const auto &action : row.actions) {
+      total += action.frequency;
+      require(std::isfinite(action.ev_ante), "finite action EV");
+    }
+    require(std::abs(total - 1.0) <= 1e-9, "class frequencies sum to one");
+  }
+  require(live_classes == 81U, "every class has live combos on a three-card board");
+  double range_total = 0.0;
+  for (const auto value : flop.value().action_frequencies) {
+    range_total += value;
+  }
+  require(std::abs(range_total - 1.0) <= 1e-9, "range frequencies sum to one");
+
+  // Flop root with all runouts: the class strategy EV equals the evaluator's
+  // entry values divided by the opponent mass, class by class.
+  request.samples_per_action = 4096U;
+  const auto exact_flop = worker.query(request);
+  require(exact_flop.has_value() && exact_flop.value().exact && exact_flop.value().runouts == 1056U,
+          "all runouts make the flop query exact");
+  const auto evaluator = pb::BestResponseEvaluator::create(game.value(), policy, view);
+  require(evaluator.has_value(), "evaluator creates");
+  std::array<gtosd::CardId, 3> flop_cards{board[0], board[1], board[2]};
+  std::sort(flop_cards.begin(), flop_cards.end());
+  const auto group = pb::full_runouts(flop_cards);
+  const auto values = evaluator.value().evaluate_flop(group);
+  const auto hero = game.value().nodes()[flop_root].actor;
+  const auto probe = evaluator.value().probe_node(group, flop_root, hero);
+  require(values.has_value() && probe.has_value() && probe.value().found, "evaluator values and probe");
+  const auto &entry_values = values.value().entry_values[hero][pb::average_mode][0];
+  const auto &table = ca::combo_table();
+  for (std::uint8_t hand_class = 0; hand_class < 81U; ++hand_class) {
+    double numerator = 0.0;
+    double mass = 0.0;
+    for (std::uint16_t combo = 0; combo < 630U; ++combo) {
+      if (table.hand_class[combo] != hand_class || values.value().compatible[combo] == 0U) {
+        continue;
+      }
+      numerator += entry_values[combo];
+      mass += probe.value().opponent_mass[combo];
+    }
+    if (mass <= 0.0) {
+      continue;
+    }
+    require(close(exact_flop.value().rows[hand_class].strategy_ev_ante, numerator / mass, 1e-9),
+            "worker class EV equals the evaluator at the flop root");
+  }
+
+  // Turn and river nodes through passive actions.
+  auto node = flop_root;
+  std::vector<std::uint32_t> indices;
+  while (game.value().nodes()[node].street == gtosd::Street::Flop) {
+    const auto labels = pb::edge_labels(game.value(), node);
+    const auto passive = std::find_if(labels.begin(), labels.end(), [](const std::string &label) {
+      return label == "check" || label == "call";
+    });
+    require(passive != labels.end(), "passive action exists");
+    const auto choice = static_cast<std::uint32_t>(passive - labels.begin());
+    indices.push_back(choice);
+    node = game.value().edges_of(node)[choice].child;
+    while (game.value().nodes()[node].kind == pb::NodeKind::Chance) {
+      node = game.value().edges_of(node)[0].child;
+    }
+  }
+  request.action_indices = indices;
+  const auto turn = worker.query(request);
+  require(turn.has_value() && turn.value().street == gtosd::Street::Turn, "turn query reaches the turn");
+  require(turn.value().exact && turn.value().runouts == 32U && turn.value().visible_board_cards == 4U,
+          "turn EVs enumerate the 32 rivers");
+  while (game.value().nodes()[node].street == gtosd::Street::Turn) {
+    const auto labels = pb::edge_labels(game.value(), node);
+    const auto passive = std::find_if(labels.begin(), labels.end(), [](const std::string &label) {
+      return label == "check" || label == "call";
+    });
+    const auto choice = static_cast<std::uint32_t>(passive - labels.begin());
+    indices.push_back(choice);
+    node = game.value().edges_of(node)[choice].child;
+    while (game.value().nodes()[node].kind == pb::NodeKind::Chance) {
+      node = game.value().edges_of(node)[0].child;
+    }
+  }
+  request.action_indices = indices;
+  const auto river = worker.query(request);
+  require(river.has_value() && river.value().street == gtosd::Street::River, "river query reaches the river");
+  require(river.value().exact && river.value().visible_board_cards == 5U, "river EVs are exact");
+  std::size_t river_live = 0U;
+  for (const auto &row : river.value().rows) {
+    if (row.live_physical_combos > 0U) {
+      ++river_live;
+      double total = 0.0;
+      for (const auto &action : row.actions) {
+        total += action.frequency;
+        require(std::isfinite(action.ev_ante), "finite river EV");
+      }
+      require(std::abs(total - 1.0) <= 1e-9, "river class frequencies sum to one");
+    }
+  }
+  require(river_live > 60U, "most classes stay live on a five-card board");
+  const auto response_json = Json::parse(pb::query_worker_response_json(river.value(), game.value(), board));
+  require(response_json["rows"].size() == 81U && response_json["board"].size() == 5U, "response JSON layout");
+
+  // Errors.
+  pb::QueryWorkerRequest bad = request;
+  bad.entry_node = flop_root;
+  require(!worker.query(bad).has_value() && worker.query(bad).error() == pb::QueryWorkerError::InvalidEntry,
+          "non-entry node rejected");
+  pb::QueryWorkerRequest short_board = request;
+  short_board.board = {card("7s"), card("8d"), card("9c")};
+  require(!worker.query(short_board).has_value() &&
+              worker.query(short_board).error() == pb::QueryWorkerError::MissingBoard,
+          "river query without the river card rejected");
+  std::cout << "postflop tree and worker: " << decisions << " decision nodes, " << edges
+            << " edges, flop " << flop.value().seconds << " s, exact flop " << exact_flop.value().seconds
+            << " s, turn " << turn.value().seconds << " s, river " << river.value().seconds << " s, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -489,6 +668,7 @@ int main(const int argc, char **argv) {
     test_query(resources);
     test_chart_export(resources, scratch_dir);
     test_comparator(scratch_dir);
+    test_postflop_tree_and_worker(resources);
     std::cout << "PREFLOP_BLUEPRINT_EXPORT_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {
