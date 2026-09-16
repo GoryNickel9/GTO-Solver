@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P7 (certificatore board-major), in avvio dopo il gate P6 |
-| Ultimo gate | P6 PASS (2026-09-16) |
+| Fase in corso | P8 (export, query, comparatore, viewer), in avvio dopo il gate P7 |
+| Ultimo gate | P7 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p7-certifier` (P0–P6 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p8-export` (P0–P7 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | in attesa dell'utente (Q2 per il gate P3, Q3 per il gate P6): i gate prevedono il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | P7: passata esatta board-major su tutti i flop canonici con i runout (stessa aggregazione non chiaroveggente di P6, decisione 30), stimatore campionato come comando separato, certificato JSON; verifica contro il `FiniteGame` lossless e contro la stima campionata di P6 |
+| Prossimo passo | P8: export della policy e dei certificati in formato consultabile, query per mano e per nodo, comparatore fra soluzioni, aggiornamento del viewer; badge `EXACT` dal certificato P7 |
 
 ## 2. Registro dei gate
 
@@ -32,7 +32,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P4 Modello di gioco e albero compilato | PASS | 2026-09-15 | `89f159e` | [P4_GAME_MODEL.md](P4_GAME_MODEL.md) |
 | P5 Kernel vettoriale HU | PASS | 2026-09-15 | `738e361` | [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md) |
 | P6 Trainer con campionamento del board | PASS | 2026-09-16 | `c5ccef1` | [P6_TRAINER.md](P6_TRAINER.md) |
-| P7 Certificatore board-major | NOT_RUN | | | |
+| P7 Certificatore board-major | PASS | 2026-09-16 | `01b7ca4` | [P7_CERTIFIER.md](P7_CERTIFIER.md) |
 | P8 Export, query, comparatore, viewer | NOT_RUN | | | |
 | P9 Qualificazione CO40 e archiviazione | NOT_RUN | | | |
 | P10 Conteggio alberi 3-way | NOT_RUN | | | |
@@ -52,6 +52,49 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P7 — certificatore board-major, gate PASS
+
+Fatto: valutatore di best response riorganizzato in due stadi (`BestResponseEvaluator`: valori
+per flop, aggregazione preflop) con immagini di orbita: ogni flop canonico valutato una volta con
+tutti i runout e sommato su tutte le sue immagini nei semi (la strategia è simmetrica: valore di
+`h` su `σ(F)` = valore di `σ⁻¹(h)` su `F`), 573 flop canonici per 7.140 fisici e 605.088 board;
+certificatore a chunk paralleli con stato ripristinabile (record per flop con checksum, header con
+fingerprint di albero, policy e catalogo), passate parziali per la misura, comando campionato (lo
+stimatore P6), certificato JSON `gtosd.preflop_blueprint_certificate.v1`; file di policy
+`GTOSDPOL` scritto dal trainer (`--policy-out`) e letto dal certificatore; helper binari
+condivisi; header di test condiviso. Report: [P7_CERTIFIER.md](P7_CERTIFIER.md).
+Comandi: `ctest -L p7 -V`; esportazione delle policy dai checkpoint P6 (HU10 ridotto e completo,
+DCFR 200/500/1.000, 2.000 iterazioni); `gtosd_preflop_blueprint_certify` esatto su HU10 ridotto e
+completo (8 thread, chunk 16, stato su file); parziale su CO40 (policy uniforme, 4 flop) per la
+proiezione; campionato a 60 flop su HU10 completo; suite `preflop_blueprint`.
+Risultati: test 373.068 asserzioni PASS (orbite = enumerazione fisica entro `1e-12` per combo e
+in aggregato; ripresa bit-identica; comando campionato = trainer entro `1e-12`; round trip della
+policy). Passata esatta: HU10 ridotto EV CO 0,136084 a, guadagni 0,003031 /
+0,004200 a, nashconv 0,007231 a, limite inferiore 0,001379 / 0,000905 a, 453 s (0,79 s per flop
+canonico, 8 thread), 251 MB; HU10 completo EV CO 0,136090 a, guadagni 0,003118 / 0,004228 a,
+nashconv 0,007346 a, 2.220 s (ripresa da 16 flop dopo l'interruzione della sessione), 324 MB;
+`EV_CO + EV_BTN = 0` entro `1e-16`. Exploitability vera del blueprint HU10: 0,0042 a = 0,14 % del
+piatto (D3 1 %, D2 0,1 a). Stimatore P6 sugli stessi checkpoint: naive a 1.000 flop 0,0187 ±
+0,0079 a, limite inferiore 0,0014 a: il valore esatto sta nell'intervallo e il bias della naive
+(0,0145 a) è `0,46/√1000` come misurato in P6. CO40 parziale (4 flop canonici, 40 fisici, 4.224
+board, policy uniforme): 563 s, 141 s per flop canonico, 1,07 s per board per thread, proiezione
+22,4 h per la passata esatta con 8 thread. Suite `preflop_blueprint`: 18/18 PASS in 506 s.
+Fallimenti: (1) `Result<T,E>` richiede `T` costruibile per default: `load_policy` restituisce un
+`unique_ptr`. (2) Invariante "EV a somma zero" applicato a un sottoinsieme di flop: vale solo sul
+catalogo completo perché i due giocatori condizionano su conteggi di flop compatibili diversi;
+test limitato alla passata esatta. (3) Script di refactoring degli helper binari lasciato a metà
+(parentesi residua in `trainer.cpp`): corretto al primo build.
+Dubbi: (1) Su CO40 il costo per board (1,07 s) è 12 volte la traversata P5 per i
+terminali all-in di flop e turn (kernel showdown per terminale e per board): le riduzioni
+(kernel all-in per (flop, turn), simmetrie sotto lo stabilizzatore, `float`) sono rinviate dopo
+P9 per §3.4, ma la passata esatta CO40 va pianificata come lavoro notturno con ripresa. (2)
+L'invariante "EV a somma zero" vale solo sul catalogo completo: sulle stime campionate i due
+giocatori condizionano su insiemi di flop compatibili diversi; da tenere presente nel viewer P8
+quando mostra EV campionati.
+Prossimo passo: merge di P7 nell'integrazione; P8 (export, query, comparatore, viewer) sul
+branch `feature/preflop-blueprint-p8-export`, con il certificato P7 come fonte del numero
+dichiarato e il file di policy come formato di scambio.
 
 ### 2026-09-16 — P6 — trainer con campionamento del board, gate PASS
 
@@ -305,6 +348,7 @@ Prossimo passo: P0.
 | Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. | aperta | |
 | Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Suite CTest completa eseguita sull'integrazione dopo il merge di P3: 65/65 PASS (4 test legacy passano solo con il manifest v1 in LF, vedi voce P5 del diario; nel checkout dell'utente il file è in LF). In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 e P5 sono proceduti sull'integrazione. | aperta | |
 | Q3 | 2026-09-16 | D21 prevede al gate P6 il merge dell'integrazione in `main` con tag `preflop-blueprint-p6-hu10`; stesso blocco di Q2 (`main` è il working tree dell'utente). Comandi proposti nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P6 trainer and physical best response, gate P6 PASS"` poi `git tag -a preflop-blueprint-p6-hu10 -m "P6 gate PASS: HU10 D3 with the sampled estimator at 1000 flops"`. Da eseguire dopo (o insieme a) Q2. Nel frattempo P7 procede sull'integrazione. | aperta | |
+| Q4 | 2026-09-16 | P8 prevede l'aggiornamento del viewer `tools/hu_preflop_chart_viewer` (repository separato, D18, escluso da git in questo repository) perché legga il nuovo export e mostri i badge `ESTIMATED` / `CERTIFIED_EXACT` / `EXTERNAL_REFERENCE`; il gate P8 richiede "viewer navigabile con un export HU10". L'agent lavora nel worktree e non modifica né il repository del viewer né il working tree dell'utente. Proposta: l'agent produce in questo repository l'export nel formato che il generatore del viewer già legge (`preflop_nodes` con `history`, `strategy`, `action_ev` per classe), lo schema e un validatore statico registrato in CTest; la modifica del generatore (vincoli fissi su 20 nodi, fingerprint CO40 e path Monker da rendere generici; badge di stato dal certificato P7) va fatta nel repository del viewer: la esegue l'utente, oppure l'utente autorizza l'agent a modificare `tools/hu_preflop_chart_viewer` nel suo working tree. Fino alla risposta il criterio "viewer navigabile" del gate P8 resta INCONCLUSIVE e le altre parti di P8 procedono. | aperta | |
 
 ## 5. Decisioni prese dall'agent
 
@@ -343,3 +387,6 @@ Prossimo passo: P0.
 | 31 | 2026-09-15 | P6 | Valutazione campionata per flop: `M` flop campionati dal catalogo con tutti i 33 × 32 runout enumerati, errore standard sui gruppi di flop; le liste esplicite sono raggruppate per flop | l'aggregazione non chiaroveggente al flop e al turn richiede tutti i runout del prefisso; board completi indipendenti non bastano |
 | 32 | 2026-09-16 | P6 | Lo stimatore campionato riporta la stima naive (scelta e valore preflop sugli stessi `M` flop, distorta verso l'alto come `1/√M`) e un limite inferiore senza selezione (strategia media al preflop, best response esatta dal flop in poi); il gate D3 usa la naive più semiampiezza con `M = 1.000` flop; la cross-fit provata è stata scartata | sul checkpoint HU10 ridotto `naive · √M` è costante (≈ 0,4–0,5 a) per `M = 5…160` mentre il limite inferiore è ≈ 0,001 a: la stima P6.3 a `M` piccolo misura solo rumore di selezione; la cross-fit era negativa a ogni `M` |
 | 33 | 2026-09-16 | P6 | Default dell'eseguibile di training: DCFR 1,5/0/2 con update alternato; la libreria mantiene Linear simultaneo come default (l'oracolo `FiniteGame` lo richiede). `--eval-seed` riavvia l'RNG di valutazione dopo il caricamento del checkpoint invece di entrare nell'identità | su HU10 completo il Linear simultaneo resta 2–3 volte sopra il DCFR alternato a parità di flop di valutazione (0,143 contro 0,045 a a `M = 60`); una rivalutazione su flop freschi non deve cambiare l'identità del run ripreso |
+| 34 | 2026-09-16 | P7 | La passata esatta valuta ogni flop canonico una volta con tutti i runout fisici e somma sulle immagini della sua orbita nei semi (`FlopValues.images`); `aggregate(exact)` verifica che ogni combo sia compatibile con 5.984 flop fisici | la strategia media è simmetrica nei semi per costruzione; verificato contro l'enumerazione fisica entro `1e-12` per combo; costo 573 flop invece di 7.140 |
+| 35 | 2026-09-16 | P7 | Formato di policy `GTOSDPOL` (fingerprint dell'albero, capacità, sorgente, tabella densa, checksum) scritto dal trainer e letto dal certificatore; il certificato porta i fingerprint di regole, albero, catalogo, tabelle bucket e policy | il certificatore non deve ricostruire il trainer (identità, semi) per leggere una strategia; P8 esporta dallo stesso file |
+| 36 | 2026-09-16 | P7 | Stato del certificatore accodato per chunk con checksum per record; ripresa dall'header (albero, policy, catalogo); il numero dichiarato nei certificati è quello esatto, la regola D3 campionata resta la regola di arresto del training | passata ripresa bit-identica; su CO40 la passata esatta costa 22 h e va spezzata; la stima campionata sovrastima di `≈ 0,46/√M` |
