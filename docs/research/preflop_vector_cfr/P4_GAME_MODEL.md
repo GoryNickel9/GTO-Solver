@@ -46,6 +46,10 @@ Il minimo bet preflop è il button blind (uguale all'ante nelle fixture; il lega
 | `ctest -L p4`: test e report CO40 | PASS (0,6 s + 0,5 s) |
 | Controllo di isolamento (`gtosd_preflop_blueprint_dependency_check`) | PASS, 26 sorgenti guardati |
 
+> **Nota (2026-09-16).** Queste verifiche su CO40 sono strutturali: azioni legali, transizioni e
+> payoff contro il core. Non dicono nulla sui valori calcolati dal CFR vettoriale su quella
+> struttura, che non hanno un oracolo esatto (P6 §3.1).
+
 ## 4. Conteggi CO40
 
 | Grandezza | Albero compilato | Analizzatore legacy (misurato il 2026-09-15) | Roadmap §P4 (documenti anteriori) |

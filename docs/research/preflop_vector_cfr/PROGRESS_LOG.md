@@ -53,6 +53,76 @@ Dubbi: ...
 Prossimo passo: ...
 ```
 
+### 2026-09-16 — P9 (diagnosi) — mappa della copertura: non esiste un oracolo esatto su CO40
+
+Fatto: risposta alla domanda dell'utente "non c'è l'oracolo esatto in CO40?". Verificata riga per
+riga la copertura dei test: la risposta è **no**, e la parte mancante è esattamente quella dove il
+trainer produce i numeri sbagliati. Nessuna modifica al codice; note aggiunte a P4 §3, P5 §2,
+P6 §3 e P7 §4.
+Comandi: lettura di `tests/preflop_blueprint_{trainer,oracle,kernel,game,certifier}_tests.cpp`,
+`tests/preflop_blueprint_test_support.hpp` (`oracle_boards`, `oracle_subsets`),
+`libs/preflop_blueprint/src/game_model.cpp` (`action_config_at`); report del gioco sulle due
+fixture (`gtosd_preflop_blueprint_game --config …`).
+Risultati. Copertura attuale:
+
+| Componente | Confronto con una sorgente indipendente | Gioco su cui gira | Tolleranza |
+|---|---|---|---|
+| Albero e payoff (P4) | ogni nodo decisionale contro `legal_actions` / `apply_action` del core, ogni figlio e ogni payoff | **CO40**, HU10 completa, HU10 ridotta, 3-way | uguaglianza esatta |
+| Kernel per board (P5) | valori per combo contro il solver postflop (`ProductionDcfr`, solo come oracolo di test, D5) | **CO40**, tre sottogiochi **river** dalla radice pubblica (57 / 117 / 57 nodi, al massimo 3 rilanci) | `1,4·10⁻¹⁴` a |
+| Policy a bucket contro la stessa strategia per mano (P5) | traversata completa dell'albero | **CO40**, un board casuale | `1e-12` |
+| CFR vettoriale: regret cumulati, somme di strategia, strategia media (P6) | `solve_finite_game` sul gioco ridotto costruito come `FiniteGame` | **solo HU10 ridotta** (3 board, 6 combo per giocatore, 25 iterazioni Linear) | `1,7·10⁻¹³` / `1,4·10⁻¹⁴` / `1e-9` |
+| Best response fisica non chiaroveggente (P6) | `calculate_nash_conv` del `FiniteGame` lossless | **solo HU10 ridotta** | `1e-9` |
+| Passata esatta per immagini d'orbita (P7) | enumerazione fisica dei 5.984 flop per combo | **solo HU10** | `1e-12` |
+| Errore di astrazione (policy a bucket contro policy per mano) | exploitability fisica delle due policy | **solo HU10** | misurato: 1–3 millesimi di ante |
+
+Le prime tre righe girano su CO40, le altre quattro no. Ma le prime tre verificano il *gioco* e i
+*kernel per board*, non il CFR: l'unica verifica dei valori del CFR vettoriale, della media e della
+best response è l'oracolo `FiniteGame`, e gira solo su HU10 ridotta. Codice attraversato da CO40 e
+mai confrontato con una sorgente esatta:
+
+1. **Più di una size di apertura.** `action_config_at` al livello 0 passa l'intera lista di open a
+   `target_config`; l'oracolo ne ha una sola (5 a), CO40 ne ha due (6 a e 10 a).
+2. **Risposta indicizzata sull'open scelto.** Il ramo livello 1 che cerca `state.current_bet` fra gli
+   open e usa `response_targets[index]` non è nel gioco dell'oracolo: dalla modifica delle fixture
+   del 2026-09-16 (pomeriggio) HU10 ha `response_target_units: []` e il livello 1 passa da
+   `all_in_config`. **Prima di quella modifica l'oracolo copriva questo ramo** (open 3 a / 5 a,
+   risposte 6 a / 8 a): la copertura è stata persa come effetto collaterale, non dichiarato allora.
+3. **Rilancio incompleto configurato.** `allow_configured_incomplete_raise` è `true` in entrambe le
+   fixture, ma ha effetto solo insieme a una response target: nell'oracolo attuale non ha effetto.
+4. **Livello ≥ 2 dopo un rilancio configurato.** Su CO40 è il nodo in cui l'apertore affronta la
+   risposta a 10,5 a e può solo foldare, chiamare o spingere. Nell'oracolo il livello 2 esiste solo
+   dopo un all-in, cioè per il ramo `facing_all_in` → `passive_config`, che è codice diverso.
+5. **Profondità dei rilanci.** Il gioco dell'oracolo ha `maximum_raise_count = 1`, CO40 ne ha 4: la
+   ricorsione del CFR vettoriale con più rilanci nella stessa street non è mai stata confrontata
+   con un solver esatto.
+6. **Postflop profondo.** Nell'oracolo, dopo open e call restano 5 a su un piatto di 11 a: una sola
+   decisione effettiva per street. Su CO40 restano 33 a su un piatto di 15 a con tre street.
+   L'aggregazione non chiaroveggente flop → turn → river (decisione 30) è verificata esattamente
+   solo nella forma piatta di HU10.
+7. **Nessuna seconda strada su CO40.** Il certificatore condivide con il trainer albero compilato,
+   contesto di board e kernel: un difetto comune ai due non produce una discrepanza, produce solo
+   una exploitability alta, che è quello che si osserva. Su HU10 la seconda strada esiste ed è il
+   `FiniteGame` lossless.
+8. **Errore di astrazione mai misurato a 40 a.** Le tabelle bucket sono costruite dalle sole carte e
+   non dipendono dallo stack; la loro adeguatezza con 34 a dietro è un'assunzione, non una misura.
+   Su HU10 la misura esiste (1–3 millesimi di ante) e la procedura per farla è quella di P6.
+
+Da qui la struttura del problema: il certificato dice "questa strategia è sfruttabile per 0,657 a";
+non dice se la strategia è sbagliata perché il CFR ha calcolato male i regret su quei rami (punti
+1–6) o perché ha calcolato bene dentro un'astrazione troppo grossolana per 40 a (punto 8). Le due
+cause richiedono interventi opposti e nessuna delle due è esclusa dai dati attuali.
+Fallimenti: (1) La modifica delle fixture HU10 del 2026-09-16 (pomeriggio, richiesta dell'utente)
+ha ridotto la copertura dell'oracolo esatto: i rami "seconda size di apertura" e "risposta
+indicizzata", prima inclusi, ora non sono più in nessun test di valore. Va registrato come costo
+non dichiarato di quella modifica: HU10 resta il gioco di validazione, ma ora valida meno.
+Dubbi: (1) L'oracolo a 40 a va costruito come quello di P6 (gioco ridotto `FiniteGame` con pochi
+board e poche combo) ma con la struttura preflop di CO40; la dimensione cresce con i rilanci
+(`maximum_raise_count = 4`) e va misurata prima di scriverlo. (2) Se l'oracolo a 40 a passasse,
+resterebbe il punto 8 e servirebbe la misura dell'errore di astrazione a 40 a, che è un secondo
+esperimento indipendente.
+Prossimo passo: nessuno finché l'utente non decide; il piano resta quello della voce precedente,
+con i punti 2 (oracolo esatto a 40 a) e 1/4 (astrazione) come alternative da separare.
+
 ### 2026-09-16 — P9 (diagnosi) — perché CO40 test non converge e piano per la convergenza
 
 Fatto: analisi delle tre certificazioni esatte di CO40 test (voce precedente) per rispondere
