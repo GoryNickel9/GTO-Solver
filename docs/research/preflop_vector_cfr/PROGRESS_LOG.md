@@ -18,7 +18,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
-| Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto) |
+| Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Prossimo passo | P9: qualificazione CO40 (albero completo: certificato esatto da 22,4 h; variante di test a una size postflop: 1,35 h) secondo l'indicazione dell'utente; export e confronto Monker descrittivo |
 
 ## 2. Registro dei gate
