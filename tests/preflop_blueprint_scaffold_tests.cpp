@@ -68,8 +68,8 @@ void test_fixtures() {
               hu10_full.button_blind == antes(1),
           "HU10 full: stack 10a, ante 1a, button blind 1a");
   require(hu10_full.open_targets.size() == 1U && hu10_full.open_targets[0] == antes(5) &&
-              hu10_full.response_targets.size() == 1U && hu10_full.response_targets[0] == antes(8),
-          "HU10 full: open 5a (full pot), response 8a");
+              hu10_full.response_targets.empty(),
+          "HU10 full: open 5a (full pot), re-raise only all-in");
   require(hu10_full.postflop_sizes.size() == 3U &&
               hu10_full.postflop_sizes[0].basis_points() == 3'300U &&
               hu10_full.postflop_sizes[1].basis_points() == 6'600U &&
@@ -159,15 +159,18 @@ void test_rejections() {
                    pb::ConfigError::InvalidStructure, "BTN not last");
   expect_rejection(replace_first(valid, "[\"CO\", \"BTN\"]", "[\"BTN\", \"BTN\"]"),
                    pb::ConfigError::InvalidStructure, "duplicate positions");
-  expect_rejection(replace_first(valid, "[80000]", "[80000, 90000]"),
+  expect_rejection(replace_first(co40, "[105000, 145000]", "[105000]"),
                    pb::ConfigError::InvalidStructure, "response count mismatch");
+  const auto only_all_in = pb::parse_game_config_json(replace_first(co40, "[105000, 145000]", "[]"));
+  require(only_all_in.has_value() && only_all_in.value().response_targets.empty(),
+          "empty response list accepted: re-raise only all-in");
   expect_rejection(replace_first(co40, "[60000, 100000]", "[100000, 60000]"),
                    pb::ConfigError::InvalidValue, "open targets not increasing");
   expect_rejection(replace_first(co40, "[105000, 145000]", "[60000, 145000]"),
                    pb::ConfigError::InvalidValue, "response not above its open");
   expect_rejection(replace_first(valid, "[50000]", "[10000]"),
                    pb::ConfigError::InvalidValue, "open target not above the button blind");
-  expect_rejection(replace_first(valid, "[80000]", "[100000]"),
+  expect_rejection(replace_first(co40, "[105000, 145000]", "[105000, 400000]"),
                    pb::ConfigError::InvalidValue, "response reaching the stack");
   expect_rejection(replace_first(valid, "[3300, 6600, 12000]", "[]"),
                    pb::ConfigError::InvalidStructure, "no postflop sizes");

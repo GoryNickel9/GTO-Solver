@@ -180,7 +180,8 @@ nodo interno con un arco di fold l'EV di fold di ogni classe è uguale al payoff
 `1e-9`.
 
 **Nuove size.** Per decisione dell'utente (2026-09-16) le fixture HU10 (completa e ridotta) hanno
-una sola size preflop: open 5 a (full pot), risposta 8 a. L'albero cambia, quindi policy,
+una sola size preflop: open 5 a (full pot), risposta 8 a (superata da §10: nessuna size di
+risposta, contro l'open solo fold, call e all-in). L'albero cambia, quindi policy,
 certificati ed export HU10 di P6–P8 sono superati da quelli di questa sezione (`out/r2_*`,
 `out/policy2_*`), prodotti con lo stesso protocollo: 2.000 iterazioni DCFR alternato con
 `B = 32`, 8 thread, valutazione ogni 500 iterazioni su 20 flop; certificazione esatta P7; export
@@ -206,3 +207,62 @@ range call 99,7 % / fold 0,3 %, J6o segnata "quasi mai su questo percorso" (reac
 tutte le classi); vista postflop con l'albero nuovo (5 entry, 600 nodi decisionali, 1.444 archi)
 e query sul board `Ac Kd Qh` dopo call e check: CO check 49,2 %, bet 1,32 a 40,8 %, bet 2,64 a
 4,5 %, bet 4,8 a 4,7 %, all-in 0,8 %; AA EV +3,92 a su 32 runout campionati.
+
+## 10. Contro l'open 5a solo fold/call/all-in, scaling e curva exploitability/iterazioni (2026-09-16)
+
+**Regola dell'utente.** In HU10 contro l'open 5 a BTN ha solo fold, call e all-in: le fixture HU10
+hanno `response_target_units: []` (decisione 46), l'albero completo passa a 1.501 nodi (584
+decisioni; preflop 22 nodi, 8 decisioni, 3 entry postflop), il ridotto a 193 nodi. Gli export di
+§9 sono superati da quelli di questa sezione (`out/r3_*`, `out/policy3_*`), stesso protocollo.
+
+| Gioco | Badge | Nodi / decisioni | Nodi preflop | EV radice (60 flop) | Exploitability esatta | Stima a 20 flop (it. 2.000) | Training 2.000 it. | Certificazione | Export | Albero |
+|---|---|---|---|---|---|---|---|---|---|---|
+| HU10 completo (33/66/120 %) | `CERTIFIED_EXACT` | 1.501 / 584 | 8 | 0,1325 a | **0,0040 a** (0,13 % del piatto), limite inferiore 0,0017 a | 0,0931 ± 0,0632 a | 7 min + 5 min valutazioni | 35 min (3.7 s per flop) | 3 min | `fnv1a64:bc9e7b35ad8c021d` |
+| HU10 ridotto (66 %) | `CERTIFIED_EXACT` | 193 / 80 | 8 | 0,1324 a | **0,0040 a** (0,13 % del piatto), limite inferiore 0,0016 a | 0,0932 ± 0,0636 a | 5 min + 26 s valutazioni | 3 min (0.3 s per flop) | 22 s | `fnv1a64:cc5c2f8eea9aac57` |
+
+Albero postflop esportato: 3 entry. 576 nodi decisionali. 1.396 archi.
+
+**Scaling sui thread** (HU10 completo, i3-10100F 4 core / 8 thread; training 100 iterazioni con
+`B = 32`; certificatore 8 flop con `--chunk 8`):
+
+| Thread | Training s/iterazione | Speedup | Certificatore s/flop | Speedup |
+|---|---|---|---|---|
+| 1 | 0,433 | 1,00 | 13,3 | 1,00 |
+| 2 | 0,276 | 1,57 | 7,3 | 1,83 |
+| 4 | 0,211 | 2,05 | 4,2 | 3,15 |
+| 8 | 0,194 | 2,23 | 3,2 | 4,16 |
+
+Con `--chunk 1` il certificatore resta a 13,4 s per flop a qualsiasi numero di thread (il
+parallelismo è sui flop dello stesso chunk): le proiezioni misurate con chunk 1 (CO40-TEST, §9:
+1,35 h) e chunk 2 (CO40 completo, P7 §5: 22,4 h) vanno corrette di 4,2 e 2,3 volte:
+CO40-TEST ≈ 2,0 s per flop (≈ 20 min per la passata esatta), CO40 completo 64 s per flop canonico misurati su 8 flop con chunk 8 e 8 thread, passata esatta ≈ 10,2 h (era 22,4 h)
+(decisione 47).
+
+**Curva exploitability esatta / iterazioni** (DCFR alternato, `B = 32`, 8 thread; certificazione
+esatta su 573 flop canonici):
+
+| Albero | Iterazioni | Training (8 thread) | Exploitability esatta | % piatto | nashconv | Certificazione |
+|---|---|---|---|---|---|---|
+| HU10 ridotto | 10 | 2 s | 0,0470 a | 1,57 % | 0,0628 a | 3 min |
+| HU10 ridotto | 20 | 3 s | 0,0191 a | 0,64 % | 0,0358 a | 3 min |
+| HU10 ridotto | 30 | 5 s | 0,0167 a | 0,56 % | 0,0314 a | 3 min |
+| HU10 ridotto | 50 | 9 s | 0,0131 a | 0,44 % | 0,0245 a | 3 min |
+| HU10 ridotto | 100 | 17 s | 0,0103 a | 0,34 % | 0,0187 a | 3 min |
+| HU10 ridotto | 200 | 32 s | 0,0071 a | 0,24 % | 0,0128 a | 3 min |
+| HU10 ridotto | 400 | 63 s | 0,0058 a | 0,19 % | 0,0114 a | 3 min |
+| HU10 ridotto | 700 | 109 s | 0,0050 a | 0,17 % | 0,0091 a | 3 min |
+| HU10 ridotto | 1000 | 3 min | 0,0042 a | 0,14 % | 0,0077 a | 3 min |
+| HU10 ridotto | 2000 | 5 min | 0,0040 a | 0,13 % | 0,0074 a | 3 min |
+| HU10 completo | 50 | 9 s | 0,0302 a | 1,01 % | 0,0464 a | 32 min |
+| HU10 completo | 200 | 37 s | 0,0111 a | 0,37 % | 0,0180 a | 33 min |
+| HU10 completo | 2000 | 7 min | 0,0040 a | 0,13 % | 0,0076 a | 35 min |
+
+
+Verifica nel browser (server locale sulla policy `policy3_full_dcfr_200.bin`): sorgente
+"Blueprint HU10 (open 5a, risposta solo all-in) - DCFR alternato, certificazione esatta", 8 nodi
+preflop; radice CO: raise 5a 43,3 %, all-in 31,0 %, fold 25,7 % (AA: raise 5a 58,6 % EV +3,86 a,
+all-in 41,4 % EV +3,94 a); nodo `CO raise 5a → BTN`: solo all-in 57,3 %, call 22,6 %, fold 20,1 %
+(AA: all-in 88,8 % EV +4,47 a, call 11,2 % EV +4,11 a, fold EV −2,000 a); vista postflop con
+l'albero nuovo (3 entry, 576 nodi decisionali, 1.396 archi) e query sul board `Ac Kd Qh` dopo
+call e check: CO check 46,2 %, bet 1,32 a 43,3 %, bet 2,64 a 8,5 %, bet 4,8 a 0,6 %, all-in 1,4 %;
+AA EV +3,64 a su 32 runout campionati.
