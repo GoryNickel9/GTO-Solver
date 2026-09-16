@@ -81,6 +81,12 @@ public:
   // with positive reach; evaluating such a terminal then fails the traversal.
   ValueTraversal(const CompiledGame &game, const BoardContext &context,
                  const ShowdownKernel &kernel, const AllInEquityCache *all_in);
+  // Points the traversal at another board of the same game, keeping the
+  // workspace.
+  void rebind(const BoardContext &context, const AllInEquityCache *all_in) noexcept {
+    context_ = &context;
+    all_in_ = all_in;
+  }
 
   // Root counterfactual values of hero in antes for the given opponent reach.
   [[nodiscard]] Result<bool, KernelError> evaluate(const Policy &policy, std::uint8_t hero,

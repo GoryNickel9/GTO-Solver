@@ -366,3 +366,22 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_train preflop_blueprint_train.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_train
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_train)
+  add_test(NAME gtosd_preflop_blueprint_train_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10)
+  set_tests_properties(gtosd_preflop_blueprint_train_smoke
+    PROPERTIES LABELS "preflop_blueprint;p6;trainer")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_train_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()

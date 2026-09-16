@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P6 (trainer con campionamento del board), in avvio |
-| Ultimo gate | P5 PASS (2026-09-15) |
+| Fase in corso | P7 (certificatore board-major), in avvio dopo il gate P6 |
+| Ultimo gate | P6 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p6-trainer` (P0–P5 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p7-certifier` (P0–P6 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
-| Merge su `main` | in attesa dell'utente (Q2): il gate P3 prevede il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | P6: trainer CFR vettoriale con board campionati (batch `B`, update Linear/DCFR una volta per iterazione, parallelismo per sottoalbero, stimatore campionato di exploitability con intervallo e regola D3, checkpoint atomico), oracolo `FiniteGame` sul gioco ridotto |
+| Merge su `main` | in attesa dell'utente (Q2 per il gate P3, Q3 per il gate P6): i gate prevedono il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
+| Prossimo passo | P7: passata esatta board-major su tutti i flop canonici con i runout (stessa aggregazione non chiaroveggente di P6, decisione 30), stimatore campionato come comando separato, certificato JSON; verifica contro il `FiniteGame` lossless e contro la stima campionata di P6 |
 
 ## 2. Registro dei gate
 
@@ -31,7 +31,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P3 Clustering e tabelle bucket | PASS | 2026-09-15 | `c7bb762` | [P3_BUCKET_TABLES.md](P3_BUCKET_TABLES.md) |
 | P4 Modello di gioco e albero compilato | PASS | 2026-09-15 | `89f159e` | [P4_GAME_MODEL.md](P4_GAME_MODEL.md) |
 | P5 Kernel vettoriale HU | PASS | 2026-09-15 | `738e361` | [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md) |
-| P6 Trainer con campionamento del board | NOT_RUN | | | |
+| P6 Trainer con campionamento del board | PASS | 2026-09-16 | `c5ccef1` | [P6_TRAINER.md](P6_TRAINER.md) |
 | P7 Certificatore board-major | NOT_RUN | | | |
 | P8 Export, query, comparatore, viewer | NOT_RUN | | | |
 | P9 Qualificazione CO40 e archiviazione | NOT_RUN | | | |
@@ -52,6 +52,68 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P6 — trainer con campionamento del board, gate PASS
+
+Fatto: trainer CFR vettoriale con campionamento pubblico del board (batch `B`, un passaggio per
+giocatore, snapshot della strategia per passaggio, Linear/DCFR una volta per iterazione,
+partizione dell'albero in unità indipendenti dal numero di thread con un solo scrittore per
+cella, hook esatti per liste di board pesate e sottoinsiemi di mani, checkpoint atomico con
+checksum e identità, telemetria); oracolo `FiniteGame` a bucket sul gioco ridotto; valutatore di
+best response fisica **non chiaroveggente** (`best_response.hpp`): valori aggregati sulle carte
+future prima del massimo, campionamento di `M` flop con tutti i 33 × 32 runout, errore standard
+sui flop, stima naive più limite inferiore senza selezione (strategia media al preflop, best
+response esatta dal flop in poi); test contro il `FiniteGame` lossless; eseguibile con
+`--eval-flops`, `--eval-only`, `--eval-seed` dopo il caricamento, `--fixed-boards`,
+`--permute-suits`, default DCFR alternato. Report: [P6_TRAINER.md](P6_TRAINER.md).
+Comandi: `ctest -L p6 -V`; `gtosd_preflop_blueprint_train` su HU10 completo e ridotto (2.000
+iterazioni, `B = 32`, 8 thread, 20 flop ogni 250 iterazioni) con DCFR alternato e Linear
+simultaneo e con le tabelle 50/100/200, 200/500/1.000, 500/1.000/2.000; `--fixed-boards 1/4/8/64`
+sul ridotto (valutazione esatta sulla lista); `--eval-only` sui checkpoint finali con 60 flop,
+scansione `M = 5…160` sul ridotto e `M = 1.000` per il gate; suite `preflop_blueprint` completa.
+Risultati: oracolo regret entro `1,7·10⁻¹³`, strategia media entro `1e-9`; bit-identità 1/2/4/8
+thread e partizioni 1/8/58 unità; ripresa identica; best response fisica = `calculate_nash_conv`
+del `FiniteGame` lossless entro `1e-9` (nashconv 0,0931106). HU10 completo, DCFR alternato,
+200/500/1.000: 0,31 s per iterazione, valutazione a 20 flop 93–122 s (21.120 board, circa 42 ms
+per board per thread), memoria 245 MB; massimo guadagno naive 0,099 / 0,108 / 0,084 / 0,091 /
+0,108 / 0,137 / 0,122 / 0,085 a alle iterazioni 250…2.000 (semiampiezza 0,04–0,10 a), EV CO
+0,136 a. Stesse iterazioni e stessi flop: HU10 ridotto 0,100…0,085 a; 50/100/200 0,098…0,087 a;
+500/1.000/2.000 0,104…0,087 a; Linear simultaneo 0,18…0,24 a. Scansione di `M` sul checkpoint
+ridotto: naive 0,239 / 0,171 / 0,093 / 0,066 / 0,045 / 0,037 a per `M = 5…160` (`naive · √M` ≈
+0,4–0,5 a costante), limite inferiore 0,0005–0,0013 a. Checkpoint completi a `M = 60`: naive
+0,045 / 0,048 / 0,046 a (± 0,019) per 200/500/1.000, 50/100/200, 500/1.000/2.000 con limite
+inferiore 0,0013 / 0,0019 / 0,0010 a; Linear simultaneo naive 0,143 a, limite 0,0031 a. Board
+fissi (valutazione esatta sulla lista, DCFR): 1 board 0,014 a a 100 iterazioni (regola D3
+soddisfatta), 4 board 0,014 a, 8 board 0,025 a, 64 board 0,111 a, piatti fra 100 e 500
+iterazioni (chiaroveggente: `1·10⁻⁴` / 0,105 / 0,163 / 0,473 a). Gate a `M = 1.000` flop
+(1.056.000 board): massimo guadagno naive 0,0187 a + semiampiezza
+0,0079 a = 0,0266 a ≤ 0,03 a (guadagni [0,0108, 0,0187] a, limite inferiore [0,0014, 0,0009] a,
+4.796 s, 98 MB): `PREFLOP_BLUEPRINT_TRAIN=CONVERGED`, gate PASS. Suite `preflop_blueprint`: 16/16 PASS in 318 s.
+Fallimenti: (1) lo stimatore P6.3 come prescritto (massimo per board) era chiaroveggente sopra
+il river: plateau di circa 1 a su HU10 diagnosticato prima come pavimento dell'astrazione, poi
+smentito dal confronto di capacità e dal test a semi ruotati; circa tre ore di esperimenti da
+scartare, erratum alla roadmap §5, decisioni 30–31. (2) La stima naive sui flop campionati
+sceglie e valuta le azioni preflop sugli stessi flop: bias `≈ 0,4/√M` a; la cross-fit provata
+era negativa a ogni `M` e va scartata; aggiunto il limite inferiore senza selezione (decisione
+32). (3) Semiampiezza non nulla sulle valutazioni esatte per lista: corretta a zero. (4)
+`--eval-only` con `--eval-seed` diverso respinto per identità: il seme ora riavvia l'RNG dopo il
+caricamento (decisione 33). (5) Errori del test di partizione (batch, identità, RNG) e link
+mancante di `gtosd::best_response`: vedi report.
+Dubbi: (1) tre capacità e due alberi danno curve naive identiche alla terza cifra perché la
+stima a 20 flop è dominata dal rumore di selezione comune; la capacità si vede solo nel limite
+inferiore (1,9 → 1,3 → 1,0 millesimi di ante), tutto sotto D3. (2) Il gioco ristretto a 64 board
+fissi ha best response 0,111 a con un solo runout per flop: non misura l'astrazione del gioco
+completo, dove il limite inferiore è di millesimi; la modalità a board fissi serve solo per la
+convergenza. (3) La valutazione costa più del training (882 s contro 618 s su 2.000 iterazioni)
+e la stima campionata per D3 richiede `M ≈ 1.000` flop (circa 95 min su HU10 completo): la
+passata esatta di P7 su 573 flop canonici (605.088 board, circa 50 min) è più economica ed
+esatta; conviene usare la stima campionata con `M` piccolo solo per la curva e certificare con P7.
+(4) Nella stima campionata il giocatore più "sfruttabile" è il BTN, nel gioco a 64 board il CO:
+entrambi effetti del rumore/della restrizione, non della strategia.
+Prossimo passo: merge di P6 nell'integrazione; il gate P6 prevede anche il merge dell'integrazione
+in `main` con tag `preflop-blueprint-p6-hu10` (Q3, stesso blocco di Q2); P7 sul branch
+`feature/preflop-blueprint-p7-certifier` con la stessa aggregazione non chiaroveggente su tutti i
+flop canonici.
 
 ### 2026-09-15 — P5 — kernel vettoriale HU, gate PASS
 
@@ -242,6 +304,7 @@ Prossimo passo: P0.
 |---|---|---|---|---|
 | Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. | aperta | |
 | Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Suite CTest completa eseguita sull'integrazione dopo il merge di P3: 65/65 PASS (4 test legacy passano solo con il manifest v1 in LF, vedi voce P5 del diario; nel checkout dell'utente il file è in LF). In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 e P5 sono proceduti sull'integrazione. | aperta | |
+| Q3 | 2026-09-16 | D21 prevede al gate P6 il merge dell'integrazione in `main` con tag `preflop-blueprint-p6-hu10`; stesso blocco di Q2 (`main` è il working tree dell'utente). Comandi proposti nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P6 trainer and physical best response, gate P6 PASS"` poi `git tag -a preflop-blueprint-p6-hu10 -m "P6 gate PASS: HU10 D3 with the sampled estimator at 1000 flops"`. Da eseguire dopo (o insieme a) Q2. Nel frattempo P7 procede sull'integrazione. | aperta | |
 
 ## 5. Decisioni prese dall'agent
 
@@ -271,3 +334,12 @@ Prossimo passo: P0.
 | 22 | 2026-09-15 | P5 | Interfaccia `Policy` per (nodo, mano) con due implementazioni: `BucketPolicy` sul layout P4 e `HandPolicy` per mano | la traversata non conosce l'astrazione; gli oracoli e i test prescrivono strategie per combo, il trainer userà i bucket |
 | 23 | 2026-09-15 | P5 | Oracolo postflop confrontato sul valore condizionale `v[h] / D[h]` invece che sul valore controfattuale grezzo | il solver postflop normalizza la reach avversaria con una costante interna; il rapporto elimina la costante e resta un confronto esatto per combo |
 | 24 | 2026-09-15 | P5 | Tabella all-in e rank caricate dalla directory `out/preflop_blueprint_resources` quando presente, altrimenti ricostruite nel test | i test restano autosufficienti su altre macchine (circa un minuto di costruzione) e rapidi su quella di riferimento |
+| 25 | 2026-09-15 | P6 | Nel regret `R += w_B · P(h) · P(o\|h) · (v_a − v)` il fattore `cf_reach` di §5 è già dentro `v` (valori dei kernel con la reach avversaria); non viene moltiplicato di nuovo | formula del CFR vettoriale standard; uguaglianza entro `1e-13` con `solve_finite_game` sul gioco ridotto |
+| 26 | 2026-09-15 | P6 | Modalità di aggiornamento `Simultaneous` (uno snapshot per iterazione, entrambi i giocatori) come default e `Alternating` come opzione; Linear default, DCFR 1,5/0/2 opzione | la modalità simultanea riproduce esattamente `solve_finite_game` Linear (oracolo P6); DCFR alternato converge più in fretta nelle prove e resta lo sfidante di §3.4 |
+| 27 | 2026-09-15 | P6 | Partizione dell'albero in unità di `max(256, nodi/128)` nodi, indipendente dal numero di thread; parte alta seriale; incrementi scritti direttamente nelle celle (un solo scrittore) senza buffer di delta | bit-identità per qualsiasi numero di thread e di unità verificata (0 celle diverse fra 1, 8 e 58 unità); nessuna copia dello stato (D14, roadmap P6.2) |
+| 28 | 2026-09-15 | P6 | Lo stimatore D3 misura la best response fisica contro la strategia media a bucket, come prescrive P6.3. **Corretta dalla decisione 30**: il massimo per mano *su ogni board* è chiaroveggente sopra il river | la best response del gioco astratto con recall imperfetto non è calcolabile per board; quella fisica la domina ed è la misura che P7 certificherà |
+| 29 | 2026-09-15 | P6 | Boards del batch pesati `1/B`; RNG di training e di valutazione separati e salvati nel checkpoint | costanti comuni alle iterazioni non cambiano il regret matching; la valutazione non perturba il training e la ripresa è bit-identica |
+| 30 | 2026-09-15 | P6 | Best response fisica **non chiaroveggente**: ai nodi dell'eroe i valori delle azioni sono aggregati sulle carte future prima del massimo (turn: somma sui river; flop: somma sui turn; preflop: somma sui flop); il massimo per board resta solo al river. Erratum aggiunto alla roadmap §5 | la best response per board di P6.3/§5 dava un responder che conosce turn e river: plateau di circa 1 a su HU10 e pavimenti crescenti con il numero di board fissi (0,105/0,163/0,473 a per 4/8/64 board) non dovuti all'astrazione; l'aggregazione corretta coincide con `calculate_nash_conv` del `FiniteGame` lossless entro `1e-9` |
+| 31 | 2026-09-15 | P6 | Valutazione campionata per flop: `M` flop campionati dal catalogo con tutti i 33 × 32 runout enumerati, errore standard sui gruppi di flop; le liste esplicite sono raggruppate per flop | l'aggregazione non chiaroveggente al flop e al turn richiede tutti i runout del prefisso; board completi indipendenti non bastano |
+| 32 | 2026-09-16 | P6 | Lo stimatore campionato riporta la stima naive (scelta e valore preflop sugli stessi `M` flop, distorta verso l'alto come `1/√M`) e un limite inferiore senza selezione (strategia media al preflop, best response esatta dal flop in poi); il gate D3 usa la naive più semiampiezza con `M = 1.000` flop; la cross-fit provata è stata scartata | sul checkpoint HU10 ridotto `naive · √M` è costante (≈ 0,4–0,5 a) per `M = 5…160` mentre il limite inferiore è ≈ 0,001 a: la stima P6.3 a `M` piccolo misura solo rumore di selezione; la cross-fit era negativa a ogni `M` |
+| 33 | 2026-09-16 | P6 | Default dell'eseguibile di training: DCFR 1,5/0/2 con update alternato; la libreria mantiene Linear simultaneo come default (l'oracolo `FiniteGame` lo richiede). `--eval-seed` riavvia l'RNG di valutazione dopo il caricamento del checkpoint invece di entrare nell'identità | su HU10 completo il Linear simultaneo resta 2–3 volte sopra il DCFR alternato a parità di flop di valutazione (0,143 contro 0,045 a a `M = 60`); una rivalutazione su flop freschi non deve cambiare l'identità del run ripreso |
