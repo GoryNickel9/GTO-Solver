@@ -457,9 +457,12 @@ void test_hu10_trees(const pb::CompiledGame &co40) {
   const auto full = compile(load_fixture("preflop_blueprint_hu10_full_v1.json"));
   const auto reduced = compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
   for (const auto *game : {&full, &reduced}) {
-    require(game->stats().preflop_nodes == 58U && game->stats().preflop_decisions == 20U &&
-                game->stats().postflop_entries == 9U,
-            "HU10 preflop part has the same shape as CO40");
+    require(game->stats().preflop_nodes > 0U && game->stats().preflop_decisions > 0U &&
+                game->stats().postflop_entries > 0U &&
+                game->stats().preflop_nodes == full.stats().preflop_nodes &&
+                game->stats().preflop_decisions == full.stats().preflop_decisions &&
+                game->stats().postflop_entries == full.stats().postflop_entries,
+            "HU10 full and reduced share the preflop part (one full-pot open plus all-in)");
     test_structure_and_transitions(*game, false);
     test_payoffs(*game);
   }

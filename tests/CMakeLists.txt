@@ -444,7 +444,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         --schema ${PROJECT_SOURCE_DIR}/schemas/preflop_blueprint_game.schema.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_full_v1.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
-        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_test_v1.json)
     set_tests_properties(gtosd_preflop_blueprint_fixture_schema
       PROPERTIES LABELS "preflop_blueprint;p0;schema" SKIP_RETURN_CODE 77)
   else()
