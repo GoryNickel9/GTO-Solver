@@ -50,6 +50,13 @@ deterministica nell'ordine dei flop: passata ripresa e continua coincidono bit p
 
 ## 4. Passata esatta su HU10
 
+> **Nota (2026-09-16).** Il certificatore condivide con il trainer l'albero compilato, il contesto
+> di board e i kernel: misura la exploitability *dentro* quel gioco compilato. Un difetto comune ai
+> due non produce una discrepanza fra loro, produce una exploitability alta. La verifica di
+> esattezza di §3 (immagini d'orbita contro enumerazione fisica) gira solo su HU10; su CO40 non
+> esiste una seconda strada indipendente come il `FiniteGame` lossless di P6 (P6 §3.1).
+
+
 Policy: strategia media dei checkpoint P6 (DCFR alternato, 200/500/1.000, 2.000 iterazioni, `B = 32`),
 esportata con `--policy-out`. Passata esatta con 8 thread, chunk di 16 flop, stato su file.
 
