@@ -282,3 +282,16 @@ export in 2 min (20 nodi preflop, albero postflop 9 entry /
 436 nodi decisionali / 992 archi). Il viewer ha tre sorgenti (HU10 completo, HU10 ridotto,
 CO40 test: DCFR alternato, 2.000 iterazioni); la navigazione postflop resta su HU10 completo (decisione 48). Verdetto D2:
 REJECTED per la variante di test con questi run; il gate P9 resta sul CO40 completo.
+
+**CO40 di test con una sola apertura full pot (sera, 2026-09-16).** Su richiesta dell'utente la
+fixture di test passa a una apertura 5 a e una risposta 13 a, calcolate come piatto intero (piatto
+3 a, CO paga 1 a e rilancia di 4 a; BTN paga 3 a e rilancia di 10 a). Albero 637 nodi
+(256 decisioni), preflop 12 decisioni e 5 entry:
+
+| Albero di test | Training 2.000 it. | Exploitability esatta | % piatto | nashconv | Limite inferiore dal flop | EV CO | Certificazione |
+|---|---|---|---|---|---|---|---|
+| due aperture (6 a / 10 a), due risposte | 8 min | **0,6569 a** | 21,9 % | 1,0278 a | 0,2622 a | −0,1448 a | 23 min |
+| una apertura 5 a, una risposta 13 a | 7 min | **0,6516 a** | 21,7 % | 1,0257 a | 0,2638 a | −0,1429 a | 12 min |
+
+**La riduzione non risolve**: da 0,6569 a 0,6516 a, cioè lo stesso ordine di grandezza, con un albero quasi dimezzato (637 nodi contro 1.129) e una parte preflop di 12 decisioni contro 20. La fixture CO40 principale resta con le size Monker.
+Nota sulle etichette: nell'export e nel viewer la risposta compare come `raise_12` perché l'etichetta conta le fiche aggiunte dall'attore e BTN ha già 1 a di blind; la puntata raggiunta è 13 a, verificata sullo stato pubblico (dopo il call piatto 28 a e 26 a dietro a testa). Le aperture coincidono con il target perché CO non ha nulla nella puntata.
