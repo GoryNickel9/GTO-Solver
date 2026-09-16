@@ -39,6 +39,7 @@ public:
                                             std::uint32_t row_index) const noexcept;
   [[nodiscard]] const StateLayout &layout() const noexcept { return layout_; }
   [[nodiscard]] std::vector<double> &table() noexcept { return table_; }
+  [[nodiscard]] const std::vector<double> &table() const noexcept { return table_; }
   [[nodiscard]] const double *probabilities(std::uint32_t node, std::uint16_t hand,
                                             const BoardContext &context) const noexcept override;
 

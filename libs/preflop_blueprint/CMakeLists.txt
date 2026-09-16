@@ -8,7 +8,9 @@ add_library(gtosd_preflop_blueprint
   src/kernels.cpp
   src/traversal.cpp
   src/trainer.cpp
-  src/best_response.cpp)
+  src/best_response.cpp
+  src/policy_file.cpp
+  src/certifier.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
 
 target_include_directories(gtosd_preflop_blueprint

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <optional>
 #include <thread>
 #include <utility>
 
@@ -20,8 +21,6 @@ namespace ca = card_abstraction;
 using Clock = std::chrono::steady_clock;
 constexpr std::size_t combo_total = 630U;
 constexpr double ante_scale = 1.0 / static_cast<double>(Money::units_per_ante);
-constexpr std::size_t response_mode = 0U;
-constexpr std::size_t average_mode = 1U;
 
 bool disjoint(const std::array<std::uint8_t, 2> &left,
               const std::array<std::uint8_t, 2> &right) noexcept {
@@ -209,13 +208,6 @@ private:
   const Policies &policies_;
 };
 
-struct FlopResult {
-  // [hero][mode][entry index] -> value per combo (zero when not live).
-  std::array<std::array<std::vector<std::vector<double>>, 2>, 2> entry_values{};
-  std::vector<std::uint8_t> compatible;
-  bool ok{true};
-};
-
 double terminal_payoff(const CompiledGame &game, const CompiledNode &node, const std::uint8_t hero,
                        std::array<double, 3> &showdown) {
   if (node.kind == NodeKind::TerminalFold) {
@@ -251,23 +243,71 @@ void restrict_to_universe(const Universe &from, const std::vector<double> &reach
   }
 }
 
-struct Context {
-  const CompiledGame &game;
-  const BucketPolicy &average;
-  const BestResponseResources &resources;
-  std::array<std::vector<double>, 2> allowed; // per player, 630 entries of 0/1
+template <typename Function>
+void run_parallel(const unsigned threads, const std::size_t count, Function &&function) {
+  const auto workers = static_cast<std::size_t>(std::max(1U, threads));
+  if (workers <= 1U || count <= 1U) {
+    for (std::size_t index = 0; index < count; ++index) {
+      function(index);
+    }
+    return;
+  }
+  std::atomic<std::size_t> next{0U};
+  const auto worker = [&] {
+    for (std::size_t index = next.fetch_add(1U); index < count; index = next.fetch_add(1U)) {
+      function(index);
+    }
+  };
+  std::vector<std::thread> pool;
+  const auto spawned = std::min(workers, count) - 1U;
+  for (std::size_t thread = 0; thread < spawned; ++thread) {
+    pool.emplace_back(worker);
+  }
+  worker();
+  for (auto &thread : pool) {
+    thread.join();
+  }
+}
+
+// Combo of sigma^-1(h) for every combo h.
+std::array<std::uint16_t, combo_total> combo_preimage(const ca::SuitPermutation &permutation) {
+  const auto inverse = ca::inverse_permutation(permutation);
+  std::array<std::uint16_t, combo_total> map{};
+  for (std::uint16_t combo = 0; combo < combo_total; ++combo) {
+    const auto cards = cards_of(combo);
+    const auto first = ca::permute_card(CardId::from_index(cards[0]).value(), inverse);
+    const auto second = ca::permute_card(CardId::from_index(cards[1]).value(), inverse);
+    map[combo] = ca::combo_index(first, second);
+  }
+  return map;
+}
+
+} // namespace
+
+struct BestResponseEvaluator::Impl {
+  const CompiledGame *game{nullptr};
+  const BucketPolicy *average{nullptr};
+  BestResponseResources resources;
+  std::array<std::vector<double>, 2> allowed{}; // per player, 630 entries of 0/1
   Universe preflop;
   // Opponent reach at the preflop leaves, per hero.
-  std::array<NodeVectors, 2> preflop_leaf_reach;
+  std::array<NodeVectors, 2> preflop_leaf_reach{};
   std::vector<std::uint32_t> entries;
   Policies policies;
 };
 
-FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
-  const auto &game = context.game;
+namespace {
+
+FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const FlopGroup &group,
+                               bool &ok) {
+  const auto &game = *context.game;
   const auto &resources = context.resources;
   const auto node_count = game.nodes().size();
-  FlopResult result;
+  FlopValues result;
+  result.flop = group.flop;
+  result.weight = group.weight;
+  result.boards = static_cast<std::uint32_t>(group.boards.size());
+  ok = true;
   StreetEvaluator evaluator(game, context.policies);
   const HeadsUpShowdownKernel kernel;
 
@@ -277,7 +317,7 @@ FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
   }
   auto flop_universe = make_universe(flop_mask);
   if (!assign_bucket_rows(flop_universe, *resources.flop, resources.catalog->lookup_flop(group.flop))) {
-    result.ok = false;
+    ok = false;
     return result;
   }
   result.compatible.assign(combo_total, 0U);
@@ -357,15 +397,13 @@ FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
   std::array<double, live_hand_count> tied{};
   std::array<double, live_hand_count> better{};
   std::array<double, live_hand_count> river_count{};
-  std::array<double, live_hand_count> ones{};
-  ones.fill(1.0);
 
   for (const auto &[turn_card, turn_boards] : by_turn) {
     const auto turn = CardId::from_index(turn_card).value();
     auto turn_universe = make_universe(flop_mask | turn.mask());
     if (!assign_bucket_rows(turn_universe, *resources.turn,
                             resources.catalog->lookup_flop_turn(group.flop, turn))) {
-      result.ok = false;
+      ok = false;
       return result;
     }
     std::vector<double> turn_weight(turn_universe.size(), 0.0);
@@ -435,7 +473,7 @@ FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
     for (const auto *board : turn_boards) {
       const auto built = BoardContext::build(board->history, *resources.ranks, &tables);
       if (!built) {
-        result.ok = false;
+        ok = false;
         return result;
       }
       const auto &board_context = built.value();
@@ -463,9 +501,9 @@ FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
             for (auto mode : {response_mode, average_mode}) {
               TraversalOptions options;
               options.best_response = mode == response_mode;
-              if (!traversal->evaluate_from(game.edges_of(static_cast<std::uint32_t>(node))[0].child, context.average, hero,
+              if (!traversal->evaluate_from(game.edges_of(static_cast<std::uint32_t>(node))[0].child, *context.average, hero,
                                             reach465, values465, options)) {
-                result.ok = false;
+                ok = false;
                 return result;
               }
               auto &target = turn_leaf_values[hero][mode][node];
@@ -564,32 +602,6 @@ FlopResult evaluate_flop_group(const Context &context, const FlopGroup &group) {
   return result;
 }
 
-template <typename Function>
-void run_parallel(const unsigned threads, const std::size_t count, Function &&function) {
-  const auto workers = static_cast<std::size_t>(std::max(1U, threads));
-  if (workers <= 1U || count <= 1U) {
-    for (std::size_t index = 0; index < count; ++index) {
-      function(index);
-    }
-    return;
-  }
-  std::atomic<std::size_t> next{0U};
-  const auto worker = [&] {
-    for (std::size_t index = next.fetch_add(1U); index < count; index = next.fetch_add(1U)) {
-      function(index);
-    }
-  };
-  std::vector<std::thread> pool;
-  const auto spawned = std::min(workers, count) - 1U;
-  for (std::size_t thread = 0; thread < spawned; ++thread) {
-    pool.emplace_back(worker);
-  }
-  worker();
-  for (auto &thread : pool) {
-    thread.join();
-  }
-}
-
 } // namespace
 
 FlopGroup full_runouts(const std::array<CardId, 3> &flop, const double weight) {
@@ -644,14 +656,36 @@ std::vector<FlopGroup> group_by_flop(const std::vector<WeightedBoard> &boards) {
   return result;
 }
 
-Result<BestResponseReport, KernelError>
-evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
-                       const BestResponseResources &resources,
-                       const std::vector<FlopGroup> &groups, const BestResponseOptions &options) {
-  using Outcome = Result<BestResponseReport, KernelError>;
-  const auto started = Clock::now();
+std::vector<ca::SuitPermutation> flop_images(const std::array<CardId, 3> &flop) {
+  std::vector<ca::SuitPermutation> images;
+  std::vector<std::array<std::uint8_t, 3>> seen;
+  for (const auto &permutation : ca::all_suit_permutations()) {
+    std::array<std::uint8_t, 3> image{};
+    for (std::size_t index = 0; index < 3U; ++index) {
+      image[index] = ca::permute_card(flop[index], permutation).value();
+    }
+    std::sort(image.begin(), image.end());
+    if (std::find(seen.begin(), seen.end(), image) != seen.end()) {
+      continue;
+    }
+    seen.push_back(image);
+    images.push_back(permutation);
+  }
+  // Keep the identity first (it is the representative of the flop itself).
+  const auto identity = std::find(images.begin(), images.end(), ca::identity_permutation);
+  if (identity != images.end() && identity != images.begin()) {
+    std::iter_swap(images.begin(), identity);
+  }
+  return images;
+}
+
+Result<BestResponseEvaluator, KernelError>
+BestResponseEvaluator::create(const CompiledGame &game, const BucketPolicy &average,
+                              const BestResponseResources &resources,
+                              const std::array<std::vector<std::uint16_t>, 2> &hand_subsets) {
+  using Outcome = Result<BestResponseEvaluator, KernelError>;
   if (resources.ranks == nullptr || resources.catalog == nullptr || resources.flop == nullptr ||
-      resources.turn == nullptr || resources.river == nullptr || groups.empty() ||
+      resources.turn == nullptr || resources.river == nullptr ||
       game.config().player_count != 2U) {
     return Outcome::failure(KernelError::MissingTable);
   }
@@ -659,87 +693,155 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
   if (stats.preflop_all_in_runouts > 0U && resources.all_in == nullptr) {
     return Outcome::failure(KernelError::MissingTable);
   }
-  const auto node_count = game.nodes().size();
-
-  Context context{game, average, resources, {}, make_universe(0U), {}, game.postflop_entries(), {}};
-  context.policies.average = &average;
-  assign_class_rows(context.preflop);
+  auto impl = std::make_shared<Impl>();
+  impl->game = &game;
+  impl->average = &average;
+  impl->resources = resources;
+  impl->preflop = make_universe(0U);
+  impl->entries = game.postflop_entries();
+  impl->policies.average = &average;
+  assign_class_rows(impl->preflop);
   for (std::uint8_t player = 0; player < 2U; ++player) {
-    context.allowed[player].assign(combo_total, 1.0);
-    if (!options.hand_subsets[player].empty()) {
-      context.allowed[player].assign(combo_total, 0.0);
-      for (const auto combo : options.hand_subsets[player]) {
+    impl->allowed[player].assign(combo_total, 1.0);
+    if (!hand_subsets[player].empty()) {
+      impl->allowed[player].assign(combo_total, 0.0);
+      for (const auto combo : hand_subsets[player]) {
         if (combo >= combo_total) {
           return Outcome::failure(KernelError::InvalidInput);
         }
-        context.allowed[player][combo] = 1.0;
+        impl->allowed[player][combo] = 1.0;
       }
     }
   }
-  StreetEvaluator evaluator(game, context.policies);
+  const auto node_count = game.nodes().size();
+  StreetEvaluator evaluator(game, impl->policies);
   for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-    context.preflop_leaf_reach[hero].assign(node_count, {});
-    evaluator.propagate(game.root(), context.preflop, hero, context.allowed[1U - hero],
-                        context.preflop_leaf_reach[hero]);
+    impl->preflop_leaf_reach[hero].assign(node_count, {});
+    evaluator.propagate(game.root(), impl->preflop, hero, impl->allowed[1U - hero],
+                        impl->preflop_leaf_reach[hero]);
   }
+  BestResponseEvaluator result;
+  result.impl_ = std::move(impl);
+  return Outcome::success(std::move(result));
+}
 
-  std::vector<FlopResult> results(groups.size());
-  run_parallel(options.threads, groups.size(),
-               [&](const std::size_t index) { results[index] = evaluate_flop_group(context, groups[index]); });
-  for (const auto &result : results) {
-    if (!result.ok) {
+std::size_t BestResponseEvaluator::entry_count() const noexcept {
+  return impl_ ? impl_->entries.size() : 0U;
+}
+
+Result<FlopValues, KernelError> BestResponseEvaluator::evaluate_flop(const FlopGroup &group) const {
+  using Outcome = Result<FlopValues, KernelError>;
+  if (!impl_) {
+    return Outcome::failure(KernelError::MissingTable);
+  }
+  bool ok = true;
+  auto values = evaluate_flop_group(*impl_, group, ok);
+  if (!ok) {
+    return Outcome::failure(KernelError::InvalidInput);
+  }
+  return Outcome::success(std::move(values));
+}
+
+Result<BestResponseReport, KernelError>
+BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
+                                 const bool exact) const {
+  using Outcome = Result<BestResponseReport, KernelError>;
+  const auto started = Clock::now();
+  if (!impl_ || flops.empty()) {
+    return Outcome::failure(KernelError::InvalidInput);
+  }
+  const auto &context = *impl_;
+  const auto &game = *context.game;
+  const auto &resources = context.resources;
+  const auto node_count = game.nodes().size();
+  const auto entry_count = context.entries.size();
+  const auto group_count = flops.size();
+
+  // Per group: combo preimages of every image; total compatible weight per combo.
+  std::vector<std::vector<std::array<std::uint16_t, combo_total>>> sources(group_count);
+  std::vector<double> total_weight(combo_total, 0.0);
+  for (std::size_t index = 0; index < group_count; ++index) {
+    const auto &values = *flops[index];
+    if (values.compatible.size() != combo_total || values.images.empty()) {
       return Outcome::failure(KernelError::InvalidInput);
     }
-  }
-
-  // Flop weights compatible with every combo.
-  std::vector<double> total_weight(combo_total, 0.0);
-  for (std::size_t index = 0; index < groups.size(); ++index) {
-    for (std::size_t combo = 0; combo < combo_total; ++combo) {
-      if (results[index].compatible[combo] != 0U) {
-        total_weight[combo] += groups[index].weight;
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (auto mode : {response_mode, average_mode}) {
+        if (values.entry_values[hero][mode].size() != entry_count) {
+          return Outcome::failure(KernelError::InvalidInput);
+        }
+        for (const auto &entry : values.entry_values[hero][mode]) {
+          if (entry.size() != combo_total) {
+            return Outcome::failure(KernelError::InvalidInput);
+          }
+        }
+      }
+    }
+    for (const auto &permutation : values.images) {
+      sources[index].push_back(combo_preimage(permutation));
+    }
+    for (const auto &source : sources[index]) {
+      for (std::size_t combo = 0; combo < combo_total; ++combo) {
+        if (values.compatible[source[combo]] != 0U) {
+          total_weight[combo] += values.weight;
+        }
       }
     }
   }
-  bool equal_weights = true;
-  for (const auto &group : groups) {
-    if (std::abs(group.weight - groups.front().weight) > 1e-12 * std::max(1.0, groups.front().weight)) {
+  if (exact) {
+    for (std::size_t combo = 1; combo < combo_total; ++combo) {
+      if (std::abs(total_weight[combo] - total_weight[0]) > 1e-9 * std::max(1.0, total_weight[0])) {
+        return Outcome::failure(KernelError::InvalidInput);
+      }
+    }
+  }
+  bool equal_weights = !exact;
+  for (std::size_t index = 0; index < group_count; ++index) {
+    if (std::abs(flops[index]->weight - flops[0]->weight) >
+        1e-12 * std::max(1.0, flops[0]->weight)) {
       equal_weights = false;
     }
   }
-
-  BestResponseReport report;
-  report.flops = static_cast<std::uint32_t>(groups.size());
-  for (const auto &group : groups) {
-    report.boards += static_cast<std::uint32_t>(group.boards.size());
-  }
-  const auto &preflop = context.preflop;
-  const auto group_count = groups.size();
   std::vector<std::size_t> all_groups(group_count);
   for (std::size_t index = 0; index < group_count; ++index) {
     all_groups[index] = index;
   }
 
-  // Entry leaf values from a subset of the flop groups: for every combo the
-  // weighted mean of the flop values over the compatible groups of the subset.
+  BestResponseReport report;
+  report.flops = static_cast<std::uint32_t>(group_count);
+  for (const auto *values : flops) {
+    report.boards += values->boards;
+  }
+  const auto &preflop = context.preflop;
+  StreetEvaluator evaluator(game, context.policies);
+
+  // Entry leaf values from a subset of the groups: for every combo the
+  // weighted mean of the flop values over the compatible images of the subset.
   const auto entry_leaves = [&](const std::uint8_t hero, const std::size_t mode,
                                 const std::vector<std::size_t> &subset, NodeVectors &leaf_values) {
     std::vector<double> subset_weight(combo_total, 0.0);
     for (const auto index : subset) {
-      for (std::size_t combo = 0; combo < combo_total; ++combo) {
-        if (results[index].compatible[combo] != 0U) {
-          subset_weight[combo] += groups[index].weight;
+      const auto &values = *flops[index];
+      for (const auto &source : sources[index]) {
+        for (std::size_t combo = 0; combo < combo_total; ++combo) {
+          if (values.compatible[source[combo]] != 0U) {
+            subset_weight[combo] += values.weight;
+          }
         }
       }
     }
-    for (std::size_t entry = 0; entry < context.entries.size(); ++entry) {
+    for (std::size_t entry = 0; entry < entry_count; ++entry) {
       auto &target = leaf_values[context.entries[entry]];
       target.assign(combo_total, 0.0);
       for (const auto index : subset) {
-        const auto &values = results[index].entry_values[hero][mode][entry];
-        for (std::size_t combo = 0; combo < combo_total; ++combo) {
-          if (results[index].compatible[combo] != 0U && subset_weight[combo] > 0.0) {
-            target[combo] += values[combo] * groups[index].weight / subset_weight[combo];
+        const auto &values = *flops[index];
+        const auto &entry_values = values.entry_values[hero][mode][entry];
+        for (const auto &source : sources[index]) {
+          for (std::size_t combo = 0; combo < combo_total; ++combo) {
+            const auto preimage = source[combo];
+            if (values.compatible[preimage] != 0U && subset_weight[combo] > 0.0) {
+              target[combo] += entry_values[preimage] * values.weight / subset_weight[combo];
+            }
           }
         }
       }
@@ -871,24 +973,28 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
         report.ev[hero] = value;
       }
 
-      // Standard error over equally weighted flop groups: per-group value of
-      // the hero policy fixed by the evaluation above.
+      // Standard error over equally weighted groups: per-group value of the
+      // hero policy fixed by the evaluation above.
       if (equal_weights && group_count > 1U) {
         NodeVectors hero_reach;
         hero_reach_under(hero, mode == response_mode ? &choice : nullptr, hero_reach);
         const double groups_count = static_cast<double>(group_count);
         std::vector<double> per_group(group_count, 0.0);
         for (std::size_t index = 0; index < group_count; ++index) {
+          const auto &values = *flops[index];
           double sum = 0.0;
-          for (std::size_t entry = 0; entry < context.entries.size(); ++entry) {
+          for (std::size_t entry = 0; entry < entry_count; ++entry) {
             const auto node = context.entries[entry];
-            const auto &values = results[index].entry_values[hero][mode][entry];
-            for (std::size_t combo = 0; combo < combo_total; ++combo) {
-              if (results[index].compatible[combo] == 0U || total_weight[combo] <= 0.0) {
-                continue;
+            const auto &entry_values = values.entry_values[hero][mode][entry];
+            for (const auto &source : sources[index]) {
+              for (std::size_t combo = 0; combo < combo_total; ++combo) {
+                const auto preimage = source[combo];
+                if (values.compatible[preimage] == 0U || total_weight[combo] <= 0.0) {
+                  continue;
+                }
+                sum += context.allowed[hero][combo] * hero_reach[node][combo] *
+                       entry_values[preimage] * values.weight / total_weight[combo];
               }
-              sum += context.allowed[hero][combo] * hero_reach[node][combo] * values[combo] *
-                     groups[index].weight / total_weight[combo];
             }
           }
           per_group[index] = groups_count * sum * hero_scale;
@@ -913,11 +1019,7 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
     }
 
     // Lower bound without selection: the hero follows the average strategy
-    // at the preflop and best-responds from the flop on. The postflop best
-    // response is exact within every sampled flop, so the estimate is
-    // unbiased for that policy and never below the EV; the plain estimate
-    // above also maximises the preflop choice on the sampled flops and is
-    // biased upwards by the selection noise.
+    // at the preflop and best-responds from the flop on.
     {
       NodeVectors leaf_values = terminals;
       entry_leaves(hero, response_mode, all_groups, leaf_values);
@@ -938,6 +1040,45 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
   report.nashconv = report.gain[0] + report.gain[1];
   report.seconds = std::chrono::duration<double>(Clock::now() - started).count();
   return Outcome::success(report);
+}
+
+Result<BestResponseReport, KernelError>
+evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
+                       const BestResponseResources &resources,
+                       const std::vector<FlopGroup> &groups, const BestResponseOptions &options) {
+  using Outcome = Result<BestResponseReport, KernelError>;
+  const auto started = Clock::now();
+  if (groups.empty()) {
+    return Outcome::failure(KernelError::MissingTable);
+  }
+  auto evaluator = BestResponseEvaluator::create(game, average, resources, options.hand_subsets);
+  if (!evaluator) {
+    return Outcome::failure(evaluator.error());
+  }
+  std::vector<FlopValues> values(groups.size());
+  std::atomic<bool> failed{false};
+  run_parallel(options.threads, groups.size(), [&](const std::size_t index) {
+    auto result = evaluator.value().evaluate_flop(groups[index]);
+    if (!result) {
+      failed.store(true);
+      return;
+    }
+    values[index] = std::move(result.value());
+  });
+  if (failed.load()) {
+    return Outcome::failure(KernelError::InvalidInput);
+  }
+  std::vector<const FlopValues *> pointers;
+  pointers.reserve(values.size());
+  for (const auto &entry : values) {
+    pointers.push_back(&entry);
+  }
+  auto report = evaluator.value().aggregate(pointers, false);
+  if (!report) {
+    return report;
+  }
+  report.value().seconds = std::chrono::duration<double>(Clock::now() - started).count();
+  return report;
 }
 
 } // namespace gtosd::preflop_blueprint
