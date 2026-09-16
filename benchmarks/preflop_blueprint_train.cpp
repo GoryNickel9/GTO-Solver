@@ -10,6 +10,7 @@
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
+#include "gtosd/preflop_blueprint/policy_file.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -78,6 +79,8 @@ int main(const int argc, char **argv) {
     std::filesystem::path resources_dir;
     std::filesystem::path buckets_dir;
     std::filesystem::path checkpoint_path;
+    // Average policy written at the end (for the certifier and the export).
+    std::filesystem::path policy_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
     std::uint32_t evaluation_flops = 20U;
@@ -123,6 +126,8 @@ int main(const int argc, char **argv) {
         resources_dir = value;
       } else if (name == "--buckets-dir") {
         buckets_dir = value;
+      } else if (name == "--policy-out") {
+        policy_path = std::filesystem::path(value);
       } else if (name == "--checkpoint") {
         checkpoint_path = value;
       } else if (name == "--iterations") {
@@ -301,7 +306,20 @@ int main(const int argc, char **argv) {
         }
       }
     }
+    std::string policy_fingerprint_text;
+    if (!policy_path.empty()) {
+      const auto average = trainer.average_policy();
+      const auto saved = pb::save_policy(policy_path, compiled.value(), average,
+                                         trainer.identity() + "|iteration=" +
+                                             std::to_string(trainer.iteration()));
+      if (!saved) {
+        throw std::runtime_error(std::string("policy write failed: ") +
+                                 pb::policy_file_error_name(saved.error()));
+      }
+      policy_fingerprint_text = pb::policy_fingerprint(average);
+    }
     std::cout << "{\"event\": \"end\", \"iteration\": " << trainer.iteration()
+              << ", \"policy_fingerprint\": \"" << policy_fingerprint_text << "\""
               << ", \"boards_processed\": " << trainer.boards_processed()
               << ", \"converged\": " << (converged ? "true" : "false")
               << ", \"training_seconds\": " << training_seconds

@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 // Best response of the physical game against the lifted (bucket) average
@@ -28,9 +29,12 @@
 // above the river. Taking the maximum per full board above the river would
 // give a clairvoyant responder and overstate the exploitability (P6 diary).
 //
-// Boards are given in groups by flop. Sampled evaluation draws physical
-// flops and enumerates all their runouts (33 x 32 boards per flop); an
-// explicit board list is grouped by flop identity.
+// The work splits in two stages: the values of every hand at the postflop
+// entries for one flop group (all the listed runouts of that flop), and the
+// preflop aggregation over a set of flop groups. A flop group may stand for
+// its whole suit orbit (P7 certifier): the strategy is suit-symmetric, so
+// the values of hand h on the image sigma(flop) are the values of
+// sigma^-1(h) on the flop.
 namespace gtosd::preflop_blueprint {
 
 struct WeightedBoard {
@@ -59,6 +63,23 @@ struct BestResponseOptions {
   std::array<std::vector<std::uint16_t>, 2> hand_subsets{};
 };
 
+inline constexpr std::size_t response_mode = 0U;
+inline constexpr std::size_t average_mode = 1U;
+
+// Values of every combo at the postflop entries for one flop group.
+struct FlopValues {
+  std::array<CardId, 3> flop{};
+  double weight{1.0};
+  std::uint32_t boards{0U};
+  // Suit permutations whose images of the flop are the physical flops this
+  // group stands for; the identity alone for a physical flop.
+  std::vector<card_abstraction::SuitPermutation> images{card_abstraction::identity_permutation};
+  // 630 entries: 1 when the combo is disjoint from the flop.
+  std::vector<std::uint8_t> compatible;
+  // [hero][mode][entry] -> 630 values (0 for combos not compatible).
+  std::array<std::array<std::vector<std::vector<double>>, 2>, 2> entry_values{};
+};
+
 struct BestResponseReport {
   std::uint32_t flops{0U};
   std::uint32_t boards{0U};
@@ -77,7 +98,7 @@ struct BestResponseReport {
   std::array<double, 2> gain_lower{};
   // Standard errors of the means over equally weighted flop groups of the
   // per-flop values of the chosen best response and of the average strategy;
-  // zero for one group or for unequal group weights.
+  // zero for one group, for unequal group weights or for an exact pass.
   std::array<double, 2> best_response_standard_error{};
   std::array<double, 2> ev_standard_error{};
   double max_gain{0.0};
@@ -92,7 +113,38 @@ struct BestResponseReport {
 // Groups an explicit board list by flop identity; group weights are the sums
 // of the board weights.
 [[nodiscard]] std::vector<FlopGroup> group_by_flop(const std::vector<WeightedBoard> &boards);
+// One suit permutation per distinct physical image of the flop (its orbit);
+// the first one is the identity.
+[[nodiscard]] std::vector<card_abstraction::SuitPermutation>
+flop_images(const std::array<CardId, 3> &flop);
 
+// Fixed part of an evaluation: game, average strategy, resources, hand
+// subsets and the opponent reach at the preflop leaves. Copies share the
+// state and may be used from several threads for evaluate_flop.
+class BestResponseEvaluator {
+public:
+  [[nodiscard]] static Result<BestResponseEvaluator, KernelError>
+  create(const CompiledGame &game, const BucketPolicy &average,
+         const BestResponseResources &resources,
+         const std::array<std::vector<std::uint16_t>, 2> &hand_subsets = {});
+
+  // Stage one, for one flop group (thread-safe).
+  [[nodiscard]] Result<FlopValues, KernelError> evaluate_flop(const FlopGroup &group) const;
+  // Stage two over a set of flop values. With exact = true every combo must
+  // be compatible with the same total weight of images (the whole catalog):
+  // the standard errors are zero and the report is the exact best response.
+  [[nodiscard]] Result<BestResponseReport, KernelError>
+  aggregate(const std::vector<const FlopValues *> &flops, bool exact) const;
+  [[nodiscard]] std::size_t entry_count() const noexcept;
+
+  struct Impl;
+
+private:
+  std::shared_ptr<const Impl> impl_;
+};
+
+// Sampled or explicit evaluation: stage one in parallel over the groups,
+// then stage two with standard errors.
 [[nodiscard]] Result<BestResponseReport, KernelError>
 evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
                        const BestResponseResources &resources,
