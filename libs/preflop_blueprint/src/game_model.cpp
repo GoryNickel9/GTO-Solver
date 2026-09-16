@@ -230,6 +230,10 @@ Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
     return target_config(config, state, config.open_targets, false);
   }
   if (level == 1U) {
+    if (config.response_targets.empty()) {
+      // No configured re-raise size over an open: fold, call or all-in.
+      return ConfigResult::success(all_in_config(config));
+    }
     const auto found = std::ranges::find(config.open_targets, state.current_bet);
     if (found == config.open_targets.end()) {
       return ConfigResult::failure(GameModelError::InvalidConfiguration);

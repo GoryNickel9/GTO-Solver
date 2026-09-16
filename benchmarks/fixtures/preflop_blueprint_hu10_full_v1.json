@@ -10,7 +10,7 @@
   "ante_units": 10000,
   "button_blind_units": 10000,
   "open_target_units": [50000],
-  "response_target_units": [80000],
+  "response_target_units": [],
   "allow_configured_incomplete_raise": true,
   "postflop_sizes_basis_points": [3300, 6600, 12000],
   "postflop_minimum_bet_units": 10000,

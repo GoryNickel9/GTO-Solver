@@ -84,6 +84,12 @@ naive misura il rumore di selezione (valore esatto 0,0042 a).
 
 ## 5. Proiezione su CO40
 
+> **Erratum (2026-09-16).** La passata parziale di questa sezione usava `--chunk 2`: il
+> certificatore parallelizza sui flop di uno stesso chunk, quindi lavoravano 2 thread e non 8.
+> Misura su HU10 completo con chunk 8: 13,3 s per flop a 1 thread, 7,3 a 2, 4,2 a 4, 3,2 a 8
+> (diario 2026-09-16, decisione 47). Proiezione corretta a 8 thread con chunk 16:
+> 64 s per flop canonico misurati su 8 flop con chunk 8 e 8 thread, passata esatta ≈ 10,2 h (era 22,4 h). Le passate esatte di §4 (chunk 16) non sono affette.
+
 Passata parziale su CO40 (policy uniforme, tabelle 200/500/1.000, 8 thread, chunk 2): i primi 4
 flop canonici del catalogo (40 flop fisici, 4.224 board) in 563 s, cioè 141 s per flop canonico
 e 1,07 s per board per thread, memoria 281 MB. Proiezione della passata esatta su CO40:

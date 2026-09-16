@@ -193,8 +193,11 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
       !(config.postflop_minimum_bet > zero) || config.button_blind >= config.effective_stack) {
     return Validation::failure(ConfigError::InvalidValue);
   }
+  // An empty response list means that the only re-raise over an open is the
+  // all-in; otherwise there is one response target per open target.
   if (config.open_targets.empty() || config.open_targets.size() > maximum_preflop_targets ||
-      config.response_targets.size() != config.open_targets.size()) {
+      (!config.response_targets.empty() &&
+       config.response_targets.size() != config.open_targets.size())) {
     return Validation::failure(ConfigError::InvalidStructure);
   }
   if (!strictly_increasing(config.open_targets)) {
@@ -202,9 +205,14 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
   }
   for (std::size_t index = 0; index < config.open_targets.size(); ++index) {
     const auto open = config.open_targets[index];
+    if (open <= config.button_blind || open >= config.effective_stack) {
+      return Validation::failure(ConfigError::InvalidValue);
+    }
+    if (config.response_targets.empty()) {
+      continue;
+    }
     const auto response = config.response_targets[index];
-    if (open <= config.button_blind || open >= config.effective_stack || response <= open ||
-        response >= config.effective_stack) {
+    if (response <= open || response >= config.effective_stack) {
       return Validation::failure(ConfigError::InvalidValue);
     }
   }

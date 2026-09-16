@@ -19,7 +19,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Prossimo passo | P9: qualificazione CO40 (albero completo: certificato esatto da 22,4 h; variante di test a una size postflop: 1,35 h) secondo l'indicazione dell'utente; export e confronto Monker descrittivo |
+| Prossimo passo | P9: qualificazione CO40 (albero completo: certificato esatto ≈ 10 h a 8 thread; variante di test a una size postflop: ≈ 20 min) secondo l'indicazione dell'utente; export e confronto Monker descrittivo |
 
 ## 2. Registro dei gate
 
@@ -52,6 +52,54 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P8 — contro l'open 5a solo fold/call/all-in, scaling sui thread, curva exploitability/iterazioni, erratum sulle proiezioni del certificatore
+
+Fatto: (1) Domande dell'utente: come essere certi della convergenza a Nash (la exploitability
+esatta certificata da P7 è la distanza da un equilibrio nel gioco fisico con questo albero:
+nessuna strategia guadagna più di 0,0041 a per mano contro il blueprint, 0,14 % del piatto),
+differenza fra le due sorgenti del viewer (stesso algoritmo DCFR alternato, alberi diversi: tre
+size postflop contro una), tempi su un AMD EPYC 7443, costo di una exploitability dell'1 % del
+piatto, stato della documentazione. (2) Regola dell'utente: in HU10 contro l'open 5 a BTN ha solo
+fold, call e all-in. Il loader accetta una lista di risposte vuota (nessuna size di rilancio
+sopra un open: al livello 1 solo fold/call/all-in, decisione 46), schema con `minItems: 0`,
+validatore Python delle fixture aggiornato, fixture HU10 con `response_target_units: []`, test
+dello scaffolding (lista vuota accettata, casi di rifiuto spostati sulla fixture CO40). Alberi:
+HU10 completo 1.501 nodi (584 decisioni; preflop 22 nodi, 8 decisioni, 3 entry postflop),
+ridotto 193 nodi (80 decisioni). Nell'export precedente BTN usava il rilancio a 8 a contro
+l'open 5 a per il 6 % del range (fold 20 %, call 19 %, all-in 55 %). (3) Scaling sui thread su
+HU10 completo (i3-10100F, 4 core / 8 thread): training di 100 iterazioni a 1/2/4/8 thread;
+certificatore su 8 flop con `--chunk 1` e con `--chunk 8`. (4) Curva della exploitability esatta
+in funzione delle iterazioni (albero ridotto: 50, 100, 200, 400, 700, 1.000, 2.000; albero
+completo: 2.000 più i punti attorno all'1 % del piatto), run di riferimento a 2.000 iterazioni
+certificati ed esportati (`out/r3_*`, `out/policy3_*`), viewer rigenerato. Report:
+[P8_EXPORT.md](P8_EXPORT.md) §10.
+Comandi: `ctest -L "p0|p4|p6|p7|p8"`; `gtosd_preflop_blueprint_train …hu10_full_v1.json --iterations 100
+--batch 32 --threads T --eval-every 0`; `gtosd_preflop_blueprint_certify …hu10_full_v1.json --uniform
+--threads T --chunk 8 --flop-limit 8`; per N in 50…1000: `train …hu10_reduced_v1.json --iterations N
+--eval-every 0 --policy-out out/curve_red_policy_N.bin` e `certify --policy … --threads 8 --chunk 16`;
+run di riferimento come nella voce precedente (`policy3_*`, `r3_cert_*`, `r3_chart_*`).
+Risultati: test 15/15 PASS (172 s). Scaling del training: 0,433 / 0,276 / 0,211 / 0,194 s per
+iterazione a 1/2/4/8 thread (2,2× a 8 thread; frazione seriale ≈ 0,32 con 30 unità e 10 nodi in
+alto seriali). Certificatore con `--chunk 8`: 13,3 / 7,3 / 4,2 / 3,2 s per flop (4,2× a 8 thread,
+1,32× dai thread SMT); con `--chunk 1`: 13,4 s per flop a qualsiasi numero di thread, perché il
+parallelismo è sui flop dello stesso chunk. Curva (P8 §10): ridotto: 0,0191 a (0,64 % del piatto) a 20 iterazioni, training 3 s; completo: 0,0111 a (0,37 % del piatto) a 200 iterazioni, training 37 s; a 2.000 iterazioni 0,0040 a (ridotto) e 0,0040 a (completo). Run di riferimento con la nuova regola: completo 1.501 nodi, training 7 min (+ 5 min di valutazioni), certificato esatto **0,0040 a** in 35 min, EV di radice 0,1325 a; ridotto 193 nodi, training 5 min, certificato esatto 0,0040 a in 3 min; albero postflop 3 entry, 576 nodi decisionali, 1396 archi. CO40 completo con chunk 8 e 8 thread: 64 s per flop canonico misurati su 8 flop con chunk 8 e 8 thread, passata esatta ≈ 10,2 h (era 22,4 h).
+Fallimenti: (1) Il validatore Python delle fixture imponeva liste di open e di risposte della
+stessa lunghezza anche con risposte vuote: test dello schema FAIL, corretto. (2) **Erratum sulle
+proiezioni del certificatore**: le misure con `--chunk 1` (CO40-TEST, voce precedente: 8,5 s per
+flop, passata esatta 1,35 h) e con `--chunk 2` (CO40 completo, P7 §5: 141 s per flop, 22,4 h)
+avevano rispettivamente uno e due thread attivi, non otto; a 8 thread con chunk ≥ 8 il costo è
+circa 4,2 (da chunk 1) e 2,3 (da chunk 2) volte minore. CO40-TEST: ≈ 2,0 s per flop, passata
+esatta ≈ 20 min. CO40 completo: 64 s per flop canonico misurati su 8 flop con chunk 8 e 8 thread, passata esatta ≈ 10,2 h (era 22,4 h) (decisione 47). (3) Lo script di
+interruzione della catena ha terminato anche il proprio lanciatore (il pattern sul nome dello
+script compariva nella sua riga di comando): catena rilanciata separatamente.
+Dubbi: (1) Il training scala poco (2,2× su 4 core): la parte alta seriale e le 30 unità di HU10
+limitano il parallelismo; su CO40 completo (211 unità) la frazione parallela è maggiore ma non
+misurata. (2) La stima per l'EPYC 7443 assume una velocità per core simile all'i3-10100F (Zen 3 a
+3,6–4,0 GHz con IPC maggiore contro Comet Lake a 4,1–4,3 GHz) e scaling del certificatore
+lineare sui flop con chunk ≥ thread: va verificata sulla macchina. (3) La curva exploitability /
+iterazioni è misurata su HU10: su CO40 la forma può essere diversa (albero più profondo).
+Prossimo passo: merge del branch di fase nell'integrazione e in `main`, push dei branch; P9 sul CO40 completo (passata esatta ≈ 10 h a 8 thread su questa macchina) o sulla variante di test, secondo l'utente.
 
 ### 2026-09-16 — P8 — EV condizionato corretto fuori dalla radice, size preflop HU10 solo 5a/8a, CO40 di test
 
@@ -526,3 +574,5 @@ Prossimo passo: P0.
 | 43 | 2026-09-16 | P8 | EV di classe fuori dalla radice: media di `v_a[h] / D[h]` pesata con `D[h]` (valore e serie per flop dell'errore standard); test del payoff di fold a ogni nodo interno | fino a `46084f0` la divisione per `D[h]` mancava e alla radice non era rilevabile (`D[h] = 1`); il payoff di fold è una costante nota a ogni nodo interno e verifica la semantica condizionata |
 | 44 | 2026-09-16 | P8 | Variante CO40 di test come fixture separata con id `-TEST` (una size postflop 100 % più all-in), usata solo per misure di tempo e prove; la fixture CO40 completa resta il riferimento del gate P9 | richiesta dell'utente; il "da non fare" di P9 vieta di cambiare size per migliorare il risultato, non di misurare su un albero ridotto |
 | 45 | 2026-09-16 | P8 | Nel viewer le classi con reach proprio lungo la history sotto `1e-6` restano visibili ma desaturate, con il reach nel tooltip | l'export riporta la strategia media di tutte le classi (residui ≈ 1e-9); togliere le righe cambierebbe la griglia 9×9; la soglia è sotto ogni frequenza di gioco significativa |
+| 46 | 2026-09-16 | P8 | Lista di risposte vuota nella configurazione = nessuna size di rilancio sopra un open (livello 1: fold, call, all-in); con lista non vuota resta una risposta per open | regola dell'utente per HU10 (contro l'open 5 a BTN ha solo l'all-in); nessun secondo formato, la fixture CO40 non cambia |
+| 47 | 2026-09-16 | P8 | Le misure di tempo del certificatore si fanno con `--chunk` ≥ numero di thread (il parallelismo è sui flop di uno stesso chunk); i tempi per flop nei report sono a 8 thread con chunk 16 salvo indicazione | le proiezioni di P7 §5 (chunk 2) e della voce CO40-TEST (chunk 1) avevano 2 e 1 thread attivi e sovrastimavano di 2,3 e 4,2 volte |
