@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P8 chiusa (gate PASS, viewer incluso); P9 da avviare |
+| Fase in corso | P8 chiusa (gate PASS, viewer incluso); correzione post-gate dell'EV e nuove size HU10 (2026-09-16); P9 da avviare |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p8-export` (P0–P8 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p8-hu10-sizes` (da `feature/preflop-blueprint`; P0–P8 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto) |
-| Prossimo passo | P9: qualificazione CO40 (training, certificato esatto da 22 h stimate o ottimizzazioni del certificatore, export e confronto Monker descrittivo) |
+| Prossimo passo | P9: qualificazione CO40 (albero completo: certificato esatto da 22,4 h; variante di test a una size postflop: 1,35 h) secondo l'indicazione dell'utente; export e confronto Monker descrittivo |
 
 ## 2. Registro dei gate
 
@@ -52,6 +52,64 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P8 — EV condizionato corretto fuori dalla radice, size preflop HU10 solo 5a/8a, CO40 di test
+
+Fatto: (1) L'utente ha chiesto perché `J6o` compare nel nodo `CO raise 5a → BTN all-in → CO`
+del viewer se CO non rilancia mai J6o. L'export riporta la strategia media di tutte le 81 classi a
+ogni nodo: alla radice CO rilancia a 5 a J6o con frequenza 3,1·10⁻⁹ (residuo delle prime
+iterazioni nella media DCFR), che è il reach mostrato dal viewer (3,12·10⁻⁷ %); la riga è quindi
+attesa. L'analisi ha però trovato un errore negli EV fuori dalla radice: l'EV di classe usava il
+valore controfattuale `v_a[h]` (già moltiplicato per la reach avversaria `D[h]`) pesato di nuovo
+con `D[h]`, invece di `v_a[h] / D[h]`; alla radice `D[h] = 1` e il test di ricostruzione
+passava, ai nodi interni l'EV era scalato per `D[h]` (fold −3,39 a per J6o e −3,14 a per AA nello
+stesso nodo invece della perdita costante). Correzione in `preflop_action_values` (valore e serie
+per flop dell'errore standard, decisione 43) e nuovo test: a ogni nodo interno con arco di fold
+l'EV di fold di ogni classe è uguale al payoff di fold entro `1e-9`. (2) Decisione dell'utente:
+le size preflop di HU10 diventano solo full pot (open 5 a, risposta 8 a) in entrambe le fixture
+(completa e ridotta); test dello scaffolding e del gioco, smoke di query (`raise_5,call`) e
+fixture aggiornati. (3) Decisione dell'utente: variante CO40 solo per i test con una size postflop
+(100 % del piatto) più all-in, fixture `preflop_blueprint_co40_test_v1.json`
+(`PREFLOP-BLUEPRINT-CO40-TEST-001`, stesse size preflop Monker 6 / 10 a e 10,5 / 14,5 a,
+decisione 44), misure di tempo su 20 iterazioni e 2 flop canonici. (4) Riaddestramento HU10
+(completo e ridotto) con le nuove size, certificazione esatta, export delle chart e dell'albero
+postflop, rigenerazione del viewer. (5) Viewer: le classi con reach proprio lungo la history sotto
+`1e-6` restano nella griglia ma desaturate, con il reach nel tooltip (decisione 45, commit
+`21617ef` del viewer). Report: [P8_EXPORT.md](P8_EXPORT.md) §9.
+Comandi: `cmake --build … --target <16 eseguibili blueprint>` e `ctest -L "p0|p4|p6|p7|p8"`;
+`gtosd_preflop_blueprint_game --config …co40_test_v1.json`; `gtosd_preflop_blueprint_train …co40_test_v1.json
+--iterations 20 --batch 32 --threads 8 --eval-every 0`; `gtosd_preflop_blueprint_certify
+…co40_test_v1.json --uniform --threads 8 --chunk 1 --flop-limit 2`; per HU10 completo e ridotto:
+`train --iterations 2000 --batch 32 --threads 8 --eval-flops 20 --eval-every 500 --policy-out out/policy2_*.bin`,
+`certify --threads 8 --chunk 16 --state out/r2_state_*.bin`, `export --certificate out/r2_cert_*.json
+--eval-flops 60 --threads 8` (chart e albero postflop); `generate_chart_data.py --blueprint out/r2_chart_hu10_full.json
+--blueprint out/r2_chart_hu10_reduced.json --postflop-tree out/r2_postflop_tree_hu10_full.json`.
+Risultati: test 15/15 PASS (191 s). CO40-TEST: 1.129 nodi (456 decisioni, 20 preflop) contro
+27.012 (10.060) di CO40; stato 16,9 MB con 200/500/1.000; training 0,223 s per iterazione
+(`B = 32`, 8 thread; CO40 completo ≈ 3 s, HU10 completo 0,27 s); certificazione 8,5 s per flop
+canonico (CO40 completo 141 s): passata esatta su 573 flop ≈ 81 min (1,35 h) contro 22,4 h;
+valutazione campionata D3 con `M = 1.000` ≈ 2,4 h (più della passata esatta, come su HU10), con
+`M = 200` ≈ 28 min. Stima della risoluzione di CO40-TEST: 2.000 iterazioni 7,5 min, 10.000
+iterazioni 37 min, più valutazioni periodiche (`M = 20` ≈ 3 min ciascuna) e certificazione esatta
+di 1,35 h: fra 1,5 e 2,5 h in totale contro circa un giorno per CO40 completo (non è noto quante
+iterazioni servano a CO40 per D3: HU10 ne ha richieste 2.000). HU10 con le nuove size:
+completo 1.567 nodi, training 7 min (+ 4 min di valutazioni), certificato esatto **0,0041 a** in 31 min; ridotto 259 nodi, training 5 min, certificato esatto 0,0040 a in 4 min; EV di radice 0,1322 a (completo) e 0,1321 a (ridotto); export con badge `CERTIFIED_EXACT`; Esempio (export completo, nodo `CO raise 5a → BTN all-in → CO`): fold −6,000 a per J6o e −6,000 a per AA (il payoff di fold, costante), call −2,642 a per J6o e 4,528 a per AA. Albero postflop esportato: 600 nodi decisionali, 1.444 archi, 5 entry.
+Fallimenti: (1) `LNK1104` su `gtosd_preflop_blueprint_export.exe`: il worker `--serve` del viewer
+teneva aperto l'eseguibile; server fermato prima della build. (2) Lo script di build della catena
+non ricompilava `gtosd_preflop_blueprint_scaffold_tests` (elenco parziale di target) e il test
+vecchio falliva sulle nuove fixture: lo script costruisce ora tutti i 16 eseguibili blueprint.
+(3) L'errore dell'EV non era coperto dai test: il controllo di ricostruzione era solo alla radice,
+dove `D[h] = 1`; gli export `p8_chart_hu10_*` e la verifica del viewer di P8 §4–§5 hanno EV
+fuori dalla radice sbagliati (frequenze, EV di radice, badge e verdetti corretti): superati dagli
+export `r2_*` (P8 §9).
+Dubbi: (1) Il "da non fare" di P9 (non cambiare albero o size) riguarda la qualificazione: la
+variante CO40-TEST serve alle misure di tempo e alle prove; il gate P9 resta sull'albero CO40
+completo salvo diversa indicazione dell'utente. (2) Con una sola size postflop l'albero CO40 di
+test ha 24 volte meno nodi del completo: le proiezioni non si trasferiscono linearmente alle tre
+size. (3) Le size preflop HU10 dell'utente (solo 5 a / 8 a) rendono i risultati HU10 di P6–P8 non
+confrontabili con i nuovi: i vecchi restano nei report come storia.
+Prossimo passo: merge del branch di fase nell'integrazione e in `main` (autorizzazione del
+2026-09-16), push dei branch; P9 sul CO40 completo o sulla variante di test secondo l'utente.
 
 ### 2026-09-16 — P8 — viewer aggiornato e domande risolte, gate PASS
 
@@ -460,8 +518,11 @@ Prossimo passo: P0.
 | 35 | 2026-09-16 | P7 | Formato di policy `GTOSDPOL` (fingerprint dell'albero, capacità, sorgente, tabella densa, checksum) scritto dal trainer e letto dal certificatore; il certificato porta i fingerprint di regole, albero, catalogo, tabelle bucket e policy | il certificatore non deve ricostruire il trainer (identità, semi) per leggere una strategia; P8 esporta dallo stesso file |
 | 36 | 2026-09-16 | P7 | Stato del certificatore accodato per chunk con checksum per record; ripresa dall'header (albero, policy, catalogo); il numero dichiarato nei certificati è quello esatto, la regola D3 campionata resta la regola di arresto del training | passata ripresa bit-identica; su CO40 la passata esatta costa 22 h e va spezzata; la stima campionata sovrastima di `≈ 0,46/√M` |
 | 37 | 2026-09-16 | P8 | Export `gtosd.preflop_blueprint_chart.v1` nel layout `preflop_nodes` → `{history, strategy, action_ev}` già letto dal generatore del viewer, con id di azione compatibili con le chart legacy (`raise_6`, `call`, `fold`, `all_in`) e id di nodo `CO_raise_3_BTN` | il viewer richiede solo la rimozione dei vincoli fissi CO40 e i badge (Q4); nessun secondo formato da mantenere |
-| 38 | 2026-09-16 | P8 | EV per azione condizionato al nodo: valore controfattuale diviso per la reach avversaria data la combo, media di classe pesata con la reach, errore standard sui flop campionati; alla radice coincide con l'EV del gioco | è la semantica delle chart (EV dell'azione nello spot); verificata entro `1e-9` alla radice |
+| 38 | 2026-09-16 | P8 | EV per azione condizionato al nodo: valore controfattuale diviso per la reach avversaria data la combo, media di classe pesata con la reach, errore standard sui flop campionati; alla radice coincide con l'EV del gioco. **Implementazione corretta dalla decisione 43**: fino al commit `46084f0` la divisione per `D[h]` mancava e i valori fuori dalla radice erano scalati per `D[h]` | è la semantica delle chart (EV dell'azione nello spot); verificata entro `1e-9` alla radice |
 | 39 | 2026-09-16 | P8 | Verdetto del comparatore sulla sola exploitability fisica dichiarata (D2, soglia 0,1 a): `QUALIFIED` / `REJECTED` con certificato esatto, `PROMISING` / `INCONCLUSIVE_ESTIMATE` / `REJECTED` (limite inferiore sopra soglia) con stima campionata; distanze Monker descrittive con `EXTERNAL_CONTRACT_INCOMPLETE` | D1/D2/D4 della roadmap; la stima campionata ha bias di selezione e non può qualificare da sola |
 | 40 | 2026-09-16 | P8 | Albero pubblico postflop esportato nello schema del viewer (`gtosd.hu_postflop_public_tree.v1`) leggendo lo stato pubblico conservato per nodo dal compilato; id compilati nel file per indirizzare il worker | il viewer già navigava quello schema; nessun secondo formato |
 | 41 | 2026-09-16 | P8 | EV postflop del worker: valore controfattuale dell'azione con la strategia media diviso per la reach avversaria al nodo; esatto a turn (32 river) e river, medio su `samplesPerAction` runout campionati al flop (seme fisso), classi pesate con la reach avversaria, frequenze di range pesate anche con la reach dell'eroe | stessa semantica dell'export preflop; il flop completo (1.056 runout) costa 17,6 s e non è interattivo |
 | 42 | 2026-09-16 | P8 | Viewer: generatore con sorgenti blueprint e badge, azioni e gioco dinamici, Monker solo a parità di albero, backend `--serve`; le modifiche locali preesistenti dell'utente sono conservate in un commit separato prima dell'aggiornamento | autorizzazione Q4; il repository del viewer non ha remote: i commit restano locali |
+| 43 | 2026-09-16 | P8 | EV di classe fuori dalla radice: media di `v_a[h] / D[h]` pesata con `D[h]` (valore e serie per flop dell'errore standard); test del payoff di fold a ogni nodo interno | fino a `46084f0` la divisione per `D[h]` mancava e alla radice non era rilevabile (`D[h] = 1`); il payoff di fold è una costante nota a ogni nodo interno e verifica la semantica condizionata |
+| 44 | 2026-09-16 | P8 | Variante CO40 di test come fixture separata con id `-TEST` (una size postflop 100 % più all-in), usata solo per misure di tempo e prove; la fixture CO40 completa resta il riferimento del gate P9 | richiesta dell'utente; il "da non fare" di P9 vieta di cambiare size per migliorare il risultato, non di misurare su un albero ridotto |
+| 45 | 2026-09-16 | P8 | Nel viewer le classi con reach proprio lungo la history sotto `1e-6` restano visibili ma desaturate, con il reach nel tooltip | l'export riporta la strategia media di tutte le classi (residui ≈ 1e-9); togliere le righe cambierebbe la griglia 9×9; la soglia è sotto ogni frequenza di gioco significativa |
