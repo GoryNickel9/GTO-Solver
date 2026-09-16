@@ -13,12 +13,10 @@
   "ante_units": 10000,
   "button_blind_units": 10000,
   "open_target_units": [
-    60000,
-    100000
+    50000
   ],
   "response_target_units": [
-    105000,
-    145000
+    130000
   ],
   "allow_configured_incomplete_raise": true,
   "postflop_sizes_basis_points": [
