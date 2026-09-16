@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P8 chiusa con riserva (viewer INCONCLUSIVE, Q4); P9 non avviata: in attesa delle decisioni Q2, Q3, Q4 |
-| Ultimo gate | P8 PASS con riserva (2026-09-16): viewer INCONCLUSIVE |
+| Fase in corso | P8 chiusa (gate PASS, viewer incluso); P9 da avviare |
+| Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
 | Branch di fase | `feature/preflop-blueprint-p8-export` (P0–P8 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
-| Merge su `main` | in attesa dell'utente (Q2 per il gate P3, Q3 per il gate P6): i gate prevedono il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | Decisioni dell'utente: Q4 (viewer), Q2 e Q3 (merge in `main` con tag). Poi P9: qualificazione CO40 (training, certificato esatto da 22 h stimate o ottimizzazioni del certificatore, export e confronto Monker descrittivo) |
+| Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto) |
+| Prossimo passo | P9: qualificazione CO40 (training, certificato esatto da 22 h stimate o ottimizzazioni del certificatore, export e confronto Monker descrittivo) |
 
 ## 2. Registro dei gate
 
@@ -33,7 +33,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P5 Kernel vettoriale HU | PASS | 2026-09-15 | `738e361` | [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md) |
 | P6 Trainer con campionamento del board | PASS | 2026-09-16 | `c5ccef1` | [P6_TRAINER.md](P6_TRAINER.md) |
 | P7 Certificatore board-major | PASS | 2026-09-16 | `01b7ca4` | [P7_CERTIFIER.md](P7_CERTIFIER.md) |
-| P8 Export, query, comparatore, viewer | PASS con riserva (viewer INCONCLUSIVE, Q4) | 2026-09-16 | `cdd3481` | [P8_EXPORT.md](P8_EXPORT.md) |
+| P8 Export, query, comparatore, viewer | PASS | 2026-09-16 | `cdd3481`, `b41cee2` | [P8_EXPORT.md](P8_EXPORT.md) |
 | P9 Qualificazione CO40 e archiviazione | NOT_RUN | | | |
 | P10 Conteggio alberi 3-way | NOT_RUN | | | |
 
@@ -52,6 +52,37 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P8 — viewer aggiornato e domande risolte, gate PASS
+
+Fatto: l'utente ha risposto alle domande aperte: Q1 branch pubblicati su origin (10 branch
+`feature/preflop-blueprint*` e 3 tag), Q2/Q3 merge dell'integrazione in `main` eseguito nel suo
+working tree (`97d8121`, tag `preflop-blueprint-p3-abstraction` su `981361e`,
+`preflop-blueprint-p6-hu10` su `22e1015`, `preflop-blueprint-p8-export` su `9360836`; `main` non
+pushato: non richiesto), Q4 viewer modificabile. Nel repository: export dell'albero pubblico
+postflop nello schema del viewer, sonda per nodo nel valutatore, worker di query postflop
+(`--serve`) con frequenze, reach ed EV per classe (esatti a turn e river, runout campionati al
+flop), test e smoke. Nel repository del viewer (branch `feature/preflop-blueprint-p8-export`,
+modifiche locali preesistenti conservate in `56cdf31`, aggiornamento `4edbb45`): generatore con
+sorgenti blueprint e badge, frontend con azioni e gioco dinamici, server con backend blueprint,
+validatori generici, README. Report: [P8_EXPORT.md](P8_EXPORT.md) §5.
+Comandi: `ctest -L p8 -V`; export dell'albero HU10; `generate_chart_data.py --blueprint … --postflop-tree …`;
+`serve_viewer.py --backend blueprint …`; verifica nel browser integrato.
+Risultati: `ctest -L p8` 7/7; worker: EV di classe al flop uguale al valutatore entro `1e-9`,
+flop 0,4–1,3 s (16–64 runout), turn 0,5 s esatto, river istantaneo; viewer: "HU 10a Chart Viewer",
+badge `CERTIFIED EXACT · exploitability 0.0042a (0.14% pot)`, 20 nodi preflop e albero postflop
+(9 entry, 792 nodi) navigabili, query sul board `Ac Kd Qh` con frequenze ed EV per classe.
+Fallimenti: (1) `reference?.ev !== null` nel viewer con riferimento assente: eccezione nel render
+della matrice, guardia aggiunta. (2) Il flop con tutti i 1.056 runout costa 17,6 s nel worker
+(sonda sequenziale sui turn): il viewer usa runout campionati; parallelizzazione rinviata.
+Dubbi: (1) Le size preflop di HU10 (open 3 a / 5 a, risposte 6 a / 8 a) vengono dal fixture di
+calibrazione legacy `hu_preflop_hu10_calibration_v1.json` (D6, commit `04aa687`) e non sono state
+scelte in questo programma: HU10 è solo il gioco di validazione, CO40 usa il contratto Monker
+(6 a / 10 a, 10,5 a / 14,5 a). (2) La stima di 22 h per la certificazione esatta di CO40 riguarda
+solo il certificatore P7 (605.088 board a 1,07 s per board per thread, dominati dai kernel all-in
+di flop e turn): il training CO40 costa circa 3 s per iterazione (10 volte HU10), quindi ore, non
+giorni; le riduzioni possibili sono descritte in P7 §5.
+Prossimo passo: P9 sul branch `feature/preflop-blueprint-p9-co40`.
 
 ### 2026-09-16 — P8 — export, query, comparatore, viewer, gate PASS con riserva (viewer INCONCLUSIVE)
 
@@ -380,10 +411,10 @@ Prossimo passo: P0.
 
 | # | Data | Domanda | Stato | Risposta |
 |---|---|---|---|---|
-| Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. | aperta | |
-| Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Suite CTest completa eseguita sull'integrazione dopo il merge di P3: 65/65 PASS (4 test legacy passano solo con il manifest v1 in LF, vedi voce P5 del diario; nel checkout dell'utente il file è in LF). In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 e P5 sono proceduti sull'integrazione. | aperta | |
-| Q3 | 2026-09-16 | D21 prevede al gate P6 il merge dell'integrazione in `main` con tag `preflop-blueprint-p6-hu10`; stesso blocco di Q2 (`main` è il working tree dell'utente). Comandi proposti nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P6 trainer and physical best response, gate P6 PASS"` poi `git tag -a preflop-blueprint-p6-hu10 -m "P6 gate PASS: HU10 D3 with the sampled estimator at 1000 flops"`. Da eseguire dopo (o insieme a) Q2. Nel frattempo P7 procede sull'integrazione. | aperta | |
-| Q4 | 2026-09-16 | P8 prevede l'aggiornamento del viewer `tools/hu_preflop_chart_viewer` (repository separato, D18, escluso da git in questo repository) perché legga il nuovo export e mostri i badge `ESTIMATED` / `CERTIFIED_EXACT` / `EXTERNAL_REFERENCE`; il gate P8 richiede "viewer navigabile con un export HU10". L'agent lavora nel worktree e non modifica né il repository del viewer né il working tree dell'utente. Proposta: l'agent produce in questo repository l'export nel formato che il generatore del viewer già legge (`preflop_nodes` con `history`, `strategy`, `action_ev` per classe), lo schema e un validatore statico registrato in CTest; la modifica del generatore (vincoli fissi su 20 nodi, fingerprint CO40 e path Monker da rendere generici; badge di stato dal certificato P7) va fatta nel repository del viewer: la esegue l'utente, oppure l'utente autorizza l'agent a modificare `tools/hu_preflop_chart_viewer` nel suo working tree. Fino alla risposta il criterio "viewer navigabile" del gate P8 resta INCONCLUSIVE e le altre parti di P8 procedono. | aperta | |
+| Q1 | 2026-09-15 | I branch di fase vengono uniti nell'integrazione con merge locali `--no-ff`; per aprire pull request su GitHub servirebbe il push dei branch su origin. Si pubblicano i branch su origin oppure restano merge locali fino ai gate di `main`? Nel frattempo si procede con merge locali. risolta 2026-09-16 | pubblicare i branch: eseguito, 10 branch e 3 tag su origin (`main` non pushato) |
+| Q2 | 2026-09-15 | D21 prevede il merge dell'integrazione in `main` al gate P3 con tag. `main` è il branch checked-out nel working tree dell'utente (`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`): git non permette di farne il checkout in un secondo worktree e spostarne il ref da fuori lascerebbe il working tree dell'utente in uno stato incoerente. Comandi proposti, da eseguire nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P3 card abstraction, gate P3 PASS"` poi `git tag -a preflop-blueprint-p3-abstraction -m "P3 gate PASS"`. Suite CTest completa eseguita sull'integrazione dopo il merge di P3: 65/65 PASS (4 test legacy passano solo con il manifest v1 in LF, vedi voce P5 del diario; nel checkout dell'utente il file è in LF). In alternativa l'utente può autorizzare l'agent a eseguire i due comandi nel suo working tree. Nel frattempo P4 e P5 sono proceduti sull'integrazione. risolta 2026-09-16 | applicare il merge: eseguito nel working tree dell'utente (`97d8121`), tag `preflop-blueprint-p3-abstraction` su `981361e` |
+| Q3 | 2026-09-16 | D21 prevede al gate P6 il merge dell'integrazione in `main` con tag `preflop-blueprint-p6-hu10`; stesso blocco di Q2 (`main` è il working tree dell'utente). Comandi proposti nel working tree dell'utente con `main` pulito: `git merge --no-ff feature/preflop-blueprint -m "merge(preflop-blueprint): P0-P6 trainer and physical best response, gate P6 PASS"` poi `git tag -a preflop-blueprint-p6-hu10 -m "P6 gate PASS: HU10 D3 with the sampled estimator at 1000 flops"`. Da eseguire dopo (o insieme a) Q2. Nel frattempo P7 procede sull'integrazione. risolta 2026-09-16 | come Q2: tag `preflop-blueprint-p6-hu10` su `22e1015` e `preflop-blueprint-p8-export` su `9360836` |
+| Q4 | 2026-09-16 | P8 prevede l'aggiornamento del viewer `tools/hu_preflop_chart_viewer` (repository separato, D18, escluso da git in questo repository) perché legga il nuovo export e mostri i badge `ESTIMATED` / `CERTIFIED_EXACT` / `EXTERNAL_REFERENCE`; il gate P8 richiede "viewer navigabile con un export HU10". L'agent lavora nel worktree e non modifica né il repository del viewer né il working tree dell'utente. Proposta: l'agent produce in questo repository l'export nel formato che il generatore del viewer già legge (`preflop_nodes` con `history`, `strategy`, `action_ev` per classe), lo schema e un validatore statico registrato in CTest; la modifica del generatore (vincoli fissi su 20 nodi, fingerprint CO40 e path Monker da rendere generici; badge di stato dal certificato P7) va fatta nel repository del viewer: la esegue l'utente, oppure l'utente autorizza l'agent a modificare `tools/hu_preflop_chart_viewer` nel suo working tree. Fino alla risposta il criterio "viewer navigabile" del gate P8 resta INCONCLUSIVE e le altre parti di P8 procedono. risolta 2026-09-16 | il viewer può essere modificato dall'agent: fatto sul branch `feature/preflop-blueprint-p8-export` del viewer (`4edbb45`), modifiche locali preesistenti conservate in `56cdf31` |
 
 ## 5. Decisioni prese dall'agent
 
@@ -428,3 +459,6 @@ Prossimo passo: P0.
 | 37 | 2026-09-16 | P8 | Export `gtosd.preflop_blueprint_chart.v1` nel layout `preflop_nodes` → `{history, strategy, action_ev}` già letto dal generatore del viewer, con id di azione compatibili con le chart legacy (`raise_6`, `call`, `fold`, `all_in`) e id di nodo `CO_raise_3_BTN` | il viewer richiede solo la rimozione dei vincoli fissi CO40 e i badge (Q4); nessun secondo formato da mantenere |
 | 38 | 2026-09-16 | P8 | EV per azione condizionato al nodo: valore controfattuale diviso per la reach avversaria data la combo, media di classe pesata con la reach, errore standard sui flop campionati; alla radice coincide con l'EV del gioco | è la semantica delle chart (EV dell'azione nello spot); verificata entro `1e-9` alla radice |
 | 39 | 2026-09-16 | P8 | Verdetto del comparatore sulla sola exploitability fisica dichiarata (D2, soglia 0,1 a): `QUALIFIED` / `REJECTED` con certificato esatto, `PROMISING` / `INCONCLUSIVE_ESTIMATE` / `REJECTED` (limite inferiore sopra soglia) con stima campionata; distanze Monker descrittive con `EXTERNAL_CONTRACT_INCOMPLETE` | D1/D2/D4 della roadmap; la stima campionata ha bias di selezione e non può qualificare da sola |
+| 40 | 2026-09-16 | P8 | Albero pubblico postflop esportato nello schema del viewer (`gtosd.hu_postflop_public_tree.v1`) leggendo lo stato pubblico conservato per nodo dal compilato; id compilati nel file per indirizzare il worker | il viewer già navigava quello schema; nessun secondo formato |
+| 41 | 2026-09-16 | P8 | EV postflop del worker: valore controfattuale dell'azione con la strategia media diviso per la reach avversaria al nodo; esatto a turn (32 river) e river, medio su `samplesPerAction` runout campionati al flop (seme fisso), classi pesate con la reach avversaria, frequenze di range pesate anche con la reach dell'eroe | stessa semantica dell'export preflop; il flop completo (1.056 runout) costa 17,6 s e non è interattivo |
+| 42 | 2026-09-16 | P8 | Viewer: generatore con sorgenti blueprint e badge, azioni e gioco dinamici, Monker solo a parità di albero, backend `--serve`; le modifiche locali preesistenti dell'utente sono conservate in un commit separato prima dell'aggiornamento | autorizzazione Q4; il repository del viewer non ha remote: i commit restano locali |
