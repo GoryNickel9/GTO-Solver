@@ -53,6 +53,63 @@ Dubbi: ...
 Prossimo passo: ...
 ```
 
+### 2026-09-16 — P8 — soluzione CO40 a una size nel viewer, DCFR contro Linear su CO40, risposte su exploitability/tempo e sui nodi fuori percorso
+
+Fatto: (1) L'utente si aspettava nel viewer anche CO40 a una size postflop: la variante di test
+è stata risolta con il protocollo HU10 (DCFR alternato, 2.000 iterazioni, `B = 32`, 8 thread,
+valutazione ogni 500 iterazioni su 20 flop), certificata esatta ed esportata (`out/co40t_*`).
+Vista la exploitability alta e la stima campionata crescente, lo stesso run è stato proseguito a
+10.000 iterazioni (`--resume`, `out/co40t10k_*`) e, come primo punto del confronto P9.1, è stato
+addestrato anche Linear simultaneo per 2.000 iterazioni (`out/co40t_linear_*`), entrambi
+certificati esatti ed esportati. Viewer rigenerato con tre sorgenti (HU10 completo, HU10 ridotto,
+CO40 test: DCFR alternato, 2.000 iterazioni, la migliore delle tre); la navigazione postflop resta quella di
+HU10 completo: generatore e server accettano un solo albero e una sola policy (decisione 48).
+(2) Domanda sull'aumento della exploitability per ridurre il tempo: risposta nei dubbi qui sotto
+e all'utente, senza modifiche al codice. (3) Domanda sul nodo `CO call → BTN all-in → CO` con una
+strategia mentre alla radice `call` vale 0,0 %: la frequenza di limp alla radice è 3,5·10⁻⁶ di
+range (massimo 5,6·10⁻⁵ per 87s); il nodo è praticamente irraggiungibile ma CFR aggiorna ogni
+information set e la strategia media vi è definita (AA call 100 %, J6o fold 91 %); gli EV sono
+condizionati al nodo (BTN spinge il 67 % delle mani dopo il limp). Nessuna modifica al codice.
+(4) Note datate aggiunte a P4 §4 e P6 §5 sul cambio delle fixture HU10.
+Comandi: `gtosd_preflop_blueprint_train …co40_test_v1.json --iterations 2000 --batch 32 --threads 8
+--eval-flops 20 --eval-every 500 --policy-out out/policy_co40t_dcfr_200.bin`; `… --resume --checkpoint
+out/ckpt_co40t_10k.bin --iterations 10000 --eval-every 1000 --policy-out out/policy_co40t_10k.bin`;
+`… --scheme linear --update simultaneous --iterations 2000 --policy-out out/policy_co40t_linear.bin`;
+`certify --threads 8 --chunk 16`; `export --certificate … --eval-flops 60 --postflop-tree …`;
+`generate_chart_data.py --blueprint … (tre export) --postflop-tree out/r3_postflop_tree_hu10_full.json`.
+Risultati: CO40 test (1129 nodi, 456 decisioni; 0.234 s per iterazione DCFR,
+0.790 s Linear):
+
+| Run | Training | Stima a 20 flop | Exploitability esatta | % piatto | % stack | nashconv | Limite inferiore dal flop | EV CO | Certificazione |
+|---|---|---|---|---|---|---|---|---|---|
+| DCFR alternato, 2.000 it. | 8 min | 0,6784 ± 0,1055 a | **0,6569 a** | 21,9 % | 1,64 % | 1,0278 a | 0,2622 a | -0,1448 a | 23 min |
+| DCFR alternato, 10.000 it. (proseguimento) | 38 min | 0,9366 ± 0,1178 a | **0,8406 a** | 28,0 % | 2,10 % | 1,2467 a | 0,2978 a | -0,1459 a | 23 min |
+| Linear simultaneo, 2.000 it. | 26 min (in parallelo a una certificazione) | 1,0783 ± 0,1072 a | **1,0862 a** | 36,2 % | 2,72 % | 1,5226 a | 0,3559 a | -0,1460 a | 23 min |
+
+con DCFR alternato la exploitability esatta sale fra 2.000 e 10.000 iterazioni (la strategia media peggiora); Linear simultaneo a 2.000 iterazioni è peggiore: lo schema non è la causa principale. Confronto descrittivo con il riferimento Monker CO40 (comparatore su DCFR 2.000, verdetto `REJECTED`, contratto esterno incompleto): alla radice variazione totale media di classe 26.2 pp, errore massimo per azione 23.8 pp, differenza di EV di radice 0,159 a: CO limpa e spinge 40 a con frequenze che Monker non ha (AA limp 97 %, T9s all-in 82 %).. Per confronto HU10 completo a 2.000 iterazioni DCFR: 0,0040 a (0,13 % del piatto).
+Radice CO (DCFR alternato, 2.000 iterazioni): fold 33,0 %, all in 32,6 %, call 31,4 %, raise 10 2,5 %, raise 6 0,6 %; EV di radice -0,1411 a; 20 nodi preflop; albero postflop
+9 entry, 436 nodi decisionali, 992 archi. Verdetto D2 (soglia 0,1 a): REJECTED per la variante
+di test con questi run; il gate P9 resta sul CO40 completo.
+Fallimenti: (1) La stima del mattino "2.000–10.000 iterazioni" per CO40 era una supposizione:
+con il protocollo HU10 la variante di test resta lontana dall'equilibrio (tabella sopra).
+(2) La stima campionata a 20 flop di DCFR alternato cresce con le iterazioni (0,68 a a 2.000,
+0,94 a a 10.000): su HU10 non era successo.
+Dubbi: (1) Exploitability e tempo: il costo del training si riduce fermandosi prima (su HU10
+l'1 % del piatto arriva a circa 50 iterazioni, 10 s), ma la certificazione esatta costa lo stesso
+qualunque sia la soglia (35 min su HU10 completo, 22 min su CO40 test, 10,2 h su CO40 completo
+a 8 thread); la regola D3 campionata con `M = 1.000` costa più della passata esatta e, per il
+bias dello stimatore, di fatto richiede una exploitability vera intorno allo 0,1–0,2 % del piatto
+per dichiarare l'1 %. Per fermarsi davvero all'1 % servirebbe usare il certificatore esatto come
+regola di arresto (economico sugli alberi piccoli) o un limite inferiore senza bias. Su CO40 il
+problema è opposto: con il protocollo HU10 non si scende sotto il 22 % del piatto.
+(2) Nel viewer la classe è segnata "fuori percorso" sotto `1e-6` di reach proprio: al nodo dopo
+il limp molte classi restano fra `1e-6` e `6e-5` e non sono segnate; una soglia sul reach del
+nodo intero sarebbe più leggibile (non implementata: nessuna modifica richiesta). (3) La parte
+postflop di CO40 test vale da sola 0,2622 a di exploitability nel run migliore: con 40 a di
+stack i bucket 200/500/1.000 costruiti per HU10 possono essere un limite; P9.1 (Linear contro
+DCFR, tre seed, capacità 500/1.000/2.000) e la diagnosi astrazione/algoritmo/budget restano da fare.
+Prossimo passo: merge e push; P9 secondo l'indicazione dell'utente, partendo da questa diagnosi.
+
 ### 2026-09-16 — P8 — contro l'open 5a solo fold/call/all-in, scaling sui thread, curva exploitability/iterazioni, erratum sulle proiezioni del certificatore
 
 Fatto: (1) Domande dell'utente: come essere certi della convergenza a Nash (la exploitability
@@ -576,3 +633,4 @@ Prossimo passo: P0.
 | 45 | 2026-09-16 | P8 | Nel viewer le classi con reach proprio lungo la history sotto `1e-6` restano visibili ma desaturate, con il reach nel tooltip | l'export riporta la strategia media di tutte le classi (residui ≈ 1e-9); togliere le righe cambierebbe la griglia 9×9; la soglia è sotto ogni frequenza di gioco significativa |
 | 46 | 2026-09-16 | P8 | Lista di risposte vuota nella configurazione = nessuna size di rilancio sopra un open (livello 1: fold, call, all-in); con lista non vuota resta una risposta per open | regola dell'utente per HU10 (contro l'open 5 a BTN ha solo l'all-in); nessun secondo formato, la fixture CO40 non cambia |
 | 47 | 2026-09-16 | P8 | Le misure di tempo del certificatore si fanno con `--chunk` ≥ numero di thread (il parallelismo è sui flop di uno stesso chunk); i tempi per flop nei report sono a 8 thread con chunk 16 salvo indicazione | le proiezioni di P7 §5 (chunk 2) e della voce CO40-TEST (chunk 1) avevano 2 e 1 thread attivi e sovrastimavano di 2,3 e 4,2 volte |
+| 48 | 2026-09-16 | P8 | La soluzione della variante CO40 di test entra nel viewer come terza sorgente (chart preflop con badge e exploitability esatta dichiarata, il run migliore fra DCFR 2.000/10.000 e Linear 2.000); la navigazione postflop resta sull'albero e sulla policy HU10 completo | il generatore accetta un solo `--postflop-tree` e il server una sola policy; estenderli non era richiesto |

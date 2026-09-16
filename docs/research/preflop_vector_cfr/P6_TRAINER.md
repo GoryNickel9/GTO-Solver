@@ -126,6 +126,10 @@ quindi circa 50 min su HU10 completo, meno della stima campionata con `M = 1.000
 
 ## 5. Curve HU10 con lo stimatore corretto
 
+> **Nota (2026-09-16).** Dal pomeriggio del 2026-09-16 le fixture HU10 hanno una sola size preflop
+> (open 5 a) e nessuna size di risposta (contro l'open solo fold, call e all-in): gli alberi e i
+> conteggi HU10 di questa sezione valgono per le fixture di allora (diario, P8 §9 e §10).
+
 Tutti i run: 2.000 iterazioni, `B = 32`, 8 thread, stima naive con `M = 20` flop ogni 250 iterazioni
 (stessi flop di valutazione in ogni run, stesso seme di training). Massimo guadagno naive in ante
 per mano (semiampiezza 0,04–0,10 a):
