@@ -53,6 +53,43 @@ Dubbi: ...
 Prossimo passo: ...
 ```
 
+### 2026-09-16 — P9 (diagnosi) — CO40 di test con una sola apertura full pot: la riduzione delle size non basta
+
+Fatto: su richiesta dell'utente la fixture **di test** CO40 passa da due aperture (6 a / 10 a) e due
+risposte (10,5 a / 14,5 a) a una sola apertura full pot e una sola risposta full pot. Calcolo delle
+size con la stessa regola di HU10: piatto iniziale 3 a (due ante da 1 a più il blind del bottone da
+1 a), CO paga 1 a per vedere (piatto 4 a) e rilancia di un piatto intero, quindi **apertura 5 a**;
+BTN paga 3 a per chiamare l'apertura (piatto 10 a) e rilancia di un piatto intero, quindi
+**risposta 13 a**. Lo stack (40 a) non entra nel calcolo: per questo l'apertura coincide con quella
+di HU10. La fixture CO40 principale non è toccata (le size Monker restano il riferimento del gate
+P9, che la roadmap vieta di cambiare, e i conteggi di P4 §4 e P5 §3 le citano). Training,
+certificazione esatta ed export con lo stesso protocollo.
+Comandi: `gtosd_preflop_blueprint_game --config …co40_test_v1.json`; `train …co40_test_v1.json
+--iterations 2000 --batch 32 --threads 8 --eval-flops 20 --eval-every 500 --policy-out out/policy_co40t1.bin`;
+`certify --policy out/policy_co40t1.bin --threads 8 --chunk 16 --output out/co40t1_cert.json`;
+`export --certificate out/co40t1_cert.json --eval-flops 60 --threads 8 --postflop-tree …`.
+Risultati: albero 637 nodi (256 decisioni), preflop 34 nodi / 12 decisioni /
+5 entry postflop (prima 1.129 nodi, 456 decisioni, preflop 58 / 20 / 9); stato 9.7 MB;
+training 7 min (0.205 s per iterazione), stima a 20 flop
+all'iterazione 2.000 0,6668 ± 0,1075 a; certificato esatto
+**0,6516 a** (21,7 % del piatto, 1,63 % dello stack), nashconv 1,0257 a, limite
+inferiore dal flop 0,2638 a, EV di CO -0,1429 a, certificazione 12 min
+(1.3 s per flop). Confronto con le due aperture (stesso protocollo, 2.000 iterazioni):
+0,6569 a. Quindi **la riduzione non risolve**: da 0,6569 a 0,6516 a, cioè lo stesso ordine di grandezza, con un albero quasi dimezzato (637 nodi contro 1.129) e una parte preflop di 12 decisioni contro 20. Radice CO: all in 34.8 %, fold 33.0 %, call 31.1 %, raise 5 1.1 %; EV di radice -0,1397 a;
+12 nodi preflop; albero postflop 5 entry, 244 nodi
+decisionali, 560 archi; export 86 s.
+Per confronto HU10 completo (1.501 nodi, stessa astrazione, stesso protocollo): 0,0040 a, 0,13 % del piatto.
+Nota sulle etichette: nell'export e nel viewer la risposta compare come `raise_12` perché l'etichetta conta le fiche aggiunte dall'attore e BTN ha già 1 a di blind; la puntata raggiunta è 13 a, verificata sullo stato pubblico (dopo il call piatto 28 a e 26 a dietro a testa). Le aperture coincidono con il target perché CO non ha nulla nella puntata.
+Fallimenti: nessuno.
+Dubbi: (1) L'esperimento non separa le due ipotesi residue perché la risposta configurata a 13 a
+tiene attivo il ramo `response_targets[index]`, che non ha oracolo esatto (scelta dell'utente fra
+le due opzioni proposte). Per separarle servirebbe la variante senza risposta, con la parte
+preflop identica a HU10 e l'unica differenza nello stack. (2) Con l'albero sceso a 637 nodi,
+cioè meno della metà di HU10 completo (1.501), la dimensione dell'albero è definitivamente
+esclusa come causa.
+Prossimo passo: decisione dell'utente fra l'oracolo esatto a 40 a (punto 2 del piano) e la misura
+dell'errore di astrazione a 40 a (punto 4).
+
 ### 2026-09-16 — P9 (diagnosi) — mappa della copertura: non esiste un oracolo esatto su CO40
 
 Fatto: risposta alla domanda dell'utente "non c'è l'oracolo esatto in CO40?". Verificata riga per
