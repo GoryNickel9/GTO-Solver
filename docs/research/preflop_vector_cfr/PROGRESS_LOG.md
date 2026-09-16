@@ -75,6 +75,9 @@ badge `CERTIFIED EXACT · exploitability 0.0042a (0.14% pot)`, 20 nodi preflop e
 Fallimenti: (1) `reference?.ev !== null` nel viewer con riferimento assente: eccezione nel render
 della matrice, guardia aggiunta. (2) Il flop con tutti i 1.056 runout costa 17,6 s nel worker
 (sonda sequenziale sui turn): il viewer usa runout campionati; parallelizzazione rinviata.
+(3) Le commit `b41cee2` e `9d05224` sono nate direttamente sul branch di integrazione
+invece che sul branch di fase (checkout non tornato sul branch dopo il merge): il branch di
+fase è stato riallineato a `9d05224` con fast-forward e la deviazione da D21 è registrata qui.
 Dubbi: (1) Le size preflop di HU10 (open 3 a / 5 a, risposte 6 a / 8 a) vengono dal fixture di
 calibrazione legacy `hu_preflop_hu10_calibration_v1.json` (D6, commit `04aa687`) e non sono state
 scelte in questo programma: HU10 è solo il gioco di validazione, CO40 usa il contratto Monker
