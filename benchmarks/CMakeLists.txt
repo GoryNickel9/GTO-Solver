@@ -377,9 +377,11 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
       --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
       --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
-      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10)
+      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10
+      --policy-out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin)
   set_tests_properties(gtosd_preflop_blueprint_train_smoke
-    PROPERTIES LABELS "preflop_blueprint;p6;trainer")
+    PROPERTIES LABELS "preflop_blueprint;p6;trainer"
+               FIXTURES_SETUP preflop_blueprint_smoke_policy)
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     set_tests_properties(gtosd_preflop_blueprint_train_smoke PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
@@ -402,4 +404,52 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_certify_smoke PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+
+  add_executable(gtosd_preflop_blueprint_export preflop_blueprint_export.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_export
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_export)
+  add_test(NAME gtosd_preflop_blueprint_export_smoke
+    COMMAND gtosd_preflop_blueprint_export
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --eval-flops 2 --threads 4 --iterations 20
+      --output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json)
+  set_tests_properties(gtosd_preflop_blueprint_export_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;export"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy
+               FIXTURES_SETUP preflop_blueprint_smoke_chart)
+  add_test(NAME gtosd_preflop_blueprint_query_smoke
+    COMMAND gtosd_preflop_blueprint_export
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --query-history raise_3,call --query-hand AhKs --query-board 7s8d9c)
+  set_tests_properties(gtosd_preflop_blueprint_query_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;export"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy)
+
+  add_executable(gtosd_preflop_blueprint_compare preflop_blueprint_compare.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_compare PRIVATE gtosd::preflop_blueprint gtosd::core)
+  gtosd_set_warnings(gtosd_preflop_blueprint_compare)
+  add_test(NAME gtosd_preflop_blueprint_compare_smoke
+    COMMAND gtosd_preflop_blueprint_compare
+      --candidate ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json
+      --baseline ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_export_smoke_chart.json
+      --reference ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/hu_preflop_co40_reference_v1.json
+      --max-gain 100
+      --output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_compare_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_compare_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;comparator"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
+  foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
+                gtosd_preflop_blueprint_compare_smoke)
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(${smoke} PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
+  endforeach()
 endif()
