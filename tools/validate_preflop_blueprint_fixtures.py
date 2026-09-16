@@ -38,9 +38,9 @@ def main() -> int:
                 location = "/".join(str(part) for part in error.path) or "<root>"
                 print(f"{fixture.name}: {location}: {error.message}")
         # Cross-field checks that JSON Schema cannot express.
-        if len(document.get("open_target_units", [])) != len(
-            document.get("response_target_units", [])
-        ):
+        # An empty response list means that the only re-raise over an open is the all-in.
+        responses = document.get("response_target_units", [])
+        if responses and len(document.get("open_target_units", [])) != len(responses):
             failures += 1
             print(f"{fixture.name}: response_target_units must match open_target_units")
         if len(document.get("positions", [])) != document.get("player_count"):
