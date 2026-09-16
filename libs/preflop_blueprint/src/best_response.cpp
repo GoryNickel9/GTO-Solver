@@ -118,14 +118,42 @@ using NodeVectors = std::vector<std::vector<double>>;
 
 class StreetEvaluator {
 public:
-  StreetEvaluator(const CompiledGame &game, const Policies &policies)
-      : game_(game), policies_(policies) {}
+  StreetEvaluator(const CompiledGame &game, const Policies &policies, NodeProbe *probe = nullptr)
+      : game_(game), policies_(policies), probe_(probe) {}
+
+  // Records the opponent reach of the probed node (scaled to a probability
+  // over the allowed opponent hands disjoint from every combo).
+  void record_reach(const std::uint32_t node, const Universe &universe, const std::uint8_t hero,
+                    const std::vector<double> &reach, const std::vector<double> &allowed_opponent) const {
+    if (probe_ == nullptr || node != probe_->node || hero != probe_->hero) {
+      return;
+    }
+    std::vector<double> restricted(universe.size(), 0.0);
+    for (std::size_t hand = 0; hand < universe.size(); ++hand) {
+      restricted[hand] = allowed_opponent[universe.combos[hand]];
+    }
+    std::vector<double> opponent_count;
+    fold_mass_universe(universe, restricted, opponent_count);
+    std::vector<double> disjoint_mass;
+    fold_mass_universe(universe, reach, disjoint_mass);
+    probe_->opponent_mass.assign(combo_total, 0.0);
+    probe_->opponent_reach.assign(combo_total, 0.0);
+    for (std::size_t hand = 0; hand < universe.size(); ++hand) {
+      probe_->opponent_mass[universe.combos[hand]] =
+          opponent_count[hand] > 0.0 ? disjoint_mass[hand] / opponent_count[hand] : 0.0;
+      probe_->opponent_reach[universe.combos[hand]] = reach[hand];
+    }
+    probe_->found = true;
+  }
 
   // Propagates the opponent reach from `node` through the decision nodes of
   // its street and records the reach at every leaf (chance node or terminal).
   void propagate(const std::uint32_t node, const Universe &universe, const std::uint8_t hero,
                  const std::vector<double> &reach, NodeVectors &leaf_reach) const {
     const auto &entry = game_.nodes()[node];
+    if (probe_ != nullptr && node == probe_->node && hero == probe_->hero && allowed_ != nullptr) {
+      record_reach(node, universe, hero, reach, *allowed_);
+    }
     if (entry.kind != NodeKind::Decision) {
       leaf_reach[node] = reach;
       return;
@@ -179,6 +207,14 @@ public:
     if (choice != nullptr) {
       (*choice)[node].assign(universe.size(), 0U);
     }
+    if (probe_ != nullptr && node == probe_->node && hero == probe_->hero && mode == average_mode) {
+      probe_->action_values.assign(children.size(), std::vector<double>(combo_total, 0.0));
+      for (std::size_t action = 0; action < children.size(); ++action) {
+        for (std::size_t hand = 0; hand < universe.size(); ++hand) {
+          probe_->action_values[action][universe.combos[hand]] = children[action][hand];
+        }
+      }
+    }
     for (std::size_t hand = 0; hand < universe.size(); ++hand) {
       if (mode == response_mode) {
         double best = children[0][hand];
@@ -204,9 +240,13 @@ public:
     }
   }
 
+  void set_allowed_opponent(const std::vector<double> *allowed) noexcept { allowed_ = allowed; }
+
 private:
   const CompiledGame &game_;
   const Policies &policies_;
+  NodeProbe *probe_{nullptr};
+  const std::vector<double> *allowed_{nullptr};
 };
 
 double terminal_payoff(const CompiledGame &game, const CompiledNode &node, const std::uint8_t hero,
@@ -300,7 +340,7 @@ struct BestResponseEvaluator::Impl {
 namespace {
 
 FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const FlopGroup &group,
-                               bool &ok) {
+                               bool &ok, NodeProbe *probe = nullptr) {
   const auto &game = *context.game;
   const auto &resources = context.resources;
   const auto node_count = game.nodes().size();
@@ -309,7 +349,10 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
   result.weight = group.weight;
   result.boards = static_cast<std::uint32_t>(group.boards.size());
   ok = true;
-  StreetEvaluator evaluator(game, context.policies);
+  StreetEvaluator evaluator(game, context.policies, probe);
+  if (probe != nullptr) {
+    evaluator.set_allowed_opponent(&context.allowed[1U - probe->hero]);
+  }
   const HeadsUpShowdownKernel kernel;
 
   std::uint64_t flop_mask = 0U;
@@ -1074,6 +1117,24 @@ BestResponseEvaluator::preflop_action_values(const std::vector<const FlopValues 
     }
   }
   return Outcome::success(std::move(result));
+}
+
+Result<NodeProbe, KernelError> BestResponseEvaluator::probe_node(const FlopGroup &group,
+                                                                const std::uint32_t node,
+                                                                const std::uint8_t hero) const {
+  using Outcome = Result<NodeProbe, KernelError>;
+  if (!impl_ || hero > 1U || node >= impl_->game->nodes().size()) {
+    return Outcome::failure(KernelError::InvalidInput);
+  }
+  NodeProbe probe;
+  probe.node = node;
+  probe.hero = hero;
+  bool ok = true;
+  static_cast<void>(evaluate_flop_group(*impl_, group, ok, &probe));
+  if (!ok) {
+    return Outcome::failure(KernelError::InvalidInput);
+  }
+  return Outcome::success(std::move(probe));
 }
 
 Result<BestResponseReport, KernelError>

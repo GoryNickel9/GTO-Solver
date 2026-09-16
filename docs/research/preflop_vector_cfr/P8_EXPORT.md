@@ -1,10 +1,10 @@
 # P8 — Export, query, comparatore, viewer
 
 Data: 2026-09-16. Branch di fase: `feature/preflop-blueprint-p8-export`. Esito del gate:
-**PASS con riserva** (§6): test PASS, export HU10 completo e ridotto certificati `CERTIFIED_EXACT`,
-query, comparatore e validatore verificati; il criterio "viewer navigabile con un export HU10"
-resta **INCONCLUSIVE** perché il viewer è un repository separato fuori dal perimetro dell'agent
-(Q4 nel diario).
+**PASS** (§6): test PASS, export HU10 completo e ridotto certificati `CERTIFIED_EXACT`, query,
+comparatore e validatore verificati; il viewer, aggiornato nel suo repository dopo
+l'autorizzazione dell'utente (Q4, 2026-09-16), naviga l'export HU10 preflop e postflop con i
+badge di stato (§5).
 
 ## 1. Cosa è stato prodotto
 
@@ -17,7 +17,9 @@ resta **INCONCLUSIVE** perché il viewer è un repository separato fuori dal per
 | Comparatore | `include/gtosd/preflop_blueprint/comparator.hpp`, `libs/preflop_blueprint/src/comparator.cpp` | verdetto sulla exploitability fisica dichiarata (D2, soglia 0,1 a): `QUALIFIED` / `REJECTED` con certificato esatto, `PROMISING` / `INCONCLUSIVE_ESTIMATE` / `REJECTED` con stima campionata (limite inferiore sopra soglia = respinto); baseline (altro export) confrontata nodo per nodo con le metriche legacy (WMAE e variazione totale per classe pesate con le masse 6/4/12, p95, errore massimo di radice), `STALE_TREE` se l'albero differisce; riferimento Monker `gtosd.hu_preflop_reference.v1` (parser delle range string `[p]classe[/p]`) confrontato alla radice, stato `EXTERNAL_CONTRACT_INCOMPLETE`, mai influente sul verdetto; output `gtosd.preflop_blueprint_comparison.v1` |
 | Validatore | `tools/validate_preflop_blueprint_chart.py` | schema, fingerprint, badge, 81 righe per nodo, somme a uno, history coerente con gli id, radice replicata, checksum ricalcolato; registrato in CTest (`p8;schema`) sull'export dello smoke |
 | Eseguibili | `benchmarks/preflop_blueprint_export.cpp` (export e `--query-*`), `benchmarks/preflop_blueprint_compare.cpp` | export con `--certificate`, `--eval-flops`, `--iterations`; query con `--query-history`, `--query-hand`, `--query-board` (JSON `gtosd.preflop_blueprint_query.v1`); comparatore con `--candidate`, `--baseline`, `--reference`, `--max-gain` (uscita 2 se `REJECTED`) |
-| Test | `tests/preflop_blueprint_export_tests.cpp` (20.380 asserzioni), smoke CTest a catena (train → export → validatore / query / comparatore tramite fixture) | etichette, query, export, comparatore |
+| Albero postflop per il viewer | `include/gtosd/preflop_blueprint/postflop_tree_export.hpp`, `libs/preflop_blueprint/src/postflop_tree_export.cpp` | `gtosd.hu_postflop_public_tree.v1`: entry con history preflop, nodi decisionali postflop con id contigui e stato pubblico in ante (pot, to call, stack, commitment, raise), azioni con commitment obiettivo, pagamento e target (decisione, chance con la strada distribuita, terminale con stato), conteggi; id compilati conservati per il worker |
+| Worker di query postflop | `include/gtosd/preflop_blueprint/query_worker.hpp`, `libs/preflop_blueprint/src/query_worker.cpp`; `NodeProbe` / `probe_node` in `best_response.hpp` | per una entry, un percorso di azioni e il board visibile: combo vive, reach dell'eroe lungo il percorso, frequenze per classe, EV per azione (esatti a turn e river con tutti i river enumerati, medi su runout campionati al flop), frequenze di range; protocollo JSON a righe (`--serve`), risposta letta dal server del viewer |
+| Test | `tests/preflop_blueprint_export_tests.cpp` (20.380 asserzioni più test del worker), smoke CTest a catena (train → export / albero postflop → validatore / query / comparatore tramite fixture) | etichette, query, export, comparatore, albero postflop, worker |
 
 ## 2. Definizioni
 
@@ -47,7 +49,8 @@ descrittive perché il contratto postflop esterno è incompleto.
 | Query: 160 cammini casuali (26/28/23/19 per strada preflop/flop/turn/river) con board casuale: nodo, id, riga uguale a quella del `BoardContext` P5 e probabilità uguali alla riga della policy; history terminale, azione ignota, mano sul board e board mancante respinti | PASS |
 | Export HU10 ridotto (policy di 3 iterazioni, 3 flop): 20 nodi, 81 righe per nodo con tutte le azioni, frequenze a somma uno e uguali alla policy, campi EV, EV di radice ricostruito dalle classi entro `1e-9`; badge `ESTIMATED` senza certificato, `CERTIFIED_EXACT` con certificato coerente, certificato con fingerprint diversa ignorato e segnalato; query identica prima e dopo il round trip della policy | PASS |
 | Comparatore: candidato esatto sopra soglia `REJECTED`, sotto soglia `QUALIFIED`; stima entro soglia `PROMISING`, sopra soglia `INCONCLUSIVE_ESTIMATE`, limite inferiore sopra soglia `REJECTED`; baseline uguale a se stesso distanza zero su tutti i nodi, albero diverso `STALE_TREE`; riferimento sintetico in formato Monker costruito dalla radice del candidato distanza zero, riferimento CO40 contro HU10 `ACTION_SET_MISMATCH` | PASS |
-| Smoke a catena (`ctest -L p8`): train (policy) → export (badge `ESTIMATED`, 20 nodi) → validatore (`nodes=20 rows=1620`) → query (`PREFLOP_BLUEPRINT_QUERY=OK`) → comparatore (`PROMISING` con soglia 100) | PASS (6/6) |
+| Smoke a catena (`ctest -L p8`): train (policy) → export (badge `ESTIMATED`, 20 nodi) → validatore (`nodes=20 rows=1620`) → query (`PREFLOP_BLUEPRINT_QUERY=OK`) → albero postflop → comparatore (`PROMISING` con soglia 100) | PASS (7/7) |
+| Albero postflop e worker (HU10 completo, policy pseudo-casuale): 792 nodi decisionali e 1.876 archi uguali al compilato, id contigui, target validi; query al flop con 16 runout campionati (81 classi vive, frequenze a somma uno, EV finiti), con tutti i 1.056 runout esatta e con EV di classe uguale al valutatore entro `1e-9`; turn esatto sui 32 river; river esatto; entry non valida e board incompleto respinti | PASS |
 | Suite `preflop_blueprint` P0–P8 | PASS: 23/23 in 505 s (`ctest -L preflop_blueprint`, Release, dopo la correzione del check di isolamento) |
 
 ## 4. Export di HU10
@@ -82,18 +85,36 @@ respingere, come previsto dal bias di selezione. Validatore: PASS file=p8_chart_
 
 ## 5. Viewer
 
-Il viewer `tools/hu_preflop_chart_viewer` è un repository separato (D18), escluso da git in
-questo repository e presente solo nel working tree dell'utente. Il suo generatore
-(`generate_chart_data.py`) legge candidati con `preflop_nodes` → `{id, player, history,
-strategy, action_ev, ev_scope}`, esattamente il layout dell'export P8, ma impone tre vincoli
-fissi di CO40 (fingerprint dell'albero `fnv1a64:a68337fa567aa2d9`, 20 nodi con le stesse history
-delle chart Monker, 2 milioni di iterazioni postflop) e non conosce i badge. Per rendere
-navigabile un export HU10 servono nel repository del viewer: (1) lettura dell'albero e dei nodi
-dall'export invece dei vincoli fissi; (2) badge di stato da `status.badge` (`ESTIMATED`,
-`CERTIFIED_EXACT`) e `EXTERNAL_REFERENCE` per Monker; (3) nessuna policy di ricerca legacy come
-baseline. L'agent non modifica quel repository né il working tree dell'utente: domanda Q4 del
-diario. Il criterio "viewer navigabile con un export HU10" del gate resta INCONCLUSIVE fino alla
-risposta; tutto il resto del gate è verificato.
+Il viewer `tools/hu_preflop_chart_viewer` è un repository separato (D18), presente nel working
+tree dell'utente; l'utente ha autorizzato la modifica (Q4). Le sue modifiche locali non
+committate sono state conservate in un commit dedicato (`56cdf31`) sul branch
+`feature/preflop-blueprint-p8-export` del viewer; l'aggiornamento è il commit `4edbb45`:
+
+- generatore (`generate_chart_data.py`): sorgenti da export blueprint (`--blueprint`, ripetibile,
+  con etichette), badge `CERTIFIED_EXACT` / `ESTIMATED` dal blocco di stato, gioco per sorgente
+  (posizioni, stack), ordine e colori delle azioni derivati dagli export (`raise_3`, `bet_2_64`,
+  …), riferimento Monker opzionale (`EXTERNAL_REFERENCE`, confrontato solo a parità di albero),
+  albero postflop da `--postflop-tree` con controllo del fingerprint; senza argomenti riproduce il
+  payload legacy CO40;
+- frontend preflop (`app.js`, `index.html`, `styles.css`): nodo radice dalla history, confronti con
+  il riferimento solo con lo stesso albero, badge con colore e tooltip, campi di configurazione
+  dinamici (stack 10 ante, "HU 10a Chart Viewer");
+- frontend postflop (`postflop-app.js`): backend blueprint senza il vincolo dei 2M iterazioni,
+  indicazione "EV esatti" / "runout campionati", reach della classe nel dettaglio;
+- server (`serve_viewer.py`): `--backend blueprint` avvia `gtosd_preflop_blueprint_export --serve`
+  (config, risorse, tabelle, policy) e ne espone la handshake; `--backend legacy` conserva il
+  worker V18;
+- validatori: chart blueprint e alberi postflop di qualsiasi gioco (conteggi dal file).
+
+Verifica nel browser (server locale con la policy HU10 DCFR certificata): pagina "HU 10a Chart
+Viewer", badge `CERTIFIED EXACT · exploitability 0.0042a (0.14% pot)`, 20 nodi preflop navigabili
+con frequenze e EV per classe (radice: all-in 32,0 %, raise 5a 42,1 %, raise 3a 0,2 %, fold
+25,7 %; AA: all-in 40,6 % EV +3,94 a, raise 5a 58,9 % EV +3,86 a), tre sorgenti selezionabili;
+vista postflop con l'albero HU10 (9 entry, 792 nodi), stato pubblico corretto (pot 4 a, stack
+8 a / 8 a dopo limp e check) e query sul board `Ac Kd Qh`: CO al flop check 33,8 %, bet 1,32 a
+60,2 %, EV per classe (AA +3,50 a). Tempi del worker su HU10 completo: flop 0,4–1,3 s con 16–64
+runout campionati, turn 0,5 s esatto, river istantaneo; il flop con tutti i 1.056 runout costa
+17,6 s (sonda sequenziale sui turn: parallelizzabile in seguito).
 
 ## 6. Esito del gate
 
@@ -101,13 +122,14 @@ risposta; tutto il resto del gate è verificato.
 |---|---|
 | Test PASS (`ctest -L p8`, 20.380 asserzioni più 5 smoke a catena) | PASS |
 | Round trip della policy; query uguale prima e dopo l'export; validatore statico PASS; schema JSON accettato; comparatore su un candidato con exploitability sopra soglia restituisce `REJECTED` | PASS (§3) |
-| Viewer navigabile con un export HU10 | INCONCLUSIVE: l'export è nel layout letto dal generatore del viewer e il validatore lo accetta, ma il generatore del viewer (repository separato, D18) impone i vincoli fissi di CO40 e non ha i badge; la modifica spetta all'utente o va autorizzata (Q4) |
+| Viewer navigabile con un export HU10 | PASS: viewer aggiornato nel suo repository (Q4 autorizzata dall'utente), preflop e postflop HU10 navigati nel browser con badge `CERTIFIED_EXACT` (§5) |
 | Report | questo documento |
 
-Il programma si ferma al gate P8 per la decisione fuori perimetro sul viewer (Q4) e per le
-decisioni già aperte sui merge in `main` (Q2, Q3). P9 (qualificazione CO40) resta da avviare:
-richiede la passata esatta di 22 h stimata in P7 o le sue ottimizzazioni, e le tabelle bucket di
-CO40 già disponibili.
+Gate P8 PASS. Le domande Q1–Q4 sono state risolte dall'utente il 2026-09-16 (branch pubblicati su
+origin, merge dell'integrazione in `main` con i tag `preflop-blueprint-p3-abstraction`,
+`preflop-blueprint-p6-hu10`, `preflop-blueprint-p8-export`, viewer modificabile). P9
+(qualificazione CO40) è la fase successiva: richiede la passata esatta di 22 h stimata in P7 o le
+sue ottimizzazioni; le tabelle bucket di CO40 sono già disponibili.
 
 ## 7. Fallimenti registrati
 
@@ -117,6 +139,9 @@ CO40 già disponibili.
    strada con preferenza per le azioni passive.
 4. Gli smoke a catena con `DEPENDS` non eseguivano il produttore fuori dall'etichetta `p8`:
    sostituiti con fixture CTest (`FIXTURES_SETUP` / `FIXTURES_REQUIRED`).
+5. Nel viewer il confronto con Monker assumeva un riferimento sempre presente (`reference?.ev`
+   con `reference` indefinito lanciava un'eccezione e interrompeva il render della matrice):
+   guardia aggiunta; il riferimento è usato solo a parità di albero.
 
 ## 8. Comandi
 
@@ -124,6 +149,10 @@ CO40 già disponibili.
 ctest --test-dir out/build/windows-release -L p8 --output-on-failure -V
 gtosd_preflop_blueprint_export --config benchmarks/fixtures/preflop_blueprint_hu10_full_v1.json --resources-dir out/preflop_blueprint_resources --buckets-dir out/preflop_blueprint_buckets_200_500_1000 --policy out/policy_full_dcfr_200.bin --certificate out/p7_cert_full.json --eval-flops 60 --threads 8 --iterations 2000 --output out/p8_chart_hu10_full.json
 gtosd_preflop_blueprint_export ... --policy out/policy_full_dcfr_200.bin --query-history raise_3,call --query-hand AhKs --query-board 7s8d9c
+gtosd_preflop_blueprint_export ... --policy out/policy_full_dcfr_200.bin --postflop-tree out/p8_postflop_tree_hu10_full.json
+gtosd_preflop_blueprint_export ... --policy out/policy_full_dcfr_200.bin --threads 8 --iterations 2000 --serve
+python tools/hu_preflop_chart_viewer/generate_chart_data.py --blueprint out/p8_chart_hu10_full.json --blueprint out/p8_chart_hu10_full_linear.json --blueprint out/p8_chart_hu10_reduced.json --postflop-tree out/p8_postflop_tree_hu10_full.json
+python tools/hu_preflop_chart_viewer/serve_viewer.py --port 4173 --backend blueprint --executable <gtosd_preflop_blueprint_export.exe> --config benchmarks/fixtures/preflop_blueprint_hu10_full_v1.json --resources-dir out/preflop_blueprint_resources --buckets-dir out/preflop_blueprint_buckets_200_500_1000 --policy out/policy_full_dcfr_200.bin
 gtosd_preflop_blueprint_compare --candidate out/p8_chart_hu10_full.json --baseline out/p8_chart_hu10_reduced.json --reference benchmarks/fixtures/hu_preflop_co40_reference_v1.json --output out/p8_compare_full_vs_reduced.json
 python tools/validate_preflop_blueprint_chart.py out/p8_chart_hu10_full.json
 ```

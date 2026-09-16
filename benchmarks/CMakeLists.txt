@@ -432,6 +432,17 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;p8;export"
                FIXTURES_REQUIRED preflop_blueprint_smoke_policy)
 
+  add_test(NAME gtosd_preflop_blueprint_postflop_tree_smoke
+    COMMAND gtosd_preflop_blueprint_export
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --postflop-tree ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_postflop_tree_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_postflop_tree_smoke
+    PROPERTIES LABELS "preflop_blueprint;p8;export"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy)
+
   add_executable(gtosd_preflop_blueprint_compare preflop_blueprint_compare.cpp)
   target_link_libraries(gtosd_preflop_blueprint_compare PRIVATE gtosd::preflop_blueprint gtosd::core)
   gtosd_set_warnings(gtosd_preflop_blueprint_compare)
@@ -446,7 +457,7 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;p8;comparator"
                FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
   foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
-                gtosd_preflop_blueprint_compare_smoke)
+                gtosd_preflop_blueprint_compare_smoke gtosd_preflop_blueprint_postflop_tree_smoke)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       set_tests_properties(${smoke} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
