@@ -238,6 +238,12 @@ quando campionate.
    size postflop 66 % più all-in), `preflop_blueprint_co40_v1.json` (equivalente a
    `hu_preflop_co40_game_v1.json`).
 
+> **Erratum (2026-09-16, P8).** Dal 2026-09-16 le fixture HU10 non sono più equivalenti alla
+> calibrazione legacy: per decisione dell'utente hanno una sola size preflop (open 5 a, risposta
+> 8 a) invece di 3 a / 5 a e 6 a / 8 a. Esiste inoltre `preflop_blueprint_co40_test_v1.json`
+> (una size postflop 100 % più all-in) solo per misure di tempo e prove: il gate P9 resta sul
+> CO40 completo.
+
 **Da non fare.** Nessun run lungo; nessuna modifica al legacy.
 
 **Gate P0.** Build Release dei target vuoti con warning come errori; controllo di dipendenza PASS;
