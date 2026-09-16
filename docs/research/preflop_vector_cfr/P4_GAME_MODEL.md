@@ -80,6 +80,10 @@ Il river pesa l'86 % dello stato CO40: 7.588 decisioni × 1.000 bucket × 2,5 az
 le terne candidate stanno sotto i 4 GiB del paletto §3.4. Memoria fissa dell'albero CO40: stati
 8,4 MB, nodi 0,87 MB, archi 0,65 MB. Compilazione 0,026–0,027 s.
 
+> **Nota (2026-09-16).** Dal pomeriggio del 2026-09-16 le fixture HU10 hanno una sola size preflop
+> (open 5 a) e nessuna size di risposta (contro l'open solo fold, call e all-in): gli alberi e i
+> conteggi HU10 di questa sezione valgono per le fixture di allora (diario, P8 §9 e §10).
+
 Altri alberi: HU10 completa 2.059 nodi (2.010 postflop, 812 decisioni), HU10 ridotta 571 nodi
 (236 decisioni); 3-way solo preflop 580 nodi, 234 decisioni, 75 ingressi, 115 fold, 156 runout
 all-in (fingerprint `fnv1a64:806ec416fe01d164`).
