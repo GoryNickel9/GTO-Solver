@@ -262,7 +262,23 @@ Verifica nel browser (server locale sulla policy `policy3_full_dcfr_200.bin`): s
 "Blueprint HU10 (open 5a, risposta solo all-in) - DCFR alternato, certificazione esatta", 8 nodi
 preflop; radice CO: raise 5a 43,3 %, all-in 31,0 %, fold 25,7 % (AA: raise 5a 58,6 % EV +3,86 a,
 all-in 41,4 % EV +3,94 a); nodo `CO raise 5a → BTN`: solo all-in 57,3 %, call 22,6 %, fold 20,1 %
-(AA: all-in 88,8 % EV +4,47 a, call 11,2 % EV +4,11 a, fold EV −2,000 a); vista postflop con
+(AA: all-in 88,8 % EV +4,47 a, call 11,2 % EV +4,11 a, fold EV −2.000 a); vista postflop con
 l'albero nuovo (3 entry, 576 nodi decisionali, 1.396 archi) e query sul board `Ac Kd Qh` dopo
 call e check: CO check 46,2 %, bet 1,32 a 43,3 %, bet 2,64 a 8,5 %, bet 4,8 a 0,6 %, all-in 1,4 %;
 AA EV +3,64 a su 32 runout campionati.
+
+**CO40 a una size nel viewer (sera).** La variante di test è stata risolta con il protocollo HU10,
+proseguita a 10.000 iterazioni e confrontata con Linear simultaneo (1129 nodi;
+0.234 s per iterazione DCFR, 0.790 s Linear; certificazione esatta 573 flop, 8 thread, chunk 16):
+
+| Run | Training | Stima a 20 flop | Exploitability esatta | % piatto | % stack | nashconv | Limite inferiore dal flop | EV CO | Certificazione |
+|---|---|---|---|---|---|---|---|---|---|
+| DCFR alternato, 2.000 it. | 8 min | 0,6784 ± 0,1055 a | **0,6569 a** | 21,9 % | 1,64 % | 1,0278 a | 0,2622 a | -0,1448 a | 23 min |
+| DCFR alternato, 10.000 it. (proseguimento) | 38 min | 0,9366 ± 0,1178 a | **0,8406 a** | 28,0 % | 2,10 % | 1,2467 a | 0,2978 a | -0,1459 a | 23 min |
+| Linear simultaneo, 2.000 it. | 26 min (in parallelo a una certificazione) | 1,0783 ± 0,1072 a | **1,0862 a** | 36,2 % | 2,72 % | 1,5226 a | 0,3559 a | -0,1460 a | 23 min |
+
+con DCFR alternato la exploitability esatta sale fra 2.000 e 10.000 iterazioni (la strategia media peggiora); Linear simultaneo a 2.000 iterazioni è peggiore: lo schema non è la causa principale. Confronto descrittivo con il riferimento Monker CO40 (comparatore su DCFR 2.000, verdetto `REJECTED`, contratto esterno incompleto): alla radice variazione totale media di classe 26.2 pp, errore massimo per azione 23.8 pp, differenza di EV di radice 0,159 a: CO limpa e spinge 40 a con frequenze che Monker non ha (AA limp 97 %, T9s all-in 82 %).. Radice CO (DCFR alternato, 2.000 iterazioni): fold 33,0 %, all in 32,6 %, call 31,4 %, raise 10 2,5 %, raise 6 0,6 %; EV di radice -0,1411 a;
+export in 2 min (20 nodi preflop, albero postflop 9 entry /
+436 nodi decisionali / 992 archi). Il viewer ha tre sorgenti (HU10 completo, HU10 ridotto,
+CO40 test: DCFR alternato, 2.000 iterazioni); la navigazione postflop resta su HU10 completo (decisione 48). Verdetto D2:
+REJECTED per la variante di test con questi run; il gate P9 resta sul CO40 completo.
