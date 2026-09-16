@@ -134,7 +134,9 @@ struct PreflopActionValues {
   // [node][combo]: probability that the opponent reaches the node given the
   // combo, in [0, 1].
   std::vector<std::vector<double>> opponent_reach;
-  // [node][action][class]: conditional EV (antes) and standard error.
+  // [node][action][class]: conditional EV (antes) of the action given the
+  // class and the history (combo values divided by the opponent reach,
+  // combos weighted by that reach) and its standard error over the groups.
   std::vector<std::vector<std::vector<double>>> class_ev;
   std::vector<std::vector<std::vector<double>>> class_se;
   // [node][class]: total opponent-reach weight of the class.

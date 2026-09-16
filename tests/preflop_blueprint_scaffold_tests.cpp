@@ -67,11 +67,9 @@ void test_fixtures() {
   require(hu10_full.effective_stack == antes(10) && hu10_full.ante == antes(1) &&
               hu10_full.button_blind == antes(1),
           "HU10 full: stack 10a, ante 1a, button blind 1a");
-  require(hu10_full.open_targets.size() == 2U && hu10_full.open_targets[0] == antes(3) &&
-              hu10_full.open_targets[1] == antes(5) && hu10_full.response_targets.size() == 2U &&
-              hu10_full.response_targets[0] == antes(6) &&
-              hu10_full.response_targets[1] == antes(8),
-          "HU10 full: open 3a/5a, response 6a/8a");
+  require(hu10_full.open_targets.size() == 1U && hu10_full.open_targets[0] == antes(5) &&
+              hu10_full.response_targets.size() == 1U && hu10_full.response_targets[0] == antes(8),
+          "HU10 full: open 5a (full pot), response 8a");
   require(hu10_full.postflop_sizes.size() == 3U &&
               hu10_full.postflop_sizes[0].basis_points() == 3'300U &&
               hu10_full.postflop_sizes[1].basis_points() == 6'600U &&
@@ -144,6 +142,7 @@ std::string replace_first(std::string text, const std::string_view from,
 
 void test_rejections() {
   const auto valid = read_file(fixture_path("preflop_blueprint_hu10_full_v1.json"));
+  const auto co40 = read_file(fixture_path("preflop_blueprint_co40_v1.json"));
   expect_rejection("not json", pb::ConfigError::InvalidJson, "invalid json");
   expect_rejection("[]", pb::ConfigError::InvalidJson, "non-object root");
   expect_rejection(replace_first(valid, "gtosd.preflop_blueprint_game.v1", "gtosd.hu_preflop_game.v1"),
@@ -160,15 +159,15 @@ void test_rejections() {
                    pb::ConfigError::InvalidStructure, "BTN not last");
   expect_rejection(replace_first(valid, "[\"CO\", \"BTN\"]", "[\"BTN\", \"BTN\"]"),
                    pb::ConfigError::InvalidStructure, "duplicate positions");
-  expect_rejection(replace_first(valid, "[60000, 80000]", "[60000]"),
+  expect_rejection(replace_first(valid, "[80000]", "[80000, 90000]"),
                    pb::ConfigError::InvalidStructure, "response count mismatch");
-  expect_rejection(replace_first(valid, "[30000, 50000]", "[50000, 30000]"),
+  expect_rejection(replace_first(co40, "[60000, 100000]", "[100000, 60000]"),
                    pb::ConfigError::InvalidValue, "open targets not increasing");
-  expect_rejection(replace_first(valid, "[60000, 80000]", "[30000, 80000]"),
+  expect_rejection(replace_first(co40, "[105000, 145000]", "[60000, 145000]"),
                    pb::ConfigError::InvalidValue, "response not above its open");
-  expect_rejection(replace_first(valid, "[30000, 50000]", "[10000, 50000]"),
+  expect_rejection(replace_first(valid, "[50000]", "[10000]"),
                    pb::ConfigError::InvalidValue, "open target not above the button blind");
-  expect_rejection(replace_first(valid, "[60000, 80000]", "[60000, 100000]"),
+  expect_rejection(replace_first(valid, "[80000]", "[100000]"),
                    pb::ConfigError::InvalidValue, "response reaching the stack");
   expect_rejection(replace_first(valid, "[3300, 6600, 12000]", "[]"),
                    pb::ConfigError::InvalidStructure, "no postflop sizes");

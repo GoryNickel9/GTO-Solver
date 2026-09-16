@@ -427,7 +427,7 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
       --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
       --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
-      --query-history raise_3,call --query-hand AhKs --query-board 7s8d9c)
+      --query-history raise_5,call --query-hand AhKs --query-board 7s8d9c)
   set_tests_properties(gtosd_preflop_blueprint_query_smoke
     PROPERTIES LABELS "preflop_blueprint;p8;export"
                FIXTURES_REQUIRED preflop_blueprint_smoke_policy)

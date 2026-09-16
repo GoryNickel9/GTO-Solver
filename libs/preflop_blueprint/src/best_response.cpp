@@ -1036,10 +1036,14 @@ BestResponseEvaluator::preflop_action_values(const std::vector<const FlopValues 
     for (std::size_t action = 0; action < actions; ++action) {
       for (std::size_t combo = 0; combo < combo_total; ++combo) {
         const auto hand_class = table.hand_class[combo];
-        const double weight = context.allowed[hero][combo] * result.opponent_reach[slot][combo];
+        const double mass = result.opponent_reach[slot][combo];
+        const double weight = context.allowed[hero][combo] * mass;
         if (weight > 0.0) {
+          // Conditional EV of the combo: counterfactual value over the
+          // probability that the opponent reaches the node; the class mean
+          // weights combos by that probability.
           result.class_ev[slot][action][hand_class] +=
-              weight * result.combo_values[slot][action][combo];
+              weight * (result.combo_values[slot][action][combo] / mass);
         }
       }
       for (std::size_t hand_class = 0; hand_class < ca::preflop_hand_classes; ++hand_class) {
@@ -1082,8 +1086,12 @@ BestResponseEvaluator::preflop_action_values(const std::vector<const FlopValues 
             continue;
           }
           const auto hand_class = table.hand_class[combo];
-          const double weight = context.allowed[hero][combo] * result.opponent_reach[slot][combo];
-          sums[hand_class] += weight * recorded[slot][action][combo];
+          const double mass = result.opponent_reach[slot][combo];
+          const double weight = context.allowed[hero][combo] * mass;
+          if (weight <= 0.0) {
+            continue;
+          }
+          sums[hand_class] += weight * (recorded[slot][action][combo] / mass);
           weights[hand_class] += weight;
         }
         for (std::size_t hand_class = 0; hand_class < ca::preflop_hand_classes; ++hand_class) {

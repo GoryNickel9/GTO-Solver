@@ -47,7 +47,9 @@ Roadmap: [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../PREFLOP_VECTOR_CFR_
    size postflop da 1 a 3. Fixture congelate: `preflop_blueprint_hu10_full_v1.json`
    (equivalente a `hu_preflop_hu10_calibration_v1.json`), `preflop_blueprint_hu10_reduced_v1.json`
    (una sola size postflop 66 % più all-in, D17) e `preflop_blueprint_co40_v1.json` (equivalente a
-   `hu_preflop_co40_game_v1.json`).
+   `hu_preflop_co40_game_v1.json`). Nota (2026-09-16): le fixture HU10 hanno ora una sola size
+   preflop (open 5 a, risposta 8 a) per decisione dell'utente, e `preflop_blueprint_co40_test_v1.json`
+   (una size postflop 100 % più all-in) serve solo alle misure di tempo (diario, P8 §9).
 4. **Loader C++** `gtosd::preflop_blueprint::parse_game_config_json` con validazione (giocatori
    2–6, posizioni distinte con BTN ultimo, target strettamente crescenti e sotto lo stack,
    response sopra il rispettivo open, size crescenti, all-in obbligatorio, rake disabilitata),

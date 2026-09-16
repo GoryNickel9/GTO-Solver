@@ -324,6 +324,32 @@ void test_chart_export(const Resources &resources, const std::filesystem::path &
   }
   require(close(reconstructed, json["root_ev_ante"].get<double>(), 1e-9),
           "root action EVs reconstruct the root EV");
+  // At every non-root hero node with a fold edge to a fold terminal the class
+  // EV of folding is the fold payoff itself (conditional on reaching the node).
+  std::size_t fold_checks = 0U;
+  for (const auto node : preflop) {
+    if (node == game.value().root()) {
+      continue;
+    }
+    const auto edges = game.value().edges_of(node);
+    const auto labels = pb::edge_labels(game.value(), node);
+    for (std::size_t action = 0; action < edges.size(); ++action) {
+      if (labels[action] != "fold" ||
+          game.value().nodes()[edges[action].child].kind != pb::NodeKind::TerminalFold) {
+        continue;
+      }
+      const auto hero = game.value().nodes()[node].actor;
+      const double payoff = static_cast<double>(game.value().fold_payoffs(edges[action].child)[hero]) /
+                            static_cast<double>(gtosd::Money::units_per_ante);
+      const auto id = pb::node_path_id(game.value(), node);
+      for (std::uint8_t hand_class = 0; hand_class < 81U; ++hand_class) {
+        const double ev = json["preflop_nodes"][id]["action_ev"][gtosd::class_name(hand_class)]["fold"]["ev_ante"].get<double>();
+        require(close(ev, payoff, 1e-9), "fold EV equals the fold payoff at a non-root node");
+        ++fold_checks;
+      }
+    }
+  }
+  require(fold_checks > 0U, "some non-root fold edges were checked");
   require(close(json["root_ev_ante"].get<double>(), chart.value().estimate.ev[0], 1e-12), "root EV field");
 
   // Certificate badge: matching exact certificate -> CERTIFIED_EXACT; mismatch ignored.

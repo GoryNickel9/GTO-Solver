@@ -33,6 +33,10 @@ quello della serie per flop dei valori di classe. Alla radice `D[h] = 1` e la so
 `1e-9`). La strategia corrente non è esportata (`has_current_strategy = false`): il file di
 policy contiene solo la media.
 
+> **Erratum (2026-09-16).** Fino al commit `46084f0` l'implementazione non divideva per `D[h]`: i
+> valori fuori dalla radice erano scalati per `D[h]` (alla radice `D[h] = 1` e il test passava).
+> Corretto con un test sul payoff di fold a ogni nodo interno; export rifatti in §9.
+
 **Badge.** `CERTIFIED_EXACT` richiede un certificato P7 `exact = true` con la stessa fingerprint
 di policy e di albero; altrimenti `ESTIMATED` con la stima campionata (naive, che sovrastima come
 `≈ 0,4/√M`, e limite inferiore) sugli stessi flop degli EV. `EXTERNAL_REFERENCE` è lo stato del
@@ -54,6 +58,10 @@ descrittive perché il contratto postflop esterno è incompleto.
 | Suite `preflop_blueprint` P0–P8 | PASS: 23/23 in 505 s (`ctest -L preflop_blueprint`, Release, dopo la correzione del check di isolamento) |
 
 ## 4. Export di HU10
+
+> **Superato (2026-09-16).** Gli `action_ev` dei nodi interni in questa sezione e in §5 sono
+> affetti dall'erratum di §2; inoltre le fixture HU10 hanno ora una sola size preflop (5 a / 8 a).
+> I valori validi sono in §9. Frequenze, EV di radice, badge e verdetti restano corretti.
 
 Export dalle policy dei checkpoint P6 (2.000 iterazioni, 200/500/1.000) con i certificati esatti di
 P7 dove disponibili, 60 flop campionati (63.360 board) per gli EV per azione, 8 thread.
@@ -142,6 +150,9 @@ sue ottimizzazioni; le tabelle bucket di CO40 sono già disponibili.
 5. Nel viewer il confronto con Monker assumeva un riferimento sempre presente (`reference?.ev`
    con `reference` indefinito lanciava un'eccezione e interrompeva il render della matrice):
    guardia aggiunta; il riferimento è usato solo a parità di albero.
+6. (2026-09-16) EV di classe fuori dalla radice non diviso per la reach avversaria: il test di
+   ricostruzione copriva solo la radice (`D[h] = 1`); corretto con il test del payoff di fold
+   a ogni nodo interno (§9).
 
 ## 8. Comandi
 
@@ -156,3 +167,42 @@ python tools/hu_preflop_chart_viewer/serve_viewer.py --port 4173 --backend bluep
 gtosd_preflop_blueprint_compare --candidate out/p8_chart_hu10_full.json --baseline out/p8_chart_hu10_reduced.json --reference benchmarks/fixtures/hu_preflop_co40_reference_v1.json --output out/p8_compare_full_vs_reduced.json
 python tools/validate_preflop_blueprint_chart.py out/p8_chart_hu10_full.json
 ```
+
+## 9. Erratum e riesecuzione con le size preflop 5a/8a (2026-09-16)
+
+**Erratum.** L'EV di classe fuori dalla radice (§2) era implementato senza la divisione per la
+reach avversaria `D[h]`: gli `action_ev` dei 19 nodi interni negli export di §4 e nella verifica
+del viewer di §5 erano scalati per `D[h]` (nel nodo `CO raise 5a → BTN all-in → CO` il fold
+valeva −3,39 a per J6o e −3,14 a per AA invece della perdita costante). Frequenze, EV di radice,
+certificati, badge e verdetti del comparatore non sono toccati. Correzione nel commit `46084f0`
+(`preflop_action_values`: valore e serie per flop dell'errore standard) con un nuovo test: a ogni
+nodo interno con un arco di fold l'EV di fold di ogni classe è uguale al payoff di fold entro
+`1e-9`.
+
+**Nuove size.** Per decisione dell'utente (2026-09-16) le fixture HU10 (completa e ridotta) hanno
+una sola size preflop: open 5 a (full pot), risposta 8 a. L'albero cambia, quindi policy,
+certificati ed export HU10 di P6–P8 sono superati da quelli di questa sezione (`out/r2_*`,
+`out/policy2_*`), prodotti con lo stesso protocollo: 2.000 iterazioni DCFR alternato con
+`B = 32`, 8 thread, valutazione ogni 500 iterazioni su 20 flop; certificazione esatta P7; export
+con 60 flop campionati per gli EV per azione.
+
+| Gioco | Badge | Nodi / decisioni | Nodi preflop | EV radice (60 flop) | Exploitability esatta (573 flop, 605.088 board) | Stima a 20 flop (iterazione 2.000) | Training 2.000 it. | Certificazione | Export | Albero |
+|---|---|---|---|---|---|---|---|---|---|---|
+| HU10 completo (33/66/120 %) | `CERTIFIED_EXACT` | 1.567 / 612 | 12 | 0,1322 a | **0,0041 a** (0,14 % del piatto), nashconv 0,0075 a, limite inferiore 0,0014 a | 0,0905 ± 0,0609 a | 7 min + 4 min valutazioni | 31 min (3,2 s per flop) | 3 min | `fnv1a64:50bef9c82ac9c2d3` |
+| HU10 ridotto (66 %) | `CERTIFIED_EXACT` | 259 / 108 | 12 | 0,1321 a | **0,0040 a** (0,13 % del piatto), nashconv 0,0070 a, limite inferiore 0,0013 a | 0,0906 ± 0,0609 a | 5 min + 30 s valutazioni | 4 min (0,4 s per flop) | 26 s | `fnv1a64:db42c9d8716d28a9` |
+
+Esempio (export completo, nodo `CO raise 5a → BTN all-in → CO`): fold −6,000 a per J6o e −6,000 a per AA (il payoff di fold, costante), call −2,642 a per J6o e 4,528 a per AA. Albero postflop esportato: 600 nodi decisionali, 1.444 archi, 5 entry.
+
+Il viewer è stato rigenerato con i due export (`generate_chart_data.py --blueprint … --postflop-tree …`)
+e il server avviato sulla policy `policy2_full_dcfr_200.bin`; le classi con reach proprio lungo la
+history sotto `1e-6` sono desaturate con il reach nel tooltip (commit `21617ef` del viewer).
+Verifica nel browser (server locale sulla policy `policy2_full_dcfr_200.bin`, handshake
+`Backend blueprint pronto · 2000 iterazioni · policy fnv1a64:245747207e0a6518`): badge
+`CERTIFIED EXACT · exploitability 0.0041a (0.14% pot)` per il completo e `0.0040a (0.13% pot)` per
+il ridotto; 12 nodi preflop (radice CO: all-in 32,2 %, raise 5a 42,0 %, call 0,0 %, fold 25,8 %;
+AA: all-in 42,0 % EV +3,94 a, raise 5a 58,0 % EV +3,87 a); nodo `CO raise 5a → BTN all-in → CO`:
+range call 99,7 % / fold 0,3 %, J6o segnata "quasi mai su questo percorso" (reach proprio
+1,8·10⁻⁷ %) con call 97,56 % EV −2,642 a e fold 2,44 % EV −6,000 a (payoff di fold, uguale per
+tutte le classi); vista postflop con l'albero nuovo (5 entry, 600 nodi decisionali, 1.444 archi)
+e query sul board `Ac Kd Qh` dopo call e check: CO check 49,2 %, bet 1,32 a 40,8 %, bet 2,64 a
+4,5 %, bet 4,8 a 4,7 %, all-in 0,8 %; AA EV +3,92 a su 32 runout campionati.
