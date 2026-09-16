@@ -11,15 +11,15 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P8 (export, query, comparatore, viewer), in avvio dopo il gate P7 |
-| Ultimo gate | P7 PASS (2026-09-16) |
+| Fase in corso | P8 chiusa con riserva (viewer INCONCLUSIVE, Q4); P9 non avviata: in attesa delle decisioni Q2, Q3, Q4 |
+| Ultimo gate | P8 PASS con riserva (2026-09-16): viewer INCONCLUSIVE |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p8-export` (P0–P7 uniti nell'integrazione) |
+| Branch di fase | `feature/preflop-blueprint-p8-export` (P0–P8 uniti nell'integrazione) |
 | Worktree | `C:/tmp/gtosd-preflop-blueprint` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | in attesa dell'utente (Q2 per il gate P3, Q3 per il gate P6): i gate prevedono il merge dell'integrazione in `main` con tag, ma `main` è il branch del working tree dell'utente e l'agent non lo tocca |
-| Prossimo passo | P8: export della policy e dei certificati in formato consultabile, query per mano e per nodo, comparatore fra soluzioni, aggiornamento del viewer; badge `EXACT` dal certificato P7 |
+| Prossimo passo | Decisioni dell'utente: Q4 (viewer), Q2 e Q3 (merge in `main` con tag). Poi P9: qualificazione CO40 (training, certificato esatto da 22 h stimate o ottimizzazioni del certificatore, export e confronto Monker descrittivo) |
 
 ## 2. Registro dei gate
 
@@ -33,7 +33,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | P5 Kernel vettoriale HU | PASS | 2026-09-15 | `738e361` | [P5_VECTOR_KERNELS.md](P5_VECTOR_KERNELS.md) |
 | P6 Trainer con campionamento del board | PASS | 2026-09-16 | `c5ccef1` | [P6_TRAINER.md](P6_TRAINER.md) |
 | P7 Certificatore board-major | PASS | 2026-09-16 | `01b7ca4` | [P7_CERTIFIER.md](P7_CERTIFIER.md) |
-| P8 Export, query, comparatore, viewer | NOT_RUN | | | |
+| P8 Export, query, comparatore, viewer | PASS con riserva (viewer INCONCLUSIVE, Q4) | 2026-09-16 | `cdd3481` | [P8_EXPORT.md](P8_EXPORT.md) |
 | P9 Qualificazione CO40 e archiviazione | NOT_RUN | | | |
 | P10 Conteggio alberi 3-way | NOT_RUN | | | |
 
@@ -52,6 +52,41 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-16 — P8 — export, query, comparatore, viewer, gate PASS con riserva (viewer INCONCLUSIVE)
+
+Fatto: id stabili di azione e di nodo (`action_labels`), query della policy per history + combo +
+board senza ricalcolo di feature (`policy_query`), valori per azione ai nodi preflop con EV
+condizionato per classe ed errore standard sui flop campionati
+(`BestResponseEvaluator::preflop_action_values`), export `gtosd.preflop_blueprint_chart.v1` con
+schema JSON, quattro fingerprint, badge `ESTIMATED` / `CERTIFIED_EXACT` e checksum nel layout
+letto dal generatore del viewer, comparatore con verdetto sulla exploitability fisica (D2) e
+distanze Monker descrittive (`EXTERNAL_CONTRACT_INCOMPLETE`), validatore statico registrato in
+CTest, eseguibili `gtosd_preflop_blueprint_export` (export e query) e
+`gtosd_preflop_blueprint_compare`, smoke a catena tramite fixture CTest. Report:
+[P8_EXPORT.md](P8_EXPORT.md).
+Comandi: `ctest -L p8 -V`; export di HU10 ridotto e completo dalle policy P6 con i certificati
+P7 (60 flop, 8 thread); export senza certificato e baseline Linear; query di esempio;
+comparatore candidato/baseline/riferimento; validatore; suite `preflop_blueprint`.
+Risultati: test 20.380 asserzioni PASS (812 nodi decisionali etichettati, 160 cammini di query
+su tutte le strade uguali al `BoardContext`, EV di radice ricostruito dalle classi entro `1e-9`,
+verdetti del comparatore, parser Monker a distanza zero su un riferimento sintetico); export HU10
+completo certificato: 20 nodi, 1.620 righe, badge `CERTIFIED_EXACT` con 0,0042 a esatti, 239 s
+per 60 flop; comparatore `QUALIFIED` per il candidato certificato, `INCONCLUSIVE_ESTIMATE` per lo
+stesso senza certificato (stima 0,061 ± 0,05 a contro 0,1 a), `STALE_TREE` fra alberi diversi,
+DCFR contro Linear sullo stesso albero confrontati su 20 nodi; validatore PASS sui tre export.
+Suite `preflop_blueprint`: PASS: 23/23 in 505 s (`ctest -L preflop_blueprint`, Release, dopo la correzione del check di isolamento).
+Fallimenti: (1) helper JSON `quoted` in conflitto con `std::quoted` per ADL; (2) target
+`nlohmann_json` non visibile nella directory dei test; (3) cammini casuali del test di query
+troppo brevi per il river; (4) smoke con `DEPENDS` non eseguiti fuori etichetta: fixture CTest.
+Dubbi: (1) l'EV per azione è condizionato al nodo (diviso per la reach avversaria): nei nodi
+profondi con reach piccola gli errori standard sono grandi a 60 flop; il viewer dovrebbe mostrare
+la reach. (2) La strategia corrente non è nel file di policy: se il viewer la vuole, va aggiunta
+al formato `GTOSDPOL` (opzionale, diagnostica). (3) Il riferimento Monker CO40 non è confrontabile
+con HU10 (azioni diverse); il confronto ha senso solo in P9.
+Prossimo passo: decisione dell'utente su Q4 (viewer) e Q2/Q3 (merge in `main`); poi P9 sul
+branch `feature/preflop-blueprint-p9-co40` con la passata esatta CO40 pianificata come lavoro a
+chunk ripristinabile (22 h stimate) o ridotta con le ottimizzazioni indicate in P7.
 
 ### 2026-09-16 — P7 — certificatore board-major, gate PASS
 
@@ -390,3 +425,6 @@ Prossimo passo: P0.
 | 34 | 2026-09-16 | P7 | La passata esatta valuta ogni flop canonico una volta con tutti i runout fisici e somma sulle immagini della sua orbita nei semi (`FlopValues.images`); `aggregate(exact)` verifica che ogni combo sia compatibile con 5.984 flop fisici | la strategia media è simmetrica nei semi per costruzione; verificato contro l'enumerazione fisica entro `1e-12` per combo; costo 573 flop invece di 7.140 |
 | 35 | 2026-09-16 | P7 | Formato di policy `GTOSDPOL` (fingerprint dell'albero, capacità, sorgente, tabella densa, checksum) scritto dal trainer e letto dal certificatore; il certificato porta i fingerprint di regole, albero, catalogo, tabelle bucket e policy | il certificatore non deve ricostruire il trainer (identità, semi) per leggere una strategia; P8 esporta dallo stesso file |
 | 36 | 2026-09-16 | P7 | Stato del certificatore accodato per chunk con checksum per record; ripresa dall'header (albero, policy, catalogo); il numero dichiarato nei certificati è quello esatto, la regola D3 campionata resta la regola di arresto del training | passata ripresa bit-identica; su CO40 la passata esatta costa 22 h e va spezzata; la stima campionata sovrastima di `≈ 0,46/√M` |
+| 37 | 2026-09-16 | P8 | Export `gtosd.preflop_blueprint_chart.v1` nel layout `preflop_nodes` → `{history, strategy, action_ev}` già letto dal generatore del viewer, con id di azione compatibili con le chart legacy (`raise_6`, `call`, `fold`, `all_in`) e id di nodo `CO_raise_3_BTN` | il viewer richiede solo la rimozione dei vincoli fissi CO40 e i badge (Q4); nessun secondo formato da mantenere |
+| 38 | 2026-09-16 | P8 | EV per azione condizionato al nodo: valore controfattuale diviso per la reach avversaria data la combo, media di classe pesata con la reach, errore standard sui flop campionati; alla radice coincide con l'EV del gioco | è la semantica delle chart (EV dell'azione nello spot); verificata entro `1e-9` alla radice |
+| 39 | 2026-09-16 | P8 | Verdetto del comparatore sulla sola exploitability fisica dichiarata (D2, soglia 0,1 a): `QUALIFIED` / `REJECTED` con certificato esatto, `PROMISING` / `INCONCLUSIVE_ESTIMATE` / `REJECTED` (limite inferiore sopra soglia) con stima campionata; distanze Monker descrittive con `EXTERNAL_CONTRACT_INCOMPLETE` | D1/D2/D4 della roadmap; la stima campionata ha bias di selezione e non può qualificare da sola |

@@ -118,6 +118,29 @@ struct BestResponseReport {
 [[nodiscard]] std::vector<card_abstraction::SuitPermutation>
 flop_images(const std::array<CardId, 3> &flop);
 
+// Values of the actions of one player at its preflop decision nodes under
+// the average strategy (chart export, P8): counterfactual values per combo
+// averaged over the flop groups compatible with the combo, the opponent
+// reach at the node given the combo, and per hand class the conditional EV
+// of every action (combo values weighted by the opponent reach) with its
+// standard error over the groups.
+struct PreflopActionValues {
+  std::uint8_t hero{0U};
+  std::uint32_t groups{0U};
+  // Preflop decision nodes of the hero, in preorder.
+  std::vector<std::uint32_t> nodes;
+  // [node][action][combo]: mean counterfactual value of the action.
+  std::vector<std::vector<std::vector<double>>> combo_values;
+  // [node][combo]: probability that the opponent reaches the node given the
+  // combo, in [0, 1].
+  std::vector<std::vector<double>> opponent_reach;
+  // [node][action][class]: conditional EV (antes) and standard error.
+  std::vector<std::vector<std::vector<double>>> class_ev;
+  std::vector<std::vector<std::vector<double>>> class_se;
+  // [node][class]: total opponent-reach weight of the class.
+  std::vector<std::vector<double>> class_weight;
+};
+
 // Fixed part of an evaluation: game, average strategy, resources, hand
 // subsets and the opponent reach at the preflop leaves. Copies share the
 // state and may be used from several threads for evaluate_flop.
@@ -136,12 +159,21 @@ public:
   [[nodiscard]] Result<BestResponseReport, KernelError>
   aggregate(const std::vector<const FlopValues *> &flops, bool exact) const;
   [[nodiscard]] std::size_t entry_count() const noexcept;
+  // Action values of the hero at its preflop nodes over a set of flop values
+  // (equal group weights).
+  [[nodiscard]] Result<PreflopActionValues, KernelError>
+  preflop_action_values(const std::vector<const FlopValues *> &flops, std::uint8_t hero) const;
 
   struct Impl;
 
 private:
   std::shared_ptr<const Impl> impl_;
 };
+
+// Stage one in parallel over the groups.
+[[nodiscard]] Result<std::vector<FlopValues>, KernelError>
+evaluate_flops(const BestResponseEvaluator &evaluator, const std::vector<FlopGroup> &groups,
+               unsigned threads);
 
 // Sampled or explicit evaluation: stage one in parallel over the groups,
 // then stage two with standard errors.

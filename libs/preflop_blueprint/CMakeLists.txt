@@ -10,7 +10,11 @@ add_library(gtosd_preflop_blueprint
   src/trainer.cpp
   src/best_response.cpp
   src/policy_file.cpp
-  src/certifier.cpp)
+  src/certifier.cpp
+  src/action_labels.cpp
+  src/policy_query.cpp
+  src/chart_export.cpp
+  src/comparator.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
 
 target_include_directories(gtosd_preflop_blueprint
