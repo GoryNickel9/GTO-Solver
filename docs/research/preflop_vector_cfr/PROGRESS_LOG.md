@@ -19,7 +19,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
 | Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Prossimo passo | P9: diagnosi della non convergenza su CO40 test (esperimento con tabelle 500/1.000/2.000 in corso; oracolo esatto a 40 a; fixture a 20 a) prima di qualsiasi run lungo; poi qualificazione (CO40 completo: certificato esatto ≈ 10 h a 8 thread) |
+| Prossimo passo | in attesa della decisione dell'utente sul piano di diagnosi P9 (tabelle 500/1.000/2.000, oracolo esatto a 40 a, fixture a 20 a); esperimento con le tabelle fini interrotto dall'utente; nessun codice da scrivere fino a nuova indicazione |
 
 ## 2. Registro dei gate
 
@@ -100,8 +100,11 @@ Piano per la convergenza (proposta, in ordine di costo):
 Fallimenti: nessuno nuovo.
 Dubbi: la variante di test (una size postflop) è più facile del CO40 completo: se non converge
 questa, il completo non convergerà con lo stesso trainer e le stesse tabelle.
-Prossimo passo: risultato dell'esperimento 1 (voce successiva), poi decisione dell'utente
-sull'ordine dei punti 2–5.
+Prossimo passo: decisione dell'utente sull'ordine dei punti 1–5; nessun codice viene scritto
+fino a quella decisione.
+Nota (2026-09-16, sera): l'esperimento 1 è stato interrotto dall'utente durante il training
+(nessun risultato); l'utente ha indicato che non è necessario scrivere codice. I punti 1–5
+restano proposte.
 
 ### 2026-09-16 — P8 — soluzione CO40 a una size nel viewer, DCFR contro Linear su CO40, risposte su exploitability/tempo e sui nodi fuori percorso
 
