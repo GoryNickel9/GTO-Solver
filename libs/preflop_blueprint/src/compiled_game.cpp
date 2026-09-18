@@ -76,7 +76,7 @@ private:
 
   NodeResult expand(const PublicState &state, const AggressionLevel level,
                     const std::uint16_t depth, const std::uint32_t parent,
-                    std::uint16_t entry) {
+                    std::uint16_t entry, const bool limped_pot = false) {
     if (game_.nodes_.size() >= options_.maximum_nodes || game_.nodes_.size() >= no_node) {
       return NodeResult::failure(GameModelError::NodeOverflow);
     }
@@ -88,6 +88,7 @@ private:
     node.street = state.street;
     node.active_mask = state.active_players_mask;
     node.level = level;
+    node.limped_pot = limped_pot;
     switch (state.status) {
     case HandStatus::Folded:
       node.kind = NodeKind::TerminalFold;
@@ -146,7 +147,7 @@ private:
       break;
     }
     case NodeKind::Decision: {
-      const auto action_config = action_config_at(config_, state, level);
+      const auto action_config = action_config_at(config_, state, level, limped_pot);
       if (!action_config) {
         return NodeResult::failure(action_config.error());
       }
@@ -162,8 +163,15 @@ private:
         }
         const auto child_level =
             static_cast<AggressionLevel>(level + (is_aggressive(action) ? 1U : 0U));
+        // A call at preflop level 0 is a limp: it does not raise the level, but
+        // it does change which response list the next raise answers to. The
+        // flag never leaves the preflop street.
+        const auto child_limped =
+            (state.street == Street::Preflop) &&
+            (limped_pot || (level == 0U && action.type == ActionType::Call));
         const auto child = expand(child_state.value(), child_level,
-                                  static_cast<std::uint16_t>(depth + 1U), id, entry);
+                                  static_cast<std::uint16_t>(depth + 1U), id, entry,
+                                  child_limped);
         if (!child) {
           return NodeResult::failure(child.error());
         }
@@ -359,8 +367,8 @@ Result<CompiledGame, GameModelError> CompiledGame::compile_subgame(const GameCon
   return Outcome::success(std::move(game));
 }
 
-std::uint32_t StateLayout::rows_for(const Street street, const std::uint16_t flop,
-                                    const std::uint16_t turn, const std::uint16_t river) noexcept {
+std::uint32_t StateLayout::rows_for(const Street street, const std::uint32_t flop,
+                                    const std::uint32_t turn, const std::uint32_t river) noexcept {
   switch (street) {
   case Street::Preflop:
     return static_cast<std::uint32_t>(card_abstraction::preflop_hand_classes);
@@ -374,8 +382,8 @@ std::uint32_t StateLayout::rows_for(const Street street, const std::uint16_t flo
   return 0U;
 }
 
-StateLayout layout_state(const CompiledGame &game, const std::uint16_t flop_capacity,
-                         const std::uint16_t turn_capacity, const std::uint16_t river_capacity) {
+StateLayout layout_state(const CompiledGame &game, const std::uint32_t flop_capacity,
+                         const std::uint32_t turn_capacity, const std::uint32_t river_capacity) {
   StateLayout layout;
   layout.flop_capacity = flop_capacity;
   layout.turn_capacity = turn_capacity;

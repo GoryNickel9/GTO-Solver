@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -51,6 +52,13 @@ struct GameConfig {
   // Index-matched re-raise target available when facing open_targets[i].
   // After that re-raise only fold, call and all-in remain.
   std::vector<Money> response_targets;
+  // Same, but for the response to a raise made in a limped pot (a player
+  // called the button blind before the first raise). The two public states
+  // are identical up to which seat holds which commitment, so the branch
+  // cannot be read off the state: the compiler carries the flag. Absent means
+  // "use response_targets", which is what every configuration did before this
+  // field existed; present and empty means fold, call or all-in only.
+  std::optional<std::vector<Money>> limp_response_targets;
   bool allow_configured_incomplete_raise{false};
   // Bet and raise sizes in basis points of the pot, strictly increasing.
   std::vector<PotPercentage> postflop_sizes;

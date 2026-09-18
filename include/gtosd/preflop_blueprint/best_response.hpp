@@ -96,6 +96,39 @@ struct BestResponseReport {
   // with the exact best response when all flops are enumerated.
   std::array<double, 2> best_response_lower{};
   std::array<double, 2> gain_lower{};
+  // Mirror image of best_response_lower: the hero best-responds at the preflop
+  // and then plays the average strategy from the flop on. Together with ev and
+  // best_response it separates a preflop-only error from one that needs both
+  // levels to deviate at once. Always between ev and best_response, because
+  // maximising one level cannot beat maximising both.
+  std::array<double, 2> best_response_preflop{};
+  std::array<double, 2> gain_preflop{};
+  // Preflop action mix chosen by the best response, one entry per decision
+  // node of the hero still on the preflop street. Frequencies are over the 81
+  // hand classes, as in the chart export, so the two can be compared directly.
+  // `split_classes` counts classes whose combos disagreed on the action, which
+  // suit symmetry forbids and which therefore must come out zero.
+  struct PreflopChoiceMix {
+    std::uint32_t node{0U};
+    std::uint8_t hero{0U};
+    std::uint8_t action_count{0U};
+    std::uint32_t split_classes{0U};
+    std::array<double, maximum_actions> frequency{};
+  };
+  std::vector<PreflopChoiceMix> best_response_preflop_mix;
+  // Loss inside one postflop entry, measured at a fixed reach: the mean over
+  // the hero's live combos, uniformly weighted, of the counterfactual gain of
+  // best-responding from that entry instead of playing the blueprint. Unlike
+  // gain_lower it does not depend on how often the blueprint goes there.
+  // `opponent_reach` is the opponent mass arriving at the entry, needed to
+  // compare entries with each other.
+  struct PostflopEntryLoss {
+    std::uint32_t node{0U};
+    std::uint8_t hero{0U};
+    double mean_gain{0.0};
+    double opponent_reach{0.0};
+  };
+  std::vector<PostflopEntryLoss> postflop_entry_loss;
   // Standard errors of the means over equally weighted flop groups of the
   // per-flop values of the chosen best response and of the average strategy;
   // zero for one group, for unequal group weights or for an exact pass.

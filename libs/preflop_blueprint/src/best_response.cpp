@@ -1387,8 +1387,102 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
       hero_reach_under(hero, nullptr, hero_reach);
       report.best_response_lower[hero] = value_under(hero_reach, leaf_values);
     }
+    // Preflop-only deviation: the entries are valued with the average strategy,
+    // so the maximisation at the preflop sees what the blueprint will really do
+    // after the flop instead of what a best responder could do there.
+    {
+      NodeVectors leaf_values = terminals;
+      entry_leaves(hero, average_mode, all_groups, leaf_values);
+      std::vector<double> root_values;
+      evaluator.value(game.root(), preflop, hero, response_mode, leaf_values, root_values,
+                      nullptr);
+      double total = 0.0;
+      for (std::size_t combo = 0; combo < combo_total; ++combo) {
+        total += context.allowed[hero][combo] * root_values[combo];
+      }
+      report.best_response_preflop[hero] = total * hero_scale;
+    }
+    // Where the best response's preflop differs from the blueprint's: the
+    // response pass above left its per-combo choice in `choice`.
+    {
+      constexpr std::size_t class_count = 81U;
+      for (std::uint32_t node = 0; node < node_count; ++node) {
+        const auto &entry = game.nodes()[node];
+        if (entry.kind != NodeKind::Decision || entry.street != Street::Preflop ||
+            entry.actor != hero || choice[node].empty()) {
+          continue;
+        }
+        std::vector<int> per_class(class_count, -1);
+        std::vector<std::uint8_t> split(class_count, 0U);
+        for (std::size_t hand = 0; hand < preflop.size(); ++hand) {
+          if (context.allowed[hero][preflop.combos[hand]] == 0.0) {
+            continue;
+          }
+          const auto hand_class = static_cast<std::size_t>(preflop.rows[hand]);
+          const int action = static_cast<int>(choice[node][hand]);
+          if (per_class[hand_class] < 0) {
+            per_class[hand_class] = action;
+          } else if (per_class[hand_class] != action) {
+            split[hand_class] = 1U;
+          }
+        }
+        BestResponseReport::PreflopChoiceMix mix;
+        mix.node = node;
+        mix.hero = hero;
+        mix.action_count = entry.action_count;
+        std::size_t seen = 0;
+        for (std::size_t index = 0; index < class_count; ++index) {
+          if (per_class[index] < 0) {
+            continue;
+          }
+          ++seen;
+          mix.split_classes += split[index];
+          mix.frequency[static_cast<std::size_t>(per_class[index])] += 1.0;
+        }
+        if (seen > 0) {
+          for (auto &value : mix.frequency) {
+            value /= static_cast<double>(seen);
+          }
+        }
+        report.best_response_preflop_mix.push_back(mix);
+      }
+    }
+    // Postflop quality independent of how often the blueprint gets there.
+    {
+      NodeVectors average_leaves = terminals;
+      entry_leaves(hero, average_mode, all_groups, average_leaves);
+      NodeVectors response_leaves = terminals;
+      entry_leaves(hero, response_mode, all_groups, response_leaves);
+      for (const auto node : game.postflop_entries()) {
+        if (average_leaves[node].empty() || response_leaves[node].empty()) {
+          continue;
+        }
+        double gain = 0.0;
+        double weight = 0.0;
+        for (std::size_t combo = 0; combo < combo_total; ++combo) {
+          const double allowed = context.allowed[hero][combo];
+          if (allowed == 0.0) {
+            continue;
+          }
+          gain += allowed * (response_leaves[node][combo] - average_leaves[node][combo]);
+          weight += allowed;
+        }
+        double opponent_mass = 0.0;
+        const auto &reach = context.preflop_leaf_reach[hero][node];
+        for (std::size_t hand = 0; hand < reach.size(); ++hand) {
+          opponent_mass += reach[hand];
+        }
+        BestResponseReport::PostflopEntryLoss loss;
+        loss.node = node;
+        loss.hero = hero;
+        loss.mean_gain = weight > 0.0 ? gain / weight : 0.0;
+        loss.opponent_reach = opponent_mass;
+        report.postflop_entry_loss.push_back(loss);
+      }
+    }
     report.gain[hero] = report.best_response[hero] - report.ev[hero];
     report.gain_lower[hero] = report.best_response_lower[hero] - report.ev[hero];
+    report.gain_preflop[hero] = report.best_response_preflop[hero] - report.ev[hero];
   }
   const auto worst = report.gain[0] >= report.gain[1] ? 0U : 1U;
   report.max_gain = report.gain[worst];

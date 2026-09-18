@@ -24,9 +24,9 @@ enum class PolicyFileError : std::uint8_t {
 
 struct PolicyFileInfo {
   std::string tree_fingerprint;
-  std::uint16_t flop_capacity{0U};
-  std::uint16_t turn_capacity{0U};
-  std::uint16_t river_capacity{0U};
+  std::uint32_t flop_capacity{0U};
+  std::uint32_t turn_capacity{0U};
+  std::uint32_t river_capacity{0U};
   std::uint64_t entries{0U};
   std::string source;
   // FNV-1a over the table bytes: equal fingerprints mean bit-identical policies.

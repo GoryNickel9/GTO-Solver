@@ -34,12 +34,235 @@ ParsedKey parse_key(const std::string &key) {
   return parsed;
 }
 
-void test_finite_game_oracle(const Resources &resources) {
+pb::TrainingBoards branching_boards() {
+  pb::TrainingBoards boards;
+  for (const auto &flop : {std::array<std::string_view, 3>{"6s", "7d", "8c"},
+                           std::array<std::string_view, 3>{"6d", "7h", "8s"}}) {
+    for (const auto turn : {"9h", "9c"}) {
+      for (const auto river : {"As", "Ad"}) {
+        boards.histories.push_back(make_history({flop[0], flop[1], flop[2], turn, river}));
+        boards.weights.push_back(static_cast<double>(boards.weights.size() + 1U));
+      }
+    }
+  }
+  boards.sample = false;
+  return boards;
+}
+
+pb::HandSubsets deep_subsets() {
+  auto subsets = oracle_subsets();
+  for (auto &combos : subsets.combos) {
+    combos = {combos.front(), combos.back()};
+  }
+  return subsets;
+}
+
+// A matching scalar CFR implementation is not a convergence proof when both
+// use an imperfect-recall partition. Here the optimal deviation is explicit,
+// so the witness does not rely on a best-response algorithm for such games.
+void test_forgotten_information_witness() {
+  for (const bool remember : {false, true}) {
+    gtosd::FiniteGame game;
+    game.game_id = remember ? "remembered_type" : "forgotten_type";
+    game.nodes.resize(11U);
+    game.nodes[0].kind = gtosd::GameNodeKind::Chance;
+    game.nodes[0].edges = {{{0U, "L"}, 1U, 0.5}, {{1U, "R"}, 6U, 0.5}};
+    for (const auto before : {1U, 6U}) {
+      auto &first = game.nodes[before];
+      first.kind = gtosd::GameNodeKind::Decision;
+      first.information_set = before == 1U ? "L_before" : "R_before";
+      first.edges = {{{0U, "quit"}, before + 1U, 0.0}, {{1U, "enter"}, before + 2U, 0.0}};
+      auto &second = game.nodes[before + 2U];
+      second.kind = gtosd::GameNodeKind::Decision;
+      second.information_set = remember ? (before == 1U ? "L_after" : "R_after") : "merged_after";
+      second.edges = {{{0U, "a"}, before + 3U, 0.0}, {{1U, "b"}, before + 4U, 0.0}};
+      const double a = before == 1U ? 2.0 : -3.0;
+      const double b = before == 1U ? -1.0 : 0.0;
+      game.nodes[before + 3U].payoff = {a, -a};
+      game.nodes[before + 4U].payoff = {b, -b};
+    }
+    auto deviation = gtosd::uniform_strategy_profile(game);
+    require(deviation.has_value(), "recall witness profile builds");
+    for (auto &[key, strategy] : deviation.value()) {
+      strategy.probabilities =
+          key == "L_before" ? std::vector<double>{0.0, 1.0} : std::vector<double>{1.0, 0.0};
+    }
+    const auto deviation_value = gtosd::evaluate_strategy_profile(game, deviation.value());
+    require(deviation_value.has_value() && close(deviation_value.value()[0], 1.0, 1e-12),
+            "enter in L, quit in R, then a achieves the known optimum in both partitions");
+    gtosd::SolverConfig config;
+    config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
+    config.iterations = 10'000U;
+    const auto solved = gtosd::solve_finite_game(game, config);
+    require(solved.has_value(), "recall witness solves");
+    const auto value = gtosd::evaluate_strategy_profile(game, solved.value().average_strategy);
+    require(value.has_value(), "recall witness average evaluates");
+    const double gap = deviation_value.value()[0] - value.value()[0];
+    if (remember) {
+      require(gap < 3e-8, "retaining the earlier information recovers convergence");
+    } else {
+      require(
+          close(gap, 0.75, 1e-7),
+          "CFR can stall with a representable profitable deviation after forgetting information");
+    }
+    std::cout << game.game_id << ": EV=" << value.value()[0] << " explicit deviation gain=" << gap
+              << '\n';
+  }
+}
+
+void test_diagnostic_contracts(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(game.has_value(), "diagnostic contract game compiles");
+  const auto config = resources.config();
+  const auto boards = branching_boards();
+  const auto subsets = deep_subsets();
+  auto source = pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets);
+  require(source.has_value(), "diagnostic source creates");
+  const auto directory = std::filesystem::temp_directory_path() / "gtosd_preflop_blueprint_tests";
+  std::filesystem::create_directories(directory);
+  const auto path = directory / "diagnostic_identity.bin";
+  require(source.value()->save_checkpoint(path).has_value(), "diagnostic checkpoint saves");
+  for (const auto change : {0U, 1U, 2U}) {
+    auto changed_boards = boards;
+    auto changed_subsets = subsets;
+    if (change == 0U) {
+      changed_boards.histories[0].river = card("Ac");
+    } else if (change == 1U) {
+      changed_boards.weights[0] += 1.0;
+    } else {
+      changed_subsets.combos[0][0] = ca::combo_index(card("Ts"), card("Js"));
+    }
+    auto changed = pb::Trainer::create(game.value(), resources.view(), config, &changed_boards,
+                                       &changed_subsets);
+    require(changed.has_value(), "changed diagnostic game creates");
+    require(changed.value()->identity() != source.value()->identity(),
+            "board contents, probabilities and private support identify distinct games");
+    const auto loaded = changed.value()->load_checkpoint(path);
+    require(!loaded && loaded.error() == pb::TrainerError::IntegrityFailure,
+            "a same-size diagnostic game cannot resume another game's regrets");
+  }
+
+  auto incompatible = pb::Trainer::create(game.value(), resources.view(), config, &boards);
+  require(incompatible.has_value(), "board-conditioned diagnostic training remains available");
+  const auto estimate = incompatible.value()->estimate_exploitability(0U);
+  require(!estimate && estimate.error() == pb::TrainerError::UnsupportedBoardPrior,
+          "a fixed-board private prior cannot be certified as the evaluator's physical prior");
+  std::cout << "diagnostic contracts: incompatible prior and changed checkpoint inputs rejected\n";
+}
+
+// Condition on player 0 having sampled board A. The expectation of player 1's
+// update must then equal an exact traversal against that updated policy, with
+// chance still averaging A and B. Reusing A makes player 1's target biased.
+void test_alternating_conditional_expectation(const Resources &resources, const int stack) {
+  auto fixture = load_fixture("preflop_blueprint_co40_test_v1.json");
+  fixture.effective_stack =
+      gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
+          .value();
+  const auto game = pb::CompiledGame::compile(fixture);
+  require(game.has_value(), "conditional-expectation game compiles");
+  pb::TrainingBoards boards;
+  boards.histories = {make_history({"6s", "7d", "8c", "6c", "Tc"}),
+                      make_history({"6s", "7d", "8c", "6c", "Kc"})};
+  boards.weights = {1.0, 1.0};
+  const auto subsets = deep_subsets();
+  auto first_board = boards;
+  first_board.histories.resize(1U);
+  first_board.weights.resize(1U);
+  FiniteGameBuilder first_builder(game.value(), resources);
+  const auto first_finite = first_builder.build(first_board, subsets);
+  gtosd::SolverConfig reference_config;
+  reference_config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
+  reference_config.iterations = 1U;
+  const auto first = gtosd::solve_finite_game(first_finite, reference_config);
+  require(first.has_value(), "first player's conditional reference solves");
+
+  FiniteGameBuilder full_builder(game.value(), resources);
+  const auto full_finite = full_builder.build(boards, subsets);
+  const auto initial = gtosd::solve_finite_game(full_finite, reference_config);
+  require(initial.has_value(), "full conditional reference initializes");
+  auto checkpoint = initial.value().checkpoint;
+  checkpoint.completed_iterations = 0U;
+  for (auto &[key, buffer] : checkpoint.information_sets) {
+    std::fill(buffer.cumulative_strategy.begin(), buffer.cumulative_strategy.end(), 0.0);
+    std::fill(buffer.cumulative_regret.begin(), buffer.cumulative_regret.end(), 0.0);
+    const auto found = first.value().checkpoint.information_sets.find(key);
+    if (buffer.player == 0U && found != first.value().checkpoint.information_sets.end()) {
+      buffer.cumulative_regret = found->second.cumulative_regret;
+    }
+  }
+  const auto expected = gtosd::solve_finite_game(full_finite, reference_config, &checkpoint);
+  require(expected.has_value(), "conditional exact second-player update computes");
+
+  std::array<std::vector<double>, 2> regrets;
+  std::array<std::vector<double>, 2> sums;
+  pb::StateLayout layout;
+  boards.sample = true;
+  for (std::size_t second = 0U; second < 2U; ++second) {
+    std::uint64_t seed = 0U;
+    for (;; ++seed) {
+      ca::DeterministicRandom random(seed);
+      const bool first_is_a = random.uniform_unit() < 0.5;
+      const bool second_is_a = random.uniform_unit() < 0.5;
+      if (first_is_a && second_is_a == (second == 0U)) {
+        break;
+      }
+      require(seed < 1000U, "conditional seed found within a bounded search");
+    }
+    auto config = resources.config();
+    config.batch_boards = 1U;
+    config.training_seed = seed;
+    config.scheme = pb::WeightingScheme::Linear;
+    config.update_mode = pb::UpdateMode::Alternating;
+    auto trainer = pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets);
+    require(trainer.has_value(), "conditional sampled trainer creates");
+    const auto telemetry = trainer.value()->iterate();
+    require(telemetry.has_value(), "conditional sampled iteration succeeds");
+    require(telemetry.value().boards == 2U && trainer.value()->boards_processed() == 2U,
+            "telemetry counts the two independently drawn boards");
+    layout = trainer.value()->layout();
+    regrets[second] = trainer.value()->regrets();
+    sums[second] = trainer.value()->strategy_sums();
+  }
+  double max_error = 0.0;
+  double max_sum_error = 0.0;
+  for (const auto &[key, buffer] : expected.value().checkpoint.information_sets) {
+    if (buffer.player != 1U) {
+      continue;
+    }
+    const auto parsed = parse_key(key);
+    const auto &node = game.value().nodes()[parsed.node];
+    const auto offset =
+        layout.offsets[parsed.node] + static_cast<std::uint64_t>(parsed.row) * node.action_count;
+    for (std::size_t action = 0U; action < node.action_count; ++action) {
+      const auto cell = offset + action;
+      const double actual = 0.5 * (regrets[0][cell] + regrets[1][cell]);
+      max_error = std::max(max_error, std::abs(actual - buffer.cumulative_regret[action]));
+      max_sum_error = std::max(max_sum_error, std::abs(0.5 * (sums[0][cell] + sums[1][cell]) -
+                                                       buffer.cumulative_strategy[action]));
+    }
+  }
+  std::cout << "alternating conditional expectation stack=" << stack
+            << ": max regret error=" << max_error << " max strategy-sum error=" << max_sum_error
+            << std::endl;
+  require(max_error < 1e-10, "conditional regret expectation equals the exact traversal");
+  require(max_sum_error < 1e-10, "conditional strategy-sum expectation equals the exact traversal");
+}
+
+void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
   const auto started = Clock::now();
-  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  auto fixture = load_fixture(stack == 0 ? "preflop_blueprint_hu10_reduced_v1.json"
+                                         : "preflop_blueprint_co40_test_v1.json");
+  if (stack != 0) {
+    fixture.effective_stack =
+        gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
+            .value();
+  }
+  const auto game = pb::CompiledGame::compile(fixture);
   require(game.has_value(), "HU10 reduced compiles");
-  const auto boards = oracle_boards();
-  const auto subsets = oracle_subsets();
+  const auto boards = stack == 0 ? oracle_boards() : branching_boards();
+  const auto subsets = stack == 0 ? oracle_subsets() : deep_subsets();
+  std::cout << "oracle stack=" << fixture.effective_stack.units() / gtosd::Money::units_per_ante
+            << " public_nodes=" << game.value().nodes().size() << std::endl;
   constexpr std::uint64_t iterations = 25U;
 
   FiniteGameBuilder builder(game.value(), resources);
@@ -91,6 +314,11 @@ void test_finite_game_oracle(const Resources &resources) {
       maximum_strategy_error =
           std::max(maximum_strategy_error,
                    std::abs(sums[offset + action] - buffer.cumulative_strategy[action]));
+      if (!close(regrets[offset + action], buffer.cumulative_regret[action], 1e-9)) {
+        std::cout << "first mismatch " << key << " action=" << action
+                  << " regret=" << regrets[offset + action]
+                  << " reference=" << buffer.cumulative_regret[action] << std::endl;
+      }
       require(close(regrets[offset + action], buffer.cumulative_regret[action], 1e-9),
               "cumulative regret equals the FiniteGame oracle within 1e-9");
       require(close(sums[offset + action], buffer.cumulative_strategy[action], 1e-9),
@@ -284,12 +512,24 @@ void test_resume(const Resources &resources) {
 // per hand and per public prefix, never per full board. On the reduced game
 // the exact value is the best response of the lossless FiniteGame (information
 // sets by combo and cards dealt so far) against the lifted strategy profile.
-void test_physical_best_response(const Resources &resources) {
+void test_physical_best_response(const Resources &resources, const int stack = 0,
+                                 const bool overlapping_ranges = false) {
   const auto started = Clock::now();
-  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  auto fixture = load_fixture(stack == 0 ? "preflop_blueprint_hu10_reduced_v1.json"
+                                         : "preflop_blueprint_co40_test_v1.json");
+  if (stack != 0) {
+    fixture.effective_stack =
+        gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
+            .value();
+  }
+  const auto game = pb::CompiledGame::compile(fixture);
   require(game.has_value(), "HU10 reduced compiles");
-  const auto boards = oracle_boards();
-  const auto subsets = oracle_subsets();
+  const auto boards = stack == 0 ? oracle_boards() : branching_boards();
+  auto subsets = stack == 0 ? oracle_subsets() : deep_subsets();
+  if (overlapping_ranges) {
+    subsets.combos[0] = combos_from_cards({"Ts", "Th", "Js", "Jh"});
+    subsets.combos[1] = subsets.combos[0];
+  }
   auto config = resources.config();
   config.threads = 2U;
   auto trainer = pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets);
@@ -338,8 +578,9 @@ void test_physical_best_response(const Resources &resources) {
 
   // The trainer reports the same exact evaluation on its board list.
   const auto estimate = trainer.value()->estimate_exploitability(0U);
-  require(estimate.has_value() && estimate.value().exact && estimate.value().boards == 3U &&
-              estimate.value().flops == 3U,
+  require(estimate.has_value() && estimate.value().exact &&
+              estimate.value().boards == boards.histories.size() &&
+              estimate.value().flops == (stack == 0 ? 3U : 2U),
           "trainer evaluates the listed boards exactly");
   require(close(estimate.value().max_gain, report.value().max_gain, 1e-12) &&
               close(estimate.value().ev[0], report.value().ev[0], 1e-12),
@@ -352,12 +593,13 @@ void test_physical_best_response(const Resources &resources) {
   require(abstract_oracle.has_value(), "abstract NashConv computes");
   require(report.value().nashconv >= abstract_oracle.value().nash_conv - 1e-9,
           "physical best response dominates the abstract-game best response");
-  std::cout << "physical best response: EV [" << report.value().ev[0] << ", "
-            << report.value().ev[1] << "], BR [" << report.value().best_response[0] << ", "
-            << report.value().best_response[1] << "], nashconv " << report.value().nashconv
-            << " (lossless oracle " << oracle.value().nash_conv << ", abstract oracle "
-            << abstract_oracle.value().nash_conv << "), lossless game " << summary.value().nodes
-            << " nodes, " << summary.value().information_sets << " information sets, "
+  std::cout << "physical best response (overlapping ranges=" << overlapping_ranges << "): EV ["
+            << report.value().ev[0] << ", " << report.value().ev[1] << "], BR ["
+            << report.value().best_response[0] << ", " << report.value().best_response[1]
+            << "], nashconv " << report.value().nashconv << " (lossless oracle "
+            << oracle.value().nash_conv << ", abstract oracle " << abstract_oracle.value().nash_conv
+            << "), lossless game " << summary.value().nodes << " nodes, "
+            << summary.value().information_sets << " information sets, "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
@@ -402,21 +644,35 @@ int main(const int argc, char **argv) {
   try {
     std::filesystem::path resources_dir;
     std::filesystem::path buckets_dir;
+    bool deep_only = false;
     for (int index = 1; index + 1 < argc; index += 2) {
       const std::string_view name = argv[index];
       if (name == "--resources-dir") {
         resources_dir = argv[index + 1];
       } else if (name == "--buckets-dir") {
         buckets_dir = argv[index + 1];
+      } else if (name == "--deep-only") {
+        deep_only = std::string_view(argv[index + 1]) == "true";
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
     }
     const auto resources = load_resources(resources_dir, buckets_dir);
+    test_forgotten_information_witness();
+    test_diagnostic_contracts(resources);
     std::cout << "resources " << (resources.loaded ? "loaded" : "built") << ", bucket tables "
               << (resources.buckets_loaded ? "loaded" : "built") << " ("
               << resources.flop->capacity() << "/" << resources.turn->capacity() << "/"
               << resources.river->capacity() << ")\n";
+    for (const int stack : {40, 100, 300}) {
+      test_alternating_conditional_expectation(resources, stack);
+      test_finite_game_oracle(resources, stack);
+      test_physical_best_response(resources, stack);
+      test_physical_best_response(resources, stack, true);
+    }
+    if (deep_only) {
+      return 0;
+    }
     test_finite_game_oracle(resources);
     test_determinism(resources);
     test_resume(resources);

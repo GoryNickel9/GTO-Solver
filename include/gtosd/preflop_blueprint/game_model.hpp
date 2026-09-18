@@ -43,7 +43,11 @@ using AggressionLevel = std::uint8_t;
 
 // Action abstraction at a decision node.
 [[nodiscard]] Result<ActionConfig, GameModelError>
-action_config_at(const GameConfig &config, const PublicState &state, AggressionLevel level);
+// `limped_pot` marks the preflop branch in which a player called the button
+// blind before the first raise; it only affects the level 1 response and only
+// when the configuration carries limp_response_targets.
+action_config_at(const GameConfig &config, const PublicState &state, AggressionLevel level,
+                 bool limped_pot = false);
 
 [[nodiscard]] constexpr bool is_aggressive(const Action &action) noexcept {
   return action.type == ActionType::Bet || action.type == ActionType::Raise ||

@@ -54,6 +54,13 @@
       "maxItems": 4,
       "items": {"type": "integer", "minimum": 1}
     },
+    "limp_response_target_units": {
+      "description": "Optional. Index-matched re-raise targets for the response to a raise made in a limped pot. Absent means the branch reuses response_target_units; an empty array leaves only fold, call and all-in.",
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4,
+      "items": {"type": "integer", "minimum": 1}
+    },
     "allow_configured_incomplete_raise": {"type": "boolean"},
     "postflop_sizes_basis_points": {
       "type": "array",

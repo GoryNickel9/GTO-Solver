@@ -208,7 +208,8 @@ bool facing_all_in(const PublicState &state) noexcept {
 
 Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
                                                       const PublicState &state,
-                                                      const AggressionLevel level) {
+                                                      const AggressionLevel level,
+                                                      const bool limped_pot) {
   if (state.status != HandStatus::InProgress) {
     return ConfigResult::failure(GameModelError::GameFailure);
   }
@@ -230,7 +231,11 @@ Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
     return target_config(config, state, config.open_targets, false);
   }
   if (level == 1U) {
-    if (config.response_targets.empty()) {
+    // In a limped pot the responder uses its own list when one is configured.
+    const auto &targets = (limped_pot && config.limp_response_targets.has_value())
+                              ? config.limp_response_targets.value()
+                              : config.response_targets;
+    if (targets.empty()) {
       // No configured re-raise size over an open: fold, call or all-in.
       return ConfigResult::success(all_in_config(config));
     }
@@ -239,7 +244,10 @@ Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
       return ConfigResult::failure(GameModelError::InvalidConfiguration);
     }
     const auto index = static_cast<std::size_t>(found - config.open_targets.begin());
-    return target_config(config, state, {config.response_targets[index]},
+    if (index >= targets.size()) {
+      return ConfigResult::failure(GameModelError::InvalidConfiguration);
+    }
+    return target_config(config, state, {targets[index]},
                          config.allow_configured_incomplete_raise);
   }
   return ConfigResult::success(all_in_config(config));

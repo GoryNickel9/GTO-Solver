@@ -139,6 +139,15 @@ OrderedJson to_ordered_json(const GameConfig &config) {
     response_targets.push_back(target.units());
   }
   root["response_target_units"] = std::move(response_targets);
+  // Emitted only when set, so a configuration that predates this field keeps
+  // its serialization and therefore its fingerprint and its artifacts.
+  if (config.limp_response_targets.has_value()) {
+    OrderedJson limp_targets = OrderedJson::array();
+    for (const auto target : config.limp_response_targets.value()) {
+      limp_targets.push_back(target.units());
+    }
+    root["limp_response_target_units"] = std::move(limp_targets);
+  }
   root["allow_configured_incomplete_raise"] = config.allow_configured_incomplete_raise;
   OrderedJson sizes = OrderedJson::array();
   for (const auto size : config.postflop_sizes) {
@@ -160,6 +169,7 @@ bool operator==(const GameConfig &left, const GameConfig &right) {
          left.ante == right.ante && left.button_blind == right.button_blind &&
          left.open_targets == right.open_targets &&
          left.response_targets == right.response_targets &&
+         left.limp_response_targets == right.limp_response_targets &&
          left.allow_configured_incomplete_raise == right.allow_configured_incomplete_raise &&
          left.postflop_sizes == right.postflop_sizes &&
          left.postflop_minimum_bet == right.postflop_minimum_bet &&
@@ -214,6 +224,20 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
     const auto response = config.response_targets[index];
     if (response <= open || response >= config.effective_stack) {
       return Validation::failure(ConfigError::InvalidValue);
+    }
+  }
+  // The limped-pot response list, when present, obeys the same shape rules as
+  // response_targets: empty means all-in only, otherwise one target per open.
+  if (config.limp_response_targets.has_value()) {
+    const auto &targets = config.limp_response_targets.value();
+    if (!targets.empty() && targets.size() != config.open_targets.size()) {
+      return Validation::failure(ConfigError::InvalidStructure);
+    }
+    for (std::size_t index = 0; index < targets.size(); ++index) {
+      if (targets[index] <= config.open_targets[index] ||
+          targets[index] >= config.effective_stack) {
+        return Validation::failure(ConfigError::InvalidValue);
+      }
     }
   }
   if (config.postflop_sizes.empty() || config.postflop_sizes.size() > maximum_postflop_sizes) {
@@ -335,6 +359,16 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
     config.postflop_minimum_bet = minimum_bet.value();
     config.open_targets = open_targets.value();
     config.response_targets = response_targets.value();
+    // Optional: a missing key keeps the historical behaviour (the limped-pot
+    // response reuses response_targets); an explicit empty list removes the
+    // configured re-raise on that branch.
+    if (root.contains("limp_response_target_units")) {
+      const auto limp_targets = money_list_field(root, "limp_response_target_units");
+      if (!limp_targets) {
+        return Parsed::failure(limp_targets.error());
+      }
+      config.limp_response_targets = limp_targets.value();
+    }
     config.allow_configured_incomplete_raise = allow_incomplete.value();
     config.include_all_in = include_all_in.value();
 

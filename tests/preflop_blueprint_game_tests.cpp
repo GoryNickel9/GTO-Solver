@@ -129,43 +129,59 @@ void test_root_state_matches_core() {
 
 void test_co40_preflop_tree(const pb::CompiledGame &game) {
   const auto &stats = game.stats();
-  require(stats.preflop_nodes == 58U, "CO40 preflop part has 58 nodes");
-  require(stats.preflop_decisions == 20U, "CO40 preflop part has 20 decisions");
-  require(stats.postflop_entries == 9U, "CO40 preflop part has 9 postflop entries");
-  require(stats.preflop_terminal_folds + stats.preflop_all_in_runouts == 29U,
-          "CO40 preflop part has 29 terminals");
-  require(game.postflop_entries().size() == 9U, "entry list has 9 ids");
-  require(legacy_preflop_fingerprint(game) == "fnv1a64:a68337fa567aa2d9",
-          "CO40 preflop part reproduces the frozen legacy tree fingerprint");
+  // Tree of 2026-09-17. The user replaced the Monker sizes with the exact
+  // pot-raise formula "P + 2B - c" (pot before the action, bet to match, chips
+  // the raiser already has in this round) and removed the configured re-raise
+  // on the limped branch. One size per spot follows from the formula: both
+  // opens are decided at the root, so they would both be 5a.
+  //   root      P=3  B=1 c=0 -> open 5a
+  //   limp      P=4  B=1 c=1 -> BTN raises to 5a, the same number
+  //   vs open   P=8  B=5 c=1 -> response 17a
+  // Before the change: two opens 6a/10a, responses 10.5a/14.5a, 58 preflop
+  // nodes, 20 decisions, 9 postflop entries, 29 terminals.
+  require(stats.preflop_nodes == 28U, "CO40 preflop part has 28 nodes");
+  require(stats.preflop_decisions == 10U, "CO40 preflop part has 10 decisions");
+  require(stats.postflop_entries == 4U, "CO40 preflop part has 4 postflop entries");
+  require(stats.preflop_terminal_folds + stats.preflop_all_in_runouts == 14U,
+          "CO40 preflop part has 14 terminals");
+  require(game.postflop_entries().size() == 4U, "entry list has 4 ids");
+  // No longer the legacy tree: sizes and the limped branch differ on purpose.
+  // Frozen so any further change has to be deliberate. The legacy value was
+  // fnv1a64:a68337fa567aa2d9.
+  require(legacy_preflop_fingerprint(game) == "fnv1a64:c2169c4295026609",
+          std::string("CO40 preflop tree matches the frozen 2026-09-17 fingerprint, got ") +
+              legacy_preflop_fingerprint(game));
 
   const auto root = game.root();
   const auto &root_node = game.nodes()[root];
   require(root_node.kind == pb::NodeKind::Decision && root_node.actor == 0U &&
-              root_node.action_count == 5U && root_node.level == 0U,
-          "root: CO decides among five actions");
+              root_node.action_count == 4U && root_node.level == 0U && !root_node.limped_pot,
+          "root: CO decides among four actions");
   require(has_edge(game, root, gtosd::ActionType::Fold, 0) &&
               has_edge(game, root, gtosd::ActionType::Call, 10'000) &&
-              has_edge(game, root, gtosd::ActionType::Raise, 60'000) &&
-              has_edge(game, root, gtosd::ActionType::Raise, 100'000) &&
+              has_edge(game, root, gtosd::ActionType::Raise, 50'000) &&
               has_edge(game, root, gtosd::ActionType::AllIn, 390'000),
-          "root actions: fold, call 1a, raise to 6a, raise to 10a, all-in 39a");
+          "root actions: fold, call 1a, raise to 5a, all-in 39a");
 
-  // BTN facing the raise to 6a: fold, call, raise to 10.5a (incomplete, configured), all-in.
-  std::uint32_t after_small_open = pb::no_node;
+  // BTN facing the open: fold, call, re-raise to 17a, all-in.
+  std::uint32_t after_open = pb::no_node;
   for (const auto &edge : game.edges_of(root)) {
-    if (edge.action.type == gtosd::ActionType::Raise && edge.action.amount.units() == 60'000) {
-      after_small_open = edge.child;
+    if (edge.action.type == gtosd::ActionType::Raise && edge.action.amount.units() == 50'000) {
+      after_open = edge.child;
     }
   }
-  require(after_small_open != pb::no_node, "raise to 6a child exists");
-  const auto &small = game.nodes()[after_small_open];
-  require(small.kind == pb::NodeKind::Decision && small.actor == 1U && small.level == 1U &&
-              small.action_count == 4U,
-          "BTN facing 6a: four actions at aggression level 1");
-  require(has_edge(game, after_small_open, gtosd::ActionType::Raise, 95'000),
-          "BTN facing 6a may raise to 10.5a (pays 9.5a over the 1a blind)");
+  require(after_open != pb::no_node, "raise to 5a child exists");
+  const auto &open_response = game.nodes()[after_open];
+  require(open_response.kind == pb::NodeKind::Decision && open_response.actor == 1U &&
+              open_response.level == 1U && !open_response.limped_pot &&
+              open_response.action_count == 4U,
+          "BTN facing 5a: four actions at aggression level 1, not the limped branch");
+  // Edge amounts are the chips the actor adds, so BTN reaching 17a adds 16a
+  // over its 1a blind.
+  require(has_edge(game, after_open, gtosd::ActionType::Raise, 160'000),
+          "BTN facing 5a may raise to 17a: it owes 4a and the pot after the call is 12a");
   std::uint32_t after_reraise = pb::no_node;
-  for (const auto &edge : game.edges_of(after_small_open)) {
+  for (const auto &edge : game.edges_of(after_open)) {
     if (edge.action.type == gtosd::ActionType::Raise) {
       after_reraise = edge.child;
     }
@@ -174,10 +190,8 @@ void test_co40_preflop_tree(const pb::CompiledGame &game) {
   require(final_response.kind == pb::NodeKind::Decision && final_response.level == 2U &&
               final_response.action_count == 3U,
           "after the configured re-raise only fold, call and all-in remain");
-  require(game.states()[after_reraise].last_full_raise_increment.units() == 50'000,
-          "raise to 10.5a keeps the 5a full-raise increment");
 
-  // Limp: BTN may check or bet the open targets.
+  // Limp: BTN may check, bet to the open target, or shove.
   std::uint32_t after_limp = pb::no_node;
   for (const auto &edge : game.edges_of(root)) {
     if (edge.action.type == gtosd::ActionType::Call) {
@@ -186,12 +200,32 @@ void test_co40_preflop_tree(const pb::CompiledGame &game) {
   }
   const auto &limp = game.nodes()[after_limp];
   require(limp.kind == pb::NodeKind::Decision && limp.actor == 1U && limp.level == 0U &&
-              limp.action_count == 4U,
-          "BTN after a limp: check, two bets, all-in");
+              limp.limped_pot && limp.action_count == 3U,
+          "BTN after a limp: check, one bet, all-in");
   require(has_edge(game, after_limp, gtosd::ActionType::Check, 0) &&
-              has_edge(game, after_limp, gtosd::ActionType::Bet, 50'000) &&
-              has_edge(game, after_limp, gtosd::ActionType::Bet, 90'000),
-          "limp branch mirrors the open targets 6a and 10a");
+              has_edge(game, after_limp, gtosd::ActionType::Bet, 40'000),
+          "BTN bets 4a over its 1a blind, reaching 5a: the exact pot raise on a limp");
+
+  // The limper facing that bet has no configured re-raise: the fixture carries
+  // an empty limp_response_target_units. The same aggression level in the open
+  // branch still offers the 17a response, so the two branches are distinct
+  // although their public states coincide up to which seat holds which bet.
+  for (const auto &edge : game.edges_of(after_limp)) {
+    if (edge.action.type != gtosd::ActionType::Bet) {
+      continue;
+    }
+    const auto &responder = game.nodes()[edge.child];
+    require(responder.kind == pb::NodeKind::Decision && responder.actor == 0U &&
+                responder.level == 1U && responder.limped_pot,
+            "the limper responds at level 1 on the limped branch");
+    require(responder.action_count == 3U,
+            "limped branch response: fold, call and all-in only");
+    require(!has_edge(game, edge.child, gtosd::ActionType::Raise, 160'000),
+            "no configured re-raise survives on the limped branch");
+    require(game.states()[edge.child].pot == game.states()[after_open].pot &&
+                game.states()[edge.child].current_bet == game.states()[after_open].current_bet,
+            "limped and open branches reach the same pot and bet, only the seats differ");
+  }
 }
 
 void test_structure_and_transitions(const pb::CompiledGame &game, const bool preflop_only) {
@@ -266,7 +300,8 @@ void test_structure_and_transitions(const pb::CompiledGame &game, const bool pre
     require(expected_next == node.subtree_end, "subtree ends after the last child subtree");
 
     if (node.kind == pb::NodeKind::Decision) {
-      const auto action_config = pb::action_config_at(config, state, node.level);
+      const auto action_config =
+          pb::action_config_at(config, state, node.level, node.limped_pot);
       require(action_config.has_value(), "action configuration resolves");
       const auto legal = gtosd::legal_actions(state, action_config.value());
       require(legal.has_value() && legal.value().size() == edges.size(),
@@ -370,19 +405,22 @@ void test_payoffs(const pb::CompiledGame &game) {
 
 void test_co40_postflop_counts(const pb::CompiledGame &game) {
   const auto &stats = game.stats();
-  // Measured on the legacy skeleton analyzer (gtosd_hu_preflop_tree, 2026-09-15):
+  // The legacy skeleton analyzer (gtosd_hu_preflop_tree, 2026-09-15) measured
   // represented 27,012, decisions 10,060, action edges 25,944, chance frontiers
-  // 1,059, folds 7,942, showdowns 6,715, all-in runouts 1,236, four raises at
-  // most. The 30,324 / 11,308 quoted by older documents predate the current
-  // betting rules and are not reproduced by the legacy code either.
-  require(stats.postflop_represented_nodes == 27'012U,
-          "CO40 postflop skeleton has 27,012 represented nodes");
-  require(stats.postflop_decisions == 10'060U, "CO40 postflop skeleton has 10,060 decisions");
-  require(stats.postflop_action_edges == 25'944U, "CO40 postflop skeleton has 25,944 action edges");
-  require(stats.postflop_chance_frontiers == 1'059U && stats.postflop_terminal_folds == 7'942U &&
-              stats.postflop_terminal_showdowns == 6'715U &&
-              stats.postflop_terminal_all_in_runouts == 1'236U,
-          "CO40 postflop terminal and chance classes match the legacy analyzer");
+  // 1,059, folds 7,942, showdowns 6,715, all-in runouts 1,236 on the tree that
+  // still had the configured re-raise on the limped branch. The user removed
+  // that branch on 2026-09-17, which drops the two postflop entries it owned;
+  // the counts below are the current tree and no longer the legacy ones. The
+  // 30,324 / 11,308 quoted by older documents predate the current betting
+  // rules and were not reproduced by the legacy code either.
+  require(stats.postflop_represented_nodes == 26'854U,
+          "CO40 postflop skeleton has 26,854 represented nodes");
+  require(stats.postflop_decisions == 9'948U, "CO40 postflop skeleton has 9,948 decisions");
+  require(stats.postflop_action_edges == 25'852U, "CO40 postflop skeleton has 25,852 action edges");
+  require(stats.postflop_chance_frontiers == 998U && stats.postflop_terminal_folds == 7'952U &&
+              stats.postflop_terminal_showdowns == 6'812U &&
+              stats.postflop_terminal_all_in_runouts == 1'144U,
+          "CO40 postflop terminal and chance classes match the 2026-09-17 tree");
   require(stats.maximum_raise_count == 4U, "CO40 reaches at most four raises on a street");
   require(stats.postflop_decisions_by_street[0] + stats.postflop_decisions_by_street[1] +
                   stats.postflop_decisions_by_street[2] ==
@@ -537,8 +575,9 @@ void test_three_way_readiness() {
             "the flop starts with the first active player who is not all-in");
   }
 
-  // UTG raises to 6a, CO and BTN fold: UTG wins the antes and the blind, 5a return.
-  const auto after_raise = follow(game, game.root(), gtosd::ActionType::Raise, 60'000);
+  // UTG raises to 5a (the single open target since 2026-09-17), CO and BTN
+  // fold: UTG wins the three antes and the blind, 4a return.
+  const auto after_raise = follow(game, game.root(), gtosd::ActionType::Raise, 50'000);
   require(game.nodes()[after_raise].actor == 1U, "CO acts after the UTG raise");
   const auto after_co_fold = follow(game, after_raise, gtosd::ActionType::Fold, 0);
   const auto &co_folded = game.states()[after_co_fold];
@@ -548,8 +587,8 @@ void test_three_way_readiness() {
   const auto after_btn_fold = follow(game, after_co_fold, gtosd::ActionType::Fold, 0);
   const auto &won = game.states()[after_btn_fold];
   require(won.status == gtosd::HandStatus::Folded && won.terminal_winner_mask == 0b001U &&
-              won.returned_uncalled.units() == 50'000 && won.pot.units() == 50'000,
-          "UTG wins uncontested and the uncalled 5a return");
+              won.returned_uncalled.units() == 40'000 && won.pot.units() == 50'000,
+          "UTG wins uncontested and the uncalled 4a return");
   const auto payoffs = game.fold_payoffs(after_btn_fold);
   require(payoffs[0] == 30'000 && payoffs[1] == -10'000 && payoffs[2] == -20'000,
           "UTG +3a, CO -1a, BTN -2a");

@@ -217,6 +217,7 @@ bool same_report(const pb::BestResponseReport &left, const pb::BestResponseRepor
   for (std::uint8_t player = 0; player < 2U; ++player) {
     if (left.ev[player] != right.ev[player] || left.best_response[player] != right.best_response[player] ||
         left.best_response_lower[player] != right.best_response_lower[player] ||
+        left.best_response_preflop[player] != right.best_response_preflop[player] ||
         left.gain[player] != right.gain[player] ||
         left.best_response_standard_error[player] != right.best_response_standard_error[player] ||
         left.ev_standard_error[player] != right.ev_standard_error[player]) {
@@ -280,6 +281,12 @@ void test_partial_pass_and_resume(const Resources &resources, const std::filesys
             "gains are not negative");
     require(report.best_response[player] >= report.best_response_lower[player] - 1e-12,
             "plain estimate dominates the lower bound on the same flops");
+    // Maximising one level alone can neither lose to maximising none nor beat
+    // maximising both, so the preflop-only deviation is bracketed by ev and
+    // the plain best response.
+    require(report.gain_preflop[player] >= -1e-12, "the preflop-only gain is not negative");
+    require(report.best_response[player] >= report.best_response_preflop[player] - 1e-12,
+            "the plain best response dominates the preflop-only deviation");
   }
   const auto json = pb::certificate_json(first.value());
   require(json.find("\"schema\": \"gtosd.preflop_blueprint_certificate.v1\"") != std::string::npos,

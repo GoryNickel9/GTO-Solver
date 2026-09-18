@@ -62,6 +62,11 @@ struct CompiledNode {
   std::uint8_t remaining_board_cards{0U};
   // Aggressive actions already taken on the street when the node is reached.
   AggressionLevel level{0U};
+  // Preflop only: a player called the button blind before the first raise.
+  // The public state after "limp then raise" and after "open" is the same up
+  // to which seat holds which commitment, so this branch cannot be recovered
+  // from the state and is carried here instead.
+  bool limped_pot{false};
 };
 
 struct CompiledGameStats {
@@ -158,9 +163,11 @@ private:
 // information class (81 preflop hand classes, the bucket capacity of the
 // street postflop) and one column per action at every decision node.
 struct StateLayout {
-  std::uint16_t flop_capacity{0U};
-  std::uint16_t turn_capacity{0U};
-  std::uint16_t river_capacity{0U};
+  // 32 bit since 2026-09-17: representations that keep part of the history
+  // exceed the 65,535 rows a bucket id can address.
+  std::uint32_t flop_capacity{0U};
+  std::uint32_t turn_capacity{0U};
+  std::uint32_t river_capacity{0U};
   // Offset of the first entry of every node; no_offset for non-decisions.
   std::vector<std::uint64_t> offsets;
   std::uint64_t entries{0U};
@@ -168,12 +175,12 @@ struct StateLayout {
   [[nodiscard]] std::uint64_t table_bytes() const noexcept { return entries * sizeof(double); }
   // Regrets and strategy sums together.
   [[nodiscard]] std::uint64_t state_bytes() const noexcept { return 2U * table_bytes(); }
-  [[nodiscard]] static std::uint32_t rows_for(Street street, std::uint16_t flop,
-                                              std::uint16_t turn, std::uint16_t river) noexcept;
+  [[nodiscard]] static std::uint32_t rows_for(Street street, std::uint32_t flop,
+                                              std::uint32_t turn, std::uint32_t river) noexcept;
 };
 
-[[nodiscard]] StateLayout layout_state(const CompiledGame &game, std::uint16_t flop_capacity,
-                                       std::uint16_t turn_capacity, std::uint16_t river_capacity);
+[[nodiscard]] StateLayout layout_state(const CompiledGame &game, std::uint32_t flop_capacity,
+                                       std::uint32_t turn_capacity, std::uint32_t river_capacity);
 
 [[nodiscard]] const char *node_kind_name(NodeKind kind) noexcept;
 [[nodiscard]] const char *street_name(Street street) noexcept;

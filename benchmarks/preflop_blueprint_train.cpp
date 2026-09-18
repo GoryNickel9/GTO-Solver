@@ -268,7 +268,8 @@ int main(const int argc, char **argv) {
     if (evaluate_only) {
       const auto estimate = trainer.estimate_exploitability(evaluation_flops);
       if (!estimate) {
-        throw std::runtime_error("evaluation failed");
+        throw std::runtime_error(std::string("evaluation failed: ") +
+                                 pb::trainer_error_name(estimate.error()));
       }
       evaluation_seconds += estimate.value().seconds;
       print_estimate(trainer.iteration(),
@@ -292,7 +293,8 @@ int main(const int argc, char **argv) {
       }
       const auto estimate = trainer.estimate_exploitability(evaluation_flops);
       if (!estimate) {
-        throw std::runtime_error("evaluation failed");
+        throw std::runtime_error(std::string("evaluation failed: ") +
+                                 pb::trainer_error_name(estimate.error()));
       }
       evaluation_seconds += estimate.value().seconds;
       print_estimate(trainer.iteration(),

@@ -426,6 +426,31 @@ std::string certificate_json(const Certificate &certificate) {
          json_number(report.best_response_lower[1]) + "],\n";
   out += "  \"gain_lower\": [" + json_number(report.gain_lower[0]) + ", " +
          json_number(report.gain_lower[1]) + "],\n";
+  out += "  \"best_response_preflop\": [" + json_number(report.best_response_preflop[0]) + ", " +
+         json_number(report.best_response_preflop[1]) + "],\n";
+  out += "  \"gain_preflop\": [" + json_number(report.gain_preflop[0]) + ", " +
+         json_number(report.gain_preflop[1]) + "],\n";
+  out += "  \"postflop_entry_loss\": [";
+  for (std::size_t index = 0; index < report.postflop_entry_loss.size(); ++index) {
+    const auto &loss = report.postflop_entry_loss[index];
+    out += std::string(index == 0 ? "" : ", ") + "{\"node\": " + std::to_string(loss.node) +
+           ", \"hero\": " + std::to_string(static_cast<unsigned>(loss.hero)) +
+           ", \"mean_gain\": " + json_number(loss.mean_gain) +
+           ", \"opponent_reach\": " + json_number(loss.opponent_reach) + "}";
+  }
+  out += "],\n";
+  out += "  \"best_response_preflop_mix\": [";
+  for (std::size_t index = 0; index < report.best_response_preflop_mix.size(); ++index) {
+    const auto &mix = report.best_response_preflop_mix[index];
+    out += std::string(index == 0 ? "" : ", ") + "{\"node\": " + std::to_string(mix.node) +
+           ", \"hero\": " + std::to_string(static_cast<unsigned>(mix.hero)) +
+           ", \"split_classes\": " + std::to_string(mix.split_classes) + ", \"frequency\": [";
+    for (std::size_t action = 0; action < mix.action_count; ++action) {
+      out += std::string(action == 0 ? "" : ", ") + json_number(mix.frequency[action]);
+    }
+    out += "]}";
+  }
+  out += "],\n";
   out += "  \"gain_standard_error\": [" +
          json_number(std::sqrt(report.best_response_standard_error[0] *
                                    report.best_response_standard_error[0] +

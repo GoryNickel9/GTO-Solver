@@ -16,8 +16,9 @@
     50000
   ],
   "response_target_units": [
-    130000
+    170000
   ],
+  "limp_response_target_units": [],
   "allow_configured_incomplete_raise": true,
   "postflop_sizes_basis_points": [
     10000

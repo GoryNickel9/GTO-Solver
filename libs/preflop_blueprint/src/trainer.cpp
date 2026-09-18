@@ -2,6 +2,7 @@
 
 #include "binary_io.hpp"
 
+#include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/best_response.hpp"
 
 #include "hashing.hpp"
@@ -13,6 +14,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
+#include <limits>
 #include <numeric>
 #include <thread>
 #include <utility>
@@ -33,7 +35,7 @@ using Clock = std::chrono::steady_clock;
 constexpr std::uint32_t no_unit = 0xFFFF'FFFFU;
 constexpr double ante_scale = 1.0 / static_cast<double>(Money::units_per_ante);
 constexpr std::array<char, 8> checkpoint_magic{'G', 'T', 'O', 'S', 'D', 'C', 'K', 'P'};
-constexpr std::uint32_t checkpoint_version = 1U;
+constexpr std::uint32_t checkpoint_version = 2U;
 
 bool all_zero(const double *values) noexcept {
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
@@ -48,6 +50,47 @@ bool disjoint(const std::array<std::uint8_t, 2> &left,
               const std::array<std::uint8_t, 2> &right) noexcept {
   return left[0] != right[0] && left[0] != right[1] && left[1] != right[0] &&
          left[1] != right[1];
+}
+
+bool supported_diagnostic_prior(const std::vector<card_abstraction::BoardHistory> &boards,
+                                const std::array<std::vector<std::uint8_t>, 2> &allowed) {
+  if (boards.empty()) {
+    return false;
+  }
+  const auto &combos = card_abstraction::combo_table();
+  for (const auto &board : boards) {
+    const auto mask = board.flop[0].mask() | board.flop[1].mask() | board.flop[2].mask() |
+                      board.turn.mask() | board.river.mask();
+    for (std::size_t combo = 0; combo < combos.masks.size(); ++combo) {
+      if ((allowed[0][combo] != 0U || allowed[1][combo] != 0U) &&
+          (combos.masks[combo] & mask) != 0U) {
+        return false;
+      }
+    }
+  }
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    std::uint32_t degree = 0U;
+    for (std::size_t combo = 0; combo < combos.masks.size(); ++combo) {
+      if (allowed[player][combo] == 0U) {
+        continue;
+      }
+      std::uint32_t compatible = 0U;
+      for (std::size_t other = 0; other < combos.masks.size(); ++other) {
+        if (allowed[1U - player][other] != 0U &&
+            (combos.masks[combo] & combos.masks[other]) == 0U) {
+          ++compatible;
+        }
+      }
+      if (compatible == 0U || (degree != 0U && degree != compatible)) {
+        return false;
+      }
+      degree = compatible;
+    }
+    if (degree == 0U) {
+      return false;
+    }
+  }
+  return true;
 }
 
 template <typename Function>
@@ -172,6 +215,10 @@ Trainer::create(const CompiledGame &game, const TrainerResources &resources,
       config.dcfr_beta < 0.0 || config.dcfr_gamma <= 0.0 || game.config().player_count != 2U) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
   }
+  if (config.update_mode == UpdateMode::Alternating &&
+      config.batch_boards > std::numeric_limits<std::uint32_t>::max() / 2U) {
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  }
   if (resources.ranks == nullptr) {
     return Outcome::failure(TrainerError::MissingResource);
   }
@@ -282,7 +329,7 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
       ante_scale;
   stack_antes_ = static_cast<double>(config.effective_stack.units()) * ante_scale;
 
-  std::string identity = "gtosd.preflop_blueprint_trainer.v1|" + game_->fingerprint() + "|" +
+  std::string identity = "gtosd.preflop_blueprint_trainer.v2|" + game_->fingerprint() + "|" +
                          game_config_fingerprint(config) + "|";
   identity += resources_.flop ? resources_.flop->fingerprint() : std::string("no_flop");
   identity += "|";
@@ -301,6 +348,25 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
               "|" + std::to_string(config_.evaluation_seed) + "|" +
               (sample_boards_ ? "sampled" : "exact") + "|" +
               std::to_string(board_list_.size()) + "|" + (subsets_ ? "subsets" : "all_hands");
+  if (!board_list_.empty() || subsets_) {
+    // The number of boards and presence of subsets do not identify a game.
+    // Include their contents so a resume cannot silently change the chance
+    // law or the private-card support while keeping the accumulated regrets.
+    std::string diagnostic_input;
+    for (std::size_t index = 0; index < board_list_.size(); ++index) {
+      const auto &board = board_list_[index];
+      for (const auto card : board.flop) {
+        diagnostic_input.push_back(static_cast<char>(card.value()));
+      }
+      diagnostic_input.push_back(static_cast<char>(board.turn.value()));
+      diagnostic_input.push_back(static_cast<char>(board.river.value()));
+      append_little(diagnostic_input, std::bit_cast<std::uint64_t>(board_weights_[index]));
+    }
+    for (const auto &mask : hand_masks_) {
+      diagnostic_input.append(reinterpret_cast<const char *>(mask.data()), mask.size());
+    }
+    identity += "|diagnostic-input:" + detail::hex64_text(detail::fnv1a_text(diagnostic_input));
+  }
   identity_ = "fnv1a64:" + detail::hex64_text(detail::fnv1a_text(identity));
   return Outcome::success(true);
 }
@@ -481,22 +547,39 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
   for (auto &workspace : workspaces_) {
     workspace->nodes_visited = 0U;
   }
+  std::size_t drawn_boards = batch.size();
   for (std::uint8_t hero = 0; hero < 2U; ++hero) {
     if (hero == 1U && config_.update_mode == UpdateMode::Alternating) {
       refresh_policy();
+      if (sample_boards_) {
+        // The opponent's new policy depends on the first batch. Reusing that
+        // batch here conditions chance on the policy being evaluated, biasing
+        // the second player's counterfactual values. Draw from the unchanged
+        // chance law after the snapshot; exact traversals can reuse their list.
+        for (auto &work : batch) {
+          double weight = 1.0;
+          const auto history = sample_history(training_random_, weight);
+          const auto prepared = prepare_board(history, weight / config_.batch_boards, work);
+          if (!prepared) {
+            return Outcome::failure(prepared.error());
+          }
+        }
+        drawn_boards += batch.size();
+      }
     }
     for (const auto &work : batch) {
       pass(work, hero, iteration_weight);
     }
   }
   iteration_ = iteration;
-  boards_processed_ += batch.size();
+  boards_processed_ += drawn_boards;
 
   IterationTelemetry telemetry;
   telemetry.iteration = iteration_;
-  telemetry.boards = static_cast<std::uint32_t>(batch.size());
+  telemetry.boards = static_cast<std::uint32_t>(drawn_boards);
   telemetry.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-  telemetry.seconds_per_board = telemetry.seconds / static_cast<double>(std::max<std::size_t>(1U, batch.size()));
+  telemetry.seconds_per_board =
+      telemetry.seconds / static_cast<double>(std::max<std::size_t>(1U, drawn_boards));
   for (const auto &workspace : workspaces_) {
     telemetry.nodes_visited += workspace->nodes_visited;
   }
@@ -802,6 +885,12 @@ Result<ExploitabilityEstimate, TrainerError>
 Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_list) {
   using Outcome = Result<ExploitabilityEstimate, TrainerError>;
   const auto started = Clock::now();
+  if ((!board_list_.empty() || subsets_) && !supported_diagnostic_prior(board_list_, hand_masks_)) {
+    // A restricted board corpus can change the preflop private-deal prior.
+    // The physical evaluator assumes a fixed preflop deal, so labeling its
+    // result exact for that different game would be incorrect.
+    return Outcome::failure(TrainerError::UnsupportedBoardPrior);
+  }
   const auto average = average_policy();
   const bool exact = !board_list_.empty() && (!sample_boards_ || exact_on_list);
   std::vector<FlopGroup> groups;
@@ -1031,6 +1120,8 @@ const char *trainer_error_name(const TrainerError error) noexcept {
     return "integrity_failure";
   case TrainerError::UnsupportedVersion:
     return "unsupported_version";
+  case TrainerError::UnsupportedBoardPrior:
+    return "unsupported_board_prior";
   }
   return "unknown";
 }

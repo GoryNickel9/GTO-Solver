@@ -55,9 +55,11 @@ Result<ParsedPolicy, PolicyFileError> parse_policy(const std::filesystem::path &
       !body.read_little(parsed.info.entries) || !body.read_string(parsed.info.source)) {
     return Outcome::failure(PolicyFileError::IntegrityFailure);
   }
-  parsed.info.flop_capacity = static_cast<std::uint16_t>(flop);
-  parsed.info.turn_capacity = static_cast<std::uint16_t>(turn);
-  parsed.info.river_capacity = static_cast<std::uint16_t>(river);
+  // No narrowing: the file already carries 32 bit capacities and truncating
+  // them silently corrupted any representation above 65,535 rows.
+  parsed.info.flop_capacity = flop;
+  parsed.info.turn_capacity = turn;
+  parsed.info.river_capacity = river;
   const auto table_bytes = static_cast<std::size_t>(parsed.info.entries) * sizeof(double);
   if (body.position() + table_bytes != body_bytes.size()) {
     return Outcome::failure(PolicyFileError::IntegrityFailure);

@@ -19,9 +19,12 @@
 
 // Vector CFR trainer with public chance sampling (roadmap P6).
 //
-// One iteration draws a batch of complete boards, runs for every board one
-// pass that updates player 0 and one that updates player 1, and applies the
-// weighting scheme once. Within a pass the current strategy is read from a
+// One iteration applies the weighting scheme once and updates both players.
+// Simultaneous updates share one batch of complete boards. Sampled alternating
+// updates draw an independent batch for each player: the second player's
+// counterfactual values must be unbiased conditional on the updated opponent
+// policy. Exact alternating traversals reuse the complete weighted board list.
+// Within a pass the current strategy is read from a
 // snapshot taken from the regrets at the start of the pass (Simultaneous: one
 // snapshot per iteration for both players, the order of the FiniteGame
 // oracle; Alternating: a fresh snapshot before the second player). Regret and
@@ -45,16 +48,17 @@ enum class TrainerError : std::uint8_t {
   BoardFailure,
   IoFailure,
   IntegrityFailure,
-  UnsupportedVersion
+  UnsupportedVersion,
+  UnsupportedBoardPrior
 };
 
 enum class WeightingScheme : std::uint8_t { Linear, Dcfr };
 enum class UpdateMode : std::uint8_t { Simultaneous, Alternating };
 
 struct TrainerConfig {
-  std::uint16_t flop_capacity{200U};
-  std::uint16_t turn_capacity{500U};
-  std::uint16_t river_capacity{1'000U};
+  std::uint32_t flop_capacity{200U};
+  std::uint32_t turn_capacity{500U};
+  std::uint32_t river_capacity{1'000U};
   std::uint32_t batch_boards{32U};
   unsigned threads{1U};
   WeightingScheme scheme{WeightingScheme::Linear};
@@ -82,6 +86,11 @@ struct TrainerResources {
 // iteration processes all the boards (weights normalized to one); with
 // sample = true batches are drawn from the list with probability proportional
 // to the weights. An empty list samples physical histories from the catalog.
+// Exact exploitability on a restricted list currently requires hand subsets
+// whose combos remain live on every board and have a constant number of
+// compatible opposing combos. Otherwise the evaluator's fixed preflop deal
+// differs from the board-conditioned deal used by this diagnostic trainer;
+// estimate_exploitability returns UnsupportedBoardPrior.
 struct TrainingBoards {
   std::vector<card_abstraction::BoardHistory> histories;
   std::vector<double> weights;

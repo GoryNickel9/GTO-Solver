@@ -261,10 +261,26 @@ public:
           require(hero != pb::no_hand && opponent != pb::no_hand, "subset hands are live");
           const auto &left = context.value().cards()[hero];
           const auto &right = context.value().cards()[opponent];
-          require(left[0] != right[0] && left[0] != right[1] && left[1] != right[0] &&
-                      left[1] != right[1],
-                  "subset pairs are disjoint");
+          if (left[0] == right[0] || left[0] == right[1] || left[1] == right[0] ||
+              left[1] == right[1]) {
+            continue;
+          }
           deals.emplace_back(hero, opponent);
+        }
+      }
+      require(!deals.empty(), "oracle has compatible private deals");
+      // This oracle uses a uniform joint deal. Match the trainer's uniform
+      // hero / uniform compatible opponent hooks by requiring constant degree
+      // on each side; overlapping ranges are allowed, ragged degrees are not.
+      for (const auto player : {0U, 1U}) {
+        std::vector<std::size_t> degrees(pb::live_hand_count, 0U);
+        for (const auto &[hero, opponent] : deals) {
+          ++degrees[player == 0U ? hero : opponent];
+        }
+        const auto expected = degrees[context.value().hand_index(subsets.combos[player].front())];
+        for (const auto combo : subsets.combos[player]) {
+          require(degrees[context.value().hand_index(combo)] == expected && expected > 0U,
+                  "uniform joint deal matches both players' conditional deal probabilities");
         }
       }
       gtosd::GameNode board_node;
