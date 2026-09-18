@@ -5,6 +5,13 @@ Data: 2026-09-16. Branch di fase: `feature/preflop-blueprint-p6-trainer`. Esito 
 campionata a 1.000 flop. Lo stimatore prescritto da P6.3/§5 era chiaroveggente ed è stato
 sostituito (§2, erratum alla roadmap).
 
+Correzione del 2026-09-16: negli aggiornamenti alternati campionati il secondo
+giocatore usa ora un batch indipendente, estratto dopo l'aggiornamento della
+strategia avversaria. Riutilizzare il primo batch introduceva un estimatore
+condizionalmente distorto. Checkpoint versione 2; i checkpoint precedenti non
+sono riprendibili. Prova esatta del difetto e risultati sui tre stack in
+[P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+
 ## 1. Cosa è stato prodotto
 
 | Componente | File | Contenuto |
@@ -27,6 +34,21 @@ avversaria e i pagamenti in ante; il fattore `cf_reach` della roadmap §5 è qui
 non viene moltiplicato una seconda volta (decisione 25). Linear moltiplica gli incrementi
 dell'iterazione `t` per `t`; DCFR sconta prima degli incrementi: `R⁺ × t^α/(t^α+1)`,
 `R⁻ × t^β/(t^β+1)`, `S × (t/(t+1))^γ` con `t` l'iterazione precedente.
+
+Una iterazione alternata campionata prepara `2B` board, `B` per giocatore.
+Una iterazione simultanea prepara `B` board e conserva lo snapshot iniziale
+per entrambi. In modalità esatta si riusa l'intera lista pesata: non occorre
+un nuovo campione. La telemetria conta i board effettivamente preparati.
+
+Limite degli hook diagnostici rilevato in P9: un corpus ristretto con range
+interi può cambiare il prior privato, che il valutatore fisico non riproduce.
+La valutazione restituisce `unsupported_board_prior` quando le mani del
+sottoinsieme non restano vive su tutti i board, quando il numero di
+avversarie compatibili non è costante per giocatore, oppure quando vengono
+usati sottoinsiemi privati senza corpus esplicito. Le vecchie prove
+`--fixed-boards` con range interi non vanno interpretate come certificati
+esatti del medesimo gioco del trainer. L'identità del checkpoint comprende
+ora anche il contenuto del corpus e delle maschere private.
 
 ## 2. Best response fisica: errore della roadmap e correzione
 

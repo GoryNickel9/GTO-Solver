@@ -11,15 +11,16 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P8 chiusa (gate PASS, viewer incluso); correzione post-gate dell'EV e nuove size HU10 (2026-09-16); P9 da avviare |
+| Fase in corso | P9: diagnosi e correzione generale della convergenza; CO40 non qualificato |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feature/preflop-blueprint-p8-hu10-sizes` (da `feature/preflop-blueprint`; P0–P8 uniti nell'integrazione) |
-| Worktree | `C:/tmp/gtosd-preflop-blueprint` |
+| Branch di fase | `codex/fix-preflop-deep-stack-convergence` |
+| Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`; risorse precedenti lette da `C:/tmp/gtosd-preflop-blueprint/out` |
 | Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
-| Build | `out/build/windows-release` nel worktree (Release, MSVC 19.51, Ninja 1.13.2) |
+| Build | `out/build/windows-release-main-integration` (Release, MSVC) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Prossimo passo | in attesa della decisione dell'utente sul piano di diagnosi P9 (tabelle 500/1.000/2.000, oracolo esatto a 40 a, fixture a 20 a); esperimento con le tabelle fini interrotto dall'utente; nessun codice da scrivere fino a nuova indicazione |
+| Gate di accettazione | **0,03 a, l'1 % del piatto iniziale** (D27, decisione dell'utente del 2026-09-18, stringe lo 0,1 a provvisorio di D2). Unico gioco qualificato: **HU10** a 0,003981 a |
+| Prossimo passo | HU20 con `class` vale 0,060957 a, il 2,03 % del piatto: manca il gate di **2,03 volte**, ed e il bersaglio piu vicino. Il salto richiesto e della stessa taglia di quello gia ottenuto da base a `class` su HU20 (2,11 volte). CO40 con `class` vale 0,500181 a, 16,7 volte il gate, ed e il minimo di una curva che risale: nessun budget di iterazioni lo qualifica (voci del 2026-09-18 sera, correzione e frontiera) |
 
 ## 2. Registro dei gate
 
@@ -52,6 +53,1131 @@ Fallimenti: cosa, causa identificata o ipotesi, cosa si è provato
 Dubbi: ...
 Prossimo passo: ...
 ```
+
+### 2026-09-19 - la capacita dei bucket non e la leva: tre assi esauriti, il divario e della famiglia
+
+Fatto: costruite per la prima volta le tabelle a **500/1.000/2.000**, il secondo candidato che la
+roadmap nomina ("confronto matched su 3 seed") e che non era mai stato eseguito - su disco esisteva
+una sola cartella di tabelle. Misurato `class` su HU20, il bersaglio piu vicino al gate.
+
+## La costruzione
+
+41 minuti, stessi parametri di clustering del report P3 (10 riavvii, 10 iterazioni di screening, 25
+massime, campione 500.000), stesso seed di partizione, stesse feature e stesse distanze: l'unica
+variabile e il numero di gruppi.
+
+| Street | Capacita | Distanza media dal centroide | vs 200/500/1.000 |
+|---|---:|---:|---|
+| Flop | 500 | 119,0 | era 150,7, **-21 %** |
+| Turn | 1.000 | 6,12 | era 8,12, **-25 %** |
+
+Il clustering e genuinamente piu fine, non solo piu numeroso. Nessun bucket vuoto; il turn ha
+converso in 11 iterazioni invece di fermarsi al limite di 25.
+
+## Il confondente, escluso prima della misura
+
+Il rischio dichiarato era il sotto-allenamento: `classprev1` era esploso a 2,43 con 765.243 righe
+di river. Le righe di `class` con la capacita nuova sono **58.160** al river (71.196 -> 99.904 in
+totale), cioe **1,4x**, non 2,5x come la capacita grezza, perche `class` conta solo le coppie
+(classe preflop, bucket) realizzate. `recall32` si era allenato bene a 184.528 righe con lo stesso
+budget, quindi 58.160 e comodamente dentro la zona allenabile e l'esito misura l'astrazione.
+
+## L'esito
+
+| | 200/500/1.000 | 500/1.000/2.000 |
+|---|---:|---:|
+| HU20 con `class`, esatta | 0,060957 | **0,059870** |
+| Guadagno | - | **1,8 %** |
+| x il gate (0,03) | 2,03 | 2,00 |
+
+Criterio fissato prima della misura: sotto 0,045 la capacita e una leva e si prova 1.000/2.000/4.000;
+sopra 0,058 non lo e. **0,059870 sta sopra 0,058.** Refutata.
+
+## Tre assi indipendenti, tutti esauriti
+
+| Asse | Escursione provata | Resa migliore |
+|---|---|---:|
+| Memoria della chiave | 1.000 -> 765.243 righe river | +1,7 % (`recall32`) |
+| Capacita dei bucket | 200/500/1.000 -> 500/1.000/2.000 | **+1,8 %** |
+| Iterazioni | 1.000 -> 10.000 | banda del 7 %, minimo interno a 2.000 |
+
+Ogni parametro della famiglia, spazzato in entrambe le direzioni, rende qualche punto percentuale.
+HU20 richiede **2,00x**, CO40 **16,7x**. La regolarita e troppo consistente per essere casuale: il
+divario e **strutturale alla famiglia di astrazione** - k-means su istogrammi di equity al flop e
+al turn, OCHS al river, chiave a memoria imperfetta - e non a un suo parametro.
+
+Fallimenti: nessuno nuovo. L'ipotesi era dichiarata con un criterio quantitativo prima della misura
+e il criterio ha deciso contro di essa.
+Dubbi: (1) Resta non provata l'unica famiglia alternativa: feature diverse. La stima e bassa
+(l'EMD su istogrammi di equity e gia la scelta potential-aware standard, non una svista) e il costo
+e circa due ore per variante. (2) La variante per percentile del river resta non provata. Contro un
+divario di 2,00x su HU20 e un candidato piu serio di quanto fosse contro il 16,7x di CO40, ma il
+bilancio su questa linea e cinque ipotesi su cinque cadute.
+Prossimo passo: decisione dell'utente. Le misure non indicano piu un parametro da girare. Le
+opzioni sono: investire in una famiglia di astrazione diversa (progetto di ricerca, non un
+pomeriggio), accettare la frontiera a 10 ante e definire lo scopo del prodotto, o rivedere il gate.
+
+### 2026-09-18 (notte) - la frontiera: `class` su HU20 e HU30, e il gate stretto all'1 % del piatto
+
+Fatto: misurato `class` su HU20 e HU30, che erano stati certificati solo sulla baseline. Serviva a
+stabilire fin dove il prodotto qualifica, invece di continuare a tentare ipotesi su CO40.
+Certificazioni esatte, 605.088 board, 2000 iterazioni, stesso trainer e stesso certificatore che
+hanno prodotto lo 0,500181 di CO40. Controllo passato: `class` riporta 7585/21638/41973 righe,
+identiche a prima della variante `rankriver`, quindi i quattro numeri sono confrontabili.
+
+| Gioco | Stack | baseline | `class` | Guadagno | % del piatto | **x gate (0,03)** |
+|---|---:|---:|---:|---:|---:|---:|
+| HU10 | 10 a | 0,003981 | - | - | 0,13 % | **passa** |
+| HU20 | 20 a | 0,128849 | **0,060957** | 52,7 % | 2,03 % | 2,03x |
+| HU30 | 30 a | 0,571773 | **0,324082** | 43,3 % | 10,80 % | 10,8x |
+| CO40 | 40 a | 0,827177 | 0,500181 | 39,5 % | 16,67 % | 16,7x |
+
+Il guadagno di `class` **decresce con la profondita**: 52,7 -> 43,3 -> 39,5 %. Monotono sui tre
+giochi.
+
+## Il gate e cambiato: D27
+
+Durante la lettura delle soglie e emerso che D2 (0,1 a) era dichiarata "soglia fisica **iniziale**"
+e "**da stringere** quando l'astrazione migliora", mentre l'1 % del piatto e lo standard con cui e
+stato accettato il prodotto postflop. L'utente ha deciso il 2026-09-18 di stringere il gate a
+**0,03 a, l'1 % del piatto** (D27). La colonna di destra della tabella e contro quel gate.
+
+## Verdetto del criterio fissato in anticipo
+
+Prima di vedere HU30 era stato scritto: sotto ~0,15 un ulteriore 2x lo porta sotto 0,1 e il lavoro
+sull'astrazione si ripaga; sopra ~0,3 nemmeno un raddoppio basta. **0,324082 sta sopra 0,3.** Un 2x
+lascerebbe HU30 a 0,162, che falliva perfino il vecchio D2, e contro il gate nuovo servono 10,8x.
+
+## La frontiera
+
+La frontiera del prodotto sta **fra 10 e 20 ante**, e HU20 e l'unico bersaglio raggiungibile:
+manca il gate di **2,03x**, che e la taglia di un salto gia ottenuto una volta sullo stesso gioco -
+da baseline a `class` sono 2,11x. HU30 (10,8x) e CO40 (16,7x) chiedono piu di quanto qualunque
+cambio di rappresentazione abbia mai reso in questo programma.
+
+Fallimenti: (1) Previsto HU30 a 0,271 estrapolando il guadagno di HU20; il valore vero e 0,324
+perche il guadagno di `class` decresce con la profondita, cosa che i tre punti mostrano
+chiaramente e che una previsione a un punto solo ignorava.
+Dubbi: (1) HU20 e certificato sulla **fixture di test**: una sola size postflop (100 % del piatto).
+`hu20_full_v1` con le tre size non e mai stata costruita ne misurata. Il precedente di HU10
+(ridotto 0,003981, completo 0,0039949, +0,4 %) e evidenza debole, perche a SPR 0,42 le size non
+possono contare mentre a SPR 1,25 si. (2) Le 2000 iterazioni sono il minimo della curva **di
+CO40**; la curva di HU20 non e mai stata misurata, e HU20 ha piu campioni per riga a parita di
+iterazioni, quindi il suo minimo potrebbe cadere piu avanti. Parte del 2,03x potrebbe venire dal
+solo punto sull'asse delle iterazioni.
+Prossimo passo: misurare la curva iterazioni/exploitability di HU20 (un training con dump ai
+raddoppi piu quattro certificazioni esatte, circa un'ora) e costruire `hu20_full_v1`. Sono le due
+cose che non richiedono di indovinare un meccanismo.
+
+### 2026-09-18 (notte, correzione) - D3 non e un gate: e la regola di arresto del training
+
+Rilevato dall'utente. D2 e D3 sono stati usati come se fossero due soglie di accettazione. Non lo
+sono, e la roadmap li distingue esplicitamente (sezione 2.1):
+
+| | Definizione nella roadmap | Cosa e |
+|---|---|---|
+| **D2** | "Soglia fisica: massimo guadagno per giocatore <= 0,1 ante per mano" | **gate di accettazione** |
+| **D3** | "Arresto del training: massimo guadagno <= 1 % del pot iniziale, stimato sui board campionati" | **regola di arresto**, implementata come `stima + semiampiezza <= 0,03a` |
+
+D3 e ancorata al piatto e indipendente dallo stack, che e il modo standard di esprimere la
+convergenza Nash. Non dice se un risultato sia accettabile: dice quando smettere di iterare.
+
+## Cosa va corretto nelle voci precedenti
+
+Le voci restano, come impone la regola del diario. Correzioni:
+
+1. **"16,7 volte D3" come misura del fallimento** (voci del 2026-09-17 e del 2026-09-18 sera e
+   notte, e la tabella della matrice con la colonna `x D3`). Il fallimento si misura contro **D2**:
+   `class` a 0,500181 e **5,0 volte** il gate. Il rapporto con 0,03 resta un numero vero ma non e
+   un verdetto.
+2. **"Rivedere la soglia D3 per gli stack profondi"**, proposta come una delle due strade rimaste
+   in tre voci. Proposta priva di senso: allentare una regola di arresto fa smettere di allenare
+   prima, non fa qualificare niente. Ritirata. Le strade sono: lavorare sull'astrazione, rivedere
+   **D2**, o restringere lo scopo del prodotto.
+3. **"D3 si irrigidisce di quattro volte con la profondita"** (voce del 2026-09-18 sera, ripetuta
+   all'utente). Il conto era 0,03 a rapportato allo **stack** - 0,3 % a 10 ante contro 0,075 % a 40.
+   Ma il criterio e rapportato al **piatto**, che in questa struttura vale sempre 3 ante, quindi non
+   si irrigidisce niente. Problema inventato misurando contro un metro che il progetto non usa.
+
+## Posizione corretta, contro D2
+
+| Gioco | Miglior misura esatta | D2 = 0,1 a | Fattore |
+|---|---:|---|---:|
+| HU10 | 0,003981 | **passa** | 25x sotto |
+| HU20 | 0,128849 (baseline) | fallisce | 1,29x |
+| HU30 | 0,571773 (baseline) | fallisce | 5,7x |
+| CO40 | 0,500181 (`class`) | fallisce | **5,0x** |
+
+HU20 manca il gate del 29 % sulla sola baseline, quindi `class` puo portarlo sotto: e la misura in
+corso.
+
+## Discrepanza fra regola scritta e codice
+
+La roadmap dice che D3 va valutata "**nel gioco astratto**". `Trainer::meets_stop_rule` e applicata
+al risultato di `estimate_exploitability`, che e il valutatore **fisico** su flop campionati.
+
+Conseguenza concreta: la curva del 2026-09-18 sera mostra che l'exploitability fisica di CO40 non
+si avvicina mai a 0,03 e risale dopo 2.000 iterazioni, quindi la regola di arresto implementata
+**non puo scattare** su questo gioco. Tutti i log di training di oggi finiscono con
+`PREFLOP_BLUEPRINT_TRAIN=ITERATION_LIMIT`, nessuno con `CONVERGED`. Se fosse applicata come
+scritta, D3 sarebbe esattamente la misura che il 2026-09-18 si e tentato di costruire con il
+regret residuo e poi abbandonata.
+
+Fallimenti: (1) Due soglie con nomi simili usate come sinonimi per un'intera giornata, senza mai
+aprire la definizione. (2) Su quella confusione e stata costruita e proposta all'utente una strada
+d'azione inesistente ("rivedere D3"), e un problema inventato sulla rigidita della soglia con la
+profondita. Nessuno dei due errori sarebbe sopravvissuto alla lettura di una riga di roadmap.
+Dubbi: (1) La discrepanza fra D3 scritta ("nel gioco astratto") e implementata (fisica campionata)
+non e risolta: non e chiaro se sia una scelta deliberata mai annotata o una deriva. Serve una
+decisione dell'utente, perche D3 e fra le soglie non modificabili senza di essa (roadmap 2.1).
+Prossimo passo: invariato, misurare `class` su HU20 e HU30 per stabilire la frontiera contro D2.
+
+### 2026-09-18 (notte) - P9 - il river per rango relativo al board fallisce, e spiega cosa faceva il clustering
+
+Fatto: censita l'occupazione dei bucket per board su tutti i board canonici, e provata una variante
+`rankriver` che al river usa la posizione di rango della mano sul proprio board invece dell'indice
+del cluster globale. Refutata: 0,986028 contro 0,500181 di `class`, peggio anche della baseline.
+
+## Il censimento (misura valida, resta)
+
+| Street | Capacita | Bucket occupati per board (mediana) | Quota usata | Mani per bucket, pesate |
+|---|---:|---:|---:|---:|
+| Flop | 200 | 50 | 24,5 % | 19,3 |
+| Turn | 500 | 47 | 9,4 % | 20,7 |
+| River | 1000 | 18 | 1,8 % | 53,0 |
+
+Al river una mano e giocata identica ad altre 53 sullo stesso board, e il 98,2 % della capacita non
+viene toccata. Entrambi i numeri sono esatti, su tutti i 19.998 river canonici.
+
+## L'esperimento e il suo esito
+
+Tenuto fisso tutto tranne la chiave del river: stesso albero, stesse fixture, stesse tabelle di
+flop e turn, stesso schema, 2000 iterazioni, stesso batch e thread.
+
+| | base | `class` | `rankriver` |
+|---|---:|---:|---:|
+| Exploitability esatta | 0,827177 | **0,500181** | **0,986028** |
+| NashConv | - | 0,694720 | 1,471640 |
+| EV di CO | - | -0,146476 | -0,137628 |
+| Righe river | 1.000 | 41.973 | 37.665 |
+| Stato | - | 392 MB | 362 MB |
+| Secondi per iterazione | - | 0,432 | 1,206 (**2,79x**) |
+
+## Il difetto, che e nel codice della variante
+
+Assegnato l'indice **ordinale** del gruppo di rango (0 per il piu debole, poi 1, 2, ...) invece del
+percentile. Il numero di gruppi distinti varia da 1 (board con scala servita, tutti pareggiano) a
+circa 465. I nuts finiscono quindi sull'indice 17 su un board e sul 299 su un altro, e la stessa
+riga di strategia serve i nuts su uno e una mano mediocre su un altro. La chiave e cieca al board,
+quindi l'errore non e correggibile a valle.
+
+## Cosa faceva il clustering, e che era stato letto al contrario
+
+La rietichettatura per forza crescente e fatta **su tutti i board insieme**: per questo il bucket
+999 e i nuts su board di texture opposta (verificato su tre). Quell'allineamento - stesso indice,
+stessa forza assoluta, ovunque - e cio che rende usabile una chiave che non vede il board. La
+capacita non toccata su un singolo board ne e il prezzo, non uno spreco.
+
+Il 2,79x conferma l'altra faccia: con il river raggruppato le 465 mani vive di un board stanno in
+una ventina di righe adiacenti e il kernel vettoriale legge poche linee di cache; per rango stanno
+in fino a 465 righe sparse. La compressione comprava anche velocita.
+
+Fallimenti: (1) Quinta ipotesi caduta, e la prima costruita su una misura invece che su
+un'intuizione: il censimento era corretto, l'interpretazione no. (2) Strumento del regret residuo
+scritto e poi abbandonato: il bound assoluto somma rumore una volta per riga e scala col numero di
+righe (HU10, gioco risolto a 0,003981 fisico, riporta 0,0553 con tutte le 23.924 righe positive).
+Prima della calibrazione stavo per puntarlo su CO40, dove avrebbe dato un numero grande e la
+conclusione opposta a quella giusta. (3) La misura e stata proposta come decisiva senza verificare
+che il suo esito cambiasse una decisione: la curva iterazioni/exploitability gia mostrava che
+convergere di piu peggiora, quindi nessuno dei due esiti avrebbe cambiato il seguito. Fermata su
+richiesta dell'utente. (4) Stima di 14 minuti per il training di `rankriver` presa da `class` senza
+chiedersi se il costo per iterazione fosse lo stesso: sono stati 40. (5) Criterio del censimento
+enunciato al contrario ("sotto la cinquantina di bucket occupati la compressione e trascurabile":
+pochi bucket occupati significano piu compressione, non meno).
+Dubbi: (1) La variante per **percentile** - indice = quota di mani battute, scalata alla capacita -
+non e stata provata, ed e diversa da quella refutata: allinea i nuts sull'indice massimo di ogni
+board e usa tutti gli indici ovunque. Il difetto identificato e specifico, ma il bilancio di
+giornata su questa linea di ragionamento e cinque ipotesi su cinque. (2) Il costo di localita del
+2,79x colpirebbe anche la variante per percentile, quindi anche riuscendo andrebbe pesato.
+Prossimo passo: decisione dell'utente. La variante per percentile costa circa un'ora (10 minuti di
+modifica, 40 di training, 25 di certificazione). In alternativa restano le due strade gia sul
+tavolo: cambiare le feature del river, o rivedere la soglia D3 per gli stack profondi.
+
+### 2026-09-18 (sera) - P9 - la curva exploitability/iterazioni ha un minimo interno: l'astrazione ha un pavimento
+
+Fatto: misurata l'exploitability fisica **esatta** della stessa traiettoria a 1.000, 2.000, 4.000,
+8.000 e 10.000 iterazioni. Nessun campionamento: 573 flop canonici per tutti i runout, 605.088
+board, `max_gain_half_width` = 0 su tutti e cinque i punti. Le differenze non sono rumore.
+
+| Iterazioni | Exploitability CO | BTN | NashConv | EV di CO |
+|---:|---:|---:|---:|---:|
+| 1.000 | 0,529728 | 0,204116 | 0,733843 | -0,149135 |
+| 2.000 | **0,500181** | **0,194539** | **0,694720** | -0,146476 |
+| 4.000 | 0,502202 | 0,201370 | 0,703572 | -0,145398 |
+| 8.000 | 0,528748 | 0,211783 | 0,740532 | -0,144610 |
+| 10.000 | 0,535882 | 0,217001 | 0,752882 | -0,144386 |
+
+Due andamenti opposti sulla **stessa traiettoria**, ed e il risultato centrale:
+
+- l'**EV migliora monotonicamente** su tutti e cinque i punti, senza mai invertire;
+- l'**exploitability fisica ha un minimo interno** a 2.000-4.000 e poi peggiora monotonicamente.
+
+CFR sta funzionando: converge nel proprio gioco astratto, e il valore lo dimostra. La soluzione di
+quel gioco pero non e la soluzione del gioco fisico, e avvicinarsi alla prima allontana dalla
+seconda. E la patologia dell'astrazione, mostrata qui **sull'asse delle iterazioni dentro un solo
+run**, non piu confrontando rappresentazioni diverse.
+
+Il pavimento e **0,500181**: cinque volte la soglia D2 (0,1) e 16,7 volte la D3 (0,03). Il bacino
+del minimo e largo e piatto (2.000 e 4.000 distano lo 0,4 %), quindi non esiste un budget di
+iterazioni da cercare meglio: nessun punto della curva si avvicina al gate. Entrambi i giocatori
+peggiorano insieme dopo il minimo (CO 0,5002 -> 0,5359, BTN 0,1945 -> 0,2170), coerente con la
+simmetria dell'astrazione gia registrata.
+
+## Il test della deriva, e perche non decideva
+
+Prima della curva, la domanda era se la media avesse converso. Salvate le policy ai quattro
+raddoppi (determinismo verificato: la policy a 2.000 ha fingerprint `fnv1a64:be84f6b45d37b5b8`,
+identico bit per bit a quella del run del 2026-09-17, due run indipendenti).
+
+| Finestra | Tabella intera | Solo entries gia vive | **Root** |
+|---|---:|---:|---:|
+| 1.000 -> 2.000 | 0,053143 | 0,050801 | 0,012486 |
+| 2.000 -> 4.000 | 0,046537 (x0,876) | 0,044507 (x0,876) | 0,007617 (**x0,610**) |
+| 4.000 -> 8.000 | 0,038546 (x0,828) | 0,037603 (x0,845) | 0,005636 (**x0,740**) |
+
+Il test dava risposte **opposte a seconda del peso**. Sulla tabella intera la deriva decade a
+0,85 per raddoppio, piu lentamente dello 0,707 che avrebbe il puro rumore campionario attorno a un
+punto fisso: sembra non convergere. Sul root decade a 0,61 e 0,74, cioe attorno o sotto quel
+riferimento, e con ampiezza **quattro volte minore**: converge. La tabella pesa allo stesso modo
+tutte le 16,3 M entries, quindi il suo numero e dominato da bucket di river quasi mai raggiunti.
+
+Confondente esaminato e escluso: una entry mai visitata vale esattamente `1/actions`
+(`trainer.cpp:844`), quindi la prima visita produce deriva che non parla di equilibrio. Vale il
+10,8 %, 7,6 % e 3,8 % del totale nelle tre finestre, e toglierla non cambia il tasso di decadimento
+(0,876 e 0,845 contro 0,876 e 0,828). Nota di validazione dello strumento: la quota di entries
+ancora uniformi **si dimezza** a ogni raddoppio (6,65 -> 3,41 -> 1,41 %), quindi la misura rileva
+un dimezzamento quando c'e; semplicemente non lo trova nel movimento della strategia.
+
+## Difetto trovato nel driver di benchmark
+
+`--checkpoint` e silenziosamente un no-op quando `--eval-every 0`: il salvataggio sta dentro il
+ramo che scatta solo dopo una valutazione (`benchmarks/preflop_blueprint_train.cpp:291`). Il
+`--resume` non ha quindi trovato nulla e i quattro passi si sono riallenati da zero, 15.000
+iterazioni invece di 8.000. Non corretto: tocca un driver del prodotto e la decisione e dell'utente.
+
+Fallimenti: (1) Il test della deriva e stato proposto come decisivo e non lo era: pesa a peso
+uniforme entries di rilevanza diversissima, e la radice - l'unico blocco il cui offset si conosce
+senza mappa dei nodi - si muoveva poco, cosa **gia misurata** prima di proporlo. La conclusione
+"la media non si sta assestando", data all'utente a meta pomeriggio, e stata corretta poche ore
+dopo dalla misura sul root. (2) Mezz'ora di calcolo persa per il no-op del checkpoint, non
+verificato prima di lanciare la sequenza.
+Dubbi: (1) Resta non misurata l'exploitability **dentro l'astrazione**: servirebbe una best
+response ristretta ai bucket, che il certificatore non fa. Non e piu rilevante per la decisione -
+il pavimento vale 0,50 al minimo e il limite a t->infinito e peggiore - ma il "CFR converge nel suo
+gioco" resta un'inferenza da EV monotona e deriva del root, non una misura diretta. (2) Il root e
+un nodo su 604 e i suoi rapporti sono due su un blocco di 324 slot: c'e spazio per il rumore. (3)
+Il termine di interazione vale il 65 % dell'exploitability, quindi "il root converge" non implica
+"converge dove conta".
+Prossimo passo: **decisione dell'utente**. Il capitolo convergenza e chiuso: nessun budget di
+iterazioni qualifica CO40 sotto questa astrazione. Le alternative sono cambiare famiglia di
+feature (mai misurata) oppure rivedere la soglia D3 per gli stack profondi.
+
+### 2026-09-18 — P9 — sweep sulla profondita, decomposizione della perdita, e quattro ipotesi cadute
+
+Fatto: su richiesta dell'utente, verificato se il problema di CO40 si presenti anche a stack piu
+bassi, e poi cercato il meccanismo. Il risultato utile e la sequenza di ipotesi falsificate: sono
+state generate tutte prima di avere le misure giuste, e tutte e quattro sono cadute contro misure
+che si potevano fare prima.
+
+## Fixture nuove
+
+`preflop_blueprint_hu20_test_v1.json` e `preflop_blueprint_hu30_test_v1.json`, identiche alla
+variante di test CO40 tranne lo stack. Aggiunte al test di validazione dello schema. Su
+indicazione dell'utente HU20 ha `response_target_units: []` come HU10: a 20 ante un 3bet a 17 a
+lascia 3 a dietro in un piatto da 36 e non e distinguibile dallo shove a 19 a. Il suo albero ha
+quindi 571 nodi e la stessa parte preflop di HU10 (22 nodi, 8 decisioni, 3 ingressi).
+
+Vincolo del modello trovato per strada: l'all-in preflop e soggetto a `all_in_threshold`, il
+1000 % del piatto dopo il call. Alla radice il piatto e 4 a, quindi lo shove sparisce dall'albero
+sopra i **41 ante** (verificato: presente a 40 e 41, assente a 42 e 45). La finestra in cui questa
+struttura e confrontabile e **18-41 ante**: sotto i 18 la risposta a 17 a supera lo stack e il
+loader rifiuta la fixture, sopra i 41 l'albero cambia forma.
+
+## Lo sweep
+
+| Gioco | Stack | SPR dopo open+call | Nodi | **Max gain esatto** | Open di CO |
+|---|---:|---:|---:|---:|---:|
+| HU10 ridotto | 10 a | 0,42 | 193 | 0,003980549728196586 | 44,9 % |
+| HU20 | 20 a | 1,25 | 571 | 0,12884900000000000 | 6,5 % |
+| HU30 | 30 a | 2,08 | 604 | 0,57177300000000000 | 2,5 % |
+| CO40 | 40 a | 2,92 | 604 | 0,82717651588212859 | 1,6 % |
+
+L'exploitability e concentrata su CO: a HU20 il rapporto CO/BTN e **11,6 a 1**.
+
+## Strumenti di misura aggiunti al prodotto
+
+Tre aggiunte additive, nessuna tocca trainer, albero, policy o fingerprint. Dopo ognuna, suite
+21/21 e regressione HU10 che riproduce `0.003980549728196586` alla cifra.
+
+1. `best_response_preflop` / `gain_preflop`: la quarta casella del 2x2 che il codice gia
+   calcolava per tre quarti. Deviazione **solo preflop**, con il postflop tenuto a quello del
+   blueprint. Invariante nel test: `ev <= best_response_preflop <= best_response`.
+2. `best_response_preflop_mix`: la strategia preflop **scelta dalla best response**, per ogni
+   nodo decisionale dell'eroe, aggregata sulle 81 classi. Il vettore `choice` esisteva gia e
+   veniva buttato via. `split_classes` verifica che le combo della stessa classe scelgano la
+   stessa azione, come impone la simmetria dei semi: esce zero ovunque.
+3. `postflop_entry_loss`: la perdita dentro ogni ingresso postflop **a reach fissato**, media a
+   peso uniforme sulle combo vive invece che pesata col reach del blueprint. Serve perche
+   `gain_lower` e cieco proprio dove il blueprint non va: un blueprint che evita un sottoalbero
+   sembra giocarlo bene.
+
+## Le misure
+
+**Decomposizione in tre.** Nessuno dei due livelli e sbagliato da solo:
+
+| Gioco | Totale | Solo preflop | Solo postflop | Interazione |
+|---|---:|---:|---:|---:|
+| HU20 | 0,128849 | 0,002747 | 0,008327 | 0,117776 (**91 %**) |
+| HU30 | 0,571773 | 0,005802 | 0,130850 | 0,435121 (**76 %**) |
+| CO40 | 0,827177 | 0,006229 | 0,282118 | 0,538829 (**65 %**) |
+
+Correggere un livello solo recupera fra il 9 e il 35 %. Il blueprint e in un **ottimo locale**:
+ogni pezzo e ottimale dati gli altri.
+
+**La best response di CO su CO40, per nodo:**
+
+| Nodo | Blueprint | Best response |
+|---|---|---|
+| radice | fold 27,4 · limp 35,8 · open 1,6 · shove 35,1 | **limp 100** |
+| ha limpato, BTN punta a 5 | fold 34,8 · call 39,3 · shove 25,9 | fold 3,7 · **call 91,4** · shove 4,9 |
+| ha limpato, BTN spinge | fold 70,3 · call 29,7 | fold 70,4 · call 29,6 |
+| ha aperto, BTN 3betta | fold 60,7 · call 19,5 · shove 19,9 | fold 51,9 · call 46,9 · shove 1,2 |
+| ha aperto, BTN spinge | fold 64,3 · call 35,7 | fold 64,2 · call 35,8 |
+
+Dove la decisione e fold-o-call contro uno shove i due coincidono alla prima cifra: e una
+decisione di sola equity, senza postflop dentro, e il blueprint la prende bene. Dove invece si
+tratta di entrare in un piatto giocabile, divergono. La best response **non apre mai**: prende
+flop economici con tutto. Attenzione, e uno **sfruttamento** di un BTN congelato che dopo il limp
+checka il 63,7 % e non punisce mai, non una strategia di equilibrio.
+
+**Perdita postflop a reach fissato su CO40**, per mano (diviso per il reach avversario, che e una
+normalizzazione dell'analisi e non un'unita nativa del certificato):
+
+| Ingresso | Piatto | CO | BTN |
+|---|---:|---:|---:|
+| limp-check | 4 | 0,001861 | 0,001797 |
+| limp-bet-call | 12 | 0,002178 | 0,001818 |
+| open-call | 12 | 0,002257 | 0,001800 |
+| open-3bet-call | 36 | 0,001160 | 0,001337 |
+
+HU10 per confronto: 0,000559 / 0,000087 / 0,000038.
+
+## Le quattro ipotesi cadute
+
+1. **L'astrazione postflop corrompe i valori preflop.** Refutata: `class` migliora
+   l'exploitability del 39,5 % e la strategia preflop non si muove di un decimale
+   (limp 35,8 -> 35,4 %, shove 35,1 -> 35,0 %).
+2. **Lo shove cresce con la profondita.** Refutata: decresce, 59,9 -> 45,7 -> 35,1 %.
+3. **La strategia media e incoerente con i propri EV.** Non supportata: solo 4 discordanze su 15
+   superano un errore standard.
+4. **Il postflop e giocato male, percio CO evita di entrarci.** Refutata quantitativamente: la
+   perdita postflop e **piatta** fra gli ingressi (l'ingresso piu profondo e quello dove si perde
+   meno), **uguale per i due giocatori** benche le loro exploitability differiscano di 2,5 volte,
+   e vale circa 0,002 ante per mano contro divari di EV fra azioni preflop di 0,24. Due ordini di
+   grandezza di distanza.
+
+Perche 1 sembrava reggere e non reggeva: il valore del gioco per CO e **quasi invariante** rispetto
+alla rappresentazione. Su otto rappresentazioni l'exploitability si muove fra 0,12 e 1,80 mentre
+l'EV di CO si muove fra 0,00009 e 0,08; `class` cambia l'exploitability di 0,327 e l'EV di
+0,00058, un rapporto di 1 a 564. L'astrazione e **simmetrica**: peggiora entrambi i giocatori, e
+due giocatori handicappati uguale raggiungono all'incirca il valore giusto. Costa pochissimo in
+valore e moltissimo in exploitability, e CFR ottimizza il valore.
+Fallimenti: (1) Quattro ipotesi formulate prima di avere le misure che le avrebbero decise.
+(2) Una frase scritta nel riassunto all'utente — "il blueprint non sa giocare a poker" — che
+assumeva la qualita del postflop senza averla misurata, e che la misura successiva ha smentito.
+(3) Un run HU20 scartato perche girava sulla fixture con il 3bet degenere. (4) Percentuali di BTN
+citate da HU20 mentre si discuteva CO40.
+Dubbi: (1) Non esiste un meccanismo che leghi i fatti sopravvissuti. Non ne viene proposto un
+quinto. (2) Non esiste un riferimento esterno per CO40 sul nuovo albero, quindi "limpare il 36 %"
+e giudicato assurdo senza uno standard. (3) La normalizzazione per reach avversario nella tabella
+degli ingressi e una costruzione dell'analisi; i confronti robusti sono quelli interni allo stesso
+certificato, cioe la piattezza fra ingressi e l'uguaglianza fra i due giocatori.
+Prossimo passo: misurare se CFR abbia converso **nel proprio gioco astratto**, cosa mai fatta.
+Tutte le misure di questo programma sono exploitability **fisiche**; se il regret medio residuo
+fosse alto, il blueprint non sarebbe un equilibrio nemmeno della propria astrazione e tutto il
+resto sarebbe a valle di quello.
+
+### 2026-09-17 — P9 — il braccio Linear refuta l'ipotesi del discount: il muro e della rappresentazione
+
+Fatto: ultimo esperimento della matrice. P9 registrava come aperta l'ipotesi che il discount DCFR
+fosse responsabile del degrado sulle righe rare: con beta zero un regret negativo si dimezza a
+ogni iterazione **globale**, anche quando la riga non compare nel batch, e venti iterazioni di
+assenza lo riducono di un fattore un milione. Con 765.243 righe river e 64.000 board in 2.000
+iterazioni quasi ogni riga e rara, quindi l'ipotesi prevedeva che Linear — che pesa gli incrementi
+dell'iterazione t per t e non sconta i regret memorizzati — salvasse `classprev1`.
+
+Cambiata **solo** la pesatura: update alternati, stesso albero, stesso protocollo, stessa passata
+esatta. Max gain esatto su 573 flop canonici e 605.088 board:
+
+| Rappresentazione | Righe river | DCFR | Linear | Rapporto |
+|---|---:|---:|---:|---:|
+| `class` | 41.973 | 0,50018061896087860 | 0,66222655337014890 | 1,324 |
+| `classprev1` | 765.243 | 2,43078387921045060 | 2,62717999011574980 | 1,081 |
+
+**L'ipotesi e refutata.** Linear non avvicina `classprev1` a `class`: resta a 2,63 contro 2,43,
+cioe leggermente **peggiore**, e cinque volte peggio di `class` con entrambi gli schemi. Se il
+discount fosse stato la causa, il rapporto Linear/DCFR sarebbe dovuto crollare sulla
+rappresentazione fine; invece passa da 1,324 a 1,081.
+
+Onesta sul residuo: quel calo del rapporto va nella direzione prevista dall'ipotesi — Linear e
+relativamente meno penalizzato dove le righe sono rare. Ma e un effetto del 20 % su un divario di
+cinque volte: esiste e non spiega il fenomeno. **Il muro e della rappresentazione**: con 64.000
+board non si allenano 765.000 righe, e nessuno schema di pesatura lo compensa. Questo chiude
+l'ipotesi aperta di P9 e spiega retroattivamente `recall_full`, che con 4.248.476 righe falliva
+per lo stesso motivo e non per la precisione float32 o per il formato dello stato.
+
+## Tabella finale della matrice
+
+Nove rappresentazioni, stesso albero `fnv1a64:18d08f453034ac0f`, stesso protocollo
+(2.000 iterazioni, batch 32, 8 thread, update alternati), stessa passata esatta.
+
+| Rappresentazione | Righe F/T/R | Stato test | Stato `co40_v1` | **Max gain esatto** | % piatto | x D3 |
+|---|---|---:|---:|---:|---:|---:|
+| `base` (produzione) | 200/500/1.000 | 9 MB | 514 MB | 0,82717651588212859 | 27,6 % | 27,6 |
+| `classf` | 7.585/500/1.000 | 22 MB | 663 MB | 0,70787939444806370 | 23,6 % | 23,6 |
+| `class` @ 50/100/200 | 3.210/7.139/14.340 | 128 MB | 7,20 GB | 0,59405448398659820 | 19,8 % | 19,8 |
+| `classft` | 7.585/21.638/1.000 | 104 MB | 3,19 GB | 0,58624021099899270 | 19,5 % | 19,5 |
+| **`class`** | 7.585/21.638/41.973 | 374 MB | 21,13 GB | **0,50018061896087860** | 16,7 % | **16,7** |
+| `class` @ 10.000 it. | idem | 374 MB | 21,13 GB | 0,53588168707754600 | 17,9 % | 17,9 |
+| `class`, Linear | idem | 374 MB | 21,13 GB | 0,66222655337014890 | 22,1 % | 22,1 |
+| `classprev1` | 7.585/222.865/765.243 | 5,78 GB | 361,99 GB | 2,43078387921045060 | 81,0 % | 81,0 |
+| `classprev1`, Linear | idem | 5,78 GB | 361,99 GB | 2,62717999011574980 | 87,6 % | 87,6 |
+
+Generata da `out/matrix/summary.py` leggendo i certificati.
+
+## Conclusione
+
+1. **Il trainer non e il collo di bottiglia.** Con perfect recall il CFR scende a 0,000011 a sul
+   gioco ridotto; con la chiave di produzione si ferma a 0,027933 a. Il pavimento e l'astrazione.
+2. **Dentro l'astrazione, la leva e la memoria, non la risoluzione.** Ricordare la classe preflop
+   vale -39,5 % sul gioco vero; quadruplicare i bucket vale il 4,7 % e dimezzarli costa il 19 %.
+3. **La memoria satura e poi collassa.** Ogni street che ricorda la classe compra una fetta simile
+   (-0,119 flop, -0,122 turn, -0,086 river), ma oltre le circa 42.000 righe river la
+   rappresentazione non e piu allenabile con questo budget di board e peggiora di cinque volte.
+4. **Non e l'algoritmo.** Ne DCFR ne Linear cambiano il quadro; allenare cinque volte tanto
+   peggiora del 7,1 %.
+5. **Nessuna configurazione della famiglia si avvicina all'obiettivo.** Il campo va da 0,500 a
+   2,627 contro una soglia D3 di 0,03 a. L'ottimo e `class` a **16,7 volte D3** e 5 volte D2.
+
+Il vincolo di memoria posto dall'utente restringe ulteriormente: `class` costa 21,13 GB su
+`co40_v1`, quindi la configurazione migliore della matrice non e nemmeno deployabile sul bersaglio
+finale. Il miglior compromesso deployabile e `classft`, 0,586240 a a 3,19 GB.
+Fallimenti: nessuno nuovo.
+Dubbi: (1) La saturazione fra 42.000 e 765.000 righe river e stata osservata a 2.000 iterazioni e
+64.000 board; non e noto dove si sposti aumentando i board per iterazione invece delle iterazioni,
+che e l'unica variabile del campionamento non ancora toccata. (2) La matrice esplora una sola
+famiglia: bucket di carte piu classe preflop. Feature diverse (equity contro range, potential-aware
+al turn) restano non misurate ed erano l'opzione D del piano, mai avviata.
+Prossimo passo: decisione dell'utente fra cambiare famiglia di astrazione e rivedere la soglia D3
+per gli stack profondi; nessuna delle due e una decisione dell'agent.
+
+### 2026-09-17 — P9 — matrice delle rappresentazioni: il muro dell'allenabilita fra 42.000 e 765.000 righe
+
+Fatto: matrice di rappresentazioni postflop su `co40_test_v1`, tutte con lo stesso albero
+`fnv1a64:18d08f453034ac0f`, lo stesso protocollo (DCFR alternato, 2.000 iterazioni, batch 32,
+8 thread) e la stessa passata **esatta** su 573 flop canonici e 605.088 board. È la prima tabella
+del programma in cui le rappresentazioni sono confrontabili fra loro. Vincolo posto dall'utente:
+la rappresentazione deve stare nei 32 GB della macchina.
+
+| Rappresentazione | Riga postflop | Righe F/T/R | Stato su `co40_test_v1` | **Max gain esatto** | Su `co40_v1` |
+|---|---|---|---:|---:|---:|
+| `base` | bucket corrente | 200/500/1.000 | 9,4 MB | **0,82717651588212859** | 539 MB |
+| `classf` | classe al flop | 7.585/500/1.000 | 23,5 MB | **0,70787939444806370** | 696 MB |
+| `class` @ 50/100/200 | classe ovunque, tabelle grossolane | 3.210/7.139/14.340 | 134 MB | **0,59405448398659820** | 7,73 GB |
+| `classft` | classe a flop e turn | 7.585/21.638/1.000 | 109 MB | **0,58624021099899270** | 3,42 GB |
+| **`class`** | classe ovunque | 7.585/21.638/41.973 | 392 MB | **0,50018061896087860** | 22,7 GB |
+| `class` @ 10.000 it. | idem | idem | idem | 0,53588168707754600 | — |
+| `classprev1` | classe + bucket precedente | 7.585/222.865/765.243 | 6,2 GB | vedi sotto | 389 GB |
+
+**Contributo di ogni street.** Tenere la classe al flop vale −0,119, al turn −0,122, al river
+−0,086. Nessun salto e nessuna saturazione: ogni street compra una fetta simile. Il river, che
+costa 1.000 → 41.973 righe e quindi 3,42 → 22,7 GB sull'albero vero, è quello che rende meno.
+`classft` è il miglior rapporto della matrice.
+
+**L'asse risoluzione è chiuso.** Con le tabelle 50/100/200 la chiave `class` peggiora del 19 %
+(0,594054 contro 0,500181): abbassare la risoluzione non recupera margine. Alzarla non è
+praticabile, perché `class` con 500/1.000/2.000 costa 31,5 GB su `co40_v1`, cioè l'intera memoria
+della macchina. Resta che 4x bucket senza memoria compravano il 4,7 % sul corpus ridotto: la
+risoluzione non è la leva, in nessuna delle due direzioni.
+
+**Il muro dell'allenabilita.** `classprev1` a 2.000 iterazioni dà max gain campionato **2,4710 a**
+con limite inferiore non distorto **0,6757 a**: cinque volte peggio di `class` e **tre volte peggio
+del baseline**. Il limite inferiore esclude che sia rumore dello stimatore. Anche il costo per
+iterazione esplode, 3,2408 s contro 0,3941. Quindi fra **41.973 e 765.243 righe river** la
+rappresentazione smette di essere allenabile con 2.000 iterazioni e 64.000 board, e aggiungere
+memoria non smette semplicemente di pagare: **distrugge il risultato**. È coerente con
+`recall_full` (4.248.476 righe, 1,3475 a campionato) e risponde alla domanda che P9 teneva aperta.
+
+Comandi: `out/matrix/run_variant.py <nome> <variante> <buckets-dir> {train|certify}` e
+`out/matrix/run_prev.py {train|certify}`. Probe nuovi: `out/class_probe.cpp` (famiglia
+class/classft/classf, mappa densa per street) e `out/prev_probe.cpp` (mappa concatenata
+(classe, bucket precedente, bucket corrente) enumerata sui cataloghi canonici).
+Fallimenti: (1) Il runner `run_prev.py` scritto via heredoc ha perso i backslash doppi e non
+compilava; riscritto con lo strumento di scrittura file. Un solo tentativo di riparazione, come
+da regola concordata con l'utente.
+Decisioni prese in autonomia, nel mandato dell'utente del 2026-09-17 per le 18 ore senza
+supervisione: (1) **`coarse32` cancellato**, come da regola concordata, perché girava solo se
+`classprev1` o `coarse8` avessero migliorato; con 2.793.223 righe river è ben oltre il muro.
+(2) **`coarse8` declassato e braccio Linear promosso**: con 902.272 righe river `coarse8` sta
+dallo stesso lato del muro e costerebbe 2-3 ore per un esito prevedibile, mentre il braccio
+Linear è diventato l'esperimento a più alto valore informativo, perché testa se il crollo dipenda
+dal discount DCFR. Lo scostamento dall'ordine concordato è motivato dal valore informativo, non
+dal costo.
+Dubbi: (1) Il migliore della matrice resta 0,500181 a, cioè **16,7 volte D3**. Nessuna variante
+cambia l'ordine di grandezza: si muovono tutte fra 0,50 e 0,83. (2) Non è noto se il muro sia una
+proprietà della rappresentazione o un artefatto dell'algoritmo: con beta zero DCFR dimezza i
+regret negativi a ogni iterazione globale anche sulle righe non campionate, e con 765.243 righe
+su 64.000 board la maggior parte delle righe è rara. È esattamente ciò che il braccio Linear
+misura. (3) `classprev1` costerebbe 389 GB su `co40_v1` e non sarebbe comunque portabile.
+Prossimo passo: Linear su `class` (riferimento) e su `classprev1` (test dell'ipotesi del discount).
+
+### 2026-09-17 — P9 — conversione a 32 bit delle righe, e l'estensione a 10.000 iterazioni non aiuta
+
+Fatto: due cose, su indicazione dell'utente che ha posto il vincolo di memoria dei 32 GB della
+macchina e ha chiesto perché non passare direttamente a indici a 32 bit.
+
+**Conversione a 32 bit.** Le capacità delle righe postflop erano `uint16_t` in `StateLayout`,
+`PolicyInfo`, `TrainerConfig` e `Certificate`, più le firme di `layout_state` e `rows_for`.
+Gli offset erano già a 64 bit, quindi si è mosso solo il tipo dell'indice. **Il formato su disco
+non cambia**: `policy_file.cpp` scriveva già le capacità con `append_little32` e le troncava solo
+in memoria. Tolta la troncatura, sparisce anche un difetto latente: una policy con 765.243 righe
+river veniva riletta come 41.915 senza errori, producendo certificati plausibili e falsi — lo
+stesso genere di problema del certificatore del probe, ma silenzioso, e sarebbe scattato esatto
+al primo run di `classprev1`. La conversione è stata poi estesa ai probe (`lossless_probe_row`,
+le righe della best response), che erano rimasti a 16 bit.
+
+Regressione richiesta esplicitamente dall'utente, HU10 non deve rompersi. Ricertificate le policy
+HU10 **esistenti**, non riallenate, con i binari nuovi:
+
+| Fixture | Ricertificato | Registrato | Esito |
+|---|---|---|---|
+| HU10 ridotto | 0,003980549728196586 | 0,003980549728196586 | identico |
+| HU10 completo | 0,0039948972150156414 | 0,0039948972150156414 | identico |
+
+Identici anche NashConv e i fingerprint di policy e albero. Suite completa **76/76 PASS**, senza
+adattare alcun valore atteso.
+
+**Estensione a 10.000 iterazioni (punto A del piano).** Ripreso da checkpoint il run `class`:
+
+| Iterazione | Max gain campionato | Limite inferiore non distorto |
+|---:|---:|---:|
+| 2.000 | 0,5393 | 0,1811 |
+| 3.000 | 0,5827 | 0,1822 |
+| 5.000 | 0,5592 | 0,1840 |
+| 6.000 | 0,5167 | 0,1865 |
+| 8.000 | 0,5486 | 0,1928 |
+| 10.000 | 0,6007 | 0,1988 |
+
+Nessuna tendenza al ribasso: la stima oscilla fra 0,52 e 0,65 e il **limite inferiore peggiora in
+modo monotono**, da 0,1811 a 0,1988. Il limite inferiore è quello senza selezione (strategia media
+al preflop, best response esatta dal flop in poi), quindi non è rumore dello stimatore naive: è la
+strategia media che si allontana. È la stessa patologia del baseline, che fra 2.000 e 10.000
+iterazioni era passato da 0,657 a 0,841 a sull'albero precedente.
+
+**Conseguenza sul protocollo:** la matrice delle rappresentazioni si misura a **2.000 iterazioni**
+e nessuna variante viene estesa. Training 5.359,6 s per le 8.000 iterazioni aggiuntive; policy
+`fnv1a64:a83d66470e4793ac`. La certificazione **esatta** del punto a 10.000 conferma la
+lettura senza passare per le stime: **0,535881687077546 a**, NashConv 0,7528823179600452 a,
+17,86 % del piatto, limite inferiore 0,2002673400156187 a. Contro 0,50018061896087860 a del
+punto a 2.000, allenare cinque volte tanto **peggiora del 7,1 %**. Il limite inferiore, che
+non ha bias di selezione, sale da 0,18037784090724046 a 0,2002673400156187: la strategia
+media si allontana davvero. File `out/class_20260917/cert10k.json`.
+Fallimenti: (1) Il link del probe è fallito con `LNK1104` perché il run A teneva aperto
+`co40_train_class_probe.exe`; risolto linkando la famiglia di varianti a un eseguibile distinto,
+`co40_train_class_family.exe`. (2) Gli object dei probe erano stale rispetto alle firme nuove e
+il link ha dato `LNK2019`: vanno ricompilati insieme, ed è stato aggiunto allo script di build.
+Dubbi: (1) L'oscillazione fra 0,52 e 0,65 su stime a 20 flop ha semilarghezza circa 0,08, quindi i
+singoli punti non sono distinguibili fra loro; la tendenza del limite inferiore sì. (2) Resta non
+verificato se la patologia dipenda dal discount DCFR sulle righe rare: è il braccio Linear del
+piano.
+Prossimo passo: matrice delle rappresentazioni a 2.000 iterazioni, dalla più economica.
+
+### 2026-09-17 — P9 — la chiave `class` su CO40 intero: 0,500181 a esatti, -39,5 % dal baseline
+
+Fatto: portata la chiave `class` — riga postflop `(classe preflop, bucket della street corrente)`
+invece del solo bucket — sul gioco intero e certificata in modo esatto contro il baseline dello
+stesso albero. Il probe `out/class_probe.cpp` costruisce la mappa densa scandendo le tre tabelle
+bucket, non dipende da un corpus dichiarato e quindi lascia il trainer campionare i board
+normalmente. Protocollo identico al baseline: DCFR alternato, 2.000 iterazioni, batch 32,
+8 thread, valutazione ogni 500 iterazioni su 20 flop.
+
+| | baseline (`base`) | `class` |
+|---|---:|---:|
+| Righe F/T/R | 200 / 500 / 1.000 | 7.585 / 21.638 / 41.973 |
+| Stato | 9.364.488 B | 391.977.480 B |
+| Secondi per iterazione | 0,2288 | 0,3941 |
+| Stima campionata a 2.000 it. | 0,8418 a | 0,5393 a |
+| **Max gain esatto** | **0,82717651588212859 a** | **0,50018061896087860 a** |
+| NashConv | 1,1558581520489282 a | 0,69471958737876530 a |
+| Quota del piatto | 27,6 % | 16,7 % |
+| Limite inferiore dal flop | 0,282118 a | 0,180378 a |
+| EV | ∓0,147056 a | ∓0,146476 a |
+
+Passata esatta su 573 flop canonici e 605.088 board in 787,9 s. Policy
+`fnv1a64:be84f6b45d37b5b8`, capacità dichiarate nel certificato `[7585, 21638, 41973]`,
+albero `fnv1a64:18d08f453034ac0f` uguale al baseline. File `out/class_20260917/cert.json`.
+
+**Risultato: -39,5 %.** È il miglior valore mai ottenuto sul gioco a 40 ante con una
+rappresentazione portabile in produzione. Il prototipo `recall32` aveva dato 0,491631 a, ma su
+un albero diverso (`fnv1a64:9066044f8c0f0f59`, quindi non confrontabile alla cifra) e costando
+1,57 GB più una mappa gerarchica da versionare e serializzare, contro 392 MB e una chiave che
+in produzione è la concatenazione della classe al bucket.
+
+**Ma il corpus ridotto aveva sovrastimato la leva.** Là la classe portava il pavimento da
+0,027933 a a 0,000010 a, cioè lo azzerava; sul mazzo intero ne toglie il 39,5 %. Il dubbio
+registrato nella voce precedente era esattamente questo e va considerato confermato: con un solo
+flop canonico e 16 classi preflop il bucket flop era quasi costante, quindi la classe faceva un
+lavoro che sul mazzo intero, con 573 flop canonici e 169 classi, il bucket flop svolge già in
+parte. **La graduatoria delle varianti misurata sul corpus ridotto non è trasferibile.**
+
+Il risultato resta **16,7 volte sopra D3** (0,03 a) e **5 volte sopra D2** (0,1 a): verdetto
+REJECTED come tutte le passate esatte a 40 ante. Nessun Nash certificato.
+
+Comandi: `out/co40_train_class_probe.exe --config benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
+--resources-dir out/preflop_blueprint_resources --buckets-dir out/preflop_blueprint_buckets_200_500_1000
+--iterations 2000 --batch 32 --threads 8 --eval-flops 20 --eval-every 500
+--checkpoint out/class_20260917/ckpt.bin --policy-out out/class_20260917/policy.bin`;
+`out/co40_certify_class_probe.exe ... --threads 8 --chunk 16`.
+Fallimenti: (1) Il certificatore del probe crashava con access violation senza stampare nulla:
+non costruisce mai un `Trainer`, quindi nessuno chiamava `recall_initialize` e ogni risoluzione
+di riga leggeva una mappa vuota. Serve anche `layout_state` con le capacità del probe invece di
+quelle delle tabelle: sono le due modifiche che il prototipo `recall32` aveva già fatto al
+proprio certificatore. (2) La prima correzione è stata cancellata da un `copy /y` nello script
+di build che rigenerava il file appena patchato; il main del certificatore è ora mantenuto in
+`out/` e la copia è stata rimossa dallo script. Senza accorgersene si sarebbe valutata la chiave
+a bucket contro una policy allenata con la chiave `class`, ottenendo un numero plausibile e privo
+di significato. Il cablaggio è verificato su due segnali: il certificatore stampa
+7.585/21.638/41.973 righe e accetta la policy senza rifiutarla per capacità incompatibili.
+Dubbi: (1) La curva di `class` stava ancora scendendo a 2.000 iterazioni (0,7053 / 0,5828 /
+0,5669 / 0,5393 sulle stime campionate), mentre il baseline era piatto. Il certificato fotografa
+quella traiettoria, non il suo asintoto. Attenzione però: sul baseline proseguire da 2.000 a
+10.000 iterazioni **peggiorava** (0,657 a 0,841 a sull'albero precedente), quindi l'esito del
+proseguimento è informativo in entrambi i sensi. (2) Non è noto se il residuo di 0,500 a sia
+memoria ancora mancante (i bucket di flop e turn restano dimenticati) o risoluzione dei bucket
+sul mazzo intero. Separarlo richiede di rifare lo sweep sul gioco vero con `classprev1` o
+`coarse8`, che costano 6,2 e 6,6 GB e sono eseguibili su questa macchina.
+Prossimo passo: proseguire il run `class` da checkpoint per distinguere plateau da traiettoria
+(circa 20 minuti), e ripetere lo sweep delle varianti sul mazzo intero per attribuire il residuo.
+
+### 2026-09-17 — P9 — quanta storia serve: basta la classe preflop, e costa 392 MB
+
+Fatto: stabilito che il pavimento è memoria e non risoluzione, resta da capire **quanta**
+storia serve, perché conservarla tutta su CO40 costa 30,3 GB e il run `recall_full` a 2.000
+iterazioni aveva dato 1,3475 a campionato, peggio del baseline, per righe troppo rare.
+Il probe è stato reso parametrico (`GTOSD_MEMORY_VARIANT` in `out/memory_probe.cpp`) e si
+parte dalla chiave completa togliendo distinzioni, invece di partire dai bucket aggiungendone.
+In parallelo `out/variant_prefix_count.cpp` conta le righe della stessa chiave sull'intero
+mazzo, così ogni variante ha insieme la exploitability e il costo.
+
+Varianti della riga postflop, tutte con le tabelle di produzione 200/500/1.000:
+
+| Variante | Riga postflop | Plateau | Capacità su CO40 | Stato R+S+policy |
+|---|---|---:|---|---:|
+| `lossless` | per mano, perfect recall | 0,000011 a | — | — |
+| `coarse8` | classe + bucket precedenti in 8 bande + corrente | **0,000007 a** | 7.585/87.952/902.272 | 6,6 GB |
+| `classprev1` | classe + bucket della street precedente + corrente | **0,000009 a** | 7.585/222.865/765.243 | 6,2 GB |
+| **`class`** | **classe preflop + corrente** | **0,000010 a** | **7.585/21.638/41.973** | **392 MB** |
+| `full` | classe + tutti i bucket precedenti + corrente | 0,000011 a | 7.585/222.865/4.248.476 | 30,3 GB |
+| `prev1` | bucket della street precedente + corrente, senza classe | 0,009939 a | 200/34.141/162.417 | 1,26 GB |
+| `base` (produzione) | solo bucket della street corrente | 0,027933 a | 200/500/1.000 | 9,4 MB |
+| `fine` | solo bucket corrente, capacità 500/1.000/2.000 | 0,026628 a | 500/1.000/2.000 | ~37 MB |
+
+Il plateau è il minimo delle ultime cinque valutazioni su 2.000 iterazioni, valutazione esatta
+sul corpus di 96 board. Log in `out/abstraction/mem_*_40.log`.
+
+**Due risultati.** Primo: **ricordare la sola classe preflop basta**. `class` arriva a
+0,000010 a, cioè il valore della rappresentazione lossless, e costa 392 MB contro i 30,3 GB
+della storia completa: un settantasettesimo, per lo stesso risultato. Secondo: **è la classe a
+portare l'informazione, non il bucket della street precedente**. `prev1`, che ricorda il bucket
+precedente ma dimentica la classe, si ferma a 0,009939 a: tre volte meglio del baseline ma mille
+volte peggio di `class`. Coerente con il testimone del 2026-09-17 sul flop `7c Tc Ac`, dove nella
+stessa riga finivano `6c 7d` che chiama alla radice con probabilità 0,00055 e `8c 8d` con 0,98986:
+la distinzione persa è quella che il giocatore aveva già usato nel preflop.
+
+Comandi: `GTOSD_MEMORY_VARIANT=<variante> out/co40_train_memory_probe.exe --config
+out/recall32/stack_40.json --iterations 2000 --eval-every 100 --eval-flops 24 --batch 32
+--threads 2 --no-stop`; `GTOSD_MEMORY_VARIANT=<variante> out/variant_prefix_count.exe
+benchmarks/fixtures/preflop_blueprint_co40_test_v1.json out/preflop_blueprint_buckets_200_500_1000`.
+Fallimenti: nessuno nuovo.
+Dubbi: (1) **Il corpus ridotto ha un solo flop canonico** (`6s 7d 8c` sotto le 24 permutazioni)
+e 16 classi preflop invece di 169. Su quel corpus il bucket flop è quasi costante, quindi la
+classe fa un lavoro che sull'intero mazzo potrebbe essere in parte già svolto dal bucket flop.
+La graduatoria fra le varianti non è trasferibile così com'è: il conteggio delle righe è
+sull'intero mazzo ed è reale, la exploitability no. (2) Il risultato non dice che `class` porti
+CO40 sotto 0,03 a: dice che su un gioco dove il pavimento è 0,027933 a la classe lo rimuove.
+L'errore di astrazione dei bucket sull'intero mazzo resta da misurare separatamente.
+(3) `coarse8` e `classprev1` fanno marginalmente meglio di `class` ma costano sedici volte
+tanto; la differenza fra 0,000007 e 0,000010 a è irrilevante rispetto alla soglia di 0,03 a.
+Prossimo passo: portare la chiave `class` su CO40 intero e certificarla in modo esatto contro
+il baseline 0,82717651588212859 a. Serve un probe che enumeri le righe sull'intero mazzo, come
+fa `variant_prefix_count.cpp`, e le mappi durante il training con board campionati.
+
+### 2026-09-17 — P9 — attribuzione del pavimento: è la memoria, non la risoluzione dei bucket
+
+Fatto: esperimento che separa le due cause possibili del pavimento dell'astrazione misurato
+stamattina. Quattro bracci sullo stesso albero (`fnv1a64:abe35f9a259e8571`), stesso corpus
+dichiarato, stesso seed, stessa traiettoria, 2.000 iterazioni DCFR alternato, batch 32,
+valutazione **esatta** sui 96 board del corpus. Cambia solo la riga informativa postflop.
+Il braccio `memory` è nuovo (`out/memory_probe.cpp`): rimpiazza `lossless_probe.obj` al link,
+così trainer e best response risolvono la riga allo stesso modo.
+
+| Braccio | Riga postflop | Capacità | Righe usate F/T/R | Plateau |
+|---|---|---|---|---:|
+| `lossless` | per mano, perfect recall | — | 528 / 992 / 1.860 | **0,000011 a** |
+| `memory` | classe preflop + tutti i bucket precedenti + corrente | 200/500/1.000 | 98 / 129 / 129 | **0,000011 a** |
+| `bucket` | solo bucket della street corrente | 200/500/1.000 | 42 / 31 / 4 | **0,027933 a** |
+| `fine` | solo bucket della street corrente | 500/1.000/2.000 | — | **0,026628 a** |
+
+Il plateau è il minimo delle ultime cinque valutazioni; l'ultimo punto di `memory` è
+0,000013 a, di `lossless` 0,000011 a. Fingerprint di stato: `lossless` `613c93cfcd0c78ad`,
+`memory` `1814010557dfe66d`, `bucket` `e6e2a1e43755744c`, `fine` `9bf5757293e856bd`.
+
+**Conclusione.** Con le **stesse** tabelle bucket di produzione, conservare la storia nella
+riga porta la exploitability da 0,027933 a a 0,000011 a, cioè sul valore della rappresentazione
+lossless: un fattore 2.500. Quadruplicare le capacità senza memoria la porta da 0,027933 a
+0,026628 a, cioè il 4,7 %. La risoluzione dei bucket non è il collo di bottiglia; la memoria
+imperfetta lo è, e da sola spiega praticamente tutto il pavimento.
+
+Il conteggio delle righe lo mostra in modo diretto: sul corpus la chiave di produzione usa
+**4 righe distinte al river**, quella con memoria 129. Non è che i bucket river siano pochi —
+sono 1.000 — è che tutte le storie che arrivano allo stesso bucket river collassano insieme.
+
+Comandi: `out/co40_train_memory_probe.exe` e `out/co40_train_private_corpus_baseline.exe` con
+`--config out/recall32/stack_40.json --iterations 2000 --eval-every 50 --eval-flops 24
+--batch 32 --threads 4 --no-stop`, il secondo anche con
+`--buckets-dir .../preflop_blueprint_buckets_500_1000_2000`. Log in `out/abstraction/`.
+Fallimenti: (1) La prima versione di `memory_probe.cpp` enumerava le righe con
+`BoardContext::combo_ids()`, che elenca solo le mani vive al **river**: al flop restavano senza
+riga tutte le mani uccise da turn o river, il trainer indicizzava con `no_bucket` e il processo
+moriva con access violation `0xC0000005`. Corretta interrogando le tabelle bucket per board
+parziale, con la maschera delle sole carte visibili a quella street.
+Dubbi: (1) Il risultato vale sul corpus ridotto, dove la chiave con memoria costa 98/129/129
+righe. Su CO40 intero la stessa chiave è l'enumerazione completa dei prefissi:
+7.585 / 222.865 / 4.248.476 righe, 31 GB in float64, e il run `recall_full` a 2.000 iterazioni
+ha dato 1,3475 a campionato, cioè **peggio** del baseline, perché le righe sono troppo rare per
+essere allenate. Quindi la leva è identificata ma il problema si sposta: conservare la storia
+**senza** far esplodere il numero di righe. È esattamente ciò che tentava `recall32`, che aveva
+portato 0,830 a a 0,492 a. (2) Questo non dimostra che una rappresentazione con memoria
+raggiunga 0,03 a su CO40 intero: dimostra che l'astrazione delle carte non è la causa e che i
+bucket attuali sono abbastanza fini, non che il problema di allenabilità sia risolvibile.
+Prossimo passo: cercare una chiave che conservi le distinzioni utili della storia restando
+allenabile, misurando su CO40 intero contro il baseline esatto 0,82717651588212859 a.
+
+### 2026-09-17 — P9 — baseline CO40 sull'albero nuovo: 0,827177 a, il cambio di size non sposta nulla
+
+Fatto: su richiesta dell'utente, che ha scelto di concentrarsi sul solo gioco a 40 ante e di
+sospendere le onde a 100 e 300 ante della curva dell'errore di astrazione, è stato rifatto il
+numero di riferimento sull'albero preflop modificato oggi. Serviva perché tutti i certificati
+CO40 precedenti valgono per l'albero `fnv1a64:9066044f8c0f0f59` e non per quello attuale.
+Protocollo identico a quello storico, senza nessuna modifica: DCFR alternato, 2.000 iterazioni,
+batch 32, 8 thread, valutazione ogni 500 iterazioni su 20 flop, poi passata esatta.
+
+Comandi: `gtosd_preflop_blueprint_train --config benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
+--resources-dir out/preflop_blueprint_resources --buckets-dir out/preflop_blueprint_buckets_200_500_1000
+--iterations 2000 --batch 32 --threads 8 --eval-flops 20 --eval-every 500
+--checkpoint out/baseline_20260917/ckpt.bin --policy-out out/baseline_20260917/policy.bin`;
+`gtosd_preflop_blueprint_certify --policy out/baseline_20260917/policy.bin --threads 8 --chunk 16
+--state out/baseline_20260917/cert_state.bin --output out/baseline_20260917/cert.json`.
+
+Risultati. Albero 604 nodi, 242 decisioni, stato 9.364.488 byte, fingerprint
+`fnv1a64:18d08f453034ac0f`. Training 457,6 s (0,2288 s per iterazione), `converged: false`.
+Stima campionata a 20 flop all'iterazione 2.000: 0,8418 a con semilarghezza 0,12 e limite
+inferiore 0,2775 a. Certificato **esatto** su 573 flop canonici e 605.088 board:
+
+| Grandezza | Valore |
+|---|---:|
+| Max gain esatto | **0,82717651588212859 a** |
+| NashConv | 1,1558581520489282 a |
+| Quota del piatto | 27,6 % |
+| Quota dello stack | 2,07 % |
+| Limite inferiore dal flop | 0,28211828155994961 a |
+| EV | −0,14705579374932654 / +0,14705579374932351 a |
+
+Policy `fnv1a64:c41b0fba6be10f18`, certificazione 554,8 s (9,2 min, contro i 23 min storici:
+l'albero è sceso da 1.129 a 604 nodi). File: `out/baseline_20260917/cert.json`.
+
+Confronto con il baseline corretto sull'albero precedente, stesso protocollo e stesse tabelle:
+**0,83020566987928368 a** contro **0,82717651588212859 a**, cioè una differenza dello 0,4 %.
+La previsione fatta prima del run era che il cambio delle size preflop non avrebbe spostato il
+risultato, perché il pavimento misurato è l'astrazione postflop; il numero la conferma. Restano
+valide entrambe le letture solo nel senso che il gioco è cambiato poco in exploitability, non che
+i due certificati siano confrontabili come misure dello stesso gioco.
+
+Verdetto D2 (soglia 0,1 a): **REJECTED**, come tutte le passate esatte a 40 ante. D3 (0,03 a) è
+lontana di un fattore 27. Nessun Nash certificato esiste per questo gioco; l'unico gioco del
+programma che raggiunge le soglie resta HU10, con max gain esatto 0,0039948972150156414 a
+(0,13 % del piatto) su `r3_cert_full.json`.
+Fallimenti: nessuno nuovo.
+Dubbi: (1) Il baseline usa le tabelle 200/500/1.000; la misura di oggi dice che il loro pavimento
+su un gioco ridotto è 0,027933 a contro 0,000011 a della rappresentazione lossless, ma non dice
+quanto di questi 0,827 a sia risoluzione e quanto memoria imperfetta. Le due leve richiedono
+interventi diversi. (2) Le onde 100 e 300 ante della curva sono state interrotte su richiesta
+dell'utente: i punti a quegli stack non esistono e la domanda sul transfer resta aperta.
+Prossimo passo: scelta dell'utente fra la leva della memoria e quella della risoluzione; ogni
+intervento si misura contro 0,82717651588212859 a con lo stesso protocollo e la stessa passata
+esatta.
+
+### 2026-09-17 — P9 — albero preflop CO40: risposta 17 a e ramo limpato con re-raise solo all-in (richiesta dell'utente)
+
+Fatto: l'utente ha chiesto due modifiche all'albero preflop CO40 e ha autorizzato
+esplicitamente la modifica di **entrambe** le fixture, compresa quella principale
+finora protetta come riferimento del gate P9. Ha inoltre chiesto di registrare
+l'autorizzazione nella roadmap, fatto con un erratum alla sezione delle fixture e
+una precisazione al «Da non fare» di P9.
+
+Prima domanda dell'utente: «quando limpa CO, BTN raise perché è 4? Dovrebbe essere 6».
+Verifica sullo stato pubblico del motore, non sulla prosa: l'etichetta dell'export conta
+le fiche **aggiunte**, quindi `bet_4` significa che BTN aggiunge 4 a sopra il suo blind da
+1 a e **arriva a 5 a**. Il livello di aggressione sale solo sulle azioni aggressive
+(`compiled_game.cpp:164`), quindi dopo un limp BTN è ancora a livello 0 e riceve
+`open_targets`. Con la formula esatta del rilancio di un piatto intero,
+`P + 2B - c` (P piatto prima dell'azione, B puntata da eguagliare, c fiche già versate dal
+rilanciante), il limp-raise vale `4 + 2 - 1 = 5`: il motore era già corretto. Il 6 viene
+dalla scorciatoia `3 x last bet + pot`, che vale solo per `c = 0`. L'utente ha scelto la
+formula esatta.
+
+La verifica ha però trovato un errore vero: la risposta della fixture di test a **13 a**
+non è un full pot sotto nessuna delle due convenzioni. L'esatta dà 17 a (BTN deve 4 a, il
+piatto dopo il call è 12 a, quindi 1 + 4 + 12). Il 13 a proviene dal calcolo registrato
+nella voce del 2026-09-16 («BTN paga 3 a per chiamare l'apertura, piatto 10 a»): quella
+voce è sbagliata, lo stato pubblico dice 4 a da chiamare e piatto 12 a. Questa voce la
+corregge.
+
+Seconda richiesta: dopo «CO limpa, BTN rilancia» il limper deve avere solo fold, call e
+all-in. I due rami raggiungono stati pubblici identici a meno di quale posto tiene quale
+impegno, e `acted_players_mask` viene azzerato a ogni raise (`libs/core/src/game.cpp:558`),
+quindi il ramo non è deducibile dallo stato. Il flag viene propagato dal compilatore:
+`CompiledNode::limped_pot`, acceso da un call al livello 0 preflop. Non entra nel
+fingerprint dell'albero, perché la differenza di comportamento è già nel fingerprint della
+configurazione.
+
+Comandi: `out\dump_preflop_tree.exe` (diagnostico nuovo, stampa la parte preflop con
+piatto e impegni); `gtosd_preflop_blueprint_game --config ...`;
+`gtosd_preflop_blueprint_game_tests`.
+Risultati. Campo nuovo `limp_response_target_units`: opzionale, indicizzato sugli open,
+assente = comportamento storico, vuoto = solo all-in. Serializzato solo quando presente,
+così le configurazioni che lo precedono mantengono fingerprint e artefatti.
+
+| Fixture | Albero | Preflop | Ingressi | Fingerprint |
+|---|---:|---|---:|---|
+| CO40 test (risposta 17 a, limp con re-raise solo all-in) | 604 nodi | 28 nodi, 10 decisioni | 4 | `fnv1a64:18d08f453034ac0f` |
+| CO40 principale (limp con re-raise solo all-in, size convertite) | 26.878 nodi | 28 nodi, 10 decisioni | 4 | `fnv1a64:d6c10723d35b9503` |
+| HU10 completo (non toccato) | 1.501 nodi | 22 nodi, 8 decisioni | 3 | `fnv1a64:bc9e7b35ad8c021d` |
+
+Il fingerprint HU10 coincide con quello registrato negli artefatti esistenti
+(`r3_chart_hu10_full.json`): le policy e i certificati HU10 restano validi. La parte
+preflop CO40 non riproduce più l'albero legacy `fnv1a64:a68337fa567aa2d9`; il test congela
+ora `fnv1a64:c2169c4295026609` come guardia di regressione, non come equivalenza al legacy.
+Conteggi postflop CO40 principale dopo la conversione delle size: 26.854 nodi rappresentati,
+9.948 decisioni, 25.852 archi (prima 27.012 / 10.060 / 25.944). Suite del modello di gioco
+PASS con 797.826 asserzioni; suite completa del blueprint 19 test su 19 PASS, dopo aver
+copiato nel checkout le tabelle bucket, che mancavano e facevano fallire cinque smoke per
+un motivo indipendente da questa modifica.
+Fallimenti: (1) La voce del 2026-09-16 che deriva la risposta a 13 a contiene un errore
+aritmetico mai verificato contro lo stato pubblico; le size della fixture di test ne
+dipendevano. (2) Tutte le policy, i checkpoint e i certificati CO40 esistenti sono
+invalidati dal cambio di fingerprint, comprese le misure della diagnosi P9 sulla variante
+di test.
+Seguito, stessa giornata: l'utente ha deciso di convertire alla formula esatta anche le size
+della fixture principale. I due open Monker erano entrambi decisi alla radice, dove la formula
+dà 5 a, quindi collassano in una sola size; la risposta diventa 17 a. Le due fixture CO40 hanno
+ora la stessa parte preflop e differiscono solo nelle size postflop (tre size 33/66/120 %
+contro una sola del 100 %). Il rilancio di BTN sul limp resta 5 a, già esatto in quel nodo.
+Dubbi: (1) Con le size convertite la fixture principale non corrisponde più all'albero del
+riferimento Monker: il comparatore confronta a parità di albero, quindi il confronto con Monker
+previsto da D1/D4 non è disponibile finché non esiste un riferimento esterno sul nuovo albero.
+L'utente è stato informato di questa conseguenza prima di decidere. (2) A 300 ante l'all-in
+sparisce dai nodi poco profondi perché la spinta supera la soglia `all_in_threshold` di 100.000
+punti base sul piatto dopo il call: è comportamento preesistente del modello, non introdotto
+qui, ma cambia la forma dell'albero fra i tre stack della curva.
+Prossimo passo: rifare la curva dell'errore di astrazione a 40/100/300 ante sull'albero
+definitivo.
+
+### 2026-09-17 — P9 — errore di astrazione a 40 ante: il trainer converge, i bucket no
+
+Fatto: misura diretta dell'errore di astrazione, mai fatta a 40 ante. Due bracci con lo
+stesso albero, lo stesso corpus dichiarato, lo stesso seed e la stessa traiettoria; l'unica
+differenza è la chiave postflop. Braccio lossless: righe per mano a perfect recall
+(528 / 992 / 1.860 righe), con controllo esplicito che nessuna riga fonda genitori diversi.
+Braccio bucket: le tabelle 200/500/1.000 di produzione. Corpus: flop `6s 7d 8c`, due turn,
+due river, tutte le 24 permutazioni dei semi (96 board), 120 combo per giocatore sui ranghi
+T/J/Q/K, valutazione **esatta** sul corpus. Rispetto alle due prove del 2026-09-16 è stato
+aggiunto `--no-stop`: entrambe si erano fermate a 100 iterazioni sulla soglia D3, quindi il
+plateau non era visibile.
+
+Comandi: `out\co40_train_lossless_private_probe.exe` e
+`out\co40_train_private_corpus_baseline.exe` con `--config out\recall32\stack_40.json
+--iterations 2000 --eval-every 50 --eval-flops 24 --batch 32 --threads 4 --no-stop`.
+Risultati (max gain in ante, valutazione esatta):
+
+| Iterazione | lossless | bucket |
+|---:|---:|---:|
+| 50 | 0,047439 | 0,049161 |
+| 100 | 0,007673 | 0,027625 |
+| 650 | 0,000104 | 0,028285 (massimo) |
+| 1.000 | 0,000042 | 0,027340 |
+| 2.000 | **0,000007** | **0,026053** |
+
+Il braccio lossless scende di quattro ordini di grandezza e continua a scendere; quello a
+bucket sale fino all'iterazione 650 e poi scende lentamente verso 0,026 a. A 40 ante, su
+questo gioco, **l'errore residuo è quasi interamente astrazione**: il rapporto fra i due
+plateau è circa 3.700. Il primo punto di entrambi i bracci riproduce alla sesta cifra le
+prove del 2026-09-16, quindi l'harness è deterministico.
+Nella stessa sessione è stata completata la valutazione del run `recall_full` v3 (storia
+completa dei bucket, 2.000 iterazioni, conclusa alle 01:42): max gain campionato su 32 flop
+seed 123 **1,3475 ± 0,2536 a**, lower 0,3847 a, contro 3,3970 a di v1 a 250 iterazioni.
+Migliora di 2,5 volte ma resta sopra il baseline corretto (0,8302 a esatto) e sopra
+`recall32` (0,4916 a esatto). Il confronto non è omogeneo: 1,3475 è campionato e distorto
+verso l'alto, gli altri due sono esatti su 573 flop. File:
+`out/recall_full/co40_2000_v3_sample32_DIAGNOSTIC_ONLY.json`.
+Fallimenti: (1) Il primo braccio bucket a 40 ante è morto con stack overflow
+(`0xC00000FD`) all'iterazione 300 mentre il certificatore esatto occupava 10,6 GB e
+paginava fuori gli altri processi; rilanciato senza `--checkpoint` e arrivato a 2.000.
+Log conservato in `out/abstraction/bucket_40_crashed_at_300.log`. (2) Le onde 100 e 300
+ante sono state fermate su richiesta dell'utente per cambiare prima l'albero preflop.
+(3) La certificazione esatta di v3 è stata interrotta per liberare memoria; riprendibile
+dal suo `--state`.
+Dubbi: (1) Il corpus è ristretto (96 board, 120 combo per giocatore): il numero assoluto
+0,026 a non è l'errore di astrazione di CO40 sull'intero mazzo, perché i bucket sono
+costruiti sul mazzo completo e qui sono relativamente più grossolani. Ciò che si legge è il
+confronto fra i due bracci, non la scala. (2) Il segnale sul transfer a 100 e 300 ante
+richiede gli altri due punti della curva, non ancora misurati.
+Prossimo passo: rifare i tre punti della curva sull'albero preflop definitivo.
+
+### 2026-09-17 — P9 — precisione del prototipo con storia completa
+
+Il primo run fisico con storia completa raggiunge 250 iterazioni, ma la
+stima su 32 flop resta 3,396952 a ± 0,256657 a (lower 1,024487 a).
+Non è una qualificazione. Il confronto su 1.000 iterazioni campionate di
+un corpus CO40 ridotto trova inoltre un errore relativo nelle somme di
+strategia di 2,80616e-5, oltre il limite di prova 1e-5. Accumulare i delta
+per batch in float64 lo riduce a 1,30942e-5, ancora insufficiente.
+
+La revisione v3 conserva `sum(k^gamma * deltaS_k)` invece di applicare
+ogni volta il discount alle celle float32. È la stessa media DCFR dopo
+normalizzazione. A 1.000 iterazioni, rispetto al trainer float64 con
+discount esplicito: errore regret 6,61243e-7, somme 1,30343e-6 in scala
+relativa, frequenze 2,22214e-7. Il controllo passa con la tolleranza
+originaria; passano anche le 335.327 asserzioni CO40, la ripresa e i
+confronti tra thread count. Risultati in `out/recall_full/precision_comparison.json`
+e `out/recall_full/tests_co40_weighted_v3.log`.
+
+Avviato da zero il run fisico v3 a 2.000 iterazioni. Primo checkpoint
+completato a 500; log `out/recall_full/co40_2000_v3.log`, checkpoint
+`out/recall_full/co40_v3.bin`. Stato con identità distinta dalle versioni
+precedenti. La policy e il certificatore del prototipo restano diagnostici.
+
+### 2026-09-17 — P9 — memoria delle street e prova senza ulteriore clustering
+
+Il certificatore dedicato a `recall32` completa tutti i 573 flop canonici:
+max gain esatto 0,49163135910804856 a e NashConv 0,73687471380326819 a,
+contro max gain 0,83020566987928368 a del baseline corretto a 2.000
+iterazioni. Il risultato resta sopra D3 (0,03 a); una singola traiettoria
+non separa l'effetto della memoria da quello del nuovo clustering.
+Certificato: `out/recall32/co40_2000_exact_DIAGNOSTIC_ONLY.json`.
+
+Il diagnostico sulla policy baseline trova 20.397 celle flop/bucket con
+reach preflop differenti fra le combo fuse. Sul flop `7c Tc Ac`, nel bucket
+127, `6c 7d` chiama alla radice con probabilità 0,000552 e `8c 8d` con
+0,989862. La distinzione già usata nel preflop viene dimenticata. Il report
+P9 distingue questa prova strutturale dalle differenze locali di EV e
+dall'exploitability del gioco intero.
+
+L'enumerazione completa dei prefissi dei bucket 200/500/1000 produce
+7.585/222.865/4.248.476 righe. Il prototipo `out/recall_full` conserva
+tutte queste distinzioni, usando snapshot delle sole righe del batch,
+R/S in float32, valori in float64, discount per riga e I/O progressivo.
+Controlli solo CO40 su un corpus dichiarato: 335.327 asserzioni PASS,
+scarto massimo regret DCFR 2,68461e-6, somme 3,09764e-7. Linear CFR ha
+scarto assoluto regret 5,61522e-4 e somme 1,52588e-5, entro la tolleranza
+relativa 1e-5. Best response fisica contro l'oracolo float64 entro 1e-9;
+stato bit-identico a 1/2/4/8 thread, ripresa bit-identica, policy media
+salvata progressivamente uguale alla versione in memoria. Il riferimento
+scalare DCFR applica esplicitamente il discount t-1 del trainer prima
+della traversata; la variante nominale del solver scalare usa una diversa
+convenzione temporale e non era un confronto diretto valido.
+
+Log: `out/recall_full/tests_co40_v2.log`. Avviata la prova fisica CO40 con
+checkpoint; nessuna modifica del prodotto per questi prototipi, nessun
+nuovo test a stack 100 o 300. La convergenza CO40 resta aperta.
+
+### 2026-09-17 — P9 — gap residuo CO40 certificato esattamente
+
+Completata la certificazione della policy a 2.000 iterazioni con campioni
+indipendenti: 573 flop canonici, 605.088 board, max gain esatto
+0,83020566987928368 a, NashConv 1,1585784190956665 a. File:
+`out/co40_corrected_exact.json`. Il difetto di campionamento è corretto,
+ma il problema CO40 resta aperto anche secondo la metrica esatta.
+
+La nuova prova con memoria conserva tutte le coppie classe/bucket flop,
+poi partiziona turn e river all'interno del genitore. Produce
+7.585/58.221/184.528 righe e 1.572.896.088 byte di stato su CO40.
+A 500 iterazioni: max gain campionato 0,839891 a, semilarghezza 0,155998 a,
+lower 0,221515 a. Non è una qualificazione. Run ripreso fino a 2.000
+iterazioni, con checkpoint `out/recall32/co40.bin` e log
+`out/recall32/co40_2000.log`.
+
+Per rendere praticabile la prova, il prototipo ricalcola la policy solo
+sulle righe lette dal batch. Profiling eseguito prima della modifica;
+equivalenza bit per bit dopo cinque iterazioni CO40 e confronto scalare
+CO40 entro 9,09e-13. Codice sperimentale confinato in `out/recall32`.
+Nessun nuovo test a 100 o 300 ante e nessuna modifica delle size.
+
+### 2026-09-16 — P9 — ambito CO40 confermato: full pot più all-in
+
+L'utente conferma una sola size postflop del 100% del piatto, con all-in
+separato come nella fixture attuale. Il caso da risolvere è
+`preflop_blueprint_co40_test_v1.json`; il passaggio al CO40 a tre size non
+fa parte di questa attività. Questa indicazione aggiorna il piano delle
+voci precedenti che prevedevano la qualificazione successiva a tre size.
+La correzione deve restare generale rispetto a stack e albero delle azioni.
+Con una precisazione successiva, l'utente sospende i test a 100 e 300 ante:
+le prove attive e i prossimi controlli si concentrano esclusivamente su CO40.
+
+### 2026-09-16 — P9 — campionamento alternato corretto, problema CO40 ancora aperto
+
+Mandato aggiornato dell'utente: trovare e risolvere il problema con una regola
+generale, valida anche per stack futuri di 100 e 300 ante, senza richiedere
+parametri diversi all'utente finale. Nessun cambiamento delle size o delle soglie.
+
+Correzione applicata: il secondo aggiornamento alternato campionato usa un
+batch indipendente. Il precedente riuso del campione dava regret
+condizionalmente distorti: scarto 2,58391 contro un riferimento esatto a due
+board; dopo la correzione, 4,44e-16. Checkpoint versione 2. Oracoli su alberi
+a 40, 100 e 300 ante verificano aggiornamenti ed EV/best response entro `1e-9`.
+
+La correzione non chiude CO40 test: a 2.000 iterazioni, max gain campionato
+0,918223 a (8 flop, semilarghezza 0,134932), max gain lower 0,303665 a.
+Anche simultaneo e bucket più fini restano sopra soglia. Questi risultati non
+escludono ogni effetto del budget o dello schema: le conclusioni categoriche
+della precedente voce di diagnosi non sono dimostrate.
+
+La chiave postflop dimentica le informazioni precedenti. Un controesempio
+esatto ora riproducibile nel test `test_forgotten_information_witness` mostra
+CFR fermo a gap 0,75 con tale fusione, contro 2,50e-8 conservando la memoria.
+Questo dimostra una limitazione generale della rappresentazione; non prova
+che spieghi da sola tutto il gap osservato in CO40.
+
+Una gerarchia sperimentale con quattro figli per livello conserva la memoria
+ma perde troppa risoluzione: max gain campionato 3,59519 a a 2.000 iterazioni.
+Scartata come sostituzione del modello. Un'altra prova conserva i bucket e
+separa le classi preflop: 7.585/21.638/41.973 righe, 405.658.776 byte di stato,
+max gain campionato 0,729284 a a 500 iterazioni. Il miglioramento rispetto al
+run base a 500 iterazioni non è conclusivo con otto flop di valutazione.
+Entrambe le prove restano escluse dal prodotto.
+
+Report, limiti e artefatti: [P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+Nessuna convergenza o qualificazione dichiarata.
 
 ### 2026-09-16 — P9 (diagnosi) — CO40 di test con una sola apertura full pot: la riduzione delle size non basta
 

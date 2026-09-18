@@ -33,8 +33,8 @@ Il minimo bet preflop è il button blind (uguale all'ante nelle fixture; il lega
 | Verifica | Esito |
 |---|---|
 | Stato preflop HU uguale a `make_hu_preflop_state` del core (CO40 e HU10) | PASS |
-| CO40: 58 nodi preflop, 20 decisioni, 9 ingressi, 19 fold, 10 all-in | PASS |
-| Fingerprint legacy `fnv1a64:a68337fa567aa2d9` ricalcolato nel test sulla parte preflop (stesso formato `gtosd.hu_preflop_tree.v2`, stessi stati e archi nello stesso ordine) | PASS, identico |
+| CO40: 58 nodi preflop, 20 decisioni, 9 ingressi, 19 fold, 10 all-in | PASS (fino al 2026-09-16; vedi nota sotto) |
+| Fingerprint legacy `fnv1a64:a68337fa567aa2d9` ricalcolato nel test sulla parte preflop (stesso formato `gtosd.hu_preflop_tree.v2`, stessi stati e archi nello stesso ordine) | PASS, identico (fino al 2026-09-16; vedi nota sotto) |
 | Ogni nodo decisionale: azioni compilate uguali a `legal_actions` in numero, ordine e contenuto; ogni figlio uguale a `apply_action` del core (HU) o alla transizione multiway (N > 2) | PASS su CO40, HU10 completa, HU10 ridotta, 3-way preflop |
 | Ogni nodo chance: un solo arco, figlio uguale a `advance_street` del core (HU) | PASS |
 | Preordine: figli consecutivi, sottoalberi contigui, `parent`/`depth` coerenti, ingressi postflop corretti | PASS |
@@ -50,6 +50,37 @@ Il minimo bet preflop è il button blind (uguale all'ante nelle fixture; il lega
 > payoff contro il core. Non dicono nulla sui valori calcolati dal CFR vettoriale su quella
 > struttura, che non hanno un oracolo esatto (P6 §3.1).
 
+> **Nota (2026-09-17, P9). Modifica autorizzata dall'utente.** L'utente ha chiesto che dopo
+> "CO limpa, BTN rilancia" il limper abbia solo fold, call e all-in, e ha autorizzato la modifica
+> su entrambe le fixture CO40. Il campo nuovo è `limp_response_target_units` (opzionale,
+> indicizzato sugli open, assente = comportamento storico, vuoto = solo all-in). I due rami
+> raggiungono stati pubblici identici a meno di quale posto tiene quale impegno e
+> `acted_players_mask` viene azzerato a ogni raise, quindi il ramo non è deducibile dallo stato:
+> il compilatore propaga il flag `CompiledNode::limped_pot`, che non entra nel fingerprint
+> dell'albero (la differenza di comportamento è già nel fingerprint della configurazione).
+>
+> Su indicazione successiva dell'utente, sempre del 2026-09-17, anche le size della fixture
+> principale passano alla formula esatta. La formula dà una sola size per spot e i due open
+> Monker erano entrambi decisi alla radice, quindi collassano su 5 a; la risposta diventa 17 a.
+> Le due fixture CO40 hanno ora la stessa parte preflop e differiscono solo nelle size postflop.
+>
+> Conteggi di `preflop_blueprint_co40_v1.json` dopo entrambe le modifiche: **28 nodi preflop,
+> 10 decisioni, 4 ingressi, 9 fold, 5 all-in**; postflop **26.854 nodi rappresentati,
+> 9.948 decisioni, 25.852 archi**, 998 frontiere di chance, 7.952 fold, 6.812 showdown,
+> 1.144 runout all-in; albero completo 26.878 nodi, profondità massima 17, al più quattro raise
+> per street, fingerprint `fnv1a64:d6c10723d35b9503`. La parte preflop non riproduce più
+> l'albero legacy `fnv1a64:a68337fa567aa2d9`: il fingerprint congelato nel test è ora
+> `fnv1a64:c2169c4295026609` e vale come guardia di regressione, non come equivalenza al legacy.
+> La suite completa del blueprint passa: 19 test su 19, comprese le regressioni del trainer, del
+> certificatore e dell'export.
+>
+> `preflop_blueprint_co40_test_v1.json` cambia anche le size: la risposta passa da 13 a a **17 a**
+> (formula esatta `P + 2B - c`; il 13 a veniva da un calcolo errato del diario del 2026-09-16).
+> Albero risultante 604 nodi, 28 preflop, 10 decisioni, 4 ingressi postflop,
+> fingerprint `fnv1a64:18d08f453034ac0f`. Le fixture HU10 non cambiano: non hanno il campo nuovo,
+> la loro serializzazione e quindi i loro fingerprint restano identici
+> (HU10 completo `fnv1a64:bc9e7b35ad8c021d`, verificato contro gli artefatti esistenti).
+
 ## 4. Conteggi CO40
 
 | Grandezza | Albero compilato | Analizzatore legacy (misurato il 2026-09-15) | Roadmap §P4 (documenti anteriori) |
@@ -58,6 +89,10 @@ Il minimo bet preflop è il button blind (uguale all'ante nelle fixture; il lega
 | Nodi postflop rappresentati (ingressi inclusi) | 27.012 | 27.012 | 30.324 |
 | Decisioni postflop (flop / turn / river) | 10.060 (372 / 2.100 / 7.588) | 10.060 | 11.308 |
 | Archi azione postflop | 25.944 | 25.944 | 29.112 |
+
+I tre valori misurati sopra valgono per l'albero fino al 2026-09-16. Dopo la modifica autorizzata
+dall'utente il 2026-09-17 sono 26.308 / 9.780 (340 / 2.012 / 7.428) / 25.288: vedi la nota nella
+sezione precedente.
 | Frontiere chance | 1.059 | 1.059 | — |
 | Fold / showdown / runout all-in | 7.942 / 6.715 / 1.236 | 7.942 / 6.715 / 1.236 | — |
 | Raise massimi per street | 4 | 4 | 4 |

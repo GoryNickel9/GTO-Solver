@@ -47,6 +47,32 @@ Fingerprint: flop `fnv1a64:33f06cf437f8f26d`, turn `fnv1a64:51814338fcf1236c`, r
 Tempo totale 1.294 s a 8 thread (preparazione 7,1 s). File prodotti: 43,3 MB in tre file,
 gitignorati sotto `out/`.
 
+## 3-bis. Secondo candidato 500/1.000/2.000 (2026-09-19)
+
+Il confronto fra i due candidati previsti da questa fase (roadmap §3.4: «200/500/1.000; secondo
+candidato 500/1.000/2.000; confronto matched») non era mai stato eseguito: fino al 2026-09-19
+esisteva una sola cartella di tabelle. Costruito ora con gli stessi identici parametri — 10
+riavvii, 10 iterazioni di screening, 25 massime, campione 500.000, seed `0x5041525449544F49` —
+così che l'unica variabile sia il numero di gruppi. Output in
+`out/preflop_blueprint_buckets_500_1000_2000`, 43,3 MB, `reload_verified: true`, 2.462 s a 8 thread.
+
+| Street | Capacità | Riavvio scelto | Iterazioni | Distanza media | Occupazione min / max | Secondi |
+|---|---:|---:|---:|---:|---:|---:|
+| Flop | 500 | 7 | 25 (limite) | **119,0** (era 150,7) | 42 / 1.709 | 122,0 |
+| Turn | 1.000 | 8 | 11 (convergenza) | **6,12** (era 8,12) | 588 / 56.316 | 850,6 |
+| River | 2.000 | 2 | 25 (limite) | 6,13·10⁷ (era 9,61·10⁷) | 409 / 156.083 | 1.481,3 |
+
+Fingerprint: flop `fnv1a64:1e5539e63c0d1d4e`, turn `fnv1a64:770dec3db36cef7d`, river
+`fnv1a64:b6c69210f3925be0`. Nessun bucket vuoto; il turn converge invece di fermarsi al limite.
+
+Il clustering è genuinamente più fine — le mani stanno il 21–25 % più vicine al proprio centroide —
+ma **non migliora il gioco**. Su HU20 con la chiave `class` e certificazione esatta a 2.000
+iterazioni: 0,060957 a con 200/500/1.000 contro **0,059870 a** con 500/1.000/2.000, cioè **1,8 %**.
+Il sotto-allenamento è escluso: le righe di `class` passano da 71.196 a 99.904 in totale (58.160 al
+river), e `recall32` si era allenato bene con 184.528 righe allo stesso budget. Dettagli e criterio
+fissato in anticipo nel diario, voce del 2026-09-19; conseguenze in
+[P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+
 Lettura delle dispersioni. La distanza flop è una L1 fra cumulate di conteggi su 465 runout e 16
 bin: il massimo teorico è 465 × 15 = 6.975, quindi la media di 150,7 vale circa il 2,2 % del
 massimo. Al turn il massimo è 30 × 15 = 450 e la media 8,12 vale l'1,8 %. Al river la distanza è

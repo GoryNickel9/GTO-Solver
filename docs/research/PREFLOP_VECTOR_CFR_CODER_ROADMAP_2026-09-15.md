@@ -33,7 +33,7 @@ addestrare il 3-way. La preparazione del 3-way (P10) si limita al conteggio degl
 | Regola | Fonte |
 |---|---|
 | Gate: exploitability fisica misurata + EV con intervallo; Monker descrittivo | D1, D4 |
-| Soglia fisica: massimo guadagno per giocatore ≤ 0,1 ante per mano; riportare anche NashConv, /pot, /stack | D2 |
+| Soglia fisica: massimo guadagno per giocatore ≤ **0,03 ante, l'1 % del piatto iniziale**; riportare anche NashConv, /pot, /stack. *Stretta da D27 il 2026-09-18; era 0,1 a, dichiarata «iniziale» e «da stringere quando l'astrazione migliora»* | D2, D27 |
 | Arresto del training: massimo guadagno ≤ 1 % del pot iniziale nel gioco astratto, stimato sui board campionati | D3 |
 | Nessun link né copia dal solver postflop; ProductionDcfr solo come oracolo nei test | D5 |
 | Validazione su HU10, poi CO40; prima albero ridotto, poi size complete | D6, D17 |
@@ -244,6 +244,43 @@ quando campionate.
 > di 3 a / 5 a e 6 a / 8 a. Esiste inoltre `preflop_blueprint_co40_test_v1.json`
 > (una size postflop 100 % più all-in) solo per misure di tempo e prove: il gate P9 resta sul
 > CO40 completo.
+
+> **Erratum (2026-09-17, P9). Autorizzazione esplicita dell'utente del 2026-09-17.** L'utente ha
+> autorizzato la modifica dell'albero preflop di **entrambe** le fixture CO40, compresa
+> `preflop_blueprint_co40_v1.json`, che fino a oggi era protetta come riferimento del gate P9. Due
+> cambiamenti, decisi dall'utente e non dall'agent:
+>
+> 1. **Formula delle size di rilancio.** Vale la definizione esatta di rilancio di un piatto
+>    intero: chi rilancia chiama la puntata in corso e poi rilancia del piatto risultante, cioè
+>    `P + 2B - c` con `P` il piatto prima dell'azione, `B` la puntata da eguagliare e `c` le fiche
+>    già versate dal rilanciante in quel giro. La scorciatoia `3 x last bet + pot`, valida solo
+>    per `c = 0`, non viene adottata. Conseguenza su `preflop_blueprint_co40_test_v1.json`: la
+>    risposta passa da 13 a a **17 a** (BTN deve 4 a, il piatto dopo il call è 12 a, quindi
+>    1 + 4 + 12). Il 13 a proveniva da un calcolo errato registrato nel diario del 2026-09-16
+>    ("BTN paga 3 a per chiamare, piatto 10 a"), smentito dallo stato pubblico del motore.
+>    L'open di CO resta 5 a: con `c = 0` le due convenzioni coincidono. Anche il rilancio di BTN
+>    sul limp resta 5 a, che è già il valore esatto (`4 + 2 - 1`).
+> 2. **Ramo limpato senza size di re-raise configurata.** Dopo "CO limpa, BTN rilancia" il limper
+>    conserva il re-raise, ma l'unico disponibile è l'all-in: le azioni sono fold, call e
+>    all-in. Serve un campo nuovo perché i due rami raggiungono stati pubblici identici a meno di
+>    quale posto tiene quale impegno: `limp_response_target_units`, opzionale, indicizzato sugli
+>    open come `response_target_units`, assente = comportamento storico, vuoto = solo all-in.
+>
+> Questo erratum sostituisce, per le sole fixture CO40 e per la sola parte preflop, il divieto di
+> "cambiare albero, size o soglie" del paragrafo **Da non fare** di P9: quel divieto resta in
+> vigore contro le modifiche scelte dall'agent per migliorare un risultato, che restano proibite.
+>
+> 3. **Conversione delle size di `preflop_blueprint_co40_v1.json`.** Su indicazione dell'utente
+>    del 2026-09-17 anche la fixture principale passa alla formula esatta. La formula produce una
+>    sola size per spot, quindi i due open Monker (6 a e 10 a) collassano: sono entrambi decisi
+>    alla radice, dove `P + 2B - c` vale 5 a. Le size diventano **open 5 a** e **risposta 17 a**,
+>    le stesse della variante di test; il rilancio di BTN sul limp resta 5 a, che è già il valore
+>    esatto anche in quel nodo. Le due fixture differiscono ora solo nelle size postflop
+>    (3 size 33/66/120 % contro una sola del 100 %). **Conseguenza dichiarata:** le size non
+>    corrispondono più a quelle del riferimento Monker e il comparatore le confronta a parità di
+>    albero, quindi il confronto con Monker previsto da D1/D4 non è più disponibile su questa
+>    fixture finché non si produce un riferimento esterno sul nuovo albero. L'utente è stato
+>    informato di questa conseguenza prima di decidere.
 
 **Da non fare.** Nessun run lungo; nessuna modifica al legacy.
 
@@ -496,7 +533,10 @@ soglia restituisce `FAIL`.
    fixture e comparatore. La suite Release completa deve passare con l'opzione `OFF` e `ON`.
 
 **Da non fare.** Cambiare albero, size o soglie per migliorare il risultato; scegliere il seed
-migliore; promuovere un candidato senza passata esatta.
+migliore; promuovere un candidato senza passata esatta. Non vi rientrano le modifiche dell'albero
+preflop CO40 autorizzate dall'utente il 2026-09-17 (erratum alla sezione delle fixture): sono
+correzioni della formula delle size e della struttura del ramo limpato, decise dall'utente prima
+di vedere il risultato che producono.
 
 **Gate P9.** Certificato esatto CO40 con `max(gain) ≤ 0,1a` per la configurazione scelta su tutti i
 seed dichiarati, oppure `FAIL` documentato con diagnosi (astrazione, algoritmo, budget) e prossimo
