@@ -1472,11 +1472,34 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
         for (std::size_t hand = 0; hand < reach.size(); ++hand) {
           opponent_mass += reach[hand];
         }
+        // P(entry | hero h) = sum_{o disjoint h} allowed(o) * reach_path(o)
+        //                      / sum_{o disjoint h} allowed(o).
+        // Average over the same hero prior used by mean_gain. In the full
+        // uniform 36-card game this reduces to opponent_mass / C(36, 2),
+        // but that shortcut is false for restricted hero/opponent ranges.
+        std::vector<double> entry_mass;
+        fold_mass_universe(preflop, reach, entry_mass);
+        double probability_sum = 0.0;
+        for (std::size_t combo = 0; combo < combo_total; ++combo) {
+          if (opponent_count[combo] > 0.0) {
+            probability_sum +=
+                context.allowed[hero][combo] * entry_mass[combo] / opponent_count[combo];
+          }
+        }
         BestResponseReport::PostflopEntryLoss loss;
         loss.node = node;
         loss.hero = hero;
         loss.mean_gain = weight > 0.0 ? gain / weight : 0.0;
         loss.opponent_reach = opponent_mass;
+        loss.entry_probability = weight > 0.0 ? probability_sum / weight : 0.0;
+        const auto full_range = [](const std::vector<double> &range) {
+          return std::all_of(range.begin(), range.end(),
+                             [](const double value) { return value == 1.0; });
+        };
+        if (exact && full_range(context.allowed[0]) && full_range(context.allowed[1]) &&
+            loss.entry_probability > 0.0) {
+          loss.conditional_gain = loss.mean_gain / loss.entry_probability;
+        }
         report.postflop_entry_loss.push_back(loss);
       }
     }

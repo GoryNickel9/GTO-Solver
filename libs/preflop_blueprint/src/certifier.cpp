@@ -436,7 +436,10 @@ std::string certificate_json(const Certificate &certificate) {
     out += std::string(index == 0 ? "" : ", ") + "{\"node\": " + std::to_string(loss.node) +
            ", \"hero\": " + std::to_string(static_cast<unsigned>(loss.hero)) +
            ", \"mean_gain\": " + json_number(loss.mean_gain) +
-           ", \"opponent_reach\": " + json_number(loss.opponent_reach) + "}";
+           ", \"opponent_reach\": " + json_number(loss.opponent_reach) +
+           ", \"entry_probability\": " + json_number(loss.entry_probability) +
+           ", \"conditional_gain\": " +
+           (loss.conditional_gain ? json_number(*loss.conditional_gain) : "null") + "}";
   }
   out += "],\n";
   out += "  \"best_response_preflop_mix\": [";

@@ -1,5 +1,6 @@
 #include "preflop_blueprint_test_support.hpp"
 
+#include "gtosd/card_abstraction/card_abstraction.hpp"
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
@@ -214,6 +215,18 @@ void test_orbit_aggregation(const Resources &resources) {
 }
 
 bool same_report(const pb::BestResponseReport &left, const pb::BestResponseReport &right) {
+  if (left.postflop_entry_loss.size() != right.postflop_entry_loss.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < left.postflop_entry_loss.size(); ++index) {
+    const auto &a = left.postflop_entry_loss[index];
+    const auto &b = right.postflop_entry_loss[index];
+    if (a.node != b.node || a.hero != b.hero || a.mean_gain != b.mean_gain ||
+        a.opponent_reach != b.opponent_reach || a.entry_probability != b.entry_probability ||
+        a.conditional_gain != b.conditional_gain) {
+      return false;
+    }
+  }
   for (std::uint8_t player = 0; player < 2U; ++player) {
     if (left.ev[player] != right.ev[player] || left.best_response[player] != right.best_response[player] ||
         left.best_response_lower[player] != right.best_response_lower[player] ||
@@ -226,6 +239,175 @@ bool same_report(const pb::BestResponseReport &left, const pb::BestResponseRepor
   }
   return left.flops == right.flops && left.boards == right.boards &&
          left.max_gain == right.max_gain && left.nashconv == right.nashconv;
+}
+
+// Independent oracle: enumerate ordered disjoint private deals and multiply
+// the opponent's action probabilities along the public path. No per-card
+// inclusion/exclusion sums or production reach propagation are used here.
+std::vector<double>
+enumerated_entry_probability(const pb::CompiledGame &game, const pb::BucketPolicy &policy,
+                             const std::uint32_t entry, const std::uint8_t hero,
+                             const std::array<std::vector<std::uint16_t>, 2> &subsets) {
+  const auto &cards = ca::combo_table();
+  std::vector<std::pair<std::uint32_t, std::size_t>> path;
+  std::uint32_t cursor = entry;
+  while (cursor != game.root()) {
+    bool found = false;
+    for (const auto &node : game.nodes()) {
+      const auto edges = game.edges_of(node.id);
+      for (std::size_t action = 0; action < edges.size(); ++action) {
+        if (edges[action].child == cursor) {
+          path.emplace_back(node.id, action);
+          cursor = node.id;
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        break;
+      }
+    }
+    require(found, "entry has a public path from the root");
+  }
+  const auto allowed = [&](const std::uint8_t player, const std::uint16_t hand) {
+    return subsets[player].empty() ||
+           std::find(subsets[player].begin(), subsets[player].end(), hand) != subsets[player].end();
+  };
+  std::vector<double> probability(cards.cards.size(), 0.0);
+  for (std::uint16_t hand = 0; hand < cards.cards.size(); ++hand) {
+    if (!allowed(hero, hand)) {
+      continue;
+    }
+    double sum = 0.0;
+    std::size_t count = 0;
+    for (std::uint16_t other = 0; other < cards.cards.size(); ++other) {
+      if (!allowed(static_cast<std::uint8_t>(1U - hero), other) ||
+          (cards.masks[hand] & cards.masks[other]) != 0U) {
+        continue;
+      }
+      ++count;
+      double reach = 1.0;
+      for (const auto &[node_id, action] : path) {
+        const auto &node = game.nodes()[node_id];
+        if (node.kind == pb::NodeKind::Decision && node.actor != hero) {
+          reach *= policy.row(node_id, cards.hand_class[other])[action];
+        }
+      }
+      sum += reach;
+    }
+    require(count > 0U, "every oracle hero combo has a compatible opponent");
+    probability[hand] = sum / static_cast<double>(count);
+  }
+  return probability;
+}
+
+void test_entry_normalization(const Resources &resources) {
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "normalization fixture compiles");
+  const auto entries = game.value().postflop_entries();
+  for (const bool deterministic : {false, true}) {
+    auto policy = random_policy(game.value(), resources, 173U);
+    if (deterministic) {
+      for (const auto &node : game.value().nodes()) {
+        if (node.kind == pb::NodeKind::Decision && node.street == gtosd::Street::Preflop) {
+          for (std::uint32_t row = 0; row < ca::preflop_hand_classes; ++row) {
+            auto probabilities = policy.row(node.id, row);
+            std::fill(probabilities.begin(), probabilities.end(), 0.0);
+            probabilities.front() = 1.0;
+          }
+        }
+      }
+    }
+    for (const bool restricted : {false, true}) {
+      std::array<std::vector<std::uint16_t>, 2> subsets;
+      if (restricted) {
+        subsets[0] = {0U, 1U, 35U, 180U};
+        subsets[1] = {2U, 3U, 70U, 150U, 629U};
+      }
+      const auto evaluator = pb::BestResponseEvaluator::create(
+          game.value(), policy, response_resources(resources), subsets);
+      require(evaluator.has_value(), "normalization evaluator creates");
+      // Inject analytically known leaf values to isolate aggregation from
+      // showdown/CFR: responding gains exactly 2 antes whenever entry occurs.
+      // This is an aggregation unit fixture, not a physical poker certificate.
+      pb::FlopValues values;
+      values.weight = 1.0;
+      values.boards = 1U;
+      values.images = {ca::identity_permutation};
+      values.compatible.assign(ca::combo_table().cards.size(), 1U);
+      std::array<std::vector<double>, 2> expected;
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        for (const auto mode : {pb::average_mode, pb::response_mode}) {
+          values.entry_values[hero][mode].resize(entries.size());
+        }
+        for (std::size_t index = 0; index < entries.size(); ++index) {
+          const auto probabilities =
+              enumerated_entry_probability(game.value(), policy, entries[index], hero, subsets);
+          double sum = 0.0;
+          for (const auto probability : probabilities) {
+            sum += probability;
+          }
+          const auto count = subsets[hero].empty() ? probabilities.size() : subsets[hero].size();
+          expected[hero].push_back(sum / static_cast<double>(count));
+          auto &average = values.entry_values[hero][pb::average_mode][index];
+          auto &response = values.entry_values[hero][pb::response_mode][index];
+          average.resize(probabilities.size());
+          response.resize(probabilities.size());
+          for (std::size_t hand = 0; hand < probabilities.size(); ++hand) {
+            average[hand] = -3.0 * probabilities[hand];
+            response[hand] = -1.0 * probabilities[hand];
+          }
+        }
+      }
+      const auto exact = evaluator.value().aggregate({&values}, true);
+      const auto partial = evaluator.value().aggregate({&values}, false);
+      require(exact.has_value() && partial.has_value(), "analytic entry aggregation succeeds");
+      require(exact.value().ev == partial.value().ev &&
+                  exact.value().best_response == partial.value().best_response &&
+                  exact.value().max_gain == partial.value().max_gain,
+              "normalization availability does not change global values");
+      std::size_t unreachable = 0U;
+      for (const auto &loss : exact.value().postflop_entry_loss) {
+        const auto found = std::find(entries.begin(), entries.end(), loss.node);
+        require(found != entries.end(), "diagnostic entry exists");
+        const auto index = static_cast<std::size_t>(found - entries.begin());
+        require(close(loss.entry_probability, expected[loss.hero][index], 1e-12),
+                "entry probability equals independent ordered-deal enumeration");
+        require(close(loss.mean_gain, 2.0 * loss.entry_probability, 1e-12),
+                "analytic two-ante gain has exactly one probability normalization");
+        if (!restricted) {
+          require(close(loss.entry_probability,
+                        loss.opponent_reach / static_cast<double>(values.compatible.size()), 1e-12),
+                  "full uniform range reduces to raw opponent mass / combo count");
+        }
+        if (loss.entry_probability == 0.0) {
+          ++unreachable;
+        }
+        if (!restricted && loss.entry_probability > 0.0) {
+          require(loss.conditional_gain && close(*loss.conditional_gain, 2.0, 1e-12),
+                  "conditional gain is two antes, not two / 630");
+        } else {
+          require(!loss.conditional_gain,
+                  "unreachable or restricted entry has no physical conditional EV");
+        }
+      }
+      if (deterministic) {
+        require(unreachable > 0U, "deterministic policy exercises unreachable entries");
+      }
+      for (const auto &loss : partial.value().postflop_entry_loss) {
+        require(!loss.conditional_gain,
+                "partial evaluation does not claim conditional physical EV");
+      }
+      pb::Certificate certificate;
+      certificate.report = partial.value();
+      const auto json = pb::certificate_json(certificate);
+      require(json.find("\"conditional_gain\": null") != std::string::npos,
+              "unavailable diagnostic serializes as JSON null");
+    }
+  }
+  std::cout << "entry normalization: independent disjoint deals, blockers, fractional paths, "
+               "subsets, zero reach PASS\n";
 }
 
 // Partial pass with chunks and state file: a resumed pass equals the
@@ -370,6 +552,7 @@ int main(const int argc, char **argv) {
               << resources.flop->capacity() << "/" << resources.turn->capacity() << "/"
               << resources.river->capacity() << ")\n";
     test_policy_file(resources, scratch_dir);
+    test_entry_normalization(resources);
     test_orbit_aggregation(resources);
     test_partial_pass_and_resume(resources, scratch_dir);
     test_sampled_matches_trainer(resources, scratch_dir);

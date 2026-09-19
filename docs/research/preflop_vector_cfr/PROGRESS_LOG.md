@@ -42,6 +42,50 @@ Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
 
+### 2026-09-19 — P9 — normalizzazione validata indipendentemente
+
+Fatto: aggiunti probabilita dell'ingresso e guadagno condizionato opzionale;
+campi storici e metriche globali invariati. Il fattore 630 della tabella storica
+"Le quattro ipotesi cadute" e confermato per i range uniformi completi.
+Le perdite corrette CO sono 1,172575 / 1,372247 / 1,421924 / 0,730602 ante
+per ingresso sotto il prior del diagnostico. Non sono una decomposizione della root.
+
+Comandi: CTest `windows-release` per certifier, trainer ed export; ricalcolo
+CO40 dal checkpoint del certificatore su una copia locale dei 573 flop salvati.
+Risultati: certifier PASS (138.974 assert, 42,46 s), trainer PASS (76,66 s),
+export PASS (48,80 s). CO40 ricalcolato in 1,4004197 s, max_gain identico
+0,82717651588212859. [Report e artefatto](NASH_AUDIT_2026-09-19.md).
+Fallimenti: l'include del nuovo test e stato corretto prima della build verificata;
+il precedente CTest su eseguibile obsoleto non e contato in questi risultati.
+Dubbi: rapporti condizionati per range ristretti o cataloghi parziali non validati,
+quindi `conditional_gain` e `null` in quei casi. Nessuna nuova qualificazione CO40.
+Prossimo passo: separare perdita della strategia comune e costo dell'aggregazione.
+
+### 2026-09-19 — P9 — audit della normalizzazione e piano causale autorizzato
+
+Fatto: l'utente ha assegnato come unico goal della giornata il piano in cinque fasi:
+normalizzazione indipendente, diagnostica dei conflitti nei bucket, verifica enumerabile
+del meccanismo, candidato potential-aware offline solo se sostenuto dai risultati,
+confronti matched HU20/CO40. Worktree isolato `nash-convergence-audit/GTO-Solver`,
+branch `codex/nash-convergence-audit`, base `744113c69342a82f3b920add498106af2b763d52`.
+Il checkout principale e le risorse precalcolate restano invariati.
+
+Risultati iniziali: il campo `opponent_reach` somma pesi su combo e non e una probabilita.
+Il ricalcolo dei certificati indica un fattore 630 nella tabella del 2026-09-18
+"Le quattro ipotesi cadute". La verifica indipendente con codice di test e ancora in corso.
+Il rapporto condizionato sara esposto solo con catalogo completo e range uniformi completi;
+per range ristretti la distribuzione dei board richiede una verifica separata.
+
+Fallimenti: prima compilazione del nuovo test, MSVC C2039/C2065 sul simbolo
+`ca::preflop_hand_classes`: manca l'include che lo dichiara. Il successivo CTest,
+avviato prima di controllare l'esito della compilazione, usa il vecchio eseguibile:
+il suo risultato non valida i nuovi test. Correggere l'include e ricompilare prima del nuovo CTest.
+
+Gate: normalizzazione indipendente NOT_RUN; nuova astrazione NOT_RUN; nessuna nuova
+qualificazione o affermazione di convergenza.
+Prossimo passo: completare la compilazione e confrontare il diagnostico con l'enumerazione
+indipendente delle coppie disgiunte.
+
 Formato di ogni voce:
 
 ```text

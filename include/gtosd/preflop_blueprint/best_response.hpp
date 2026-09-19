@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // Best response of the physical game against the lifted (bucket) average
@@ -120,13 +121,22 @@ struct BestResponseReport {
   // the hero's live combos, uniformly weighted, of the counterfactual gain of
   // best-responding from that entry instead of playing the blueprint. Unlike
   // gain_lower it does not depend on how often the blueprint goes there.
-  // `opponent_reach` is the opponent mass arriving at the entry, needed to
-  // compare entries with each other.
+  // `opponent_reach` is a RAW SUM of opponent combo weights, NOT a probability.
+  // `entry_probability` averages the blocker-conditioned opponent reach over
+  // the allowed hero combos, with the hero's preflop actions forced along the
+  // entry path. It is independent of the hero's blueprint reach.
+  // `conditional_gain` = mean_gain / entry_probability, in antes per entry,
+  // is supplied only for exact evaluation with both full uniform hand ranges.
+  // Partial-board evaluation and restricted ranges have different board
+  // conditioning; this ratio must not be presented as a physical conditional EV.
+  // None of these local diagnostics add up to root exploitability.
   struct PostflopEntryLoss {
     std::uint32_t node{0U};
     std::uint8_t hero{0U};
     double mean_gain{0.0};
     double opponent_reach{0.0};
+    double entry_probability{0.0};
+    std::optional<double> conditional_gain;
   };
   std::vector<PostflopEntryLoss> postflop_entry_loss;
   // Standard errors of the means over equally weighted flop groups of the

@@ -1,5 +1,11 @@
 # P9 — Diagnosi della convergenza CO40
 
+> **Riapertura, 2026-09-19:** l'[audit della normalizzazione](NASH_AUDIT_2026-09-19.md)
+> corregge un fattore 630 nella perdita postflop del diario, con test indipendenti
+> e metriche globali invariate. Le conclusioni di esaurimento delle possibilita
+> riportate sotto restano una valutazione storica, non un limite dimostrato.
+> L'utente ha autorizzato una nuova indagine causale; CO40 resta non qualificato.
+
 Aggiornamento: 2026-09-19. Stato: **indagine conclusa senza qualificazione di CO40**; la
 decisione che segue è dell'utente.
 

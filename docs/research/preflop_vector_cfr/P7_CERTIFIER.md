@@ -1,5 +1,11 @@
 # P7 — Certificatore board-major
 
+> **Addendum 2026-09-19:** il report espone ora `entry_probability` e
+> `conditional_gain` per evitare di confondere `opponent_reach` (massa grezza)
+> con una probabilita. Formula, disponibilita, compatibilita e verifiche sono
+> nell'[audit della normalizzazione](NASH_AUDIT_2026-09-19.md). Le metriche
+> globali e i formati binari restano invariati.
+
 Data: 2026-09-16. Branch di fase: `feature/preflop-blueprint-p7-certifier`. Esito del gate:
 **PASS** (§6): test PASS, passata esatta su HU10 completata (0,0042 a, 37 min sul completo),
 proiezione CO40 misurata (22,4 h a 8 thread).
