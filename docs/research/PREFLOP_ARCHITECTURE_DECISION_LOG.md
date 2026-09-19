@@ -5,7 +5,7 @@ solver preflop Short Deck (HU prima, multiway poi). Ogni aggiornamento è datato
 coda. L'analisi tecnica di partenza è in
 [HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md).
 
-Ultimo aggiornamento: 2026-09-15.
+Ultimo aggiornamento: 2026-09-19.
 
 ## 1. Decisioni prese
 
@@ -38,6 +38,8 @@ Ultimo aggiornamento: 2026-09-15.
 | D25 | Rimozione dei documenti superati (eseguita) | Rimossi dal working tree 706 file tracciati: vecchia roadmap R0–R9, studi 12 ore e CPU/RAM, evidenze `preflop_12h_evidence`, fasi R1–R5, cartella R6 (V6–V23). `docs/` passa da 7,0 GB a 1,8 MB. I 16 `.bin` non tracciati (6,9 GB) sono spostati in `benchmarks/results/legacy_preflop_es/`: le 14 policy V8–V16 e V18 sono cancellabili, le due V17 restano fino al gate P9. Restano `preflop_r0` (contratto monetario) e il benchmark CO40, con banner e gate riallineati a D1–D4. Indice: `PREFLOP_LEGACY_INDEX.md`. | 2026-09-15 |
 | D26 | Pulizia dei branch (eseguita, con residuo) | Sei tag `archive/research/<nome>` creati e pubblicati su origin insieme a `preflop-legacy-es-2026-09-15`. Cancellati su origin `research/s6-production-qualification-20260831`, `research/tst-strict-2gb-bottleneck-loop-20260831` e `copilot/fix-windows-asan-clang-job`; su origin restano solo `main` e i tag. In locale rimossi tre worktree puliti e cancellati i branch `dcfr-epoch-reset`, `gto-plus-autonomous-black-box`, `range-aware-orbit-oracle`. Residuo: tre worktree con scratch e i loro tre branch (A8). | 2026-09-15 |
 | D27 | Soglia fisica stretta all'1 % del piatto | Il gate di accettazione passa da 0,1 ante per giocatore (3,3 % del piatto iniziale di 3a) a **0,03 ante, l'1 % del piatto**. Decisione dell'utente del 2026-09-18. Motivazione: D2 era dichiarata "soglia fisica *iniziale*" e "da stringere quando l'astrazione migliora", e l'1 % del piatto è già lo standard con cui è stato accettato il prodotto postflop, come registra D3. La soglia resta ancorata al piatto e indipendente dallo stack. Conseguenza immediata: l'unico gioco qualificato resta **HU10** (0,003981a, 0,13 % del piatto); HU20 con `class` vale 0,060957a, il 2,03 % del piatto, e manca il gate di 2,03 volte; CO40 con `class` vale 0,500181a, 16,7 volte il gate. | 2026-09-18 |
+| D28 | Memoria per il goal HU20/HU30/HU40 | L'utente elimina esplicitamente il limite di 4 GiB e lo sostituisce con **12 GiB**. Si aggiorna il limite dello stato numerico in roadmap §3.4; restano float64, fixture congelate e gate fisico 0,03 ante. Vanno riportati anche memoria di processo e picchi di salvataggio/esportazione. | 2026-09-19 |
+| D29 | Persistenza sul goal HU20/HU30/HU40 | Per mandato esplicito dell'utente, continuare fino alla qualificazione dei tre giochi. Per questo goal è superata la regola D22 di fermarsi al primo FAIL/INCONCLUSIVE: registrare l'esito e proseguire con un controllo fondato. Non cambia i criteri di correttezza né autorizza ad allentare il gate. | 2026-09-19 |
 
 ## 2. Punti aperti
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 
 namespace gtosd::preflop_blueprint {
 namespace {
@@ -35,6 +36,13 @@ void BucketPolicy::set_uniform() {
     std::fill_n(table_.data() + layout_.offsets[node.id],
                 static_cast<std::size_t>(rows) * node.action_count, probability);
   }
+}
+
+BucketPolicy::BucketPolicy(const CompiledGame &game, const StateLayout &layout,
+                           std::vector<double> table)
+    : game_(&game), layout_(layout), table_(std::move(table)) {
+  if (table_.size() != layout.entries)
+    throw std::invalid_argument("policy table size mismatch");
 }
 
 std::span<double> BucketPolicy::row(const std::uint32_t node,

@@ -57,6 +57,7 @@ struct BestResponseResources {
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
   const ClassBucketRows *class_rows{nullptr};
+  const HistoryBucketRows *history_rows{nullptr};
 };
 
 struct BestResponseOptions {

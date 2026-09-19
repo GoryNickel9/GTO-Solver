@@ -73,6 +73,7 @@ struct Certificate {
   std::string turn_table_fingerprint;
   std::string river_table_fingerprint;
   std::string policy_fingerprint;
+  std::string history_map_fingerprint;
   std::uint32_t flop_capacity{0U};
   std::uint32_t turn_capacity{0U};
   std::uint32_t river_capacity{0U};

@@ -1,6 +1,8 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
+#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include "binary_io.hpp"
+#include "stream_io.hpp"
 
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/best_response.hpp"
@@ -16,6 +18,8 @@
 #include <fstream>
 #include <limits>
 #include <numeric>
+#include <optional>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 
@@ -122,8 +126,6 @@ void run_parallel(const unsigned threads, const std::size_t count, Function &&fu
 
 using binary_io::append_little;
 using binary_io::append_little32;
-using binary_io::append_doubles;
-using binary_io::Reader;
 
 } // namespace
 
@@ -240,9 +242,25 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
         resources_.river == nullptr) {
       return Outcome::failure(TrainerError::MissingResource);
     }
-    if (resources_.flop->capacity() != config_.flop_capacity ||
-        resources_.turn->capacity() != config_.turn_capacity ||
-        resources_.river->capacity() != config_.river_capacity) {
+    const auto capacity = [&](const card_abstraction::BucketTable &table) {
+      if (resources_.history_rows)
+        return resources_.history_rows->count(table.street());
+      return resources_.class_rows ? resources_.class_rows->count(table.street())
+                                   : static_cast<std::uint32_t>(table.capacity());
+    };
+    if (resources_.history_rows &&
+        (resources_.class_rows || !resources_.history_rows->matches(*resources_.flop) ||
+         !resources_.history_rows->matches(*resources_.turn) ||
+         !resources_.history_rows->matches(*resources_.river)))
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    if (resources_.class_rows && (!resources_.class_rows->matches(*resources_.flop) ||
+                                  !resources_.class_rows->matches(*resources_.turn) ||
+                                  !resources_.class_rows->matches(*resources_.river))) {
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    }
+    if (capacity(*resources_.flop) != config_.flop_capacity ||
+        capacity(*resources_.turn) != config_.turn_capacity ||
+        capacity(*resources_.river) != config_.river_capacity) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
     }
   }
@@ -367,6 +385,11 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     }
     identity += "|diagnostic-input:" + detail::hex64_text(detail::fnv1a_text(diagnostic_input));
   }
+  if (resources_.class_rows) {
+    identity += "|class-major-rows-v1";
+  }
+  if (resources_.history_rows)
+    identity += "|history-rows=" + resources_.history_rows->fingerprint();
   identity_ = "fnv1a64:" + detail::hex64_text(detail::fnv1a_text(identity));
   return Outcome::success(true);
 }
@@ -379,6 +402,8 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
   tables.flop = resources_.flop;
   tables.turn = resources_.turn;
   tables.river = resources_.river;
+  tables.class_rows = resources_.class_rows;
+  tables.history_rows = resources_.history_rows;
   const bool with_tables = resources_.catalog != nullptr && resources_.flop != nullptr &&
                            resources_.turn != nullptr && resources_.river != nullptr;
   auto context = BoardContext::build(history, *resources_.ranks, with_tables ? &tables : nullptr);
@@ -439,7 +464,24 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
   return Outcome::success(true);
 }
 
-void Trainer::refresh_policy() {
+void Trainer::refresh_policy(const std::vector<BoardWork> *batch) {
+  policy_.resize(layout_.entries);
+  std::array<std::vector<std::uint32_t>, 4> active;
+  if (batch) {
+    active[0].resize(81);
+    std::iota(active[0].begin(), active[0].end(), 0U);
+    for (std::size_t street = 1; street < 4; ++street) {
+      for (const auto &board : *batch) {
+        if (!board.context.has_buckets(static_cast<Street>(street)))
+          continue;
+        for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
+          active[street].push_back(board.context.row(static_cast<Street>(street), hand));
+      }
+      auto &rows = active[street];
+      std::sort(rows.begin(), rows.end());
+      rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    }
+  }
   for (const auto &node : game_->nodes()) {
     if (node.kind != NodeKind::Decision) {
       continue;
@@ -448,7 +490,10 @@ void Trainer::refresh_policy() {
                                             config_.turn_capacity, config_.river_capacity);
     const auto actions = node.action_count;
     const auto base = layout_.offsets[node.id];
-    for (std::uint32_t row = 0; row < rows; ++row) {
+    const auto &selected = active[static_cast<std::size_t>(node.street)];
+    const auto count = batch ? selected.size() : rows;
+    for (std::size_t index = 0; index < count; ++index) {
+      const auto row = batch ? selected[index] : static_cast<std::uint32_t>(index);
       const auto offset = base + static_cast<std::uint64_t>(row) * actions;
       double positive = 0.0;
       for (std::uint8_t action = 0; action < actions; ++action) {
@@ -514,12 +559,16 @@ card_abstraction::BoardHistory Trainer::sample_history(card_abstraction::Determi
 
 Result<IterationTelemetry, TrainerError> Trainer::iterate() {
   using Outcome = Result<IterationTelemetry, TrainerError>;
+  if (!usable_)
+    return Outcome::failure(TrainerError::IntegrityFailure);
   const auto started = Clock::now();
   const auto iteration = iteration_ + 1U;
+  IterationTelemetry telemetry;
   if (config_.scheme == WeightingScheme::Dcfr && iteration > 1U) {
     discount_state(iteration - 1U);
   }
-  refresh_policy();
+  auto phase = Clock::now();
+  telemetry.discount_seconds = std::chrono::duration<double>(phase - started).count();
   const double iteration_weight =
       config_.scheme == WeightingScheme::Linear ? static_cast<double>(iteration) : 1.0;
 
@@ -544,18 +593,20 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
     }
   }
 
+  telemetry.board_prepare_seconds = std::chrono::duration<double>(Clock::now() - phase).count();
   for (auto &workspace : workspaces_) {
     workspace->nodes_visited = 0U;
   }
   std::size_t drawn_boards = batch.size();
   for (std::uint8_t hero = 0; hero < 2U; ++hero) {
     if (hero == 1U && config_.update_mode == UpdateMode::Alternating) {
-      refresh_policy();
+      phase = Clock::now();
       if (sample_boards_) {
         // The opponent's new policy depends on the first batch. Reusing that
         // batch here conditions chance on the policy being evaluated, biasing
         // the second player's counterfactual values. Draw from the unchanged
-        // chance law after the snapshot; exact traversals can reuse their list.
+        // chance law. Snapshot the selected rows after preparing this independent
+        // batch, before any update; exact traversals can reuse their list.
         for (auto &work : batch) {
           double weight = 1.0;
           const auto history = sample_history(training_random_, weight);
@@ -566,15 +617,24 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
         }
         drawn_boards += batch.size();
       }
+      telemetry.board_prepare_seconds +=
+          std::chrono::duration<double>(Clock::now() - phase).count();
     }
+    if (hero == 0U || config_.update_mode == UpdateMode::Alternating) {
+      phase = Clock::now();
+      refresh_policy(config_.batch_policy_refresh ? &batch : nullptr);
+      telemetry.policy_refresh_seconds +=
+          std::chrono::duration<double>(Clock::now() - phase).count();
+    }
+    phase = Clock::now();
     for (const auto &work : batch) {
       pass(work, hero, iteration_weight);
     }
+    telemetry.traversal_seconds += std::chrono::duration<double>(Clock::now() - phase).count();
   }
   iteration_ = iteration;
   boards_processed_ += drawn_boards;
 
-  IterationTelemetry telemetry;
   telemetry.iteration = iteration_;
   telemetry.boards = static_cast<std::uint32_t>(drawn_boards);
   telemetry.seconds = std::chrono::duration<double>(Clock::now() - started).count();
@@ -818,8 +878,15 @@ void Trainer::terminal(const CompiledNode &node, const double *opponent_reach, d
 }
 
 BucketPolicy Trainer::average_policy() const {
-  BucketPolicy policy(*game_, layout_);
-  auto &table = policy.table();
+  std::vector<double> table(layout_.entries);
+  fill_average_policy(table);
+  return BucketPolicy(*game_, layout_, std::move(table));
+}
+
+void Trainer::fill_average_policy(std::vector<double> &table) const {
+  if (!usable_)
+    throw std::logic_error("trainer state invalid after failed checkpoint load");
+  table.resize(layout_.entries);
   for (const auto &node : game_->nodes()) {
     if (node.kind != NodeKind::Decision) {
       continue;
@@ -851,10 +918,11 @@ BucketPolicy Trainer::average_policy() const {
       }
     }
   }
-  return policy;
 }
 
 BucketPolicy Trainer::current_policy() const {
+  if (!usable_)
+    throw std::logic_error("trainer state invalid after failed checkpoint load");
   BucketPolicy policy(*game_, layout_);
   auto &table = policy.table();
   for (const auto &node : game_->nodes()) {
@@ -879,6 +947,18 @@ BucketPolicy Trainer::current_policy() const {
     }
   }
   return policy;
+}
+
+BucketPolicy Trainer::take_average_policy() {
+  fill_average_policy(policy_);
+  return BucketPolicy(*game_, layout_, std::move(policy_));
+}
+
+BucketPolicy Trainer::take_current_policy() {
+  if (!usable_)
+    throw std::logic_error("trainer state invalid after failed checkpoint load");
+  refresh_policy();
+  return BucketPolicy(*game_, layout_, std::move(policy_));
 }
 
 Result<ExploitabilityEstimate, TrainerError>
@@ -927,6 +1007,8 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
   resources.flop = resources_.flop;
   resources.turn = resources_.turn;
   resources.river = resources_.river;
+  resources.class_rows = resources_.class_rows;
+  resources.history_rows = resources_.history_rows;
   BestResponseOptions options;
   options.threads = config_.threads;
   if (subsets_) {
@@ -968,6 +1050,8 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
 }
 
 std::string Trainer::state_fingerprint() const {
+  if (!usable_)
+    throw std::logic_error("trainer state invalid after failed checkpoint load");
   auto hash = detail::fnv1a_text(identity_);
   std::string header;
   append_little(header, iteration_);
@@ -990,6 +1074,8 @@ std::string Trainer::state_fingerprint() const {
 
 Result<bool, TrainerError> Trainer::save_checkpoint(const std::filesystem::path &path) const {
   using Outcome = Result<bool, TrainerError>;
+  if (!usable_)
+    return Outcome::failure(TrainerError::IntegrityFailure);
   std::string buffer;
   buffer.append(checkpoint_magic.data(), checkpoint_magic.size());
   append_little32(buffer, checkpoint_version);
@@ -1004,9 +1090,6 @@ Result<bool, TrainerError> Trainer::save_checkpoint(const std::filesystem::path 
     append_little(buffer, word);
   }
   append_little(buffer, regrets_.size());
-  append_doubles(buffer, regrets_);
-  append_doubles(buffer, strategy_sums_);
-  append_little(buffer, detail::fnv1a_text(buffer));
 
   const auto temporary = std::filesystem::path(path.string() + ".tmp");
   {
@@ -1014,9 +1097,8 @@ Result<bool, TrainerError> Trainer::save_checkpoint(const std::filesystem::path 
     if (!output) {
       return Outcome::failure(TrainerError::IoFailure);
     }
-    output.write(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-    output.flush();
-    if (!output) {
+    const std::array<std::span<const double>, 2> arrays{regrets_, strategy_sums_};
+    if (!stream_io::write(output, buffer, arrays)) {
       return Outcome::failure(TrainerError::IoFailure);
     }
   }
@@ -1035,62 +1117,53 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   if (!input) {
     return Outcome::failure(TrainerError::IoFailure);
   }
-  std::string data((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-  if (data.size() < checkpoint_magic.size() + 12U ||
-      std::memcmp(data.data(), checkpoint_magic.data(), checkpoint_magic.size()) != 0) {
-    return Outcome::failure(TrainerError::IntegrityFailure);
-  }
-  const auto payload = data.size() - 8U;
-  const std::string checksum_bytes = data.substr(payload);
-  Reader checksum_reader(checksum_bytes);
-  std::uint64_t stored_checksum = 0U;
-  if (!checksum_reader.read_little(stored_checksum) ||
-      detail::fnv1a_text(std::string_view(data.data(), payload)) != stored_checksum) {
-    return Outcome::failure(TrainerError::IntegrityFailure);
-  }
-  const std::string body_bytes =
-      data.substr(checkpoint_magic.size(), payload - checkpoint_magic.size());
-  Reader body(body_bytes);
-  std::uint32_t version = 0U;
-  std::string identity;
   std::uint64_t iteration = 0U;
   std::uint64_t boards_processed = 0U;
   card_abstraction::DeterministicRandom::State training_state{};
   card_abstraction::DeterministicRandom::State evaluation_state{};
-  std::uint64_t entries = 0U;
-  std::vector<double> regrets;
-  std::vector<double> sums;
-  if (!body.read_little32(version) || version != checkpoint_version) {
-    return Outcome::failure(TrainerError::UnsupportedVersion);
-  }
-  if (!body.read_string(identity) || !body.read_little(iteration) ||
-      !body.read_little(boards_processed)) {
+  const auto read_header = [&](stream_io::Reader &body) -> std::optional<TrainerError> {
+    std::array<char, 8> magic{};
+    std::uint32_t version = 0;
+    std::string identity;
+    std::uint64_t entries = 0;
+    if (!body.bytes(magic.data(), magic.size()) || magic != checkpoint_magic || !body.u32(version))
+      return TrainerError::IntegrityFailure;
+    if (version != checkpoint_version)
+      return TrainerError::UnsupportedVersion;
+    if (!body.string(identity) || identity != identity_ || !body.u64(iteration) ||
+        !body.u64(boards_processed))
+      return TrainerError::IntegrityFailure;
+    for (auto &word : training_state)
+      if (!body.u64(word))
+        return TrainerError::IntegrityFailure;
+    for (auto &word : evaluation_state)
+      if (!body.u64(word))
+        return TrainerError::IntegrityFailure;
+    if (!body.u64(entries) || entries != regrets_.size() || body.remaining() != entries * 16ULL)
+      return TrainerError::IntegrityFailure;
+    return std::nullopt;
+  };
+  stream_io::Reader validation(input);
+  const auto header_status = read_header(validation);
+  if (header_status)
+    return Outcome::failure(*header_status);
+  if (!validation.scan_doubles(regrets_.size()) ||
+      !validation.scan_doubles(strategy_sums_.size(), true) || !validation.finish())
     return Outcome::failure(TrainerError::IntegrityFailure);
-  }
-  for (auto &word : training_state) {
-    if (!body.read_little(word)) {
-      return Outcome::failure(TrainerError::IntegrityFailure);
-    }
-  }
-  for (auto &word : evaluation_state) {
-    if (!body.read_little(word)) {
-      return Outcome::failure(TrainerError::IntegrityFailure);
-    }
-  }
-  if (!body.read_little(entries) || entries != regrets_.size() ||
-      !body.read_doubles(regrets, static_cast<std::size_t>(entries)) ||
-      !body.read_doubles(sums, static_cast<std::size_t>(entries))) {
+  // Validate the complete file before changing existing state. The second
+  // pass uses the already allocated arrays. A changed file or an I/O failure
+  // during this commit poisons the trainer until another successful load.
+  stream_io::Reader commit(input);
+  if (read_header(commit))
     return Outcome::failure(TrainerError::IntegrityFailure);
-  }
-  if (identity != identity_) {
+  usable_ = false;
+  if (!commit.doubles(regrets_) || !commit.doubles(strategy_sums_, true) || !commit.finish())
     return Outcome::failure(TrainerError::IntegrityFailure);
-  }
   iteration_ = iteration;
   boards_processed_ = boards_processed;
   training_random_.restore(training_state);
   evaluation_random_.restore(evaluation_state);
-  regrets_ = std::move(regrets);
-  strategy_sums_ = std::move(sums);
+  usable_ = true;
   refresh_policy();
   return Outcome::success(true);
 }

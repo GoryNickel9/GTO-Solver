@@ -9,8 +9,9 @@
 #include "gtosd/card_abstraction/rank_table.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
-#include "gtosd/preflop_blueprint/trainer.hpp"
+#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
+#include "gtosd/preflop_blueprint/trainer.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -81,10 +82,15 @@ int main(const int argc, char **argv) {
     std::filesystem::path checkpoint_path;
     // Average policy written at the end (for the certifier and the export).
     std::filesystem::path policy_path;
+    std::filesystem::path current_policy_path;
+    bool use_class_rows = false;
+    std::filesystem::path history_rows_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
     std::uint32_t evaluation_flops = 20U;
     std::uint64_t evaluate_every = 10U;
+    std::uint64_t progress_every = 0U;
+    std::uint64_t checkpoint_every = 0U;
     // Diagnostic exact mode: the first N boards drawn with the training seed
     // form a fixed, equally weighted board list processed in full every
     // iteration and evaluated exactly.
@@ -104,6 +110,14 @@ int main(const int argc, char **argv) {
     config.update_mode = pb::UpdateMode::Alternating;
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
+      if (name == "--batch-policy-refresh") {
+        config.batch_policy_refresh = true;
+        continue;
+      }
+      if (name == "--class-rows") {
+        use_class_rows = true;
+        continue;
+      }
       if (name == "--resume") {
         resume = true;
         continue;
@@ -126,8 +140,12 @@ int main(const int argc, char **argv) {
         resources_dir = value;
       } else if (name == "--buckets-dir") {
         buckets_dir = value;
+      } else if (name == "--history-rows") {
+        history_rows_path = value;
       } else if (name == "--policy-out") {
         policy_path = std::filesystem::path(value);
+      } else if (name == "--current-policy-out") {
+        current_policy_path = std::filesystem::path(value);
       } else if (name == "--checkpoint") {
         checkpoint_path = value;
       } else if (name == "--iterations") {
@@ -140,6 +158,10 @@ int main(const int argc, char **argv) {
         evaluation_flops = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--eval-every") {
         evaluate_every = parse_unsigned(value);
+      } else if (name == "--progress-every") {
+        progress_every = parse_unsigned(value);
+      } else if (name == "--checkpoint-every") {
+        checkpoint_every = parse_unsigned(value);
       } else if (name == "--scheme") {
         if (value == "linear") {
           config.scheme = pb::WeightingScheme::Linear;
@@ -171,6 +193,12 @@ int main(const int argc, char **argv) {
     if (config_path.empty() || resources_dir.empty() || buckets_dir.empty()) {
       throw std::runtime_error("--config, --resources-dir and --buckets-dir are required");
     }
+    if (resume && (checkpoint_path.empty() || !std::filesystem::exists(checkpoint_path))) {
+      throw std::runtime_error("--resume requires an existing checkpoint");
+    }
+    if (checkpoint_every > 0U && checkpoint_path.empty()) {
+      throw std::runtime_error("--checkpoint-every requires --checkpoint");
+    }
 
     const auto started = Clock::now();
     const auto game_config = pb::parse_game_config_json(read_file(config_path));
@@ -201,6 +229,31 @@ int main(const int argc, char **argv) {
     resources.flop = &flop.value();
     resources.turn = &turn.value();
     resources.river = &river.value();
+    std::optional<pb::ClassBucketRows> class_rows;
+    std::optional<pb::HistoryBucketRows> history_rows;
+    if (!history_rows_path.empty()) {
+      if (use_class_rows)
+        throw std::runtime_error("choose class rows or history rows");
+      auto mapped = pb::HistoryBucketRows::load(history_rows_path);
+      if (!mapped)
+        throw std::runtime_error("history map load failed");
+      history_rows.emplace(std::move(mapped.value()));
+      resources.history_rows = &*history_rows;
+      config.flop_capacity = history_rows->count(ca::BucketStreet::Flop);
+      config.turn_capacity = history_rows->count(ca::BucketStreet::Turn);
+      config.river_capacity = history_rows->count(ca::BucketStreet::River);
+    }
+    if (use_class_rows) {
+      auto built = pb::ClassBucketRows::build(flop.value(), turn.value(), river.value());
+      if (!built) {
+        throw std::runtime_error("class row mapping failed");
+      }
+      class_rows.emplace(std::move(built.value()));
+      resources.class_rows = &*class_rows;
+      config.flop_capacity = class_rows->count(ca::BucketStreet::Flop);
+      config.turn_capacity = class_rows->count(ca::BucketStreet::Turn);
+      config.river_capacity = class_rows->count(ca::BucketStreet::River);
+    }
     std::optional<pb::TrainingBoards> boards;
     if (fixed_boards > 0U) {
       boards.emplace();
@@ -262,6 +315,9 @@ int main(const int argc, char **argv) {
               << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
 
     double training_seconds = 0.0;
+    const auto initial_iteration = trainer.iteration();
+    double discount_seconds = 0.0, refresh_seconds = 0.0, prepare_seconds = 0.0,
+           traversal_seconds = 0.0;
     double evaluation_seconds = 0.0;
     bool converged = false;
     std::uint64_t process_bytes = 0U;
@@ -285,7 +341,23 @@ int main(const int argc, char **argv) {
                                  pb::trainer_error_name(telemetry.error()));
       }
       training_seconds += telemetry.value().seconds;
+      discount_seconds += telemetry.value().discount_seconds;
+      refresh_seconds += telemetry.value().policy_refresh_seconds;
+      prepare_seconds += telemetry.value().board_prepare_seconds;
+      traversal_seconds += telemetry.value().traversal_seconds;
       process_bytes = telemetry.value().process_bytes;
+      if (progress_every > 0U && trainer.iteration() % progress_every == 0U) {
+        std::cout << "{\"event\":\"training_progress\",\"iteration\":" << trainer.iteration()
+                  << ",\"training_seconds\":" << training_seconds
+                  << ",\"boards_processed\":" << trainer.boards_processed()
+                  << ",\"process_bytes\":" << process_bytes << "}\n"
+                  << std::flush;
+      }
+      if (checkpoint_every > 0U && trainer.iteration() % checkpoint_every == 0U) {
+        if (!trainer.save_checkpoint(checkpoint_path)) {
+          throw std::runtime_error("periodic checkpoint write failed");
+        }
+      }
       const bool evaluate = evaluate_every > 0U && (trainer.iteration() % evaluate_every == 0U ||
                                                     trainer.iteration() == iterations);
       if (!evaluate) {
@@ -309,11 +381,35 @@ int main(const int argc, char **argv) {
       }
     }
     std::string policy_fingerprint_text;
+    const std::string abstraction_source =
+        history_rows ? "|abstraction=history-v1|map=" + history_rows->fingerprint()
+        : use_class_rows
+            ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
+                  "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
+            : "";
+    // Save final state even when periodic evaluation was explicitly disabled.
+    if (!checkpoint_path.empty()) {
+      const auto saved = trainer.save_checkpoint(checkpoint_path);
+      if (!saved) {
+        throw std::runtime_error("final checkpoint write failed");
+      }
+    }
+    if (!current_policy_path.empty()) {
+      const auto current = trainer.take_current_policy();
+      const auto saved = pb::save_policy(
+          current_policy_path, compiled.value(), current,
+          trainer.identity() + "|current|iteration=" + std::to_string(trainer.iteration()) +
+              abstraction_source);
+      if (!saved) {
+        throw std::runtime_error("current policy write failed");
+      }
+    }
     if (!policy_path.empty()) {
-      const auto average = trainer.average_policy();
-      const auto saved = pb::save_policy(policy_path, compiled.value(), average,
-                                         trainer.identity() + "|iteration=" +
-                                             std::to_string(trainer.iteration()));
+      const auto average = trainer.take_average_policy();
+      const auto saved =
+          pb::save_policy(policy_path, compiled.value(), average,
+                          trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
+                              abstraction_source);
       if (!saved) {
         throw std::runtime_error(std::string("policy write failed: ") +
                                  pb::policy_file_error_name(saved.error()));
@@ -326,8 +422,14 @@ int main(const int argc, char **argv) {
               << ", \"converged\": " << (converged ? "true" : "false")
               << ", \"training_seconds\": " << training_seconds
               << ", \"evaluation_seconds\": " << evaluation_seconds
-              << ", \"seconds_per_iteration\": "
-              << (trainer.iteration() > 0U ? training_seconds / static_cast<double>(trainer.iteration()) : 0.0)
+              << ", \"discount_seconds\": " << discount_seconds
+              << ", \"policy_refresh_seconds\": " << refresh_seconds
+              << ", \"board_prepare_seconds\": " << prepare_seconds
+              << ", \"traversal_seconds\": " << traversal_seconds << ", \"seconds_per_iteration\": "
+              << (trainer.iteration() > initial_iteration
+                      ? training_seconds /
+                            static_cast<double>(trainer.iteration() - initial_iteration)
+                      : 0.0)
               << ", \"state_fingerprint\": \"" << trainer.state_fingerprint()
               << "\", \"process_bytes\": " << pb::process_working_set_bytes()
               << ", \"total_seconds\": "

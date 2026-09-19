@@ -9,6 +9,7 @@
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
+#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include <nlohmann/json.hpp>
 
@@ -51,6 +52,8 @@ int main(const int argc, char **argv) {
     std::filesystem::path output_path;
     bool uniform = false;
     bool use_class_rows = false;
+    std::filesystem::path history_rows_path;
+    std::optional<pb::HistoryBucketRows> history_rows;
     std::filesystem::path reference_path;
     std::optional<pb::ClassBucketRows> class_rows;
     pb::CertifierOptions options;
@@ -77,6 +80,8 @@ int main(const int argc, char **argv) {
         resources_dir = std::filesystem::path(value);
       } else if (name == "--buckets-dir") {
         buckets_dir = std::filesystem::path(value);
+      } else if (name == "--history-rows") {
+        history_rows_path = std::filesystem::path(value);
       } else if (name == "--policy") {
         policy_path = std::filesystem::path(value);
       } else if (name == "--output") {
@@ -130,10 +135,19 @@ int main(const int argc, char **argv) {
     resources.flop = &flop.value();
     resources.turn = &turn.value();
     resources.river = &river.value();
+    if (!history_rows_path.empty()) {
+      if (use_class_rows || uniform)
+        throw std::runtime_error("history rows require a saved history policy");
+      auto mapped = pb::HistoryBucketRows::load(history_rows_path);
+      if (!mapped)
+        throw std::runtime_error("history map load failed");
+      history_rows.emplace(std::move(mapped.value()));
+      resources.history_rows = &*history_rows;
+    }
     if (use_class_rows) {
-      if (reference_path.empty() || uniform) {
+      if (uniform) {
         throw std::runtime_error(
-            "--class-rows requires a saved policy and --reference-certificate");
+            "--class-rows requires a saved policy with table identity or a reference certificate");
       }
       auto mapped = pb::ClassBucketRows::build(flop.value(), turn.value(), river.value());
       if (!mapped) {
@@ -158,18 +172,39 @@ int main(const int argc, char **argv) {
       policy_source = info.source;
     }
 
+    if (history_rows) {
+      const auto &layout = policy.layout();
+      if (!policy_source.ends_with("|abstraction=history-v1|map=" + history_rows->fingerprint()) ||
+          layout.flop_capacity != history_rows->count(ca::BucketStreet::Flop) ||
+          layout.turn_capacity != history_rows->count(ca::BucketStreet::Turn) ||
+          layout.river_capacity != history_rows->count(ca::BucketStreet::River))
+        throw std::runtime_error("history policy and map identity mismatch");
+    }
     if (use_class_rows) {
-      const auto reference = nlohmann::json::parse(read_file(reference_path));
       const std::array<std::uint32_t, 3> counts{class_rows->count(ca::BucketStreet::Flop),
                                                 class_rows->count(ca::BucketStreet::Turn),
                                                 class_rows->count(ca::BucketStreet::River)};
-      if (reference.at("tree_fingerprint") != compiled.value().fingerprint() ||
-          reference.at("policy_fingerprint") != pb::policy_fingerprint(policy) ||
-          reference.at("flop_table_fingerprint") != flop.value().fingerprint() ||
-          reference.at("turn_table_fingerprint") != turn.value().fingerprint() ||
-          reference.at("river_table_fingerprint") != river.value().fingerprint() ||
-          reference.at("capacities") != nlohmann::json(counts)) {
-        throw std::runtime_error("class reference certificate fingerprint/capacity mismatch");
+      const std::string expected_source =
+          "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
+          "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint();
+      if (reference_path.empty()) {
+        const auto &layout = policy.layout();
+        if (!policy_source.ends_with(expected_source) ||
+            counts != std::array<std::uint32_t, 3>{layout.flop_capacity, layout.turn_capacity,
+                                                   layout.river_capacity}) {
+          throw std::runtime_error(
+              "class policy lacks matching table identity; provide its reference certificate");
+        }
+      } else {
+        const auto reference = nlohmann::json::parse(read_file(reference_path));
+        if (reference.at("tree_fingerprint") != compiled.value().fingerprint() ||
+            reference.at("policy_fingerprint") != pb::policy_fingerprint(policy) ||
+            reference.at("flop_table_fingerprint") != flop.value().fingerprint() ||
+            reference.at("turn_table_fingerprint") != turn.value().fingerprint() ||
+            reference.at("river_table_fingerprint") != river.value().fingerprint() ||
+            reference.at("capacities") != nlohmann::json(counts)) {
+          throw std::runtime_error("class reference certificate fingerprint/capacity mismatch");
+        }
       }
     }
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id

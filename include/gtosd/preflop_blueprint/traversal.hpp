@@ -33,6 +33,7 @@ public:
 class BucketPolicy final : public Policy {
 public:
   BucketPolicy(const CompiledGame &game, const StateLayout &layout);
+  BucketPolicy(const CompiledGame &game, const StateLayout &layout, std::vector<double> table);
   void set_uniform();
   [[nodiscard]] std::span<double> row(std::uint32_t node, std::uint32_t row_index) noexcept;
   [[nodiscard]] std::span<const double> row(std::uint32_t node,

@@ -229,9 +229,10 @@ public:
   // average policy the builder also records the lifted strategy profile.
   FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
                     const bool lossless = false, const pb::BucketPolicy *average = nullptr,
-                    const pb::ClassBucketRows *class_rows = nullptr)
+                    const pb::ClassBucketRows *class_rows = nullptr,
+                    const pb::HistoryBucketRows *history_rows = nullptr)
       : game_(game), resources_(resources), lossless_(lossless), average_(average),
-        class_rows_(class_rows) {}
+        class_rows_(class_rows), history_rows_(history_rows) {}
 
   [[nodiscard]] const gtosd::StrategyProfile &profile() const noexcept { return profile_; }
 
@@ -252,6 +253,7 @@ public:
     tables.turn = &resources_.turn.value();
     tables.river = &resources_.river.value();
     tables.class_rows = class_rows_;
+    tables.history_rows = history_rows_;
     for (std::size_t board = 0; board < boards.histories.size(); ++board) {
       const auto context =
           pb::BoardContext::build(boards.histories[board], resources_.ranks.value(), &tables);
@@ -415,6 +417,7 @@ private:
   bool lossless_{false};
   const pb::BucketPolicy *average_{nullptr};
   const pb::ClassBucketRows *class_rows_{nullptr};
+  const pb::HistoryBucketRows *history_rows_{nullptr};
   gtosd::StrategyProfile profile_;
   std::vector<gtosd::GameNode> nodes_;
 };

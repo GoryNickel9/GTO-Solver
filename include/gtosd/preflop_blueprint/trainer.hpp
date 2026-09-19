@@ -61,6 +61,8 @@ struct TrainerConfig {
   std::uint32_t river_capacity{1'000U};
   std::uint32_t batch_boards{32U};
   unsigned threads{1U};
+  // Storage/traversal optimization only; deliberately excluded from identity.
+  bool batch_policy_refresh{false};
   WeightingScheme scheme{WeightingScheme::Linear};
   UpdateMode update_mode{UpdateMode::Simultaneous};
   double dcfr_alpha{1.5};
@@ -80,6 +82,9 @@ struct TrainerResources {
   const card_abstraction::BucketTable *flop{nullptr};
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
+  // Optional immutable (preflop class, street bucket) map. Must outlive trainer.
+  const ClassBucketRows *class_rows{nullptr};
+  const HistoryBucketRows *history_rows{nullptr};
 };
 
 // Exact-mode hook: explicit boards with weights. With sample = false every
@@ -149,6 +154,10 @@ struct IterationTelemetry {
   std::uint32_t boards{0U};
   double seconds{0.0};
   double seconds_per_board{0.0};
+  double discount_seconds{0.0};
+  double policy_refresh_seconds{0.0};
+  double board_prepare_seconds{0.0};
+  double traversal_seconds{0.0};
   std::uint64_t nodes_visited{0U};
   std::uint64_t process_bytes{0U};
 };
@@ -170,6 +179,11 @@ public:
 
   [[nodiscard]] BucketPolicy average_policy() const;
   [[nodiscard]] BucketPolicy current_policy() const;
+  // Transfer the cache to a final export instead of allocating a fourth array.
+  // The next iterate rebuilds its cache; discard the returned export first
+  // when enforcing a three-array memory budget.
+  [[nodiscard]] BucketPolicy take_average_policy();
+  [[nodiscard]] BucketPolicy take_current_policy();
   [[nodiscard]] const std::vector<double> &regrets() const noexcept { return regrets_; }
   [[nodiscard]] const std::vector<double> &strategy_sums() const noexcept {
     return strategy_sums_;
@@ -212,7 +226,8 @@ private:
   Result<bool, TrainerError> initialize(const TrainingBoards *boards, const HandSubsets *subsets);
   Result<bool, TrainerError> prepare_board(const card_abstraction::BoardHistory &history,
                                            double weight, BoardWork &work) const;
-  void refresh_policy();
+  void refresh_policy(const std::vector<BoardWork> *batch = nullptr);
+  void fill_average_policy(std::vector<double> &table) const;
   void discount_state(std::uint64_t iteration);
   void pass(const BoardWork &board, std::uint8_t hero, double iteration_weight);
   void top_down_reach(std::uint32_t node, const double *hero_reach, const double *opponent_reach,
@@ -231,6 +246,7 @@ private:
                                                 double &weight) const;
 
   const CompiledGame *game_;
+  bool usable_{true};
   TrainerResources resources_;
   TrainerConfig config_;
   StateLayout layout_;

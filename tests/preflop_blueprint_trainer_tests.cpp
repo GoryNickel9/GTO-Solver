@@ -1,5 +1,7 @@
+#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/solver/enumerated_best_response.hpp"
 #include "preflop_blueprint_test_support.hpp"
+#include <map>
 
 #include <algorithm>
 #include <chrono>
@@ -249,7 +251,8 @@ void test_alternating_conditional_expectation(const Resources &resources, const 
   require(max_sum_error < 1e-10, "conditional strategy-sum expectation equals the exact traversal");
 }
 
-void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
+void test_finite_game_oracle(const Resources &resources, const int stack = 0,
+                             const bool class_mode = false, const bool history_mode = false) {
   const auto started = Clock::now();
   auto fixture = load_fixture(stack == 0 ? "preflop_blueprint_hu10_reduced_v1.json"
                                          : "preflop_blueprint_co40_test_v1.json");
@@ -266,7 +269,48 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
             << " public_nodes=" << game.value().nodes().size() << std::endl;
   constexpr std::uint64_t iterations = 25U;
 
-  FiniteGameBuilder builder(game.value(), resources);
+  std::optional<pb::ClassBucketRows> class_rows;
+  std::optional<pb::HistoryBucketRows> history_rows;
+  if (history_mode) {
+    std::map<std::uint64_t, std::uint64_t> weights;
+    const pb::AbstractionTables tables{&*resources.catalog, &*resources.flop, &*resources.turn,
+                                       &*resources.river};
+    // Complete the future support of each test flop so the physical BR can
+    // build every prefix hand, including those blocked by all listed rivers.
+    std::vector<std::array<gtosd::CardId, 3>> flops;
+    for (const auto &history : boards.histories)
+      if (std::find(flops.begin(), flops.end(), history.flop) == flops.end())
+        flops.push_back(history.flop);
+    for (const auto &flop : flops)
+      for (const auto &board : pb::full_runouts(flop).boards) {
+        const auto context = pb::BoardContext::build(board.history, *resources.ranks, &tables);
+        require(context.has_value(), "history oracle support context builds");
+        for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
+          const auto fkey = static_cast<std::uint64_t>(context.value().hand_classes()[hand]) *
+                                resources.flop->capacity() +
+                            context.value().row(gtosd::Street::Flop, hand);
+          const auto tkey =
+              fkey * resources.turn->capacity() + context.value().row(gtosd::Street::Turn, hand);
+          ++weights[tkey * resources.river->capacity() +
+                    context.value().row(gtosd::Street::River, hand)];
+        }
+      }
+    std::vector<pb::HistoryObservation> observations;
+    for (const auto &[key, weight] : weights)
+      observations.push_back({key, weight});
+    auto mapped = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                               std::move(observations), 2);
+    require(mapped.has_value(), "history oracle map builds");
+    history_rows.emplace(std::move(mapped.value()));
+  }
+  if (class_mode) {
+    auto mapped = pb::ClassBucketRows::build(*resources.flop, *resources.turn, *resources.river);
+    require(mapped.has_value(), "class rows build for trainer oracle");
+    class_rows.emplace(std::move(mapped.value()));
+  }
+  FiniteGameBuilder builder(game.value(), resources, false, nullptr,
+                            class_rows ? &*class_rows : nullptr,
+                            history_rows ? &*history_rows : nullptr);
   const auto finite = builder.build(boards, subsets);
   const auto summary = gtosd::validate_finite_game(finite);
   require(summary.has_value(),
@@ -283,7 +327,26 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
   config.threads = 2U;
   config.scheme = pb::WeightingScheme::Linear;
   config.update_mode = pb::UpdateMode::Simultaneous;
-  auto trainer = pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets);
+  auto training_resources = resources.view();
+  if (history_rows) {
+    training_resources.history_rows = &*history_rows;
+    config.flop_capacity = history_rows->count(ca::BucketStreet::Flop);
+    config.turn_capacity = history_rows->count(ca::BucketStreet::Turn);
+    config.river_capacity = history_rows->count(ca::BucketStreet::River);
+  }
+  if (class_rows) {
+    training_resources.class_rows = &*class_rows;
+    config.flop_capacity = class_rows->count(ca::BucketStreet::Flop);
+    config.turn_capacity = class_rows->count(ca::BucketStreet::Turn);
+    config.river_capacity = class_rows->count(ca::BucketStreet::River);
+    auto invalid = config;
+    ++invalid.river_capacity;
+    require(!pb::Trainer::create(game.value(), training_resources, invalid, &boards, &subsets),
+            "class row capacity mismatch is rejected before traversal");
+    require(!pb::Trainer::create(game.value(), resources.view(), config, &boards, &subsets),
+            "class capacity cannot be interpreted as plain buckets");
+  }
+  auto trainer = pb::Trainer::create(game.value(), training_resources, config, &boards, &subsets);
   require(trainer.has_value(),
           std::string("trainer creates: ") +
               (trainer ? "" : pb::trainer_error_name(trainer.error())));
@@ -343,7 +406,9 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
   // A bucket partition may forget earlier information. The old greedy BR was
   // not an exact constrained oracle on these games. Compare the trainer with
   // the independently built physical game, lifting the SAME bucket policy.
-  FiniteGameBuilder physical_builder(game.value(), resources, true, &average);
+  FiniteGameBuilder physical_builder(game.value(), resources, true, &average,
+                                     class_rows ? &*class_rows : nullptr,
+                                     history_rows ? &*history_rows : nullptr);
   const auto physical_game = physical_builder.build(boards, subsets);
   const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
   require(nash_conv.has_value(), "lossless FiniteGame NashConv computes");
@@ -362,6 +427,9 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
     const auto recall = gtosd::has_perfect_recall(finite, player);
     const auto estimate = gtosd::estimate_best_response_enumeration(finite, player);
     require(recall.has_value() && estimate.has_value(), "bucket BR preflight computes");
+    if (history_mode)
+      require(recall.value(),
+              "history representation has perfect recall in the independent finite game");
     std::cout << "bucket BR preflight player=" << static_cast<unsigned>(player)
               << " perfect_recall=" << recall.value()
               << " information_sets=" << estimate.value().information_sets
@@ -707,6 +775,133 @@ void test_exploitability_decreases(const Resources &resources) {
   require(curve.front() > 0.1, "the uniform strategy is clearly exploitable");
 }
 
+void test_history_rows(const Resources &resources) {
+  std::map<std::uint64_t, std::uint64_t> weights;
+  const pb::AbstractionTables tables{&resources.catalog.value(), &resources.flop.value(),
+                                     &resources.turn.value(), &resources.river.value()};
+  const auto boards = branching_boards();
+  for (std::size_t i = 0; i < boards.histories.size(); ++i) {
+    const auto context =
+        pb::BoardContext::build(boards.histories[i], resources.ranks.value(), &tables);
+    require(context.has_value(), "history test context builds");
+    for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
+      const auto fkey = static_cast<std::uint64_t>(context.value().hand_classes()[hand]) *
+                            resources.flop->capacity() +
+                        context.value().row(gtosd::Street::Flop, hand);
+      const auto tkey =
+          fkey * resources.turn->capacity() + context.value().row(gtosd::Street::Turn, hand);
+      weights[tkey * resources.river->capacity() +
+              context.value().row(gtosd::Street::River, hand)] += i + 1;
+    }
+  }
+  std::vector<pb::HistoryObservation> observations;
+  for (const auto &[key, weight] : weights)
+    observations.push_back({key, weight});
+  pb::HistoryClusteringReport report;
+  auto exact = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                            observations, resources.river->capacity(), &report);
+  require(exact.has_value() && report.weighted_squared_distance == 0,
+          "uncompressed centroids have zero extra error");
+  auto single = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                             observations, 1, &report);
+  require(single.has_value(), "one river cluster per turn builds");
+  require(single.value().count(ca::BucketStreet::Turn) ==
+              single.value().count(ca::BucketStreet::River),
+          "river cap one retains exactly one distinct row per turn history");
+  std::reverse(observations.begin(), observations.end());
+  auto reversed = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                               observations, 1);
+  require(reversed.has_value() && reversed.value().fingerprint() == single.value().fingerprint(),
+          "input order does not change clustering");
+  std::map<std::uint32_t, std::uint64_t> parent_by_row;
+  for (const auto &observation : observations) {
+    const auto parent = observation.key / resources.river->capacity();
+    const auto fkey = parent / resources.turn->capacity();
+    const auto cls = static_cast<std::uint8_t>(fkey / resources.flop->capacity());
+    const auto fb = static_cast<std::uint16_t>(fkey % resources.flop->capacity());
+    const auto tb = static_cast<std::uint16_t>(parent % resources.turn->capacity());
+    const auto rb = static_cast<std::uint16_t>(observation.key % resources.river->capacity());
+    const auto row = single.value().row(gtosd::Street::River, cls, fb, tb, rb);
+    require(row != pb::no_history_row, "all supported river observations mapped");
+    const auto [found, inserted] = parent_by_row.emplace(row, parent);
+    require(inserted || found->second == parent, "no river row can forget its turn history");
+    require(single.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket) ==
+                single.value().row(gtosd::Street::Turn, cls, fb, tb, rb),
+            "turn row does not depend on future river bucket");
+  }
+  auto duplicate = observations;
+  duplicate.push_back(duplicate.front());
+  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                        duplicate, 1),
+          "duplicate support rejected");
+  duplicate = observations;
+  duplicate.front().weight = 0;
+  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                        duplicate, 1),
+          "zero physical weight rejected");
+  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
+                                        observations, 0),
+          "zero child capacity rejected");
+  const auto path =
+      std::filesystem::temp_directory_path() /
+      ("gtosd_history_" + std::to_string(Clock::now().time_since_epoch().count()) + ".bin");
+  require(single.value().save(path).has_value(), "history map saves");
+  auto loaded = pb::HistoryBucketRows::load(path);
+  require(loaded.has_value() && loaded.value().fingerprint() == single.value().fingerprint(),
+          "history map roundtrip preserves identity");
+  auto bytes = read_file(path);
+  bytes.back() ^= 1;
+  {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  }
+  require(!pb::HistoryBucketRows::load(path), "corrupt history map rejected");
+  std::filesystem::remove(path);
+}
+
+void test_batch_policy_refresh(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(game.has_value(), "batch refresh fixture compiles");
+  for (const auto scheme : {pb::WeightingScheme::Linear, pb::WeightingScheme::Dcfr})
+    for (const auto update : {pb::UpdateMode::Simultaneous, pb::UpdateMode::Alternating}) {
+      auto config = resources.config();
+      config.scheme = scheme;
+      config.update_mode = update;
+      config.batch_boards = 8;
+      config.threads = 1;
+      auto dense = pb::Trainer::create(game.value(), resources.view(), config);
+      config.batch_policy_refresh = true;
+      config.threads = 4;
+      auto selected = pb::Trainer::create(game.value(), resources.view(), config);
+      require(dense.has_value() && selected.has_value(), "dense and selected trainers create");
+      for (int iteration = 0; iteration < 8; ++iteration) {
+        require(dense.value()->iterate().has_value() && selected.value()->iterate().has_value(),
+                "both refresh variants iterate");
+        require(dense.value()->regrets() == selected.value()->regrets() &&
+                    dense.value()->strategy_sums() == selected.value()->strategy_sums() &&
+                    dense.value()->state_fingerprint() == selected.value()->state_fingerprint(),
+                "selected snapshot is bit-identical for both algorithms and update modes");
+        if (iteration == 3) {
+          const auto state = selected.value()->state_fingerprint();
+          {
+            const auto expected = selected.value()->average_policy();
+            const auto taken = selected.value()->take_average_policy();
+            require(expected.table() == taken.table(),
+                    "transferred average equals ordinary export");
+          }
+          {
+            const auto expected = selected.value()->current_policy();
+            const auto taken = selected.value()->take_current_policy();
+            require(expected.table() == taken.table(),
+                    "transferred current equals ordinary export");
+          }
+          require(selected.value()->state_fingerprint() == state,
+                  "export does not perturb training state");
+        }
+      }
+    }
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -727,8 +922,12 @@ int main(const int argc, char **argv) {
       }
     }
     const auto resources = load_resources(resources_dir, buckets_dir);
+    test_history_rows(resources);
+    test_batch_policy_refresh(resources);
     test_forgotten_information_witness();
     test_diagnostic_contracts(resources);
+    test_finite_game_oracle(resources, 40, true);
+    test_finite_game_oracle(resources, 40, false, true);
     std::cout << "resources " << (resources.loaded ? "loaded" : "built") << ", bucket tables "
               << (resources.buckets_loaded ? "loaded" : "built") << " ("
               << resources.flop->capacity() << "/" << resources.turn->capacity() << "/"

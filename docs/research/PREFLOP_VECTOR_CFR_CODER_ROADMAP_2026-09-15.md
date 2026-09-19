@@ -118,7 +118,7 @@ fingerprint prodotti. Nessun parametro si regola guardando le frequenze Monker.
 
 | Parametro | Default | Intervallo ammesso | Condizione per cambiarlo |
 |---|---|---|---|
-| Capacità bucket flop/turn/river | 200/500/1.000; secondo candidato 500/1.000/2.000 | 50–4.000 per street; stato numerico ≤ 4 GiB sulla macchina di riferimento | confronto matched su 3 seed |
+| Capacità bucket flop/turn/river | 200/500/1.000; secondo candidato 500/1.000/2.000 | 50–4.000 bucket di base per street; stato numerico ≤ **12 GiB** sulla macchina di riferimento (D28, sostituisce 4 GiB) | confronto matched su 3 seed |
 | Bin dell'istogramma flop/turn | 16 | 8–32 | dispersione intra-bucket ed exploitability; nuovo fingerprint dell'astrazione |
 | Gruppi avversari OCHS al river | 8 | 4–16 | come sopra |
 | Distanze del clustering | EMD per istogrammi, L2 per OCHS | fisse | solo con evidenza e nuova identità dell'astrazione |

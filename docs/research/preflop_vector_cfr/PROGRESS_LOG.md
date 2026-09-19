@@ -20,7 +20,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Build | `out/build/windows-release` del worktree (Release, MSVC, /W4 /WX) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **0,03 a, l'1 % del piatto iniziale** (D27, decisione dell'utente del 2026-09-18, stringe lo 0,1 a provvisorio di D2). Unico gioco qualificato: **HU10** a 0,003981 a |
-| Prossimo passo | Confrontare corrente e media dello stesso checkpoint CO40 reale, prima di cambiare training o bucket. Il [seguito dell'audit](CONSTRAINED_BR_AUDIT_2026-09-19.md) corregge la BR generica fuori dominio, certifica deviazioni congiunte ridotte e localizza la rotta limp della BR fisica. I run ridotti lunghi convergono anche con class: nessun candidato promosso, causa dominante CO40 ancora INCONCLUSIVE. HU20 class resta a 0,060957 a, CO40 class a 0,500181 a. |
+| Prossimo passo | HU20 class a 8.000: certificazione integrale 0,049244482 a, FAIL. Controllo ASAN del nuovo trainer, poi pilot gerarchico HU20 entro 12 GiB. HU30 e HU40 restano in attesa. [Protocollo del goal](HU20_HU30_HU40_GOAL_2026-09-19.md). |
 
 ## 2. Registro dei gate
 
@@ -41,6 +41,120 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-19 — HU20 class a 8.000: FAIL, difetto congiunto persistente
+
+Certificazione completa terminata: 573 flop, 605.088 board, max gain
+**0,049244481988271999 ante**, P1 0,0030199656767189442; gate 0,03 non passato.
+Media `fnv1a64:36e9290be79d23ab`, albero invariato `f5b432de223744cc`.
+Certificato `out/hu_goal/hu20_t8000_full.json`, 933,681 s; durata del processo
+938,669 s, picco working set 463.699.968 byte, eseguibile SHA256
+`1fa84464b5d1346e5db3c04d84f9e995e6ec7ac3b3ee01762e4e451cf1d0f3f1`.
+
+La curva 2.000/4.000/8.000 vale 0,060957434/0,053314792/0,049244482.
+L'ultimo raddoppio migliora del 7,63%, senza dimostrare un limite asintotico.
+P0: sola deviazione preflop 0,0013142326812759994; postflop a preflop fissato
+0,0023188694998061907. Limp/check resta raro nella media (0,0020397999829581195)
+e frequente nella BR congiunta (0,23590873211877225); recupero postflop su
+questa rotta 0,10183680487752461 ante. Nessuna localizzazione causale ulteriore
+e dedotta da questi soli valori.
+
+Si applica il protocollo gia dichiarato: dopo ASAN, pilot history7 solo HU20,
+checkpoint 500/2.000, stesso seed, stesso algoritmo e stesso albero. Non si
+estende ancora class a un altro numero arbitrario di iterazioni.
+
+### 2026-09-19 — HU20 a 8.000 completato; certificazione esclusiva
+
+Terminata la continuazione class da 4.000 a 8.000: 512.000 board cumulativi,
+media `fnv1a64:36e9290be79d23ab`, stato `fnv1a64:ae2ecc4ad3ba6dfe`.
+Training della continuazione 2.470,04 s, totale 2.538,09 s, quattro thread.
+Il vecchio eseguibile divide il tempo per le 8.000 iterazioni cumulative:
+il costo corretto delle 4.000 nuove iterazioni e 0,61751 s/iterazione.
+Il denominatore e gia corretto nella CLI corrente.
+
+Checkpoint conservato in `out/hu_goal/hu20_class_t8000_ckpt.bin`.
+Avviata certificazione completa su 573 flop, otto thread, senza altri
+training o benchmark concorrenti. Output atteso `hu20_t8000_full.json`;
+log e misura del processo in `hu20_t8000_full.log` e
+`hu20_t8000_full.runtime.json`. Nessun esito di convergenza ancora disponibile.
+
+### 2026-09-19 — priorita richiesta: HU20 prima, poi HU30 e HU40
+
+L'utente chiede perche si stiano testando piu cose insieme e propone di
+controllare prima solo HU20. Si adotta l'ordine sequenziale: completare
+HU20 class a 8.000 e certificarlo; se non passa, pilot della rappresentazione
+gerarchica su HU20. HU30 e HU40 seguiranno una soluzione verificata su HU20.
+Non sono stati avviati nuovi training HU30; su HU40 history7 sono state
+eseguite soltanto le 10 iterazioni di profiling e i controlli di persistenza.
+La concorrenza tra lavoro HU20 e controlli HU40 contendeva la CPU e limitava
+la comparabilita dei tempi. L'obiettivo finale dei tre giochi resta invariato.
+
+### 2026-09-19 — HU20 migliora a 4.000; candidata con storia completa fino al turn
+
+HU20 class riprodotto a 2.000 con fingerprint identico al riferimento storico.
+A 4.000, certificazione integrale: max gain **0,053314791870190045 a**, P1
+0,0050854663726125487, lower bound a preflop fissato 0,0037933522150657498.
+Policy `fnv1a64:93dcdf50196772ae`, stesso albero `f5b432de223744cc`.
+Artefatto `out/hu_goal/hu20_t4000_full.json`, 1.599,315 s con altri lavori
+CPU attivi. Il calo rispetto a 2.000 e del 12,54%; gate ancora FAIL.
+Continuazione a 8.000 in corso, stesso seed e algoritmo.
+
+Controllo corrente/media sullo stesso campione di 64 flop: corrente peggiore
+sia su HU40 a 10.000 (0,736903 contro 0,576612) sia su HU20 a 2.000
+(0,145985 contro 0,113256). Nessun reset della media proposto. Sono stime,
+con selezione preflop sul campione, non certificazioni integrali.
+
+Il censimento completo conta 7.585/222.865/4.248.476 righe mantenendo classe
+e tutti i bucket precedenti. Stato numerico completo HU40: 30.278.673.480 byte;
+i soli regret e accumuli superano 12 GiB. Candidata `history7`: conserva tutti
+i bucket flop e turn e raggruppa solo river sotto lo stesso genitore turn,
+con massimo 7 figli scelto dal limite di memoria (8 richiede 12,08 GiB).
+Supporto fisico integrale, centroidi river gia esistenti, pesi esatti;
+inizializzazione deterministica e Lloyd pesato, senza dati del training.
+Mappa `fnv1a64:3c9ee76ca6aad23b`, 7.585/222.865/1.539.270 righe,
+52.829.432 byte. Stato HU40 previsto 11.552.641.608 byte. Artefatti
+`out/hu_goal/history7.bin` e `history7.json`; costruzione e roundtrip 36,585 s.
+La distanza aggiunta fra centroidi non e una misura di exploitability.
+
+Oracolo integrato e regressioni PASS, 21.309.860 asserzioni: regret e media
+contro FiniteGame, BR fisica contro gioco lossless e perfect recall verificato
+per entrambi i giocatori sul gioco ridotto gerarchico. Profiling HU40 history7:
+10 iterazioni, 94,716 s; refresh policy 73,027 s, discount 12,102 s,
+preparazione board 3,041 s, traversate 6,547 s. Working set osservato massimo
+11.805.118.464 byte, circa 11,0 GiB. Dati con altri run CPU attivi.
+Si verifica ora il refresh delle sole righe del batch, mantenendo snapshot
+prima di ogni passaggio e discount globale invariati; si richiede identita
+bit per bit. Checkpoint ed export passano a I/O streaming per evitare copie
+integrali extra, preservando formato e checksum. Nessun risultato del nuovo
+training e ancora disponibile.
+
+GPU rilevata con `nvidia-smi`: RTX 3050, 6 GiB totali, 4.968 MiB liberi al
+controllo. Non introdotta: lo stato non entra integralmente in VRAM e il
+profiling ha prima individuato lavoro CPU evitabile. La roadmap permette
+un esperimento GPU con misure di velocita e qualita; non occorre una deroga.
+
+### 2026-09-19 — nuovo limite di memoria: 12 GiB
+
+Decisione esplicita dell'utente durante il goal HU20/HU30/HU40: il limite
+precedente di 4 GiB non vale piu, il nuovo limite e 12 GiB. Il censimento
+preliminare si era arrestato dopo 108 flop, con lower bound 4,02 GiB per
+regret+accumuli HU20. Si completa ora il conteggio per distinguere gli schemi
+che entrano realmente nel nuovo budget. Precisione float64 e gate 0,03 invariati.
+
+### 2026-09-19 — mandato persistente HU20/HU30/HU40
+
+L'utente assegna come unico goal il superamento dei tre giochi e chiede di
+non fermarsi prima. Si continua oltre gli esiti intermedi inconcludenti,
+registrandoli, senza cambiare gate, size o regole. Protocollo e stato in
+[HU20_HU30_HU40_GOAL_2026-09-19.md](HU20_HU30_HU40_GOAL_2026-09-19.md).
+Base `c319218`, worktree isolato invariato. HU40 corrisponde alla fixture
+heads-up CO40 storica; le tre fixture di test sono congelate.
+
+Class entra nel trainer ordinario come risorsa immutabile con identità:
+oracolo indipendente e regressioni PASS (81,60 s). Estratta la corrente dal
+checkpoint HU40 t=10.000 dopo checksum e uguaglianza di tutte le 16.332.395
+celle della media con la policy salvata. In corso confronto corrente/media
+sugli stessi 64 flop campionati, seed 20260919, nessun nuovo training HU40.
 
 ### 2026-09-19 — P9 — esito del confronto congiunto e delle traiettorie lunghe
 

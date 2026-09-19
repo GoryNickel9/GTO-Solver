@@ -21,6 +21,7 @@
 // seven-card ranks, rank order, preflop hand class, street buckets and the
 // per-card incidence lists used by the blocker corrections of the kernels.
 namespace gtosd::preflop_blueprint {
+class HistoryBucketRows;
 
 inline constexpr std::size_t live_hand_count = 465U;
 // Live hands that contain a given non-board card.
@@ -62,6 +63,7 @@ struct AbstractionTables {
   const card_abstraction::BucketTable *river{nullptr};
   // Must outlive contexts built from these tables. Null retains plain buckets.
   const ClassBucketRows *class_rows{nullptr};
+  const HistoryBucketRows *history_rows{nullptr};
 };
 
 class BoardContext {
@@ -97,11 +99,13 @@ public:
     return hand_class_;
   }
   // Information row of a hand at a street: the preflop class or the bucket.
-  [[nodiscard]] std::uint16_t row(const Street street, const std::uint16_t hand) const noexcept {
+  [[nodiscard]] std::uint32_t row(const Street street, const std::uint16_t hand) const noexcept {
     if (street == Street::Preflop) {
       return hand_class_[hand];
     }
     const auto index = static_cast<std::size_t>(street) - 1U;
+    if (has_history_rows_)
+      return history_rows_[index][hand];
     return class_rows_ == nullptr
                ? buckets_[index][hand]
                : class_rows_->row(static_cast<card_abstraction::BucketStreet>(index),
@@ -125,6 +129,8 @@ public:
   [[nodiscard]] std::uint16_t distinct_rank_groups() const noexcept { return rank_groups_; }
 
 private:
+  bool has_history_rows_{false};
+  std::array<std::array<std::uint32_t, live_hand_count>, 3> history_rows_{};
   const ClassBucketRows *class_rows_{nullptr};
   card_abstraction::BoardHistory history_{};
   std::array<CardId, 5> board_{};
