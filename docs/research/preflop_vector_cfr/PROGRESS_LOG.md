@@ -42,6 +42,27 @@ Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
 
+### 2026-09-19 — P9 — chiusura dell'audit e verifiche finali
+
+Completato il piano condizionale con esito INCONCLUSIVE sulla causa dominante.
+La metrica temporale non supera il controllo decisionale: nessun candidato
+promosso, nessuna nuova tabella o traiettoria di training. CO40 resta a 0,500181
+ante e non supera il gate 0,03. Questa e una chiusura della diagnosi concordata,
+non una dichiarazione di convergenza o impossibilita.
+
+Commit: `17984a9` normalizzazione; `04ba03a` diagnostici e risultati. ASAN:
+kernel, trainer, certificatore, export, decision-gap e distanza temporale PASS,
+sei suite senza fallimenti, 3.123,45 s complessivi. Il toy e l'oracolo dei vicini
+sono PASS in Release; il secondo copre anche input invalidi dopo la revisione.
+Sette riepiloghi JSON validati, sorgenti formattati, diff controllato. Le durate
+includono concorrenza e non sono benchmark di throughput. Checkout principale
+pulito; nessuna scrittura sulle policy e risorse storiche.
+
+L'[audit completo](NASH_AUDIT_2026-09-19.md) contiene formule, comandi, pesi,
+risultati, fallimenti e motivazione dell'arresto. L'eventuale protocollo seguente
+deve misurare la deviazione congiunta vincolata ai bucket, partendo da un gioco
+enumerabile; il presente audit non avvia ulteriori esperimenti ad hoc.
+
 ### 2026-09-19 — P9 — copertura completa e mancata promozione del candidato
 
 Fatto: completati tutti i 573 flop ai nodi 4, 226, 448, 7.585 righe ciascuno,

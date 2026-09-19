@@ -368,3 +368,44 @@ Questo audit corregge il diagnostico e fornisce strumenti riproducibili, ma non
 riduce la deviazione Nash della policy salvata. CO40 resta non qualificato a
 0,500181 ante rispetto al gate di 0,03. Non sono dimostrati ne un limite
 asintotico della rappresentazione ne l'impossibilita di raggiungere il gate.
+
+Il valore 0,500181 e il guadagno della BR fisica contro la policy astratta
+sollevata nel gioco originale. Non misura direttamente NashConv del gioco
+vincolato ai bucket. La verifica successiva piu utile, in un protocollo distinto,
+e una deviazione congiunta vincolata alla rappresentazione, validata prima su
+un gioco ridotto enumerabile. I miglioramenti di singoli nodi qui misurati
+sono soltanto limiti inferiori a quella possibilita di deviazione.
+
+## 9. Validazione finale e consegna
+
+Correzione della normalizzazione: commit `17984a9`. Diagnostici, import class,
+test e risultati: commit `04ba03a`. Branch `codex/nash-convergence-audit`.
+Il checkout principale e pulito; nessuna nuova policy o tabella e stata prodotta.
+
+MSVC 19.51.36248.0, C++20, `/W4 /WX`. CPU Intel Core i3-10100F, otto thread
+logici. Le durate riportate comprendono verifiche concorrenti e non sono un
+confronto di throughput fra versioni del solver.
+
+| Suite ASAN (`windows-asan`) | Esito | Durata |
+|---|---|---:|
+| Kernel | PASS | 97,03 s |
+| Trainer | PASS | 1.969,11 s |
+| Certificatore | PASS | 511,69 s |
+| Export | PASS | 543,92 s |
+| Distanza temporale | PASS | 0,30 s |
+| Scomposizione decisionale | PASS | 0,26 s |
+
+Totale CTest ASAN: sei suite, zero fallimenti, 3.123,45 s. Nessun errore di
+memoria segnalato. Il preset Release completa anche i quattro controlli
+decision-gap, distanza temporale, gioco temporale e oracolo del trasferimento
+(6,19 s complessivi in quella passata). Dopo la revisione degli input, l'oracolo
+del trasferimento passa nuovamente e verifica anche il rifiuto di EV vuoti,
+indice combo 65.536 e reach negativa. La build corretta precede ciascuna
+esecuzione valida; i tentativi falliti del fixture e delle prime build restano
+nel diario. La formattazione finale e i commenti non cambiano il calcolo.
+
+I sette riepiloghi JSON dell'audit sono validi. Il diff supera il controllo
+whitespace; i nuovi C++ e le righe modificate sono formattati con clang-format.
+Policy e certificati storici sono rimasti in lettura; i replay hanno usato copie
+locali dello stato. Non sono stati eseguiti training del candidato, confronti a
+tre seed, modifiche di regole o size, oppure reclustering durante il training.
