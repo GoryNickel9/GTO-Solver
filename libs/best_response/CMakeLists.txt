@@ -1,5 +1,6 @@
 add_library(gtosd_best_response
-  src/best_response.cpp)
+  src/best_response.cpp
+  src/enumerated_best_response.cpp)
 add_library(gtosd::best_response ALIAS gtosd_best_response)
 
 target_include_directories(gtosd_best_response

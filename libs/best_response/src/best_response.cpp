@@ -1,4 +1,5 @@
 #include "gtosd/solver/best_response.hpp"
+#include "gtosd/solver/enumerated_best_response.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -382,6 +383,11 @@ Result<BestResponseResult, SolverError> exact_best_response(const FiniteGame &ga
   const auto valid = validate_strategy_profile(game, opponent_profile);
   if (!valid) {
     return Result<BestResponseResult, SolverError>::failure(valid.error());
+  }
+  const auto recall = has_perfect_recall(game, best_responder);
+  if (!recall || !recall.value()) {
+    return Result<BestResponseResult, SolverError>::failure(
+        recall ? SolverError::UnsupportedInformationStructure : recall.error());
   }
 
   std::map<std::string, InformationSetNodes> information_sets;

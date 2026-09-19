@@ -1,6 +1,19 @@
 find_package(benchmark CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
+add_executable(gtosd_constrained_br_audit constrained_br_audit.cpp)
+target_link_libraries(gtosd_constrained_br_audit PRIVATE gtosd::best_response nlohmann_json::nlohmann_json)
+gtosd_set_warnings(gtosd_constrained_br_audit)
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_short_deck_constrained_audit short_deck_constrained_audit.cpp)
+  target_link_libraries(gtosd_short_deck_constrained_audit PRIVATE
+    gtosd::preflop_blueprint gtosd::best_response nlohmann_json::nlohmann_json)
+  target_compile_definitions(gtosd_short_deck_constrained_audit PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_short_deck_constrained_audit)
+endif()
+
 add_executable(gtosd_benchmark_smoke benchmark_smoke.cpp)
 target_link_libraries(gtosd_benchmark_smoke
   PRIVATE

@@ -141,6 +141,21 @@ struct BestResponseReport {
     std::optional<double> conditional_gain;
   };
   std::vector<PostflopEntryLoss> postflop_entry_loss;
+  // Exact path accounting for the full physical BR's chosen preflop policy.
+  // Route-average holds that preflop policy fixed and restores average
+  // postflop play. Its change from EV may be negative. Postflop contributions
+  // then add to BR - route-average; this is an identity for these fixed policies,
+  // not a causal allocation or a bucket-constrained optimum.
+  std::array<double, 2> best_response_route_average_value{};
+  struct PostflopEntryRoute {
+    std::uint32_t node{0U};
+    std::uint8_t hero{0U};
+    std::string path;
+    double average_probability{0.0};
+    double response_probability{0.0};
+    double postflop_gain_on_response_route{0.0};
+  };
+  std::vector<PostflopEntryRoute> postflop_entry_route;
   // Standard errors of the means over equally weighted flop groups of the
   // per-flop values of the chosen best response and of the average strategy;
   // zero for one group, for unequal group weights or for an exact pass.

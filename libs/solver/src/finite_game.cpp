@@ -262,6 +262,10 @@ const char *solver_error_name(const SolverError error) noexcept {
     return "unsupported_subgame_version";
   case SolverError::IoFailure:
     return "io_failure";
+  case SolverError::ResourceLimitExceeded:
+    return "resource_limit_exceeded";
+  case SolverError::UnsupportedInformationStructure:
+    return "unsupported_information_structure";
   }
   return "unknown_solver_error";
 }

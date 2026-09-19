@@ -442,6 +442,21 @@ std::string certificate_json(const Certificate &certificate) {
            (loss.conditional_gain ? json_number(*loss.conditional_gain) : "null") + "}";
   }
   out += "],\n";
+  out += "  \"best_response_route_average_value\": [" +
+         json_number(report.best_response_route_average_value[0]) + ", " +
+         json_number(report.best_response_route_average_value[1]) + "],\n";
+  out += "  \"postflop_entry_route\": [";
+  for (std::size_t index = 0; index < report.postflop_entry_route.size(); ++index) {
+    const auto &route = report.postflop_entry_route[index];
+    out += std::string(index == 0 ? "" : ", ") + "{\"node\": " + std::to_string(route.node) +
+           ", \"path\": " + json_string(route.path) +
+           ", \"hero\": " + std::to_string(static_cast<unsigned>(route.hero)) +
+           ", \"average_probability\": " + json_number(route.average_probability) +
+           ", \"response_probability\": " + json_number(route.response_probability) +
+           ", \"postflop_gain_on_response_route\": " +
+           json_number(route.postflop_gain_on_response_route) + "}";
+  }
+  out += "],\n";
   out += "  \"best_response_preflop_mix\": [";
   for (std::size_t index = 0; index < report.best_response_preflop_mix.size(); ++index) {
     const auto &mix = report.best_response_preflop_mix[index];

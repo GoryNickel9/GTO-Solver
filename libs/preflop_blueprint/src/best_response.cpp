@@ -1,4 +1,5 @@
 #include "gtosd/preflop_blueprint/best_response.hpp"
+#include "gtosd/preflop_blueprint/action_labels.hpp"
 
 #include "gtosd/card_abstraction/card_abstraction.hpp"
 #include "gtosd/card_abstraction/combinatorics.hpp"
@@ -1473,6 +1474,39 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
           }
         }
         report.best_response_preflop_mix.push_back(mix);
+      }
+    }
+    // Follow the FULL response's preflop choices, not the preflop-only BR.
+    // This preserves joint deviations that deliberately enter a branch only
+    // because the responder will also change its postflop continuation.
+    {
+      NodeVectors average_leaves = terminals;
+      entry_leaves(hero, average_mode, all_groups, average_leaves);
+      NodeVectors response_leaves = terminals;
+      entry_leaves(hero, response_mode, all_groups, response_leaves);
+      NodeVectors average_reach, response_reach;
+      hero_reach_under(hero, nullptr, average_reach);
+      hero_reach_under(hero, &choice, response_reach);
+      report.best_response_route_average_value[hero] = value_under(response_reach, average_leaves);
+      for (const auto node : context.entries) {
+        std::vector<double> entry_mass;
+        fold_mass_universe(preflop, context.preflop_leaf_reach[hero][node], entry_mass);
+        BestResponseReport::PostflopEntryRoute route;
+        route.node = node;
+        route.hero = hero;
+        route.path = node_path_id(game, node);
+        for (std::size_t combo = 0; combo < combo_total; ++combo) {
+          const double prior = context.allowed[hero][combo] * hero_scale;
+          if (opponent_count[combo] > 0.0) {
+            const double probability = prior * entry_mass[combo] / opponent_count[combo];
+            route.average_probability += probability * average_reach[node][combo];
+            route.response_probability += probability * response_reach[node][combo];
+          }
+          route.postflop_gain_on_response_route +=
+              prior * response_reach[node][combo] *
+              (response_leaves[node][combo] - average_leaves[node][combo]);
+        }
+        report.postflop_entry_route.push_back(route);
       }
     }
     // Postflop quality independent of how often the blueprint gets there.

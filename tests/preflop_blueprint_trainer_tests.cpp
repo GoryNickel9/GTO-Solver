@@ -1,3 +1,4 @@
+#include "gtosd/solver/enumerated_best_response.hpp"
 #include "preflop_blueprint_test_support.hpp"
 
 #include <algorithm>
@@ -336,19 +337,37 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0) {
   }
   const auto exact = trainer.value()->estimate_exploitability(0U);
   require(exact.has_value() && exact.value().exact, "exact evaluation on the listed boards");
-  const auto nash_conv =
-      gtosd::calculate_nash_conv(finite, solved.value().average_strategy);
-  require(nash_conv.has_value(), "FiniteGame NashConv computes");
-  // The profile values coincide. The trainer's best response is the physical
-  // one (per hand on every board) and therefore dominates the FiniteGame
-  // best response, which is constrained to one action per bucket.
+  const auto bucket_value =
+      gtosd::evaluate_strategy_profile(finite, solved.value().average_strategy);
+  require(bucket_value.has_value(), "bucket profile evaluates without a recall assumption");
+  // A bucket partition may forget earlier information. The old greedy BR was
+  // not an exact constrained oracle on these games. Compare the trainer with
+  // the independently built physical game, lifting the SAME bucket policy.
+  FiniteGameBuilder physical_builder(game.value(), resources, true, &average);
+  const auto physical_game = physical_builder.build(boards, subsets);
+  const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
+  require(nash_conv.has_value(), "lossless FiniteGame NashConv computes");
+  require(close(bucket_value.value()[0], nash_conv.value().profile_value[0], 1e-9) &&
+              close(bucket_value.value()[1], nash_conv.value().profile_value[1], 1e-9),
+          "lifting preserves both profile values");
   require(close(exact.value().ev[0], nash_conv.value().profile_value[0], 1e-9) &&
               close(exact.value().ev[1], nash_conv.value().profile_value[1], 1e-9),
           "exact profile values equal calculate_nash_conv within 1e-9");
-  require(exact.value().best_response[0] >= nash_conv.value().best_response_value[0] - 1e-9 &&
-              exact.value().best_response[1] >= nash_conv.value().best_response_value[1] - 1e-9 &&
-              exact.value().nashconv >= nash_conv.value().nash_conv - 1e-9,
-          "physical best response dominates the abstract-game best response");
+  require(
+      close(exact.value().best_response[0], nash_conv.value().best_response_value[0], 1e-9) &&
+          close(exact.value().best_response[1], nash_conv.value().best_response_value[1], 1e-9) &&
+          close(exact.value().nashconv, nash_conv.value().nash_conv, 1e-9),
+      "both physical best responses and NashConv match the independent lossless oracle");
+  for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
+    const auto recall = gtosd::has_perfect_recall(finite, player);
+    const auto estimate = gtosd::estimate_best_response_enumeration(finite, player);
+    require(recall.has_value() && estimate.has_value(), "bucket BR preflight computes");
+    std::cout << "bucket BR preflight player=" << static_cast<unsigned>(player)
+              << " perfect_recall=" << recall.value()
+              << " information_sets=" << estimate.value().information_sets
+              << " policies=" << estimate.value().policies
+              << " overflow=" << estimate.value().overflow << '\n';
+  }
   std::cout << "oracle: finite game " << summary.value().nodes << " nodes, "
             << summary.value().information_sets << " information sets, " << compared
             << " cells compared, max regret error " << maximum_regret_error
@@ -572,6 +591,39 @@ void test_physical_best_response(const Resources &resources, const int stack = 0
                   1e-9),
             "physical best response equals the lossless FiniteGame best response within 1e-9");
     require(report.value().gain[player] >= -1e-9, "best response never loses to the average");
+    const auto response = gtosd::exact_best_response(physical, lossless.profile(), player);
+    require(response.has_value(), "independent full physical response policy exists");
+    auto route_profile = lossless.profile();
+    for (const auto &[key, action] : response.value().policy) {
+      const auto begin = key.find("|n") + 2;
+      const auto end = key.find('|', begin);
+      const auto public_node =
+          static_cast<std::uint32_t>(std::stoul(key.substr(begin, end - begin)));
+      if (game.value().nodes()[public_node].street != gtosd::Street::Preflop) {
+        continue;
+      }
+      auto &strategy = route_profile.at(key);
+      for (std::size_t a = 0; a < strategy.actions.size(); ++a) {
+        strategy.probabilities[a] = strategy.actions[a] == action ? 1.0 : 0.0;
+      }
+    }
+    const auto route_ev = gtosd::evaluate_strategy_profile(physical, route_profile);
+    require(route_ev.has_value() &&
+                close(route_ev.value()[player],
+                      report.value().best_response_route_average_value[player], 1e-9),
+            "full-BR preflop with average postflop matches independently lifted route policy");
+    double route_gain = 0.0;
+    for (const auto &route : report.value().postflop_entry_route) {
+      if (route.hero == player) {
+        require(route.average_probability >= 0 && route.average_probability <= 1 + 1e-12 &&
+                    route.response_probability >= 0 && route.response_probability <= 1 + 1e-12,
+                "entry route probabilities stay in the unit interval");
+        route_gain += route.postflop_gain_on_response_route;
+      }
+    }
+    require(
+        close(route_gain, report.value().best_response[player] - route_ev.value()[player], 1e-9),
+        "entry postflop gains sum to the whole continuation change on the same BR route");
   }
   require(close(report.value().nashconv, oracle.value().nash_conv, 1e-9),
           "nashconv equals the lossless FiniteGame");
@@ -586,18 +638,35 @@ void test_physical_best_response(const Resources &resources, const int stack = 0
               close(estimate.value().ev[0], report.value().ev[0], 1e-12),
           "trainer estimate equals the evaluator report");
 
-  // The bucket-constrained best response of the abstract game is dominated.
+  // A physical BR dominates every representable response, but the greedy
+  // finite-game API certifies the constrained optimum only with perfect recall.
   FiniteGameBuilder bucketed(game.value(), resources, false, &average);
   const auto abstract = bucketed.build(boards, subsets);
   const auto abstract_oracle = gtosd::calculate_nash_conv(abstract, bucketed.profile());
-  require(abstract_oracle.has_value(), "abstract NashConv computes");
-  require(report.value().nashconv >= abstract_oracle.value().nash_conv - 1e-9,
-          "physical best response dominates the abstract-game best response");
+  const auto recall0 = gtosd::has_perfect_recall(abstract, 0);
+  const auto recall1 = gtosd::has_perfect_recall(abstract, 1);
+  require(recall0.has_value() && recall1.has_value(), "both recall checks compute");
+  if (recall0.value() && recall1.value()) {
+    require(abstract_oracle.has_value(), "perfect-recall abstract NashConv computes");
+    require(report.value().nashconv >= abstract_oracle.value().nash_conv - 1e-9,
+            "physical best response dominates the perfect-recall abstract response");
+  } else {
+    require(!abstract_oracle &&
+                abstract_oracle.error() == gtosd::SolverError::UnsupportedInformationStructure,
+            "imperfect-recall game is not silently certified by greedy BR");
+  }
+  const auto abstract_value = gtosd::evaluate_strategy_profile(abstract, bucketed.profile());
+  require(abstract_value.has_value() &&
+              close(abstract_value.value()[0], report.value().ev[0], 1e-9) &&
+              close(abstract_value.value()[1], report.value().ev[1], 1e-9),
+          "physical lifting preserves both bucket profile values");
   std::cout << "physical best response (overlapping ranges=" << overlapping_ranges << "): EV ["
             << report.value().ev[0] << ", " << report.value().ev[1] << "], BR ["
             << report.value().best_response[0] << ", " << report.value().best_response[1]
             << "], nashconv " << report.value().nashconv << " (lossless oracle "
-            << oracle.value().nash_conv << ", abstract oracle " << abstract_oracle.value().nash_conv
+            << oracle.value().nash_conv << ", abstract oracle "
+            << (abstract_oracle ? std::to_string(abstract_oracle.value().nash_conv)
+                                : "unsupported_imperfect_recall")
             << "), lossless game " << summary.value().nodes << " nodes, "
             << summary.value().information_sets << " information sets, "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";

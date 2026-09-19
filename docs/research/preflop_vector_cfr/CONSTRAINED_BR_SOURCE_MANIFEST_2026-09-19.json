@@ -1,0 +1,28 @@
+{
+  "base_commit": "9b9d427",
+  "source_sha256": {
+    "benchmarks/CMakeLists.txt": "1cdfbe246e5f0f2d4cdcab54a35b193574fdfb3eb3391284fa81526ecf1a257f",
+    "benchmarks/constrained_br_audit.cpp": "6ad806fc614094c8c935f1686cad62a7baa5b8094f4cee30afd98d6978778d68",
+    "benchmarks/finite_game_audit_json.hpp": "b4b71ad61b5b2a32f70ac691afa7b712a2930744083445ce75668b5758b464eb",
+    "benchmarks/recall_witness.hpp": "50ce6aba4ab6946c99392723fae34432511b8f97ed63a78610a1fd133fd28994",
+    "benchmarks/short_deck_constrained_audit.cpp": "26a6081d54d5624769d3e02b45a369268528d403e5375feccf1144faa93a1b8a",
+    "include/gtosd/preflop_blueprint/best_response.hpp": "0b45bfcc7af99f94ddeab7bc2b54d3060f88b6053bd8908256fbb8625b986419",
+    "include/gtosd/solver/best_response.hpp": "8b1bc11415a135ed6a6a27f3bd34072a84f435a15301f2c7ea04d01ca8c74eb3",
+    "include/gtosd/solver/enumerated_best_response.hpp": "dd27544a99629b16e6b61afde0b87a4d667f54b2aa33b7f294cc6145502c206b",
+    "include/gtosd/solver/finite_game.hpp": "057d253796c57b69ccafdaf2d68e1148e955bf3a0e63880029786c1293fded8c",
+    "libs/best_response/CMakeLists.txt": "b4c69db90851c61d32e6bfc9a3985234bb58479f8767669e1cfd3f23976eb788",
+    "libs/best_response/src/best_response.cpp": "8a911f8b9b96a6ffdc46c733ae96af04bee573bd5ea8a3d8bd0d23695614d0d5",
+    "libs/best_response/src/enumerated_best_response.cpp": "44176b500770abf1065ca1e6a6d3132b81f8e2a4fcd154994e27b50e9da27aef",
+    "libs/preflop_blueprint/src/best_response.cpp": "d7f9a134021f608c119e19a6339dfa4bb15062ad900f7e2e70b89df784915ae4",
+    "libs/preflop_blueprint/src/certifier.cpp": "78a4f6dfccbdd89447656f5b796bc52c755e94506cd8fb93c01edde9cbb5468c",
+    "libs/solver/src/finite_game.cpp": "6a32654bebbf6f4ca8a213d84b6bd2039217199afbdfe56d501198d92948df3a",
+    "scripts/research/constrained_br_milp.py": "fca2f13d3fa41a255662e4a02397b834a109a6cac4abf904b1c314f6fc0be314",
+    "scripts/research/run_short_deck_constrained_milp.py": "ce50e0f0221d7fd8eb0fb845c3cea9b2fadf049f3967b9f9e40c00fa9aa590cb",
+    "scripts/research/summarize_constrained_br_audit.py": "38c2ea8f7e4c43723cbc0c0e3a1ba7a148a98e60bc5bea814cfe2911b52f3ea2",
+    "scripts/research/test_constrained_br_milp.py": "e794ed53f52d86118316d247e600485ad14a0b953058d924c4a1ac8809f395b0",
+    "tests/CMakeLists.txt": "4fc1dfe6049450d97b0c0d7da593fe7e33b1f82f583cb943a9bc97e48223b55f",
+    "tests/enumerated_best_response_tests.cpp": "bf60e63eeed18f7076c5bf6d4840f645114532eff01e06847421c57eda2a1765",
+    "tests/preflop_blueprint_test_support.hpp": "b774dbaa98575482c5b7ce06ff66ccce5fe09331cf30e441502c1a90c393bfb0",
+    "tests/preflop_blueprint_trainer_tests.cpp": "e23459b24b42c9496607286c3277571f974daf6f6c9dfc9368426519f3084340"
+  }
+}

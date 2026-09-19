@@ -31,7 +31,9 @@ enum class SolverError : std::uint8_t {
   UnsupportedAbstractionVersion,
   InvalidSubgame,
   UnsupportedSubgameVersion,
-  IoFailure
+  IoFailure,
+  ResourceLimitExceeded,
+  UnsupportedInformationStructure
 };
 
 struct GameAction {

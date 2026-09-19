@@ -228,8 +228,10 @@ public:
   // the listed boards, whose exact best response is the physical one. With an
   // average policy the builder also records the lifted strategy profile.
   FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
-                    const bool lossless = false, const pb::BucketPolicy *average = nullptr)
-      : game_(game), resources_(resources), lossless_(lossless), average_(average) {}
+                    const bool lossless = false, const pb::BucketPolicy *average = nullptr,
+                    const pb::ClassBucketRows *class_rows = nullptr)
+      : game_(game), resources_(resources), lossless_(lossless), average_(average),
+        class_rows_(class_rows) {}
 
   [[nodiscard]] const gtosd::StrategyProfile &profile() const noexcept { return profile_; }
 
@@ -249,6 +251,7 @@ public:
     tables.flop = &resources_.flop.value();
     tables.turn = &resources_.turn.value();
     tables.river = &resources_.river.value();
+    tables.class_rows = class_rows_;
     for (std::size_t board = 0; board < boards.histories.size(); ++board) {
       const auto context =
           pb::BoardContext::build(boards.histories[board], resources_.ranks.value(), &tables);
@@ -411,6 +414,7 @@ private:
   const Resources &resources_;
   bool lossless_{false};
   const pb::BucketPolicy *average_{nullptr};
+  const pb::ClassBucketRows *class_rows_{nullptr};
   gtosd::StrategyProfile profile_;
   std::vector<gtosd::GameNode> nodes_;
 };

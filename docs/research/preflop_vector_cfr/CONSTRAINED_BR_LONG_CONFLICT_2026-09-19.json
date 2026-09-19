@@ -1,0 +1,3202 @@
+{
+  "schema": "gtosd.research.short_deck_constrained_bounds.v1",
+  "input_sha256": "4db5d92ea2a07dce830328e0055bb157b77cbab18abffe35ffcf05bba0361f74",
+  "results": [
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": 2.000031996904597,
+      "physical_gain": 0.02106677452517891,
+      "internal_gain_lower": 0.02106677452517891,
+      "internal_gain_upper": 0.02106677452518335,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.978965222379418,
+      "candidate_value": 2.000031996904597,
+      "feasible_lower_bound": 2.000031996904597,
+      "numerical_upper_bound": 2.0000319969046014,
+      "absolute_gap": 4.440892098500626e-15,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-15,
+      "integrality_error": 2.4424906541753444e-15,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 4.969673599996895
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": -1.9025244471034095,
+      "physical_gain": 0.07644077527600857,
+      "internal_gain_lower": 0.07640632228002442,
+      "internal_gain_upper": 0.07640632228002486,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.978965222379418,
+      "candidate_value": -1.9025589000993937,
+      "feasible_lower_bound": -1.9025589000993937,
+      "numerical_upper_bound": -1.9025589000993932,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.6463291000000027
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": 2.000001974575697,
+      "physical_gain": 0.0013843086264273552,
+      "internal_gain_lower": 0.0013843086264273552,
+      "internal_gain_upper": 0.0013843086264277993,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9986176659492698,
+      "candidate_value": 2.000001974575697,
+      "feasible_lower_bound": 2.000001974575697,
+      "numerical_upper_bound": 2.0000019745756976,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 4.102978800001438
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": -1.993902852168097,
+      "physical_gain": 0.0047148137811727775,
+      "internal_gain_lower": 0.004712659822994736,
+      "internal_gain_upper": 0.004712659822994736,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9986176659492698,
+      "candidate_value": -1.993905006126275,
+      "feasible_lower_bound": -1.993905006126275,
+      "numerical_upper_bound": -1.993905006126275,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.7084341999980097
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": 2.000000019705637,
+      "physical_gain": 1.3883533400038672e-05,
+      "internal_gain_lower": 1.3883533400038672e-05,
+      "internal_gain_upper": 1.3883533400482762e-05,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.999986136172237,
+      "candidate_value": 2.000000019705637,
+      "feasible_lower_bound": 2.000000019705637,
+      "numerical_upper_bound": 2.0000000197056376,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 4.312758300002315
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": -1.9999391578880181,
+      "physical_gain": 4.6978284218957e-05,
+      "internal_gain_lower": 4.695673435972658e-05,
+      "internal_gain_upper": 4.695673435950454e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.999986136172237,
+      "candidate_value": -1.9999391794378774,
+      "feasible_lower_bound": -1.9999391794378774,
+      "numerical_upper_bound": -1.9999391794378776,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.8502490999999281
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": 2.0000578342316144,
+      "physical_gain": 0.0007363268600530937,
+      "internal_gain_lower": 0.0007363268600530937,
+      "internal_gain_upper": 0.3583129543746688,
+      "player": 0,
+      "status": 1,
+      "message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+      "profile_ev": 1.9993215073715616,
+      "candidate_value": 2.0000578342316144,
+      "feasible_lower_bound": 2.0000578342316144,
+      "numerical_upper_bound": 2.35763446174623,
+      "absolute_gap": 0.3575766275146157,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": false,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 88,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 30.197473200001696
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": -1.9983348779532808,
+      "physical_gain": 0.000986629418280538,
+      "internal_gain_lower": 0.000985906213784249,
+      "internal_gain_upper": 0.000985906213784249,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9993215073715616,
+      "candidate_value": -1.998335601157777,
+      "feasible_lower_bound": -1.998335601157777,
+      "numerical_upper_bound": -1.998335601157777,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.6432029999996303
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": 2.000003685125149,
+      "physical_gain": 4.5290632148198284e-05,
+      "internal_gain_lower": 4.5290632148642374e-05,
+      "internal_gain_upper": 0.85606614866566,
+      "player": 0,
+      "status": 1,
+      "message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+      "profile_ev": 1.9999583944930008,
+      "candidate_value": 2.0000036851251495,
+      "feasible_lower_bound": 2.0000036851251495,
+      "numerical_upper_bound": 2.856024543158661,
+      "absolute_gap": 0.8560208580335114,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": false,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 19,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 30.16829869999856
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": -1.9998985340459519,
+      "physical_gain": 5.9860447048976084e-05,
+      "internal_gain_lower": 5.9860414215240354e-05,
+      "internal_gain_upper": 5.986041421568444e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999583944930008,
+      "candidate_value": -1.9998985340787856,
+      "feasible_lower_bound": -1.9998985340787856,
+      "numerical_upper_bound": -1.9998985340787852,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.645620000002964
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": 2.0000000368576583,
+      "physical_gain": 4.520762006965384e-07,
+      "internal_gain_lower": 4.520762006965384e-07,
+      "internal_gain_upper": 4.520762006965384e-07,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999995847814578,
+      "candidate_value": 2.0000000368576583,
+      "feasible_lower_bound": 2.0000000368576583,
+      "numerical_upper_bound": 2.0000000368576583,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 25,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 18.187878000000637
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": -1.9999990454856567,
+      "physical_gain": 5.392958009053928e-07,
+      "internal_gain_lower": 5.389064641203589e-07,
+      "internal_gain_upper": 5.389064643424035e-07,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999995847814578,
+      "candidate_value": -1.9999990458749934,
+      "feasible_lower_bound": -1.9999990458749934,
+      "numerical_upper_bound": -1.9999990458749932,
+      "absolute_gap": 2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 8.881784197001252e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.2145311999993282
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": 2.2119890205136095,
+      "physical_gain": 0.21396493175354792,
+      "internal_gain_lower": 0.1985540348973771,
+      "internal_gain_upper": 0.19855403489737622,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9980240887600615,
+      "candidate_value": 2.1965781236574387,
+      "feasible_lower_bound": 2.1965781236574387,
+      "numerical_upper_bound": 2.1965781236574378,
+      "absolute_gap": -8.881784197001252e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 8.881784197001252e-16,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 127,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 15.30681099999856
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": -1.9631355087245292,
+      "physical_gain": 0.0348885800355323,
+      "internal_gain_lower": 0.03488858003553208,
+      "internal_gain_upper": 0.03488858003553186,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9980240887600615,
+      "candidate_value": -1.9631355087245295,
+      "feasible_lower_bound": -1.9631355087245295,
+      "numerical_upper_bound": -1.9631355087245297,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.1211231999986921
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": 2.000000991341253,
+      "physical_gain": 0.0007058147155634131,
+      "internal_gain_lower": 0.0007058147155634131,
+      "internal_gain_upper": 0.0007058147155634131,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9992951766256895,
+      "candidate_value": 2.000000991341253,
+      "feasible_lower_bound": 2.000000991341253,
+      "numerical_upper_bound": 2.000000991341253,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 5,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 9.151672199997847
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": -1.9987006344752594,
+      "physical_gain": 0.0005945421504303106,
+      "internal_gain_lower": 0.0005945421504305326,
+      "internal_gain_upper": 0.0005945428066667091,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9992951766256895,
+      "candidate_value": -1.9987006344752591,
+      "feasible_lower_bound": -1.9987006344752591,
+      "numerical_upper_bound": -1.998700633819023,
+      "absolute_gap": 6.562361765105607e-10,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.5221189000003505
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": 2.000000009847615,
+      "physical_gain": 7.434636267289463e-06,
+      "internal_gain_lower": 7.434636267289463e-06,
+      "internal_gain_upper": 7.434636266845374e-06,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999925752113477,
+      "candidate_value": 2.000000009847615,
+      "feasible_lower_bound": 2.000000009847615,
+      "numerical_upper_bound": 2.0000000098476147,
+      "absolute_gap": -4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2038,
+      "sequence_variables": 2699,
+      "constraints": 8987,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 0,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 2.373164500000712
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": -1.9999870535540978,
+      "physical_gain": 5.521657250096013e-06,
+      "internal_gain_lower": 5.521596232904713e-06,
+      "internal_gain_upper": 5.521596233126758e-06,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999925752113477,
+      "candidate_value": -1.999987053615115,
+      "feasible_lower_bound": -1.999987053615115,
+      "numerical_upper_bound": -1.9999870536151148,
+      "absolute_gap": 2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 6.661338147750939e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2442,
+      "sequence_variables": 3019,
+      "constraints": 10120,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.147664000000077
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": 2.00003117873651,
+      "physical_gain": 0.0012914870687381619,
+      "internal_gain_lower": 0.0012914870687381619,
+      "internal_gain_upper": 0.001291487068738606,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9987396916677718,
+      "candidate_value": 2.00003117873651,
+      "feasible_lower_bound": 2.00003117873651,
+      "numerical_upper_bound": 2.0000311787365104,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.116877000000386
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": -1.9966292675338444,
+      "physical_gain": 0.002110424133927369,
+      "internal_gain_lower": 0.002110424133927369,
+      "internal_gain_upper": 0.002110424133927147,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9987396916677718,
+      "candidate_value": -1.9966292675338444,
+      "feasible_lower_bound": -1.9966292675338444,
+      "numerical_upper_bound": -1.9966292675338446,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.3474053999998432
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": 2.0000019762529253,
+      "physical_gain": 7.9980360088161e-05,
+      "internal_gain_lower": 7.9980360088161e-05,
+      "internal_gain_upper": 7.99803600886051e-05,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999219958928374,
+      "candidate_value": 2.0000019762529253,
+      "feasible_lower_bound": 2.0000019762529253,
+      "numerical_upper_bound": 2.0000019762529258,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.4000196000015421
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": -1.9998086428977633,
+      "physical_gain": 0.00011335299507386765,
+      "internal_gain_lower": 0.0001133198554488235,
+      "internal_gain_upper": 0.00011331985544926759,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999219958928374,
+      "candidate_value": -1.9998086760373883,
+      "feasible_lower_bound": -1.9998086760373883,
+      "numerical_upper_bound": -1.9998086760373879,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.2760605000003125
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": 2.0000000197200323,
+      "physical_gain": 7.937701647087181e-07,
+      "internal_gain_lower": 7.937701647087181e-07,
+      "internal_gain_upper": 7.937701642646289e-07,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999992259498678,
+      "candidate_value": 2.0000000197200323,
+      "feasible_lower_bound": 2.0000000197200323,
+      "numerical_upper_bound": 2.000000019720032,
+      "absolute_gap": -4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.938534199998685
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": -1.9999981416729935,
+      "physical_gain": 1.084276874063761e-06,
+      "internal_gain_lower": 1.0842768742858055e-06,
+      "internal_gain_upper": 1.0842768742858055e-06,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999992259498678,
+      "candidate_value": -1.9999981416729933,
+      "feasible_lower_bound": -1.9999981416729933,
+      "numerical_upper_bound": -1.9999981416729933,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.0273492999986047
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": 2.0000578342316144,
+      "physical_gain": 0.000699816486688265,
+      "internal_gain_lower": 0.000699816486688265,
+      "internal_gain_upper": 0.5931472591892579,
+      "player": 0,
+      "status": 1,
+      "message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+      "profile_ev": 1.999358017744926,
+      "candidate_value": 2.0000578342316144,
+      "feasible_lower_bound": 2.0000578342316144,
+      "numerical_upper_bound": 2.592505276934184,
+      "absolute_gap": 0.5924474427025697,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": false,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 51,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 30.160185500000807
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": -1.9983952285110615,
+      "physical_gain": 0.0009627892338646138,
+      "internal_gain_lower": 0.0009626850437931544,
+      "internal_gain_upper": 0.0009626850437931544,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.999358017744926,
+      "candidate_value": -1.998395332701133,
+      "feasible_lower_bound": -1.998395332701133,
+      "numerical_upper_bound": -1.998395332701133,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.7771886000009545
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": 2.000003685125149,
+      "physical_gain": 4.3221992945818855e-05,
+      "internal_gain_lower": 4.3221992946262944e-05,
+      "internal_gain_upper": 0.32755762643200215,
+      "player": 0,
+      "status": 1,
+      "message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+      "profile_ev": 1.9999604631322034,
+      "candidate_value": 2.0000036851251495,
+      "feasible_lower_bound": 2.0000036851251495,
+      "numerical_upper_bound": 2.3275180895642054,
+      "absolute_gap": 0.3275144044390559,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": false,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 81,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 30.16634509999858
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": -1.9999002991825288,
+      "physical_gain": 6.0163949674452155e-05,
+      "internal_gain_lower": 6.01630433110234e-05,
+      "internal_gain_upper": 6.0163919850309e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999604631322034,
+      "candidate_value": -1.9999003000888922,
+      "feasible_lower_bound": -1.9999003000888922,
+      "numerical_upper_bound": -1.999900299212353,
+      "absolute_gap": 8.765392855991649e-10,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.9138557000005676
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": 2.0000000368576583,
+      "physical_gain": 4.3103391567100857e-07,
+      "internal_gain_lower": 4.3103391567100857e-07,
+      "internal_gain_upper": 0.801376684367042,
+      "player": 0,
+      "status": 1,
+      "message": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+      "profile_ev": 1.9999996058237426,
+      "candidate_value": 2.0000000368576583,
+      "feasible_lower_bound": 2.0000000368576583,
+      "numerical_upper_bound": 2.8013762901907846,
+      "absolute_gap": 0.8013762533331263,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": false,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 49,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 30.201156099999935
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": -1.9999990605994253,
+      "physical_gain": 5.452243172499038e-07,
+      "internal_gain_lower": 5.44851534556301e-07,
+      "internal_gain_upper": 5.448515343342564e-07,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999996058237426,
+      "candidate_value": -1.999999060972208,
+      "feasible_lower_bound": -1.999999060972208,
+      "numerical_upper_bound": -1.9999990609722083,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 3.3306690738754696e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 11,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 2.8531991000018024
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": 2.0000159929350794,
+      "physical_gain": 0.0053970427779712615,
+      "internal_gain_lower": 0.0053970427779712615,
+      "internal_gain_upper": 0.0053970427779712615,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9946189501571079,
+      "candidate_value": 2.0000159929350794,
+      "feasible_lower_bound": 2.0000159929350794,
+      "numerical_upper_bound": 2.0000159929350794,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 27,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 20.70904359999986
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": -1.9899119383098123,
+      "physical_gain": 0.004707011847295828,
+      "internal_gain_lower": 0.004705948583382025,
+      "internal_gain_upper": 0.004705948583382025,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9946189501571079,
+      "candidate_value": -1.989913001573726,
+      "feasible_lower_bound": -1.989913001573726,
+      "numerical_upper_bound": -1.989913001573726,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.9633977999983472
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": 2.0000010083809427,
+      "physical_gain": 0.0003348290124414177,
+      "internal_gain_lower": 0.0003348290124414177,
+      "internal_gain_upper": 0.0003348290124414177,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9996661793685016,
+      "candidate_value": 2.0000010083809427,
+      "feasible_lower_bound": 2.0000010083809427,
+      "numerical_upper_bound": 2.0000010083809427,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 8.881784197001252e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 17,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 15.497373999998672
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": -1.9994047831973136,
+      "physical_gain": 0.0002613961711877,
+      "internal_gain_lower": 0.00026139617118747793,
+      "internal_gain_upper": 0.000261396171187922,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9996661793685016,
+      "candidate_value": -1.9994047831973139,
+      "feasible_lower_bound": -1.9994047831973139,
+      "numerical_upper_bound": -1.9994047831973134,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 1.1102230246251565e-15,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.9121434999979101
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": 2.0000000098523643,
+      "physical_gain": 3.34408420510357e-06,
+      "internal_gain_lower": 3.34408420510357e-06,
+      "internal_gain_upper": 3.344084204659481e-06,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999966657681592,
+      "candidate_value": 2.0000000098523643,
+      "feasible_lower_bound": 2.0000000098523643,
+      "numerical_upper_bound": 2.000000009852364,
+      "absolute_gap": -4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 2698,
+      "sequence_variables": 2699,
+      "constraints": 9279,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 27,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 22.585194900002534
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": -1.9999940925915018,
+      "physical_gain": 2.573176657305609e-06,
+      "internal_gain_lower": 2.5714822140532334e-06,
+      "internal_gain_upper": 2.5714822147193672e-06,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999966657681592,
+      "candidate_value": -1.999994094285945,
+      "feasible_lower_bound": -1.999994094285945,
+      "numerical_upper_bound": -1.9999940942859444,
+      "absolute_gap": 6.661338147750939e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 6.661338147750939e-16,
+      "integrality_error": 6.661338147750939e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3018,
+      "sequence_variables": 3019,
+      "constraints": 10376,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.360261800000444
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": 2.0000180599832946,
+      "physical_gain": 0.00332201663169851,
+      "internal_gain_lower": 0.00332201663169851,
+      "internal_gain_upper": 0.0033220166317020627,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9966960433515961,
+      "candidate_value": 2.0000180599832946,
+      "feasible_lower_bound": 2.0000180599832946,
+      "numerical_upper_bound": 2.000018059983298,
+      "absolute_gap": 3.552713678800501e-15,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 3.552713678800501e-15,
+      "integrality_error": 4.3298697960381105e-15,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 61,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 11.833878000001278
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 2500,
+      "physical_br": -1.9952180566670772,
+      "physical_gain": 0.0014779866845189282,
+      "internal_gain_lower": 0.0014779866845189282,
+      "internal_gain_upper": 0.0014779866845191503,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9966960433515961,
+      "candidate_value": -1.9952180566670772,
+      "feasible_lower_bound": -1.9952180566670772,
+      "numerical_upper_bound": -1.995218056667077,
+      "absolute_gap": 2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.8181965000003402
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": 2.00000116278539,
+      "physical_gain": 0.00020096108720002448,
+      "internal_gain_lower": 0.00020096108720002448,
+      "internal_gain_upper": 0.00020096108720046857,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9998002016981902,
+      "candidate_value": 2.00000116278539,
+      "feasible_lower_bound": 2.00000116278539,
+      "numerical_upper_bound": 2.0000011627853906,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 7,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 5.979733699998178
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 10000,
+      "physical_br": -1.999700713867616,
+      "physical_gain": 9.948783057422972e-05,
+      "internal_gain_lower": 9.948783057422972e-05,
+      "internal_gain_upper": 9.948783057422972e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9998002016981902,
+      "candidate_value": -1.999700713867616,
+      "feasible_lower_bound": -1.999700713867616,
+      "numerical_upper_bound": -1.999700713867616,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.9023044000023219
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": 2.000000011587409,
+      "physical_gain": 2.0212557889642824e-06,
+      "internal_gain_lower": 2.0212557889642824e-06,
+      "internal_gain_upper": 2.021255789852461e-06,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.99999799033162,
+      "candidate_value": 2.000000011587409,
+      "feasible_lower_bound": 2.000000011587409,
+      "numerical_upper_bound": 2.0000000115874097,
+      "absolute_gap": 8.881784197001252e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 8.881784197001252e-16,
+      "integrality_error": 8.881784197001252e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 13,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 8.067308600002434
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 101,
+      "iterations": 100000,
+      "physical_br": -1.9999971283448632,
+      "physical_gain": 8.619867566395101e-07,
+      "internal_gain_lower": 8.617218567597007e-07,
+      "internal_gain_upper": 8.617218567597007e-07,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.99999799033162,
+      "candidate_value": -1.999997128609763,
+      "feasible_lower_bound": -1.999997128609763,
+      "numerical_upper_bound": -1.999997128609763,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 2.4424906541753444e-15,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.0613358000009612
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": 2.000101188562341,
+      "physical_gain": 0.004523304895569957,
+      "internal_gain_lower": 0.004523304895570401,
+      "internal_gain_upper": 0.0045233048955708455,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9955778836667712,
+      "candidate_value": 2.0001011885623416,
+      "feasible_lower_bound": 2.0001011885623416,
+      "numerical_upper_bound": 2.000101188562342,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 5,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 6.009009699999297
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 2500,
+      "physical_br": -1.9942922566583,
+      "physical_gain": 0.0012856270084713461,
+      "internal_gain_lower": 0.0012856270084713461,
+      "internal_gain_upper": 0.001285627008471124,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9955778836667712,
+      "candidate_value": -1.9942922566583,
+      "feasible_lower_bound": -1.9942922566583,
+      "numerical_upper_bound": -1.9942922566583001,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.4061705999993137
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": 2.0000063943164976,
+      "physical_gain": 0.00028105374326048427,
+      "internal_gain_lower": 0.00028105374326048427,
+      "internal_gain_upper": 0.00028105374330311683,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9997253405732374,
+      "candidate_value": 2.0000063943164976,
+      "feasible_lower_bound": 2.0000063943164976,
+      "numerical_upper_bound": 2.0000063943165403,
+      "absolute_gap": 4.263256414560601e-14,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.263256414560601e-14,
+      "integrality_error": 2.8942036737576016e-11,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 21,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 18.596581499998138
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 10000,
+      "physical_br": -1.9996459324464035,
+      "physical_gain": 7.940812683360221e-05,
+      "internal_gain_lower": 7.940812683360221e-05,
+      "internal_gain_upper": 7.94081268340463e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9997253405732374,
+      "candidate_value": -1.9996459324464035,
+      "feasible_lower_bound": -1.9996459324464035,
+      "numerical_upper_bound": -1.999645932446403,
+      "absolute_gap": 4.440892098500626e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 4.440892098500626e-16,
+      "integrality_error": 2.220446049250313e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.1929477999983646
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": 2.0000000634613784,
+      "physical_gain": 2.809084838961695e-06,
+      "internal_gain_lower": 2.809084838961695e-06,
+      "internal_gain_upper": 2.8090848465112117e-06,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9999972543765394,
+      "candidate_value": 2.0000000634613784,
+      "feasible_lower_bound": 2.0000000634613784,
+      "numerical_upper_bound": 2.000000063461386,
+      "absolute_gap": 7.549516567451064e-15,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 7.549516567451064e-15,
+      "integrality_error": 1.1679546219056647e-13,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 5,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 9.337647399999696
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 202,
+      "iterations": 100000,
+      "physical_br": -1.999996580267614,
+      "physical_gain": 6.741089253470278e-07,
+      "internal_gain_lower": 6.741070186500053e-07,
+      "internal_gain_upper": 6.741070184279607e-07,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9999972543765394,
+      "candidate_value": -1.9999965802695208,
+      "feasible_lower_bound": -1.9999965802695208,
+      "numerical_upper_bound": -1.999996580269521,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 1.8349731999987853
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": 2.0000154088889985,
+      "physical_gain": 0.03125986352896293,
+      "internal_gain_lower": 0.03125986352896293,
+      "internal_gain_upper": 0.03125986352896293,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9687555453600356,
+      "candidate_value": 2.0000154088889985,
+      "feasible_lower_bound": 2.0000154088889985,
+      "numerical_upper_bound": 2.0000154088889985,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 15,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 7.149593599999207
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 2500,
+      "physical_br": -1.9053557685822171,
+      "physical_gain": 0.0633997767778185,
+      "internal_gain_lower": 0.0633997767778185,
+      "internal_gain_upper": 0.0633997767778185,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9687555453600356,
+      "candidate_value": -1.9053557685822171,
+      "feasible_lower_bound": -1.9053557685822171,
+      "numerical_upper_bound": -1.9053557685822171,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.9567599000001792
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": 2.000000978942122,
+      "physical_gain": 0.0030976080609526058,
+      "internal_gain_lower": 0.0030976080609526058,
+      "internal_gain_upper": 0.0030976080609526058,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.9969033708811694,
+      "candidate_value": 2.000000978942122,
+      "feasible_lower_bound": 2.000000978942122,
+      "numerical_upper_bound": 2.000000978942122,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 21,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 16.95253319999756
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 10000,
+      "physical_br": -1.9940476607764939,
+      "physical_gain": 0.0028557101046755573,
+      "internal_gain_lower": 0.0028557101046755573,
+      "internal_gain_upper": 0.0028557101046755573,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.9969033708811694,
+      "candidate_value": -1.9940476607764939,
+      "feasible_lower_bound": -1.9940476607764939,
+      "numerical_upper_bound": -1.9940476607764939,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.886160199999722
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": 2.0000000098137676,
+      "physical_gain": 3.174659653137901e-05,
+      "internal_gain_lower": 3.174659653137901e-05,
+      "internal_gain_upper": 3.174659653137901e-05,
+      "player": 0,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": 1.999968263217236,
+      "candidate_value": 2.0000000098137676,
+      "feasible_lower_bound": 2.0000000098137676,
+      "numerical_upper_bound": 2.0000000098137676,
+      "absolute_gap": 0.0,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 0.0,
+      "integrality_error": 0.0,
+      "exact_arithmetic": false,
+      "binary_variables": 3164,
+      "sequence_variables": 3165,
+      "constraints": 10878,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 19,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 13.59892150000087
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "seed": 303,
+      "iterations": 100000,
+      "physical_br": -1.9999400934296243,
+      "physical_gain": 2.8169787611886932e-05,
+      "internal_gain_lower": 2.8169787611664887e-05,
+      "internal_gain_upper": 2.8169787611442842e-05,
+      "player": 1,
+      "status": 0,
+      "message": "Optimization terminated successfully. (HiGHS Status 7: Optimal)",
+      "profile_ev": -1.999968263217236,
+      "candidate_value": -1.9999400934296245,
+      "feasible_lower_bound": -1.9999400934296245,
+      "numerical_upper_bound": -1.9999400934296248,
+      "absolute_gap": -2.220446049250313e-16,
+      "tolerance": 4e-07,
+      "bound_consistent": true,
+      "optimal_within_tolerance": true,
+      "objective_recheck_error": 2.220446049250313e-16,
+      "integrality_error": 4.440892098500626e-16,
+      "exact_arithmetic": false,
+      "binary_variables": 3162,
+      "sequence_variables": 3163,
+      "constraints": 10872,
+      "time_limit": 30.0,
+      "node_limit": 10000,
+      "mip_node_count": 1,
+      "scipy_version": "1.16.2",
+      "solver_options": {
+        "time_limit": 30.0,
+        "mip_rel_gap": 0.0,
+        "mip_abs_gap": 0.0,
+        "mip_feasibility_tolerance": 1e-09,
+        "presolve": true
+      },
+      "solver_warnings": [
+        "Unrecognized options detected: {'mip_feasibility_tolerance', 'mip_abs_gap'}. These will be passed to HiGHS verbatim."
+      ],
+      "seconds": 0.7971902999997837
+    }
+  ],
+  "corpus": {
+    "boards": [
+      {
+        "cards": [
+          "6c",
+          "7d",
+          "Qc",
+          "8c",
+          "Jc"
+        ],
+        "weight": 1.0
+      },
+      {
+        "cards": [
+          "6c",
+          "7d",
+          "Qc",
+          "8c",
+          "Qd"
+        ],
+        "weight": 2.0
+      },
+      {
+        "cards": [
+          "6c",
+          "7d",
+          "Qc",
+          "Kd",
+          "Jc"
+        ],
+        "weight": 3.0
+      },
+      {
+        "cards": [
+          "6c",
+          "7d",
+          "Qc",
+          "Kd",
+          "Qd"
+        ],
+        "weight": 4.0
+      },
+      {
+        "cards": [
+          "9c",
+          "9d",
+          "Qc",
+          "8c",
+          "Jc"
+        ],
+        "weight": 5.0
+      },
+      {
+        "cards": [
+          "9c",
+          "9d",
+          "Qc",
+          "8c",
+          "Qd"
+        ],
+        "weight": 6.0
+      },
+      {
+        "cards": [
+          "9c",
+          "9d",
+          "Qc",
+          "Kd",
+          "Jc"
+        ],
+        "weight": 7.0
+      },
+      {
+        "cards": [
+          "9c",
+          "9d",
+          "Qc",
+          "Kd",
+          "Qd"
+        ],
+        "weight": 8.0
+      }
+    ],
+    "corpus": "co40_node4_self_reach_row28_witness",
+    "flop_fingerprint": "fnv1a64:33f06cf437f8f26d",
+    "hand_subsets": [
+      [
+        624,
+        627
+      ],
+      [
+        615,
+        585
+      ]
+    ],
+    "iterations": [
+      2500,
+      10000,
+      100000
+    ],
+    "river_fingerprint": "fnv1a64:2e59aa76f59c0fcd",
+    "sampling_seeds": [
+      101,
+      202,
+      303
+    ],
+    "schema": "gtosd.research.short_deck_constrained_corpus.v1",
+    "scope": "8_board_2_hands_per_player_diagnostic_not_full_co40",
+    "seconds": 20.6970251,
+    "turn_fingerprint": "fnv1a64:51814338fcf1236c"
+  },
+  "partitions": [
+    {
+      "stack": 40,
+      "partition": "class",
+      "recall": [
+        false,
+        false
+      ],
+      "public_tree_fingerprint": "fnv1a64:18d08f453034ac0f"
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "recall": [
+        true,
+        true
+      ],
+      "public_tree_fingerprint": "fnv1a64:18d08f453034ac0f"
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "recall": [
+        true,
+        true
+      ],
+      "public_tree_fingerprint": "fnv1a64:18d08f453034ac0f"
+    }
+  ],
+  "trajectory_metrics": [
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.978965222379418,
+        -1.978965222379418
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.000031996904597,
+        -1.9025244471034095
+      ],
+      "physical_nashconv": 0.09750754980118748,
+      "seed": 101,
+      "segment_seconds": 0.0605025,
+      "segment_traversed_nodes": 160253
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9986176659492698,
+        -1.9986176659492698
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.000001974575697,
+        -1.993902852168097
+      ],
+      "physical_nashconv": 0.006099122407600133,
+      "seed": 101,
+      "segment_seconds": 0.1139304,
+      "segment_traversed_nodes": 479736
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.999986136172237,
+        -1.999986136172237
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.000000019705637,
+        -1.9999391578880181
+      ],
+      "physical_nashconv": 6.086181761899567e-05,
+      "seed": 101,
+      "segment_seconds": 1.1570825,
+      "segment_traversed_nodes": 5735087
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9993215073715613,
+        -1.9993215073715613
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.0000578342316144,
+        -1.9983348779532808
+      ],
+      "physical_nashconv": 0.0017229562783336316,
+      "seed": 202,
+      "segment_seconds": 0.0605756,
+      "segment_traversed_nodes": 159867
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999583944930008,
+        -1.9999583944930008
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.000003685125149,
+        -1.9998985340459519
+      ],
+      "physical_nashconv": 0.00010515107919717437,
+      "seed": 202,
+      "segment_seconds": 0.1615885,
+      "segment_traversed_nodes": 481012
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999995847814576,
+        -1.9999995847814576
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000368576583,
+        -1.9999990454856567
+      ],
+      "physical_nashconv": 9.913720016019312e-07,
+      "seed": 202,
+      "segment_seconds": 1.1916854,
+      "segment_traversed_nodes": 5777968
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9980240887600615,
+        -1.9980240887600615
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.2119890205136095,
+        -1.9631355087245292
+      ],
+      "physical_nashconv": 0.24885351178908022,
+      "seed": 303,
+      "segment_seconds": 0.0579245,
+      "segment_traversed_nodes": 151078
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9992951766256897,
+        -1.9992951766256897
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.000000991341253,
+        -1.9987006344752594
+      ],
+      "physical_nashconv": 0.0013003568659937237,
+      "seed": 303,
+      "segment_seconds": 0.1173844,
+      "segment_traversed_nodes": 470242
+    },
+    {
+      "stack": 40,
+      "partition": "class",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999925752113479,
+        -1.9999925752113479
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.000000009847615,
+        -1.9999870535540978
+      ],
+      "physical_nashconv": 1.2956293517385475e-05,
+      "seed": 303,
+      "segment_seconds": 1.121531,
+      "segment_traversed_nodes": 5636572
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9987396916677718,
+        -1.9987396916677718
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.00003117873651,
+        -1.9966292675338444
+      ],
+      "physical_nashconv": 0.0034019112026655307,
+      "seed": 101,
+      "segment_seconds": 0.0598848,
+      "segment_traversed_nodes": 130901
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999219958928371,
+        -1.9999219958928371
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.0000019762529253,
+        -1.9998086428977633
+      ],
+      "physical_nashconv": 0.00019333335516202865,
+      "seed": 101,
+      "segment_seconds": 0.1039394,
+      "segment_traversed_nodes": 386202
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999992259498676,
+        -1.9999992259498676
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000197200323,
+        -1.9999981416729935
+      ],
+      "physical_nashconv": 1.878047038772479e-06,
+      "seed": 101,
+      "segment_seconds": 0.9521216,
+      "segment_traversed_nodes": 4640077
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9993580177449262,
+        -1.9993580177449262
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.0000578342316144,
+        -1.9983952285110615
+      ],
+      "physical_nashconv": 0.0016626057205528788,
+      "seed": 202,
+      "segment_seconds": 0.0751567,
+      "segment_traversed_nodes": 159787
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999604631322032,
+        -1.9999604631322032
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.000003685125149,
+        -1.9999002991825288
+      ],
+      "physical_nashconv": 0.00010338594262027101,
+      "seed": 202,
+      "segment_seconds": 0.1336931,
+      "segment_traversed_nodes": 480744
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999996058237426,
+        -1.9999996058237426
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000368576583,
+        -1.9999990605994253
+      ],
+      "physical_nashconv": 9.762582329209124e-07,
+      "seed": 202,
+      "segment_seconds": 1.2280325,
+      "segment_traversed_nodes": 5775034
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.994618950157108,
+        -1.994618950157108
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.0000159929350794,
+        -1.9899119383098123
+      ],
+      "physical_nashconv": 0.01010405462526709,
+      "seed": 303,
+      "segment_seconds": 0.0757008,
+      "segment_traversed_nodes": 170088
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9996661793685013,
+        -1.9996661793685013
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.0000010083809427,
+        -1.9994047831973136
+      ],
+      "physical_nashconv": 0.0005962251836291177,
+      "seed": 303,
+      "segment_seconds": 0.1208903,
+      "segment_traversed_nodes": 506468
+    },
+    {
+      "stack": 40,
+      "partition": "history",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999966657681592,
+        -1.9999966657681592
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000098523643,
+        -1.9999940925915018
+      ],
+      "physical_nashconv": 5.917260862409179e-06,
+      "seed": 303,
+      "segment_seconds": 1.3435246,
+      "segment_traversed_nodes": 6094587
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9966960433515961,
+        -1.9966960433515961
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.0000180599832946,
+        -1.9952180566670772
+      ],
+      "physical_nashconv": 0.004800003316217438,
+      "seed": 101,
+      "segment_seconds": 0.0668511,
+      "segment_traversed_nodes": 140756
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9998002016981902,
+        -1.9998002016981902
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.00000116278539,
+        -1.999700713867616
+      ],
+      "physical_nashconv": 0.0003004489177742542,
+      "seed": 101,
+      "segment_seconds": 0.1083541,
+      "segment_traversed_nodes": 415922
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999979903316198,
+        -1.9999979903316198
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.000000011587409,
+        -1.9999971283448632
+      ],
+      "physical_nashconv": 2.8832425456037925e-06,
+      "seed": 101,
+      "segment_seconds": 1.0889981,
+      "segment_traversed_nodes": 5003982
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9955778836667712,
+        -1.9955778836667712
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.000101188562341,
+        -1.9942922566583
+      ],
+      "physical_nashconv": 0.0058089319040413034,
+      "seed": 202,
+      "segment_seconds": 0.0707481,
+      "segment_traversed_nodes": 142390
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9997253405732371,
+        -1.9997253405732371
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.0000063943164976,
+        -1.9996459324464035
+      ],
+      "physical_nashconv": 0.0003604618700940865,
+      "seed": 202,
+      "segment_seconds": 0.1146496,
+      "segment_traversed_nodes": 428717
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999972543765394,
+        -1.9999972543765394
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000634613784,
+        -1.999996580267614
+      ],
+      "physical_nashconv": 3.483193764308723e-06,
+      "seed": 202,
+      "segment_seconds": 1.0667061,
+      "segment_traversed_nodes": 5131762
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9687555453600356,
+        -1.9687555453600356
+      ],
+      "iterations": 2500,
+      "physical_br": [
+        2.0000154088889985,
+        -1.9053557685822171
+      ],
+      "physical_nashconv": 0.09465964030678142,
+      "seed": 303,
+      "segment_seconds": 0.062828,
+      "segment_traversed_nodes": 154684
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9969033708811694,
+        -1.9969033708811694
+      ],
+      "iterations": 10000,
+      "physical_br": [
+        2.000000978942122,
+        -1.9940476607764939
+      ],
+      "physical_nashconv": 0.005953318165628163,
+      "seed": 303,
+      "segment_seconds": 0.1339558,
+      "segment_traversed_nodes": 497011
+    },
+    {
+      "stack": 40,
+      "partition": "lossless",
+      "algorithm": "linear_mccfr",
+      "current_ev": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_br": [
+        2.0,
+        -2.0
+      ],
+      "current_physical_nashconv": 0.0,
+      "ev": [
+        1.9999682632172362,
+        -1.9999682632172362
+      ],
+      "iterations": 100000,
+      "physical_br": [
+        2.0000000098137676,
+        -1.9999400934296243
+      ],
+      "physical_nashconv": 5.9916384143265944e-05,
+      "seed": 303,
+      "segment_seconds": 1.2604412,
+      "segment_traversed_nodes": 5951497
+    }
+  ],
+  "identical_initial_profiles": 9,
+  "closed_count": 49,
+  "total_milp_seconds": 403.85681859999386
+}

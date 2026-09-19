@@ -1,0 +1,316 @@
+{
+  "schema": "gtosd.preflop_blueprint_certificate.v1",
+  "config_id": "PREFLOP-BLUEPRINT-CO40-TEST-001",
+  "exact": true,
+  "partial": false,
+  "sampled": false,
+  "flops": 573,
+  "physical_flops": 7140,
+  "boards": 605088,
+  "resumed_flops": 573,
+  "ev": [
+    -0.14647557021236782,
+    0.14647557021236812
+  ],
+  "best_response": [
+    0.35370504874851083,
+    0.3410145386302547
+  ],
+  "gain": [
+    0.5001806189608786,
+    0.1945389684178866
+  ],
+  "best_response_lower": [
+    0.03390227069487264,
+    0.295260549365553
+  ],
+  "gain_lower": [
+    0.18037784090724046,
+    0.1487849791531849
+  ],
+  "best_response_preflop": [
+    -0.13918478291176,
+    0.14959053509478662
+  ],
+  "gain_preflop": [
+    0.0072907873006078094,
+    0.0031149648824184972
+  ],
+  "postflop_entry_loss": [
+    {
+      "node": 3,
+      "hero": 0,
+      "mean_gain": 0.46844786041533487,
+      "opponent_reach": 398.5772421535182,
+      "entry_probability": 0.6326622891325676,
+      "conditional_gain": 0.7404390438026829
+    },
+    {
+      "node": 321,
+      "hero": 0,
+      "mean_gain": 0.219409631590548,
+      "opponent_reach": 138.5178670524969,
+      "entry_probability": 0.2198696302420587,
+      "conditional_gain": 0.9979078572561191
+    },
+    {
+      "node": 447,
+      "hero": 0,
+      "mean_gain": 0.3684807106437788,
+      "opponent_reach": 252.27172463891725,
+      "entry_probability": 0.4004313089506614,
+      "conditional_gain": 0.9202095400816439
+    },
+    {
+      "node": 567,
+      "hero": 0,
+      "mean_gain": 0.00919111373286476,
+      "opponent_reach": 9.490000890281198,
+      "entry_probability": 0.015063493476636783,
+      "conditional_gain": 0.6101581779233362
+    },
+    {
+      "node": 3,
+      "hero": 1,
+      "mean_gain": 0.19772141283634784,
+      "opponent_reach": 179.11355908335864,
+      "entry_probability": 0.2843072366402515,
+      "conditional_gain": 0.6954498069513962
+    },
+    {
+      "node": 321,
+      "hero": 1,
+      "mean_gain": 0.10531237202752677,
+      "opponent_reach": 98.46275749856088,
+      "entry_probability": 0.15629009126755675,
+      "conditional_gain": 0.6738262878562148
+    },
+    {
+      "node": 447,
+      "hero": 1,
+      "mean_gain": 0.01265254572788711,
+      "opponent_reach": 11.796383407483733,
+      "entry_probability": 0.01872441810711708,
+      "conditional_gain": 0.6757243752786062
+    },
+    {
+      "node": 567,
+      "hero": 1,
+      "mean_gain": 0.0023884550767423055,
+      "opponent_reach": 3.5256353961388087,
+      "entry_probability": 0.005596246660537776,
+      "conditional_gain": 0.4267958904643393
+    }
+  ],
+  "best_response_route_average_value": [
+    -0.28223605132067653,
+    0.1393695875085355
+  ],
+  "postflop_entry_route": [
+    {
+      "node": 3,
+      "path": "CO_call_BTN_check_chance",
+      "hero": 0,
+      "average_probability": 0.17939847296110015,
+      "response_probability": 0.6211182707505394,
+      "postflop_gain_on_response_route": 0.4617619578832093
+    },
+    {
+      "node": 321,
+      "path": "CO_call_BTN_bet_4_CO_call_chance",
+      "hero": 0,
+      "average_probability": 0.034529154594691636,
+      "response_probability": 0.17069697372587728,
+      "postflop_gain_on_response_route": 0.17417914218597705
+    },
+    {
+      "node": 447,
+      "path": "CO_raise_5_BTN_call_chance",
+      "hero": 0,
+      "average_probability": 0.007405373789638308,
+      "response_probability": 0,
+      "postflop_gain_on_response_route": 0
+    },
+    {
+      "node": 567,
+      "path": "CO_raise_5_BTN_raise_16_CO_call_chance",
+      "hero": 0,
+      "average_probability": 8.123921552004144e-05,
+      "response_probability": 0,
+      "postflop_gain_on_response_route": 0
+    },
+    {
+      "node": 3,
+      "path": "CO_call_BTN_check_chance",
+      "hero": 1,
+      "average_probability": 0.17939847296110104,
+      "response_probability": 0.2760265959925699,
+      "postflop_gain_on_response_route": 0.1888101367845751
+    },
+    {
+      "node": 321,
+      "path": "CO_call_BTN_bet_4_CO_call_chance",
+      "hero": 1,
+      "average_probability": 0.03452915459469154,
+      "response_probability": 0.0046302516598240575,
+      "postflop_gain_on_response_route": 0.0029198404631085315
+    },
+    {
+      "node": 447,
+      "path": "CO_raise_5_BTN_call_chance",
+      "hero": 1,
+      "average_probability": 0.007405373789638305,
+      "response_probability": 0.01439541699543926,
+      "postflop_gain_on_response_route": 0.009910303056497783
+    },
+    {
+      "node": 567,
+      "path": "CO_raise_5_BTN_raise_16_CO_call_chance",
+      "hero": 1,
+      "average_probability": 8.123921552004133e-05,
+      "response_probability": 3.222597781463732e-05,
+      "postflop_gain_on_response_route": 4.670817533620717e-06
+    }
+  ],
+  "best_response_preflop_mix": [
+    {
+      "node": 0,
+      "hero": 0,
+      "split_classes": 0,
+      "frequency": [
+        0.012345679012345678,
+        0.9876543209876543,
+        0,
+        0
+      ]
+    },
+    {
+      "node": 319,
+      "hero": 0,
+      "split_classes": 0,
+      "frequency": [
+        0.09876543209876543,
+        0.8271604938271605,
+        0.07407407407407407
+      ]
+    },
+    {
+      "node": 442,
+      "hero": 0,
+      "split_classes": 0,
+      "frequency": [
+        0.7037037037037037,
+        0.2962962962962963
+      ]
+    },
+    {
+      "node": 565,
+      "hero": 0,
+      "split_classes": 0,
+      "frequency": [
+        0.5432098765432098,
+        0.4444444444444444,
+        0.012345679012345678
+      ]
+    },
+    {
+      "node": 598,
+      "hero": 0,
+      "split_classes": 0,
+      "frequency": [
+        0.6419753086419753,
+        0.35802469135802467
+      ]
+    },
+    {
+      "node": 2,
+      "hero": 1,
+      "split_classes": 0,
+      "frequency": [
+        0.9629629629629629,
+        0.037037037037037035,
+        0
+      ]
+    },
+    {
+      "node": 439,
+      "hero": 1,
+      "split_classes": 0,
+      "frequency": [
+        0.7037037037037037,
+        0.2962962962962963
+      ]
+    },
+    {
+      "node": 445,
+      "hero": 1,
+      "split_classes": 0,
+      "frequency": [
+        0.09876543209876543,
+        0.8271604938271605,
+        0.012345679012345678,
+        0.06172839506172839
+      ]
+    },
+    {
+      "node": 595,
+      "hero": 1,
+      "split_classes": 0,
+      "frequency": [
+        0.012345679012345678,
+        0.9876543209876543
+      ]
+    },
+    {
+      "node": 601,
+      "hero": 1,
+      "split_classes": 0,
+      "frequency": [
+        0.691358024691358,
+        0.30864197530864196
+      ]
+    }
+  ],
+  "gain_standard_error": [
+    0,
+    0
+  ],
+  "max_gain": 0.5001806189608786,
+  "max_gain_lower": 0.18037784090724046,
+  "max_gain_half_width": 0,
+  "nashconv": 0.6947195873787653,
+  "normalized_dev": 0.16672687298695954,
+  "normalized_stack": 0.012504515474021965,
+  "initial_pot_antes": 3,
+  "effective_stack_antes": 40,
+  "capacities": [
+    7585,
+    21638,
+    41973
+  ],
+  "rules_fingerprint": "fnv1a64:abbaffde7936699f",
+  "tree_fingerprint": "fnv1a64:18d08f453034ac0f",
+  "catalog_fingerprint": "fnv1a64:51879f40626cb7dd",
+  "flop_table_fingerprint": "fnv1a64:33f06cf437f8f26d",
+  "turn_table_fingerprint": "fnv1a64:51814338fcf1236c",
+  "river_table_fingerprint": "fnv1a64:2e59aa76f59c0fcd",
+  "policy_fingerprint": "fnv1a64:be84f6b45d37b5b8",
+  "seconds": 1.2665485,
+  "evaluation_seconds": 4.4e-06,
+  "aggregation_seconds": 0.696435,
+  "process_bytes": 263249920,
+  "route_accounting": [
+    {
+      "player": 0,
+      "preflop_change": -0.1357604811083087,
+      "postflop_change": 0.6359411000691864,
+      "identity_error": -9.992007221626409e-16
+    },
+    {
+      "player": 1,
+      "preflop_change": -0.007105982703832614,
+      "postflop_change": 0.20164495112171502,
+      "identity_error": -4.191091917959966e-15
+    }
+  ]
+}

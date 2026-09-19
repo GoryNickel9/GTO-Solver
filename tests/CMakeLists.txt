@@ -169,6 +169,13 @@ if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
 endif()
 
+add_executable(gtosd_enumerated_best_response_tests enumerated_best_response_tests.cpp)
+target_link_libraries(gtosd_enumerated_best_response_tests PRIVATE gtosd::best_response)
+gtosd_set_warnings(gtosd_enumerated_best_response_tests)
+add_test(NAME gtosd_enumerated_best_response_tests COMMAND gtosd_enumerated_best_response_tests)
+set_tests_properties(gtosd_enumerated_best_response_tests PROPERTIES
+  LABELS "solver;best_response;reference;imperfect_recall")
+
 add_executable(gtosd_phase5_tests phase5_tests.cpp)
 target_link_libraries(gtosd_phase5_tests
   PRIVATE

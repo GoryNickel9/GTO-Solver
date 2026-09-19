@@ -87,6 +87,8 @@ evaluate_strategy_profile(const FiniteGame &game, const StrategyProfile &profile
 [[nodiscard]] Result<RootChanceProfileEvaluation, SolverError>
 evaluate_strategy_profile_by_root_chance(const FiniteGame &game, const StrategyProfile &profile);
 
+// Requires responder perfect recall, checked before optimizing. For a small
+// imperfect-recall game use enumerated_best_response with explicit work limits.
 [[nodiscard]] Result<BestResponseResult, SolverError>
 exact_best_response(const FiniteGame &game, const StrategyProfile &opponent_profile,
                     std::uint8_t best_responder);

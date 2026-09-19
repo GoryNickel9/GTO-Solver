@@ -20,7 +20,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Build | `out/build/windows-release` del worktree (Release, MSVC, /W4 /WX) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **0,03 a, l'1 % del piatto iniziale** (D27, decisione dell'utente del 2026-09-18, stringe lo 0,1 a provvisorio di D2). Unico gioco qualificato: **HU10** a 0,003981 a |
-| Prossimo passo | Nessun candidato promosso dall'audit: diagnosi della causa dominante INCONCLUSIVE dopo copertura completa dei tre nodi; controllo temporale discordante. Verificare in un futuro protocollo la deviazione congiunta vincolata ai bucket, senza dedurre un limite asintotico. Vedi [audit](NASH_AUDIT_2026-09-19.md). HU20 class resta a 0,060957 a, CO40 class a 0,500181 a. |
+| Prossimo passo | Confrontare corrente e media dello stesso checkpoint CO40 reale, prima di cambiare training o bucket. Il [seguito dell'audit](CONSTRAINED_BR_AUDIT_2026-09-19.md) corregge la BR generica fuori dominio, certifica deviazioni congiunte ridotte e localizza la rotta limp della BR fisica. I run ridotti lunghi convergono anche con class: nessun candidato promosso, causa dominante CO40 ancora INCONCLUSIVE. HU20 class resta a 0,060957 a, CO40 class a 0,500181 a. |
 
 ## 2. Registro dei gate
 
@@ -41,6 +41,84 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-19 — P9 — esito del confronto congiunto e delle traiettorie lunghe
+
+Correzione dell'arresto MILP registrato sotto: i default HiGHS ammettevano un
+errore incompatibile con la tolleranza dichiarata. Il controllo riproduce
+8,903134e-7 ante di discordanza sulla BR lossless. Impostare solo il gap assoluto
+a zero non basta; con fattibilita MIP 1e-9 e gap assoluto zero l'oracolo coincide.
+La soglia di accettazione del report resta invariata; il caso ha un test Python
+permanente. I vecchi risultati MILP sono superati dai file `*_strict_bounds.json`.
+
+Risposte MILP finali chiuse numericamente: controllo 72/72, corpus mirato 71/72,
+policy storica nel corpus ristretto 6/6, prolungamento 49/54. Sei ricerche restano
+incomplete entro 30 s; i bound restano visibili. Il certificato fisico del
+corpus resta un limite superiore indipendente alla deviazione rappresentabile.
+Le risposte ripetute nel prolungamento non sono esperimenti indipendenti.
+
+Nel corpus mirato a stack40, class campionata aveva massimo guadagno fisico
+0,213964932 a a 2.500 iterazioni, di cui 0,198554035 a gia rappresentabili.
+Proseguendo gli stessi tre seed fino a 100.000, il peggiore scende a
+0,000046978 a; history a 0,000003344, lossless a 0,000031747. I nove primi
+checkpoint riproducono esattamente le policy precedenti. La corrente ha
+NashConv fisica zero in tutti i 27 checkpoint osservati. Si tratta di un
+transitorio della media, non di un pavimento dimostrato. Il training di questa
+prova e il riferimento Linear MCCFR su FiniteGame: non il trainer vettoriale
+CO40 completo. Non promuoviamo history o un reset dell'averaging sulla sua base.
+
+Il replay completo CO40 mantiene 0,5001806189608786 a. La nuova traccia segue
+il preflop della stessa BR fisica: CO perde 0,135760481 a cambiando soltanto
+quel preflop, poi guadagna 0,635941100 a cambiando il postflop. Contributi delle
+rotte limp/check e limp/bet4/call: 0,461761958 e 0,174179142 a. Identita verificata,
+non quota causale e non BR congiunta a bucket nel gioco completo.
+
+Validazione finale: sette gruppi Release PASS (127,30 s); tre ASAN del nuovo
+oracolo/riferimenti/toy PASS (80,43 s, precedenti alla traccia fisica); sei test
+Python PASS (4,51 s), Black/Ruff PASS. Confronti lossless indipendenti verificano
+la traccia e la metrica fisica; nessuna modifica alla policy storica. Report,
+protocolli condizionali, dati e limiti in
+[CONSTRAINED_BR_AUDIT_2026-09-19.md](CONSTRAINED_BR_AUDIT_2026-09-19.md).
+Esito sulla causa dominante: INCONCLUSIVE; il gate CO40 non e superato.
+
+### 2026-09-19 — P9 — controllo MILP sul corpus mirato: arresto per discordanza
+
+Il corpus mirato termina il training. La certificazione MILP passa class e
+history a stack20, poi il confronto lossless/esatto a 25 iterazioni per BTN
+non coincide entro la tolleranza: la procedura si ferma e conserva le prime
+25 risposte nel file parziale. Prima di usare questi risultati per una
+diagnosi si deve spiegare la discordanza fra MILP e BR C++ lossless. Non si
+rilassa la soglia e non si presenta il confronto come completato.
+
+### 2026-09-19 — P9 — best response globale vincolata: nuovo protocollo autorizzato
+
+L'utente autorizza con «Procedi» il seguito della diagnosi. Base `9b9d427`.
+Il [protocollo congiunto](CONSTRAINED_BR_AUDIT_2026-09-19.md) registra dominio,
+limiti, controlli analitici e confronto Short Deck prima del relativo training.
+
+Errore riprodotto: la vecchia BR generica restituisce 0 su un gioco con memoria
+imperfetta il cui ottimo globale enumerato e 1. Il controllo di perfect recall
+ora rifiuta quel dominio. Due test del trainer falliscono perche chiamavano
+quella API sulla partizione a bucket; i confronti di regret e strategy sum
+passano. Correzione: oracolo fisico lossless con stessa policy sollevata,
+controllo della conservazione di EV e rifiuto esplicito delle certificazioni
+astratte non supportate. Le sei suite Release passano dopo la correzione
+(75,70 s, trainer 71,17 s). Il certificatore fisico CO40 non e modificato.
+
+L'enumerazione globale C++ passa i confronti analitici, Kuhn, valutatore
+ricorsivo indipendente, DAG, scala, limiti e rifiuto dell'absent-mindedness.
+Il protocollo analitico produce 108 righe: con memoria cancellata l'esatto
+mantiene un guadagno rappresentabile di 0,75 dopo 100.000 iterazioni; il
+campionato dipende dal seed. La partizione blind converge internamente ma
+perde 1 rispetto al gioco informato. Sono meccanismi, non una diagnosi CO40.
+
+Il conteggio delle politiche Short Deck ridotte supera 64 bit. Aggiunto un
+diagnostico MILP locale con bound numerico, verificato contro otto BR C++
+enumerate; cinque test Python passano. Primo tentativo FAIL nel solo report
+del giocatore senza decisioni: SciPy non fornisce un MIP bound quando non ci
+sono variabili intere. Gestito il valore unico noto direttamente. Nessun
+risultato incompleto viene dichiarato ottimo. Ora in esecuzione il confronto
+class/history/lossless sul corpus ridotto con stack 20/40 e sizing uguali.
 
 ### 2026-09-19 — P9 — chiusura dell'audit e verifiche finali
 
