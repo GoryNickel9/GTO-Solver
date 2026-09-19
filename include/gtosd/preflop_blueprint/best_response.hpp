@@ -56,6 +56,7 @@ struct BestResponseResources {
   const card_abstraction::BucketTable *flop{nullptr};
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
+  const ClassBucketRows *class_rows{nullptr};
 };
 
 struct BestResponseOptions {
@@ -93,8 +94,9 @@ struct BestResponseReport {
   // the preflop and best-responds from the flop on (exact within every
   // flop). Unbiased for that policy and never below ev, while best_response
   // also maximises the preflop choice on the sampled flops and is biased
-  // upwards by the selection noise (about 1/sqrt(flops)); the two coincide
-  // with the exact best response when all flops are enumerated.
+  // upwards by the selection noise (about 1/sqrt(flops)). Enumerating all
+  // flops removes sampling error from both quantities; the lower bound still
+  // freezes the hero's preflop policy and need not equal the unrestricted BR.
   std::array<double, 2> best_response_lower{};
   std::array<double, 2> gain_lower{};
   // Mirror image of best_response_lower: the hero best-responds at the preflop

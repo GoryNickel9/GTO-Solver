@@ -10,6 +10,8 @@
 #include <array>
 #include <cstdint>
 #include <span>
+#include <string>
+#include <vector>
 
 // Per-board tables of the vector kernels.
 //
@@ -27,6 +29,30 @@ inline constexpr std::uint16_t no_hand = 0xFFFFU;
 
 enum class KernelError : std::uint8_t { InvalidBoard, MissingTable, InvalidInput };
 
+// Immutable reconstruction of the historical `class` experiment: enumerate
+// every occurring (preflop class, current bucket) pair, then number pairs in
+// class-major order. No training data or sampled board corpus enters the map.
+// A caller importing an old experimental policy must also verify its reference
+// certificate: the old policy format does not identify the source bucket tables.
+class ClassBucketRows {
+public:
+  [[nodiscard]] static Result<ClassBucketRows, KernelError>
+  build(const card_abstraction::BucketTable &flop, const card_abstraction::BucketTable &turn,
+        const card_abstraction::BucketTable &river);
+  [[nodiscard]] std::uint16_t row(card_abstraction::BucketStreet street, std::uint8_t hand_class,
+                                  std::uint16_t bucket) const noexcept;
+  [[nodiscard]] std::uint32_t count(card_abstraction::BucketStreet street) const noexcept {
+    return counts_[static_cast<std::size_t>(street)];
+  }
+  [[nodiscard]] bool matches(const card_abstraction::BucketTable &table) const noexcept;
+
+private:
+  std::array<std::vector<std::uint16_t>, 3> rows_;
+  std::array<std::uint16_t, 3> capacities_{};
+  std::array<std::uint32_t, 3> counts_{};
+  std::array<std::string, 3> fingerprints_;
+};
+
 // Optional street abstraction. When a table is absent the corresponding
 // bucket rows hold card_abstraction::no_bucket.
 struct AbstractionTables {
@@ -34,6 +60,8 @@ struct AbstractionTables {
   const card_abstraction::BucketTable *flop{nullptr};
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
+  // Must outlive contexts built from these tables. Null retains plain buckets.
+  const ClassBucketRows *class_rows{nullptr};
 };
 
 class BoardContext {
@@ -70,8 +98,14 @@ public:
   }
   // Information row of a hand at a street: the preflop class or the bucket.
   [[nodiscard]] std::uint16_t row(const Street street, const std::uint16_t hand) const noexcept {
-    return street == Street::Preflop ? hand_class_[hand]
-                                     : buckets_[static_cast<std::size_t>(street) - 1U][hand];
+    if (street == Street::Preflop) {
+      return hand_class_[hand];
+    }
+    const auto index = static_cast<std::size_t>(street) - 1U;
+    return class_rows_ == nullptr
+               ? buckets_[index][hand]
+               : class_rows_->row(static_cast<card_abstraction::BucketStreet>(index),
+                                  hand_class_[hand], buckets_[index][hand]);
   }
   [[nodiscard]] std::span<const std::uint16_t, live_hand_count>
   buckets(const Street street) const noexcept {
@@ -91,6 +125,7 @@ public:
   [[nodiscard]] std::uint16_t distinct_rank_groups() const noexcept { return rank_groups_; }
 
 private:
+  const ClassBucketRows *class_rows_{nullptr};
   card_abstraction::BoardHistory history_{};
   std::array<CardId, 5> board_{};
   std::uint64_t board_mask_{0U};

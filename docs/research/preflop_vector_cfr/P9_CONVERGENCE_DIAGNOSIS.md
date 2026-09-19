@@ -5,6 +5,10 @@
 > e metriche globali invariate. Le conclusioni di esaurimento delle possibilita
 > riportate sotto restano una valutazione storica, non un limite dimostrato.
 > L'utente ha autorizzato una nuova indagine causale; CO40 resta non qualificato.
+> Esito del nuovo audit: copertura completa di tre nodi con errori di strategia
+> comune e aggregazione entrambi presenti; causa dominante INCONCLUSIVE.
+> Il controllo della metrica temporale peggiora due nodi e ne migliora uno,
+> quindi nessun candidato e stato promosso. Non e provato un limite asintotico.
 
 Aggiornamento: 2026-09-19. Stato: **indagine conclusa senza qualificazione di CO40**; la
 decisione che segue è dell'utente.

@@ -95,6 +95,7 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
     street.fill(card_abstraction::no_bucket);
   }
   if (tables != nullptr && tables->catalog != nullptr) {
+    context.class_rows_ = tables->class_rows;
     struct StreetTable {
       const card_abstraction::BucketTable *table;
       card_abstraction::BucketStreet street;
@@ -112,7 +113,8 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
       if (entry.table == nullptr) {
         continue;
       }
-      if (entry.table->street() != entry.street || !entry.lookup) {
+      if (entry.table->street() != entry.street || !entry.lookup ||
+          (tables->class_rows != nullptr && !tables->class_rows->matches(*entry.table))) {
         return ContextResult::failure(KernelError::MissingTable);
       }
       const auto row = entry.lookup.value().index;
@@ -124,6 +126,11 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
           return ContextResult::failure(KernelError::InvalidInput);
         }
         context.buckets_[index][hand] = bucket;
+        if (context.class_rows_ != nullptr &&
+            context.class_rows_->row(entry.street, context.hand_class_[hand], bucket) ==
+                card_abstraction::no_bucket) {
+          return ContextResult::failure(KernelError::InvalidInput);
+        }
       }
       context.has_buckets_[index] = true;
     }

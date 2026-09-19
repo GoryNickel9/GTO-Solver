@@ -69,7 +69,8 @@ void assign_class_rows(Universe &universe) {
 }
 
 bool assign_bucket_rows(Universe &universe, const ca::BucketTable &table,
-                        const Result<ca::CanonicalLookup, CardError> &lookup) {
+                        const Result<ca::CanonicalLookup, CardError> &lookup,
+                        const ClassBucketRows *class_rows) {
   if (!lookup) {
     return false;
   }
@@ -83,7 +84,14 @@ bool assign_bucket_rows(Universe &universe, const ca::BucketTable &table,
     if (bucket == ca::no_bucket) {
       return false;
     }
-    universe.rows[hand] = bucket;
+    universe.rows[hand] =
+        class_rows == nullptr
+            ? bucket
+            : class_rows->row(table.street(), ca::combo_table().hand_class[universe.combos[hand]],
+                              bucket);
+    if (universe.rows[hand] == ca::no_bucket) {
+      return false;
+    }
   }
   return true;
 }
@@ -360,7 +368,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     flop_mask |= card.mask();
   }
   auto flop_universe = make_universe(flop_mask);
-  if (!assign_bucket_rows(flop_universe, *resources.flop, resources.catalog->lookup_flop(group.flop))) {
+  if (!assign_bucket_rows(flop_universe, *resources.flop,
+                          resources.catalog->lookup_flop(group.flop), resources.class_rows)) {
     ok = false;
     return result;
   }
@@ -446,7 +455,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     const auto turn = CardId::from_index(turn_card).value();
     auto turn_universe = make_universe(flop_mask | turn.mask());
     if (!assign_bucket_rows(turn_universe, *resources.turn,
-                            resources.catalog->lookup_flop_turn(group.flop, turn))) {
+                            resources.catalog->lookup_flop_turn(group.flop, turn),
+                            resources.class_rows)) {
       ok = false;
       return result;
     }
@@ -514,6 +524,7 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     tables.flop = resources.flop;
     tables.turn = resources.turn;
     tables.river = resources.river;
+    tables.class_rows = resources.class_rows;
     for (const auto *board : turn_boards) {
       const auto built = BoardContext::build(board->history, *resources.ranks, &tables);
       if (!built) {
@@ -734,6 +745,23 @@ BestResponseEvaluator::create(const CompiledGame &game, const BucketPolicy &aver
     return Outcome::failure(KernelError::MissingTable);
   }
   const auto &stats = game.stats();
+  const std::array<const ca::BucketTable *, 3> row_tables{resources.flop, resources.turn,
+                                                          resources.river};
+  const std::array<std::uint32_t, 3> policy_counts{average.layout().flop_capacity,
+                                                   average.layout().turn_capacity,
+                                                   average.layout().river_capacity};
+  for (std::size_t index = 0; index < row_tables.size(); ++index) {
+    const auto &table = *row_tables[index];
+    if (resources.class_rows != nullptr && !resources.class_rows->matches(table)) {
+      return Outcome::failure(KernelError::InvalidInput);
+    }
+    const auto count = resources.class_rows == nullptr
+                           ? table.capacity()
+                           : resources.class_rows->count(table.street());
+    if (count != policy_counts[index]) {
+      return Outcome::failure(KernelError::InvalidInput);
+    }
+  }
   if (stats.preflop_all_in_runouts > 0U && resources.all_in == nullptr) {
     return Outcome::failure(KernelError::MissingTable);
   }

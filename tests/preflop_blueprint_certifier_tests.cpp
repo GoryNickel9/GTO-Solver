@@ -114,6 +114,72 @@ void test_policy_file(const Resources &resources, const std::filesystem::path &s
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+void test_class_row_lifting(const Resources &resources) {
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "class lifting fixture compiles");
+  const auto base = random_policy(game.value(), resources, 83U);
+  const auto rows = pb::ClassBucketRows::build(*resources.flop, *resources.turn, *resources.river);
+  require(rows.has_value(), "class mapping builds");
+  const auto layout = pb::layout_state(game.value(), rows.value().count(ca::BucketStreet::Flop),
+                                       rows.value().count(ca::BucketStreet::Turn),
+                                       rows.value().count(ca::BucketStreet::River));
+  pb::BucketPolicy lifted(game.value(), layout);
+  const std::array<const ca::BucketTable *, 3> tables{&*resources.flop, &*resources.turn,
+                                                      &*resources.river};
+  for (const auto &node : game.value().nodes()) {
+    if (node.kind != pb::NodeKind::Decision) {
+      continue;
+    }
+    if (node.street == gtosd::Street::Preflop) {
+      for (std::uint32_t row = 0; row < ca::preflop_hand_classes; ++row) {
+        const auto source = base.row(node.id, row);
+        std::copy(source.begin(), source.end(), lifted.row(node.id, row).begin());
+      }
+      continue;
+    }
+    const auto street = static_cast<ca::BucketStreet>(static_cast<unsigned>(node.street) - 1U);
+    const auto capacity = tables[static_cast<std::size_t>(street)]->capacity();
+    for (std::uint8_t hand_class = 0; hand_class < ca::preflop_hand_classes; ++hand_class) {
+      for (std::uint16_t bucket = 0; bucket < capacity; ++bucket) {
+        const auto mapped = rows.value().row(street, hand_class, bucket);
+        if (mapped == ca::no_bucket) {
+          continue;
+        }
+        const auto source = base.row(node.id, bucket);
+        std::copy(source.begin(), source.end(), lifted.row(node.id, mapped).begin());
+      }
+    }
+  }
+  auto mapped_resources = response_resources(resources);
+  mapped_resources.class_rows = &rows.value();
+  const auto evaluator = pb::BestResponseEvaluator::create(game.value(), lifted, mapped_resources);
+  const auto reference =
+      pb::BestResponseEvaluator::create(game.value(), base, response_resources(resources));
+  require(evaluator && reference, "mapped and base evaluators create");
+  require(!pb::BestResponseEvaluator::create(game.value(), lifted, response_resources(resources)),
+          "class policy without its mapping is rejected");
+  require(!pb::BestResponseEvaluator::create(game.value(), base, mapped_resources),
+          "base policy with a class mapping is rejected");
+  const auto group = pb::full_runouts(resources.catalog->flops().front().cards);
+  const auto actual = evaluator.value().evaluate_flop(group);
+  const auto expected = reference.value().evaluate_flop(group);
+  require(actual && expected, "full runout evaluations succeed");
+  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+    for (const auto mode : {pb::average_mode, pb::response_mode}) {
+      for (std::size_t entry = 0; entry < evaluator.value().entry_count(); ++entry) {
+        for (std::size_t hand = 0; hand < ca::combo_count; ++hand) {
+          require(close(actual.value().entry_values[hero][mode][entry][hand],
+                        expected.value().entry_values[hero][mode][entry][hand], 1e-12),
+                  "lifting identical strategies preserves physical EV and best response");
+        }
+      }
+    }
+  }
+  std::cout << "class row lifting: " << layout.flop_capacity << "/" << layout.turn_capacity << "/"
+            << layout.river_capacity << " rows, full-runout EV/BR equivalent PASS\n";
+}
+
 // A canonical flop with its suit images must give the same aggregation as
 // the explicit enumeration of its physical images, and the values of hand h
 // on sigma(flop) must equal the values of sigma^-1(h) on the flop.
@@ -553,6 +619,7 @@ int main(const int argc, char **argv) {
               << resources.river->capacity() << ")\n";
     test_policy_file(resources, scratch_dir);
     test_entry_normalization(resources);
+    test_class_row_lifting(resources);
     test_orbit_aggregation(resources);
     test_partial_pass_and_resume(resources, scratch_dir);
     test_sampled_matches_trainer(resources, scratch_dir);

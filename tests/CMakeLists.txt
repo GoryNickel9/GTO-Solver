@@ -575,6 +575,40 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   endif()
 
   add_executable(gtosd_preflop_blueprint_certifier_tests preflop_blueprint_certifier_tests.cpp)
+  add_executable(gtosd_preflop_blueprint_decision_gap_tests preflop_blueprint_decision_gap_tests.cpp)
+  add_executable(gtosd_preflop_blueprint_temporal_distance_tests
+    preflop_blueprint_temporal_distance_tests.cpp)
+  add_executable(gtosd_preflop_blueprint_temporal_game_tests
+    preflop_blueprint_temporal_game_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_temporal_game_tests
+    PRIVATE gtosd::card_abstraction gtosd::solver gtosd::best_response)
+  gtosd_set_warnings(gtosd_preflop_blueprint_temporal_game_tests)
+  add_test(NAME gtosd_preflop_blueprint_temporal_game_tests
+    COMMAND gtosd_preflop_blueprint_temporal_game_tests)
+  target_link_libraries(gtosd_preflop_blueprint_temporal_distance_tests
+    PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_preflop_blueprint_temporal_distance_tests)
+  add_test(NAME gtosd_preflop_blueprint_temporal_distance_tests
+    COMMAND gtosd_preflop_blueprint_temporal_distance_tests)
+  target_link_libraries(gtosd_preflop_blueprint_decision_gap_tests PRIVATE gtosd::preflop_blueprint)
+  gtosd_set_warnings(gtosd_preflop_blueprint_decision_gap_tests)
+  add_test(NAME gtosd_preflop_blueprint_decision_gap_tests
+    COMMAND gtosd_preflop_blueprint_decision_gap_tests)
+  if(Python3_Interpreter_FOUND AND GTOSD_BUILD_BENCHMARKS)
+    add_test(NAME gtosd_preflop_blueprint_temporal_controls_oracle
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/preflop_blueprint_temporal_controls_oracle.py
+        --executable $<TARGET_FILE:gtosd_preflop_blueprint_temporal_witness>
+        --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+        --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+        --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_temporal_controls_scratch)
+    set_tests_properties(gtosd_preflop_blueprint_temporal_controls_oracle PROPERTIES
+      LABELS "preflop_blueprint;research;temporal")
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(gtosd_preflop_blueprint_temporal_controls_oracle PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
+  endif()
   target_link_libraries(gtosd_preflop_blueprint_certifier_tests
     PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
             gtosd::core)

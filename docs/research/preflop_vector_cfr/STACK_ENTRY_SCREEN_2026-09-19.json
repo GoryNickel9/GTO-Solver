@@ -1,0 +1,62 @@
+{
+  "schema": "gtosd.stack_entry_screen.v1",
+  "flops": [
+    387,
+    45,
+    377,
+    442,
+    443,
+    549,
+    257,
+    114,
+    368,
+    491,
+    532,
+    336,
+    190,
+    412,
+    19,
+    155
+  ],
+  "runs": [
+    {
+      "fixture": "HU20",
+      "source": "out\\nash_audit\\hu20_class_flop16_node4.json",
+      "sha256": "d59644690f99bed4aeddc6dd9590f96d95f470547eb43f836765c1e1b9159172",
+      "tree_fingerprint": "fnv1a64:f5b432de223744cc",
+      "policy_fingerprint": "fnv1a64:3d81d93f0c28eeb4",
+      "path": "CO_call_BTN_check_CO",
+      "observed_rows": 1766,
+      "self_reach": {
+        "mass": 443.9416042427109,
+        "shared_strategy_gain": 0.057207145345274456,
+        "separation_gain": 0.011980171835604845
+      },
+      "forced_hero_prefix": {
+        "mass": 52659.37691042046,
+        "shared_strategy_gain": 0.06578518147332786,
+        "separation_gain": 0.008632370473492513
+      }
+    },
+    {
+      "fixture": "CO40",
+      "source": "out\\nash_audit\\co40_class_flop16.json",
+      "sha256": "428aaa24f164a18ef3a2192a5b5a13e98e612259af6c626b5f5f9e276676573c",
+      "tree_fingerprint": "fnv1a64:18d08f453034ac0f",
+      "policy_fingerprint": "fnv1a64:be84f6b45d37b5b8",
+      "path": "CO_call_BTN_check_CO",
+      "observed_rows": 1766,
+      "self_reach": {
+        "mass": 16195.837907007712,
+        "shared_strategy_gain": 0.06699953073903646,
+        "separation_gain": 0.009827204427673172
+      },
+      "forced_hero_prefix": {
+        "mass": 57423.98479837334,
+        "shared_strategy_gain": 0.06605757385025969,
+        "separation_gain": 0.006113111948367769
+      }
+    }
+  ],
+  "interpretation": "Conditional frozen-continuation diagnostics on the same 16 flops and limp-check entry. Different policies and preflop response sizes; not a causal stack experiment or global Nash metric."
+}

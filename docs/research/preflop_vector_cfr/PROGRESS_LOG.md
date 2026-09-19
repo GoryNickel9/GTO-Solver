@@ -14,13 +14,13 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Fase in corso | P9: diagnosi e correzione generale della convergenza; CO40 non qualificato |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `codex/fix-preflop-deep-stack-convergence` |
-| Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver`; risorse precedenti lette da `C:/tmp/gtosd-preflop-blueprint/out` |
-| Commit di partenza | `main` a `55ed6ef`; il tag `preflop-legacy-es-2026-09-15` è su `04aa687` |
-| Build | `out/build/windows-release-main-integration` (Release, MSVC) |
+| Branch di fase | `codex/nash-convergence-audit` (indagine autorizzata il 2026-09-19) |
+| Worktree | `C:/Users/GoryNickel/.codex/worktrees/nash-convergence-audit/GTO-Solver`; risorse del checkout principale in lettura |
+| Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
+| Build | `out/build/windows-release` del worktree (Release, MSVC, /W4 /WX) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **0,03 a, l'1 % del piatto iniziale** (D27, decisione dell'utente del 2026-09-18, stringe lo 0,1 a provvisorio di D2). Unico gioco qualificato: **HU10** a 0,003981 a |
-| Prossimo passo | HU20 con `class` vale 0,060957 a, il 2,03 % del piatto: manca il gate di **2,03 volte**, ed e il bersaglio piu vicino. Il salto richiesto e della stessa taglia di quello gia ottenuto da base a `class` su HU20 (2,11 volte). CO40 con `class` vale 0,500181 a, 16,7 volte il gate, ed e il minimo di una curva che risale: nessun budget di iterazioni lo qualifica (voci del 2026-09-18 sera, correzione e frontiera) |
+| Prossimo passo | Nessun candidato promosso dall'audit: diagnosi della causa dominante INCONCLUSIVE dopo copertura completa dei tre nodi; controllo temporale discordante. Verificare in un futuro protocollo la deviazione congiunta vincolata ai bucket, senza dedurre un limite asintotico. Vedi [audit](NASH_AUDIT_2026-09-19.md). HU20 class resta a 0,060957 a, CO40 class a 0,500181 a. |
 
 ## 2. Registro dei gate
 
@@ -41,6 +41,90 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-19 — P9 — copertura completa e mancata promozione del candidato
+
+Fatto: completati tutti i 573 flop ai nodi 4, 226, 448, 7.585 righe ciascuno,
+con runout futuri enumerati. Tempo 3.307,9656516 s, comprensivo della concorrenza
+con verifiche ASAN e uno screening HU20. Non e un benchmark di throughput isolato.
+Errore di strategia comune e perdita di separazione restano entrambi presenti;
+nessuno domina in tutti i nodi. I guadagni delle singole decisioni alla radice
+sono piccoli rispetto alla BR globale. Dati in `CO40_FULL_BUCKET_AUDIT_2026-09-19.json`.
+
+Il replay dei 573 flop certificati di class riproduce esattamente i valori
+globali storici: guadagni CO/BTN 0,500181 / 0,194539. Con preflop dell'eroe
+congelato: 0,180378 / 0,148785; con continuazione media congelata: 0,007291 /
+0,003115. La differenza non e una decomposizione causale additiva. Corretto un
+commento che dichiarava l'uguaglianza del lower bound e della BR libera con
+copertura completa: resta il diverso vincolo sul preflop.
+
+Il controllo delle feature trasferisce azioni fra flop differenti su 2.711
+osservazioni supportate per nodo (29,7–34,0% della massa a seconda della vista).
+La distanza temporale peggiora i nodi 4 e 226, migliora poco il 448, in entrambe
+le viste. L'export riproduce esattamente le metriche dello screening precedente.
+Oracoli di trasporto, trasferimento e toy PASS; le verifiche del trainer e del
+certificatore sotto ASAN sono PASS, export ASAN ancora in corso alla registrazione.
+
+Decisione: INCONCLUSIVE sulla causa dominante dopo l'unico ampliamento previsto;
+nessuna evidenza sufficiente per promuovere la metrica temporale. Non si creano
+bucket nuovi e non si lanciano i tre seed del candidato. Non e una bocciatura
+di ogni possibile astrazione temporale. Non e stato ottenuto un miglioramento
+Nash in questo audit; CO40 resta non qualificato. Nessun divieto documentale
+impedisce una soluzione gia sostenuta dai dati: e il gate sperimentale a non
+essere superato. Si completano documentazione e verifiche senza cambiare ipotesi
+per cercare un risultato favorevole.
+
+### 2026-09-19 — P9 — oracoli temporali e protocollo dei controlli
+
+Fatto: l'assegnamento fra istogrammi condizionati supera 96 confronti con tutte
+le permutazioni. Le feature di 152 stati fisici ricostruiscono esattamente le
+marginali flop; 154/168 coppie hanno distanza temporale maggiore. Il conteggio
+non misura un miglioramento decisionale, perche la distanza temporale domina
+quella marginale per costruzione. Dati in `TEMPORAL_SCREEN_2026-09-19.json`.
+
+Il toy con informazione rivelata prima/dopo la scelta di investimento ha valore
+analitico S/8 nel gioco originale e zero con scelta iniziale condivisa. Linear
+CFR a 8.000 iterazioni converge internamente, ma la policy condivisa perde
+0,125 / 1,25 / 5 per S=1/10/40. La rappresentazione distinta perde meno di
+7,421e-7 anche per S=40. Questo andamento lineare e imposto dai payoff del toy;
+non e una previsione quantitativa sugli stack Short Deck. Test PASS, 1,14 s.
+Fallimento precedente: fixture con terminali creati ma irraggiungibili, rifiutato
+da `validate_finite_game`; CFR non era stato avviato. Corretto il costruttore
+creando soltanto i terminali raggiungibili e rieseguito il test da nuova build.
+
+Il controllo successivo delle feature trasferisce l'azione del vicino piu
+prossimo nella stessa riga, escludendo l'intero flop della query. Si includono
+tutte le osservazioni dei 16 flop ai nodi 4, 226, 448. Pareggi di distanza e di
+azione sono mediati, copertura e pesi sono espliciti. L'oracolo con Q sintetici
+verifica una perdita nota di 0,5 per entrambi i metodi, massa coperta 1,85/2 e
+una riga senza vicini esclusa dal confronto: PASS. Nessun clustering nuovo.
+La misura CO40 su tutti i 573 flop e ancora in corso; i nuovi eseguibili non
+modificano il processo attivo. Prossimo passo: leggere l'ampliamento completo.
+
+### 2026-09-19 — P9 — verifica delle feature sui conflitti osservati
+
+Fatto: lo screening CO40 su 16 flop ha identificato stati fisici con preferenze
+opposte dentro righe `class`. La verifica su tutti i flop dei nodi 4, 226, 448 e
+in corso. Si prepara un controllo delle feature degli esempi, senza costruire
+nuovi cluster: trasporto esatto fra i 31 istogrammi condizionati ai turn.
+Il solver di assignment viene confrontato con enumerazione delle permutazioni
+su casi piccoli; la marginale dei turn deve ricostruire l'istogramma flop esistente.
+Fallimenti: prima build di `preflop_blueprint_temporal_witness.cpp`, C2039/C3861
+su `combo_index`: manca `combinatorics.hpp`; gli errori di `std::copy` sono successivi
+alla dichiarazione mancante. La verifica completa CO40 usa un eseguibile distinto
+e continua. Nessun risultato del nuovo controllo e ancora dichiarato valido.
+Prossimo passo: correggere l'include e completare i test prima di valutare le feature.
+
+### 2026-09-19 — P9 — import verificabile delle policy class
+
+Fatto: per diagnosticare le policy `class` salvate occorre ricostruire la mappa
+storica (classe preflop, bucket corrente). Il codice relativo era in `out/`, con
+sostituzione di object al link; viene portato in un oggetto immutabile esplicito,
+con controllo di capacita e fingerprint. Nessuna modifica al training in questa fase.
+Fallimenti: prima compilazione di `class_bucket_rows.cpp`, C2039 su `combo_table`:
+manca `showdown_counts.hpp`. Registrato prima della correzione dell'include.
+Gate: import class NOT_RUN, diagnostica dei conflitti NOT_RUN.
+Prossimo passo: test di equivalenza e confronto con le valutazioni storiche salvate.
 
 ### 2026-09-19 — P9 — normalizzazione validata indipendentemente
 

@@ -10,6 +10,7 @@
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
+#include <nlohmann/json.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -49,10 +50,17 @@ int main(const int argc, char **argv) {
     std::filesystem::path policy_path;
     std::filesystem::path output_path;
     bool uniform = false;
+    bool use_class_rows = false;
+    std::filesystem::path reference_path;
+    std::optional<pb::ClassBucketRows> class_rows;
     pb::CertifierOptions options;
     options.threads = 1U;
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
+      if (name == "--class-rows") {
+        use_class_rows = true;
+        continue;
+      }
       if (name == "--uniform") {
         uniform = true;
         continue;
@@ -63,6 +71,8 @@ int main(const int argc, char **argv) {
       const std::string_view value = argv[++index];
       if (name == "--config") {
         config_path = std::filesystem::path(value);
+      } else if (name == "--reference-certificate") {
+        reference_path = std::filesystem::path(value);
       } else if (name == "--resources-dir") {
         resources_dir = std::filesystem::path(value);
       } else if (name == "--buckets-dir") {
@@ -120,6 +130,18 @@ int main(const int argc, char **argv) {
     resources.flop = &flop.value();
     resources.turn = &turn.value();
     resources.river = &river.value();
+    if (use_class_rows) {
+      if (reference_path.empty() || uniform) {
+        throw std::runtime_error(
+            "--class-rows requires a saved policy and --reference-certificate");
+      }
+      auto mapped = pb::ClassBucketRows::build(flop.value(), turn.value(), river.value());
+      if (!mapped) {
+        throw std::runtime_error("class row reconstruction failed");
+      }
+      class_rows.emplace(std::move(mapped.value()));
+      resources.class_rows = &*class_rows;
+    }
 
     std::string policy_source = "uniform";
     pb::BucketPolicy policy(compiled.value(),
@@ -136,6 +158,20 @@ int main(const int argc, char **argv) {
       policy_source = info.source;
     }
 
+    if (use_class_rows) {
+      const auto reference = nlohmann::json::parse(read_file(reference_path));
+      const std::array<std::uint32_t, 3> counts{class_rows->count(ca::BucketStreet::Flop),
+                                                class_rows->count(ca::BucketStreet::Turn),
+                                                class_rows->count(ca::BucketStreet::River)};
+      if (reference.at("tree_fingerprint") != compiled.value().fingerprint() ||
+          reference.at("policy_fingerprint") != pb::policy_fingerprint(policy) ||
+          reference.at("flop_table_fingerprint") != flop.value().fingerprint() ||
+          reference.at("turn_table_fingerprint") != turn.value().fingerprint() ||
+          reference.at("river_table_fingerprint") != river.value().fingerprint() ||
+          reference.at("capacities") != nlohmann::json(counts)) {
+        throw std::runtime_error("class reference certificate fingerprint/capacity mismatch");
+      }
+    }
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id
               << "\", \"tree_fingerprint\": \"" << compiled.value().fingerprint()
               << "\", \"policy_fingerprint\": \"" << pb::policy_fingerprint(policy)

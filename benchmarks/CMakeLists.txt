@@ -388,6 +388,16 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   endif()
 
   add_executable(gtosd_preflop_blueprint_certify preflop_blueprint_certify.cpp)
+  add_executable(gtosd_preflop_blueprint_bucket_diagnostics
+    preflop_blueprint_bucket_diagnostics.cpp)
+  add_executable(gtosd_preflop_blueprint_temporal_witness preflop_blueprint_temporal_witness.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_temporal_witness
+    PRIVATE gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_temporal_witness)
+  target_link_libraries(gtosd_preflop_blueprint_bucket_diagnostics
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_bucket_diagnostics)
+  target_link_libraries(gtosd_preflop_blueprint_certify PRIVATE nlohmann_json::nlohmann_json)
   target_link_libraries(gtosd_preflop_blueprint_certify
     PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
   gtosd_set_warnings(gtosd_preflop_blueprint_certify)

@@ -111,7 +111,10 @@ la stima è quasi interamente bias e il guadagno vero è compatibile con zero. U
 media più di quanto la best response vera guadagni; scartata. Il valutatore riporta quindi due
 numeri: la stima naive (limite superiore in attesa) e il **limite inferiore senza selezione**:
 eroe con la strategia media al preflop e best response esatta dal flop in poi, non distorto e mai
-sotto l'EV. Con tutti i flop enumerati (P7) i due coincidono con la best response esatta. Per la
+sotto l'EV. **Correzione 2026-09-19:** con tutti i flop enumerati (P7) la naive coincide con la
+best response esatta; il limite inferiore mantiene invece il preflop dell'eroe congelato e
+puo restare strettamente minore. Il [replay CO40 class](NASH_AUDIT_2026-09-19.md#8-esito-della-misura-completa-e-decisione-sul-candidato)
+mostra 0,500181 contro 0,180378 ante per CO con copertura completa. Per la
 regola D3 il gate usa la stima naive più semiampiezza, che richiede `M ≈ 1.000` flop perché il
 bias scenda sotto 0,015 a (§7).
 
