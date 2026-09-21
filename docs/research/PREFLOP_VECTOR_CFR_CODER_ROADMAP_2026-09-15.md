@@ -1,9 +1,12 @@
 # Roadmap operativa per l'agent coder: solver preflop vettoriale (P0–P9)
 
 Data: 2026-09-15
-Stato: `ROADMAP CONGELATA / IMPLEMENTAZIONE NON AVVIATA`
+Stato originario: `ROADMAP CONGELATA`. Stato corrente al 2026-09-21: P0–P8
+completate, P9 aperta; HU10 e HU20 qualificati, HU30 e HU40 non qualificati.
+L'audit corrente è in
+[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](preflop_vector_cfr/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
 Documenti vincolanti: [analisi](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md) e
-[registro decisioni](PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D26). In caso di
+[registro decisioni](PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D32). In caso di
 conflitto fra questo documento e il registro, vale il registro, che è più recente.
 
 ## 1. Mandato e risultato richiesto
@@ -118,7 +121,7 @@ fingerprint prodotti. Nessun parametro si regola guardando le frequenze Monker.
 
 | Parametro | Default | Intervallo ammesso | Condizione per cambiarlo |
 |---|---|---|---|
-| Capacità bucket flop/turn/river | 200/500/1.000; secondo candidato 500/1.000/2.000 | 50–4.000 bucket di base per street; stato numerico ≤ **12 GiB** sulla macchina di riferimento (D28, sostituisce 4 GiB) | confronto matched su 3 seed |
+| Capacità bucket flop/turn/river | 200/500/1.000; secondo candidato 500/1.000/2.000 | 50–4.000 bucket di base per street; picco complessivo ≤ **8 GiB** (D31). Il tetto di 25 GiB di D30 vale soltanto per gli audit storici | confronto matched su 3 seed e regressione HU10/HU20/HU30/HU40 |
 | Bin dell'istogramma flop/turn | 16 | 8–32 | dispersione intra-bucket ed exploitability; nuovo fingerprint dell'astrazione |
 | Gruppi avversari OCHS al river | 8 | 4–16 | come sopra |
 | Distanze del clustering | EMD per istogrammi, L2 per OCHS | fisse | solo con evidenza e nuova identità dell'astrazione |
@@ -595,7 +598,7 @@ registrato e ogni fallimento ha una diagnosi.
 
 ## 9. Istruzioni di avvio per l'agent coder (D23)
 
-1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D26), questa roadmap,
+1. Leggere nell'ordine: il registro decisioni (sezione 1, decisioni D1–D32), questa roadmap,
    l'analisi tecnica per le motivazioni, il template del diario.
 2. La politica dei branch è confermata (D21): creare da `main` il branch di integrazione
    `feature/preflop-blueprint` e il branch di fase `feature/preflop-blueprint-p0-scaffolding` in

@@ -116,7 +116,9 @@ compilato: 27.061 (58 preflop + 27.012 postflop − 9 ingressi contati una volta
 | HU10 ridotta | 500 / 1.000 / 2.000 | 622.617 | 4.617 | 54.000 | 156.000 | 408.000 | 9.961.872 |
 
 Il river pesa l'86 % dello stato CO40: 7.588 decisioni × 1.000 bucket × 2,5 azioni medie. Entrambe
-le terne candidate stanno sotto i 4 GiB del paletto §3.4. Memoria fissa dell'albero CO40: stati
+le terne candidate stavano sotto i 4 GiB del paletto allora vigente in §3.4. D30 alzò a 25 GiB
+il tetto degli audit del 2026-09-21; D31 fissa il picco del solver di prodotto a **8 GiB**.
+Memoria fissa dell'albero CO40: stati
 8,4 MB, nodi 0,87 MB, archi 0,65 MB. Compilazione 0,026–0,027 s.
 
 > **Nota (2026-09-16).** Dal pomeriggio del 2026-09-16 le fixture HU10 hanno una sola size preflop

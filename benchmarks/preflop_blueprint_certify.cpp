@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -41,6 +42,14 @@ std::uint64_t parse_unsigned(const std::string_view text) {
   return std::stoull(std::string(text));
 }
 
+double parse_decimal(const std::string_view text) {
+  std::size_t consumed = 0U;
+  const auto parsed = std::stod(std::string{text}, &consumed);
+  if (consumed != text.size() || !std::isfinite(parsed))
+    throw std::runtime_error("invalid decimal: " + std::string{text});
+  return parsed;
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -56,6 +65,7 @@ int main(const int argc, char **argv) {
     std::optional<pb::HistoryBucketRows> history_rows;
     std::filesystem::path reference_path;
     std::optional<pb::ClassBucketRows> class_rows;
+    double target_pot_percent = 1.0;
     pb::CertifierOptions options;
     options.threads = 1U;
     for (int index = 1; index < argc; ++index) {
@@ -98,6 +108,8 @@ int main(const int argc, char **argv) {
         options.sample_flops = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--sample-seed") {
         options.sample_seed = parse_unsigned(value);
+      } else if (name == "--target-pot-percent") {
+        target_pot_percent = parse_decimal(value);
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -108,6 +120,8 @@ int main(const int argc, char **argv) {
     if (policy_path.empty() == !uniform) {
       throw std::runtime_error("exactly one of --policy and --uniform is required");
     }
+    if (!(target_pot_percent > 0.0 && target_pot_percent <= 100.0))
+      throw std::runtime_error("--target-pot-percent must be in (0, 100]");
 
     const auto started = Clock::now();
     const auto game_config = pb::parse_game_config_json(read_file(config_path));
@@ -136,8 +150,8 @@ int main(const int argc, char **argv) {
     resources.turn = &turn.value();
     resources.river = &river.value();
     if (!history_rows_path.empty()) {
-      if (use_class_rows || uniform)
-        throw std::runtime_error("history rows require a saved history policy");
+      if (use_class_rows)
+        throw std::runtime_error("--history-rows and --class-rows are mutually exclusive");
       auto mapped = pb::HistoryBucketRows::load(history_rows_path);
       if (!mapped)
         throw std::runtime_error("history map load failed");
@@ -158,9 +172,15 @@ int main(const int argc, char **argv) {
     }
 
     std::string policy_source = "uniform";
+    const auto flop_capacity = history_rows ? history_rows->count(ca::BucketStreet::Flop)
+                                            : flop.value().capacity();
+    const auto turn_capacity = history_rows ? history_rows->count(ca::BucketStreet::Turn)
+                                            : turn.value().capacity();
+    const auto river_capacity = history_rows ? history_rows->count(ca::BucketStreet::River)
+                                             : river.value().capacity();
     pb::BucketPolicy policy(compiled.value(),
-                            pb::layout_state(compiled.value(), flop.value().capacity(),
-                                             turn.value().capacity(), river.value().capacity()));
+                            pb::layout_state(compiled.value(), flop_capacity, turn_capacity,
+                                             river_capacity));
     if (!uniform) {
       pb::PolicyFileInfo info;
       auto loaded = pb::load_policy(policy_path, compiled.value(), &info);
@@ -172,9 +192,10 @@ int main(const int argc, char **argv) {
       policy_source = info.source;
     }
 
-    if (history_rows) {
+    if (history_rows && !uniform) {
       const auto &layout = policy.layout();
-      if (!policy_source.ends_with("|abstraction=history-v1|map=" + history_rows->fingerprint()) ||
+      if (!policy_source.ends_with("|abstraction=" + std::string(history_rows->format_name()) +
+                                   "|map=" + history_rows->fingerprint()) ||
           layout.flop_capacity != history_rows->count(ca::BucketStreet::Flop) ||
           layout.turn_capacity != history_rows->count(ca::BucketStreet::Turn) ||
           layout.river_capacity != history_rows->count(ca::BucketStreet::River))
@@ -232,15 +253,21 @@ int main(const int argc, char **argv) {
       throw std::runtime_error(std::string("certification failed: ") +
                                pb::certifier_error_name(certificate.error()));
     }
-    const auto json = pb::certificate_json(certificate.value());
+    auto json = nlohmann::json::parse(pb::certificate_json(certificate.value()));
+    const auto target_antes =
+        0.01 * target_pot_percent * certificate.value().initial_pot_antes;
+    json["target_pot_percent"] = target_pot_percent;
+    json["target_antes"] = target_antes;
+    json["passes_target"] = certificate.value().exact && !certificate.value().partial &&
+                            certificate.value().report.max_gain <= target_antes;
     if (!output_path.empty()) {
       std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
       if (!output) {
         throw std::runtime_error("cannot write " + output_path.string());
       }
-      output << json;
+      output << json.dump(2) << '\n';
     }
-    std::cout << json;
+    std::cout << json.dump(2) << '\n';
     const auto &result = certificate.value();
     std::cout << "PREFLOP_BLUEPRINT_CERTIFY="
               << (result.sampled ? "SAMPLED" : result.partial ? "PARTIAL" : "EXACT") << '\n';

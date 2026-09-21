@@ -155,7 +155,9 @@ using NodeVectors = std::vector<std::vector<double>>;
 class StreetEvaluator {
 public:
   StreetEvaluator(const CompiledGame &game, const Policies &policies, NodeProbe *probe = nullptr)
-      : game_(game), policies_(policies), probe_(probe) {}
+      : game_(game), policies_(policies), probe_(probe),
+        propagate_scratch_(static_cast<std::size_t>(game.stats().maximum_depth) + 2U),
+        value_scratch_(static_cast<std::size_t>(game.stats().maximum_depth) + 2U) {}
 
   // Records the opponent reach of the probed node (scaled to a probability
   // over the allowed opponent hands disjoint from every combo).
@@ -185,7 +187,8 @@ public:
   // Propagates the opponent reach from `node` through the decision nodes of
   // its street and records the reach at every leaf (chance node or terminal).
   void propagate(const std::uint32_t node, const Universe &universe, const std::uint8_t hero,
-                 const std::vector<double> &reach, NodeVectors &leaf_reach) const {
+                 const std::vector<double> &reach, NodeVectors &leaf_reach,
+                 const std::uint32_t depth = 0U) {
     const auto &entry = game_.nodes()[node];
     if (probe_ != nullptr && node == probe_->node && hero == probe_->hero && allowed_ != nullptr) {
       record_reach(node, universe, hero, reach, *allowed_);
@@ -197,18 +200,21 @@ public:
     const auto edges = game_.edges_of(node);
     if (entry.actor == hero) {
       for (const auto &edge : edges) {
-        propagate(edge.child, universe, hero, reach, leaf_reach);
+        propagate(edge.child, universe, hero, reach, leaf_reach, depth + 1U);
       }
       return;
     }
-    std::vector<double> child(universe.size());
+    if (propagate_scratch_.size() <= depth)
+      propagate_scratch_.resize(static_cast<std::size_t>(depth) + 1U);
+    auto &child = propagate_scratch_[depth];
+    child.resize(universe.size());
     for (std::size_t action = 0; action < edges.size(); ++action) {
       for (std::size_t hand = 0; hand < universe.size(); ++hand) {
         child[hand] = reach[hand] == 0.0
                           ? 0.0
                           : reach[hand] * policies_.row(node, universe.rows[hand])[action];
       }
-      propagate(edges[action].child, universe, hero, child, leaf_reach);
+      propagate(edges[action].child, universe, hero, child, leaf_reach, depth + 1U);
     }
   }
 
@@ -217,7 +223,8 @@ public:
   // hero's decisions. Records the response choice when `choice` is given.
   void value(const std::uint32_t node, const Universe &universe, const std::uint8_t hero,
              const std::size_t mode, const NodeVectors &leaf_values, std::vector<double> &out,
-             std::vector<std::vector<std::uint8_t>> *choice) const {
+             std::vector<std::vector<std::uint8_t>> *choice,
+             const std::uint32_t depth = 0U) {
     const auto &entry = game_.nodes()[node];
     if (entry.kind != NodeKind::Decision) {
       out = leaf_values[node];
@@ -227,13 +234,13 @@ public:
       return;
     }
     const auto edges = game_.edges_of(node);
-    std::vector<std::vector<double>> children(edges.size());
-    for (std::size_t action = 0; action < edges.size(); ++action) {
-      value(edges[action].child, universe, hero, mode, leaf_values, children[action], choice);
-    }
-    out.assign(universe.size(), 0.0);
     if (entry.actor != hero) {
-      for (const auto &child : children) {
+      out.assign(universe.size(), 0.0);
+      if (value_scratch_.size() <= depth)
+        value_scratch_.resize(static_cast<std::size_t>(depth) + 1U);
+      auto &child = value_scratch_[depth];
+      for (const auto &edge : edges) {
+        value(edge.child, universe, hero, mode, leaf_values, child, choice, depth + 1U);
         for (std::size_t hand = 0; hand < universe.size(); ++hand) {
           out[hand] += child[hand];
         }
@@ -243,35 +250,35 @@ public:
     if (choice != nullptr) {
       (*choice)[node].assign(universe.size(), 0U);
     }
-    if (probe_ != nullptr && node == probe_->node && hero == probe_->hero && mode == average_mode) {
-      probe_->action_values.assign(children.size(), std::vector<double>(combo_total, 0.0));
-      for (std::size_t action = 0; action < children.size(); ++action) {
+    if (value_scratch_.size() <= depth)
+      value_scratch_.resize(static_cast<std::size_t>(depth) + 1U);
+    auto &child = value_scratch_[depth];
+    const bool record_actions =
+        probe_ != nullptr && node == probe_->node && hero == probe_->hero && mode == average_mode;
+    if (record_actions)
+      probe_->action_values.assign(edges.size(), std::vector<double>(combo_total, 0.0));
+    if (mode == response_mode) {
+      value(edges[0].child, universe, hero, mode, leaf_values, out, choice, depth + 1U);
+      for (std::size_t action = 1; action < edges.size(); ++action) {
+        value(edges[action].child, universe, hero, mode, leaf_values, child, choice, depth + 1U);
         for (std::size_t hand = 0; hand < universe.size(); ++hand) {
-          probe_->action_values[action][universe.combos[hand]] = children[action][hand];
-        }
-      }
-    }
-    for (std::size_t hand = 0; hand < universe.size(); ++hand) {
-      if (mode == response_mode) {
-        double best = children[0][hand];
-        std::uint8_t best_action = 0U;
-        for (std::size_t action = 1; action < children.size(); ++action) {
-          if (children[action][hand] > best) {
-            best = children[action][hand];
-            best_action = static_cast<std::uint8_t>(action);
+          if (child[hand] > out[hand]) {
+            out[hand] = child[hand];
+            if (choice != nullptr)
+              (*choice)[node][hand] = static_cast<std::uint8_t>(action);
           }
         }
-        out[hand] = best;
-        if (choice != nullptr) {
-          (*choice)[node][hand] = best_action;
-        }
-      } else {
+      }
+      return;
+    }
+    out.assign(universe.size(), 0.0);
+    for (std::size_t action = 0; action < edges.size(); ++action) {
+      value(edges[action].child, universe, hero, mode, leaf_values, child, choice, depth + 1U);
+      for (std::size_t hand = 0; hand < universe.size(); ++hand) {
+        if (record_actions)
+          probe_->action_values[action][universe.combos[hand]] = child[hand];
         const auto probabilities = policies_.row(node, universe.rows[hand]);
-        double total = 0.0;
-        for (std::size_t action = 0; action < children.size(); ++action) {
-          total += probabilities[action] * children[action][hand];
-        }
-        out[hand] = total;
+        out[hand] += probabilities[action] * child[hand];
       }
     }
   }
@@ -283,6 +290,8 @@ private:
   const Policies &policies_;
   NodeProbe *probe_{nullptr};
   const std::vector<double> *allowed_{nullptr};
+  std::vector<std::vector<double>> propagate_scratch_;
+  std::vector<std::vector<double>> value_scratch_;
 };
 
 double terminal_payoff(const CompiledGame &game, const CompiledNode &node, const std::uint8_t hero,

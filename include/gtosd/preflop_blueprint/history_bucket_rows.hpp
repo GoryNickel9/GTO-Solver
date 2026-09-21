@@ -17,9 +17,17 @@ struct HistoryObservation {
 struct HistoryClusteringReport {
   std::uint64_t support{0};
   std::uint64_t weight{0};
+  // Legacy field names from the river-only HR1 builder. In the turn report
+  // of HR2 these contain the street-native CDF-L1 distance, as identified by
+  // the report schema; river continues to use squared L2.
   double weighted_squared_distance{0};
   double maximum_squared_distance{0};
   std::uint32_t maximum_iterations{0};
+};
+
+struct HistoryHierarchyReport {
+  HistoryClusteringReport turn;
+  HistoryClusteringReport river;
 };
 
 // Preserve class and every original flop/turn bucket. Only river observations
@@ -33,27 +41,58 @@ public:
         const card_abstraction::BucketTable &river, std::vector<HistoryObservation> observations,
         std::uint32_t maximum_children, HistoryClusteringReport *report = nullptr);
 
+  // Build a frozen two-level hierarchy from an exact transition census. Turn
+  // observations may merge only below the same flop-history parent; river
+  // observations may merge only below the same compressed turn-history row.
+  // Lookup never uses a future-street observation.
+  [[nodiscard]] static Result<HistoryBucketRows, KernelError>
+  build_hierarchy(const card_abstraction::BucketTable &flop,
+                  const card_abstraction::BucketTable &turn,
+                  const card_abstraction::BucketTable &river,
+                  std::vector<HistoryObservation> observations,
+                  std::uint32_t maximum_turn_children,
+                  std::uint32_t maximum_river_children,
+                  HistoryHierarchyReport *report = nullptr);
+
   [[nodiscard]] std::uint32_t row(Street street, std::uint8_t hand_class, std::uint16_t flop,
                                   std::uint16_t turn, std::uint16_t river) const noexcept;
+  // Unique row of the immediately preceding street. History rows preserve
+  // this parent by construction; Preflop and invalid rows return
+  // no_history_row. These links are derived from the persisted keys and do
+  // not change the map format or fingerprint.
+  [[nodiscard]] std::uint32_t parent_row(Street street, std::uint32_t row) const noexcept;
   [[nodiscard]] std::uint32_t count(card_abstraction::BucketStreet street) const noexcept {
     return counts_[static_cast<std::size_t>(street)];
   }
   [[nodiscard]] bool matches(const card_abstraction::BucketTable &table) const noexcept;
+  [[nodiscard]] const char *format_name() const noexcept {
+    return format_version_ == 1 ? "history-v1" : "history-hierarchy-v2";
+  }
   [[nodiscard]] const std::string &fingerprint() const noexcept { return fingerprint_; }
   [[nodiscard]] std::uint64_t byte_size() const noexcept;
+  [[nodiscard]] std::uint64_t resident_byte_size() const noexcept {
+    return byte_size() + 4ULL * (turn_lookup_.size() + river_lookup_.size());
+  }
   [[nodiscard]] Result<bool, KernelError> save(const std::filesystem::path &path) const;
   [[nodiscard]] static Result<HistoryBucketRows, KernelError>
   load(const std::filesystem::path &path);
 
 private:
   [[nodiscard]] std::string payload() const;
+  [[nodiscard]] bool build_parent_rows() noexcept;
+  [[nodiscard]] bool build_lookup_rows();
   std::array<std::uint32_t, 3> capacities_{};
   std::array<std::uint32_t, 3> counts_{};
+  std::uint32_t format_version_{1};
   std::array<std::string, 3> tables_;
   std::vector<std::uint32_t> flop_rows_;
   std::vector<std::uint64_t> turn_keys_;
+  std::vector<std::uint32_t> turn_rows_;
   std::vector<std::uint64_t> river_keys_;
   std::vector<std::uint32_t> river_rows_;
+  std::vector<std::uint32_t> turn_lookup_;
+  std::vector<std::uint32_t> river_lookup_;
+  std::array<std::vector<std::uint32_t>, 3> parent_rows_;
   std::string fingerprint_;
 };
 

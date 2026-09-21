@@ -1,6 +1,8 @@
 // Trains the preflop blueprint with vector CFR and public chance sampling and
-// prints one JSON line per evaluation. Stops at the D3 rule (max gain plus
-// half-width within one per cent of the initial pot) or at --iterations.
+// prints one JSON line per evaluation. In automatic mode the only convergence
+// input is --target-pot-percent (default 1): internal checkpoints double from
+// 250 iterations, a full physical best response validates a candidate, and
+// a stalled curve exits as PLATEAU. --iterations remains a research override.
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/bucket_tables.hpp"
@@ -8,22 +10,28 @@
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/card_abstraction/rank_table.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
+#include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <thread>
+#include <vector>
 
 namespace {
 
@@ -40,6 +48,14 @@ std::uint64_t parse_unsigned(const std::string_view value) {
   return parsed;
 }
 
+double parse_decimal(const std::string_view value) {
+  std::size_t consumed = 0U;
+  const auto parsed = std::stod(std::string{value}, &consumed);
+  if (consumed != value.size() || !std::isfinite(parsed))
+    throw std::runtime_error("invalid decimal: " + std::string{value});
+  return parsed;
+}
+
 std::string read_file(const std::filesystem::path &path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
@@ -50,8 +66,10 @@ std::string read_file(const std::filesystem::path &path) {
 
 void print_estimate(const std::uint64_t iteration, const double elapsed,
                     const pb::ExploitabilityEstimate &estimate, const std::uint64_t process_bytes,
-                    const std::uint64_t boards_processed) {
-  std::cout << "{\"event\": \"evaluation\", \"iteration\": " << iteration
+                    const std::uint64_t boards_processed,
+                    const std::string_view role = "scheduled") {
+  std::cout << "{\"event\": \"evaluation\", \"role\": \"" << role
+            << "\", \"iteration\": " << iteration
             << ", \"elapsed_seconds\": " << elapsed << ", \"boards_processed\": " << boards_processed
             << ", \"evaluation_flops\": " << estimate.flops << ", \"evaluation_boards\": " << estimate.boards
             << ", \"exact\": " << (estimate.exact ? "true" : "false")
@@ -83,11 +101,20 @@ int main(const int argc, char **argv) {
     // Average policy written at the end (for the certifier and the export).
     std::filesystem::path policy_path;
     std::filesystem::path current_policy_path;
+    std::filesystem::path certificate_path;
+    std::filesystem::path coverage_path;
     bool use_class_rows = false;
     std::filesystem::path history_rows_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
-    std::uint32_t evaluation_flops = 20U;
+    bool automatic_target = true;
+    bool batch_explicit = false;
+    bool threads_explicit = false;
+    double target_pot_percent = 1.0;
+    // Automatic checkpoints are a paired trend screen, not a certificate.
+    // Keep the sample deliberately small; a candidate is always validated by
+    // the full physical best response below before it can pass.
+    std::uint32_t evaluation_flops = 8U;
     std::uint64_t evaluate_every = 10U;
     std::uint64_t progress_every = 0U;
     std::uint64_t checkpoint_every = 0U;
@@ -112,6 +139,18 @@ int main(const int argc, char **argv) {
       const std::string_view name = argv[index];
       if (name == "--batch-policy-refresh") {
         config.batch_policy_refresh = true;
+        continue;
+      }
+      if (name == "--lazy-discount") {
+        config.lazy_discount = true;
+        continue;
+      }
+      if (name == "--profile-traversal") {
+        config.detailed_profile = true;
+        continue;
+      }
+      if (name == "--reuse-discount-invariant-policy") {
+        config.reuse_discount_invariant_policy = true;
         continue;
       }
       if (name == "--class-rows") {
@@ -146,14 +185,23 @@ int main(const int argc, char **argv) {
         policy_path = std::filesystem::path(value);
       } else if (name == "--current-policy-out") {
         current_policy_path = std::filesystem::path(value);
+      } else if (name == "--certificate-out") {
+        certificate_path = std::filesystem::path(value);
+      } else if (name == "--coverage-out") {
+        coverage_path = std::filesystem::path(value);
       } else if (name == "--checkpoint") {
         checkpoint_path = value;
       } else if (name == "--iterations") {
         iterations = parse_unsigned(value);
+        automatic_target = false;
+      } else if (name == "--target-pot-percent") {
+        target_pot_percent = parse_decimal(value);
       } else if (name == "--batch") {
         config.batch_boards = static_cast<std::uint32_t>(parse_unsigned(value));
+        batch_explicit = true;
       } else if (name == "--threads") {
         config.threads = static_cast<unsigned>(parse_unsigned(value));
+        threads_explicit = true;
       } else if (name == "--eval-flops") {
         evaluation_flops = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--eval-every") {
@@ -198,6 +246,21 @@ int main(const int argc, char **argv) {
     }
     if (checkpoint_every > 0U && checkpoint_path.empty()) {
       throw std::runtime_error("--checkpoint-every requires --checkpoint");
+    }
+    if (!(target_pot_percent > 0.0 && target_pot_percent <= 100.0))
+      throw std::runtime_error("--target-pot-percent must be in (0, 100]");
+    if (automatic_target) {
+      if (!batch_explicit)
+        config.batch_boards = 32U;
+      if (!threads_explicit) {
+        const auto hardware_threads = std::max(1U, std::thread::hardware_concurrency());
+        config.threads = std::min(8U, hardware_threads);
+        config.evaluation_threads = std::min(8U, hardware_threads);
+      }
+      if (config.partition_target_nodes == 0U)
+        config.partition_target_nodes = 64U;
+      config.batch_policy_refresh = true;
+      config.lazy_discount = true;
     }
 
     const auto started = Clock::now();
@@ -303,14 +366,23 @@ int main(const int argc, char **argv) {
               << "\", \"nodes\": " << stats.node_count << ", \"decisions\": " << stats.decision_nodes
               << ", \"capacities\": [" << config.flop_capacity << ", " << config.turn_capacity
               << ", " << config.river_capacity << "], \"state_bytes\": " << trainer.state_bytes()
+              << ", \"history_map_resident_bytes\": "
+              << (history_rows ? history_rows->resident_byte_size() : 0U)
               << ", \"units\": " << trainer.partition().unit_roots.size()
               << ", \"top_nodes\": " << trainer.partition().top_nodes
               << ", \"largest_unit\": " << trainer.partition().largest_unit_nodes
               << ", \"batch\": " << config.batch_boards << ", \"threads\": " << config.threads
+              << ", \"evaluation_threads\": "
+              << (config.evaluation_threads == 0U ? config.threads : config.evaluation_threads)
               << ", \"scheme\": \"" << pb::weighting_scheme_name(config.scheme)
-              << "\", \"update\": \"" << pb::update_mode_name(config.update_mode)
+              << "\", \"lazy_discount\": " << (config.lazy_discount ? "true" : "false")
+              << ", \"reuse_discount_invariant_policy\": "
+              << (config.reuse_discount_invariant_policy ? "true" : "false")
+              << ", \"update\": \"" << pb::update_mode_name(config.update_mode)
               << "\", \"resumed_iteration\": " << trainer.iteration()
               << ", \"initial_pot_antes\": " << trainer.initial_pot_antes()
+              << ", \"target_pot_percent\": " << target_pot_percent
+              << ", \"automatic_target\": " << (automatic_target ? "true" : "false")
               << ", \"preparation_seconds\": "
               << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
 
@@ -318,10 +390,101 @@ int main(const int argc, char **argv) {
     const auto initial_iteration = trainer.iteration();
     double discount_seconds = 0.0, refresh_seconds = 0.0, prepare_seconds = 0.0,
            traversal_seconds = 0.0;
+    pb::IterationTelemetry detailed_profile;
     double evaluation_seconds = 0.0;
+    double certification_seconds = 0.0;
     bool converged = false;
+    bool certified_exact = false;
+    bool plateau = false;
     std::uint64_t process_bytes = 0U;
-    if (evaluate_only) {
+    // A loaded checkpoint already represents the current iteration. Avoid
+    // rewriting the same multi-gigabyte file in evaluation-only/export runs.
+    std::optional<std::uint64_t> saved_checkpoint_iteration =
+        resume ? std::optional<std::uint64_t>{trainer.iteration()} : std::nullopt;
+    const auto save_checkpoint_once = [&](const std::string_view failure) {
+      if (checkpoint_path.empty() || saved_checkpoint_iteration == trainer.iteration())
+        return;
+      const auto saved = trainer.save_checkpoint(checkpoint_path);
+      if (!saved)
+        throw std::runtime_error(std::string(failure));
+      saved_checkpoint_iteration = trainer.iteration();
+    };
+    constexpr std::uint64_t first_automatic_checkpoint = 250U;
+    auto next_automatic_checkpoint = first_automatic_checkpoint;
+    while (next_automatic_checkpoint <= trainer.iteration() &&
+           next_automatic_checkpoint <= std::numeric_limits<std::uint64_t>::max() / 2U)
+      next_automatic_checkpoint *= 2U;
+    std::vector<double> automatic_upper_bounds;
+    if (!coverage_path.empty()) {
+      nlohmann::json report{{"schema", "gtosd.research.trainer_coverage.v1"},
+                            {"iteration", trainer.iteration()},
+                            {"boards_processed", trainer.boards_processed()},
+                            {"tree_fingerprint", compiled.value().fingerprint()},
+                            {"trainer_identity", trainer.identity()}};
+      nlohmann::json nodes = nlohmann::json::array();
+      std::array<std::uint64_t, 4> possible_by_street{};
+      std::array<std::uint64_t, 4> strategy_by_street{};
+      std::array<std::uint64_t, 4> regret_by_street{};
+      const auto &sums = trainer.strategy_sums();
+      const auto &regrets = trainer.regrets();
+      const auto &layout = trainer.layout();
+      for (const auto &node : compiled.value().nodes()) {
+        if (node.kind != pb::NodeKind::Decision)
+          continue;
+        const auto street = static_cast<std::size_t>(node.street);
+        const auto rows = pb::StateLayout::rows_for(node.street, layout.flop_capacity,
+                                                    layout.turn_capacity, layout.river_capacity);
+        std::uint64_t strategy_rows = 0U;
+        std::uint64_t regret_rows = 0U;
+        const auto base = layout.offsets[node.id];
+        for (std::uint32_t row = 0; row < rows; ++row) {
+          const auto offset = base + static_cast<std::uint64_t>(row) * node.action_count;
+          bool has_strategy = false;
+          bool has_regret = false;
+          for (std::uint8_t action = 0; action < node.action_count; ++action) {
+            has_strategy = has_strategy || sums[offset + action] != 0.0;
+            has_regret = has_regret || regrets[offset + action] != 0.0;
+          }
+          strategy_rows += has_strategy ? 1U : 0U;
+          regret_rows += has_regret ? 1U : 0U;
+        }
+        possible_by_street[street] += rows;
+        strategy_by_street[street] += strategy_rows;
+        regret_by_street[street] += regret_rows;
+        nodes.push_back({{"node", node.id},
+                         {"street", pb::street_name(node.street)},
+                         {"actor", node.actor},
+                         {"actions", node.action_count},
+                         {"rows", rows},
+                         {"strategy_rows", strategy_rows},
+                         {"regret_rows", regret_rows},
+                         {"strategy_fraction", static_cast<double>(strategy_rows) / rows},
+                         {"regret_fraction", static_cast<double>(regret_rows) / rows}});
+      }
+      nlohmann::json streets = nlohmann::json::array();
+      for (std::size_t street = 0; street < possible_by_street.size(); ++street) {
+        const auto possible = possible_by_street[street];
+        streets.push_back(
+            {{"street", pb::street_name(static_cast<gtosd::Street>(street))},
+             {"rows", possible},
+             {"strategy_rows", strategy_by_street[street]},
+             {"regret_rows", regret_by_street[street]},
+             {"strategy_fraction",
+              possible == 0U ? 0.0 : static_cast<double>(strategy_by_street[street]) / possible},
+             {"regret_fraction",
+              possible == 0U ? 0.0 : static_cast<double>(regret_by_street[street]) / possible}});
+      }
+      report["streets"] = std::move(streets);
+      report["nodes"] = std::move(nodes);
+      std::ofstream output(coverage_path, std::ios::binary | std::ios::trunc);
+      output << report.dump(2) << '\n';
+      if (!output)
+        throw std::runtime_error("coverage report write failed");
+      std::cout << "{\"event\":\"coverage\",\"output\":\""
+                << coverage_path.generic_string() << "\"}\n";
+      automatic_target = false;
+      iterations = trainer.iteration();
+    } else if (evaluate_only) {
       const auto estimate = trainer.estimate_exploitability(evaluation_flops);
       if (!estimate) {
         throw std::runtime_error(std::string("evaluation failed: ") +
@@ -331,10 +494,12 @@ int main(const int argc, char **argv) {
       print_estimate(trainer.iteration(),
                      std::chrono::duration<double>(Clock::now() - started).count(),
                      estimate.value(), pb::process_working_set_bytes(), trainer.boards_processed());
-      converged = estimate.value().meets_stop_rule(trainer.initial_pot_antes());
+      converged =
+          estimate.value().meets_stop_rule(trainer.initial_pot_antes(), target_pot_percent);
+      automatic_target = false;
       iterations = trainer.iteration();
     }
-    while (trainer.iteration() < iterations && !converged) {
+    while ((automatic_target || trainer.iteration() < iterations) && !converged && !plateau) {
       const auto telemetry = trainer.iterate();
       if (!telemetry) {
         throw std::runtime_error(std::string("iteration failed: ") +
@@ -345,24 +510,76 @@ int main(const int argc, char **argv) {
       refresh_seconds += telemetry.value().policy_refresh_seconds;
       prepare_seconds += telemetry.value().board_prepare_seconds;
       traversal_seconds += telemetry.value().traversal_seconds;
+      detailed_profile.traversal_weight_setup_seconds +=
+          telemetry.value().traversal_weight_setup_seconds;
+      detailed_profile.board_context_cpu_seconds +=
+          telemetry.value().board_context_cpu_seconds;
+      detailed_profile.all_in_cache_cpu_seconds +=
+          telemetry.value().all_in_cache_cpu_seconds;
+      detailed_profile.reach_setup_cpu_seconds +=
+          telemetry.value().reach_setup_cpu_seconds;
+      detailed_profile.traversal_top_down_seconds +=
+          telemetry.value().traversal_top_down_seconds;
+      detailed_profile.traversal_parallel_seconds +=
+          telemetry.value().traversal_parallel_seconds;
+      detailed_profile.traversal_top_reduce_seconds +=
+          telemetry.value().traversal_top_reduce_seconds;
+      detailed_profile.nodes_visited += telemetry.value().nodes_visited;
+      detailed_profile.decision_nodes_visited += telemetry.value().decision_nodes_visited;
+      detailed_profile.hero_decision_nodes += telemetry.value().hero_decision_nodes;
+      detailed_profile.opponent_decision_nodes += telemetry.value().opponent_decision_nodes;
+      detailed_profile.chance_nodes_visited += telemetry.value().chance_nodes_visited;
+      detailed_profile.fold_terminals_visited += telemetry.value().fold_terminals_visited;
+      detailed_profile.preflop_all_in_terminals_visited +=
+          telemetry.value().preflop_all_in_terminals_visited;
+      detailed_profile.postflop_showdown_terminals_visited +=
+          telemetry.value().postflop_showdown_terminals_visited;
+      detailed_profile.zero_reach_prunes += telemetry.value().zero_reach_prunes;
+      detailed_profile.policy_rows_read += telemetry.value().policy_rows_read;
+      detailed_profile.regret_cells_written += telemetry.value().regret_cells_written;
+      detailed_profile.strategy_cells_written += telemetry.value().strategy_cells_written;
+      detailed_profile.sampled_hero_reach_seconds +=
+          telemetry.value().sampled_hero_reach_seconds;
+      detailed_profile.sampled_hero_update_seconds +=
+          telemetry.value().sampled_hero_update_seconds;
+      detailed_profile.sampled_opponent_reach_seconds +=
+          telemetry.value().sampled_opponent_reach_seconds;
+      detailed_profile.sampled_opponent_accumulate_seconds +=
+          telemetry.value().sampled_opponent_accumulate_seconds;
+      detailed_profile.sampled_fold_terminal_seconds +=
+          telemetry.value().sampled_fold_terminal_seconds;
+      detailed_profile.sampled_preflop_all_in_seconds +=
+          telemetry.value().sampled_preflop_all_in_seconds;
+      detailed_profile.sampled_postflop_showdown_seconds +=
+          telemetry.value().sampled_postflop_showdown_seconds;
       process_bytes = telemetry.value().process_bytes;
       if (progress_every > 0U && trainer.iteration() % progress_every == 0U) {
         std::cout << "{\"event\":\"training_progress\",\"iteration\":" << trainer.iteration()
                   << ",\"training_seconds\":" << training_seconds
+                  << ",\"discount_seconds\":" << discount_seconds
+                  << ",\"policy_refresh_seconds\":" << refresh_seconds
+                  << ",\"board_prepare_seconds\":" << prepare_seconds
+                  << ",\"traversal_seconds\":" << traversal_seconds
                   << ",\"boards_processed\":" << trainer.boards_processed()
                   << ",\"process_bytes\":" << process_bytes << "}\n"
                   << std::flush;
       }
       if (checkpoint_every > 0U && trainer.iteration() % checkpoint_every == 0U) {
-        if (!trainer.save_checkpoint(checkpoint_path)) {
-          throw std::runtime_error("periodic checkpoint write failed");
-        }
+        save_checkpoint_once("periodic checkpoint write failed");
       }
-      const bool evaluate = evaluate_every > 0U && (trainer.iteration() % evaluate_every == 0U ||
-                                                    trainer.iteration() == iterations);
+      const bool evaluate = automatic_target
+                                ? trainer.iteration() == next_automatic_checkpoint
+                                : evaluate_every > 0U &&
+                                      (trainer.iteration() % evaluate_every == 0U ||
+                                       trainer.iteration() == iterations);
       if (!evaluate) {
         continue;
       }
+      if (automatic_target && !checkpoint_path.empty()) {
+        save_checkpoint_once("pre-evaluation checkpoint write failed");
+      }
+      if (automatic_target)
+        trainer.reseed_evaluation(config.evaluation_seed);
       const auto estimate = trainer.estimate_exploitability(evaluation_flops);
       if (!estimate) {
         throw std::runtime_error(std::string("evaluation failed: ") +
@@ -371,28 +588,98 @@ int main(const int argc, char **argv) {
       evaluation_seconds += estimate.value().seconds;
       print_estimate(trainer.iteration(),
                      std::chrono::duration<double>(Clock::now() - started).count(),
-                     estimate.value(), process_bytes, trainer.boards_processed());
-      converged = estimate.value().meets_stop_rule(trainer.initial_pot_antes());
-      if (!checkpoint_path.empty()) {
-        const auto saved = trainer.save_checkpoint(checkpoint_path);
-        if (!saved) {
-          throw std::runtime_error("checkpoint write failed");
+                     estimate.value(), process_bytes, trainer.boards_processed(),
+                     automatic_target ? "screen" : "scheduled");
+      if (automatic_target) {
+        const auto target = 0.01 * target_pot_percent * trainer.initial_pot_antes();
+        automatic_upper_bounds.push_back(estimate.value().max_gain +
+                                         estimate.value().max_gain_half_width);
+        // Run the authoritative exact pass once either the point estimate is
+        // close enough or the conservative lower endpoint is within 2x the
+        // target. The latter avoids starving exact certification when the
+        // maximum over a small flop sample has a persistent upward bias.
+        const bool certification_candidate =
+            estimate.value().max_gain <= 4.0 * target ||
+            estimate.value().max_gain_lower <= 2.0 * target;
+        if (certification_candidate) {
+            auto average = trainer.take_average_policy();
+            pb::BestResponseResources certification_resources;
+            certification_resources.ranks = resources.ranks;
+            certification_resources.all_in = resources.all_in;
+            certification_resources.catalog = resources.catalog;
+            certification_resources.flop = resources.flop;
+            certification_resources.turn = resources.turn;
+            certification_resources.river = resources.river;
+            certification_resources.class_rows = resources.class_rows;
+            certification_resources.history_rows = resources.history_rows;
+            pb::CertifierOptions options;
+            options.threads = config.evaluation_threads == 0U ? config.threads
+                                                               : config.evaluation_threads;
+            options.progress = [](const pb::CertifierProgress &progress) {
+              std::cout << "{\"event\":\"exact_certification_progress\",\"flops_done\":"
+                        << progress.flops_done << ",\"flops_total\":" << progress.flops_total
+                        << ",\"boards_done\":" << progress.boards_done
+                        << ",\"elapsed_seconds\":" << progress.seconds << "}\n"
+                        << std::flush;
+            };
+            const auto certificate = pb::certify(compiled.value(), average,
+                                                 certification_resources, options);
+            trainer.restore_policy_buffer(std::move(average));
+            if (!certificate)
+              throw std::runtime_error(std::string("exact certification failed: ") +
+                                       pb::certifier_error_name(certificate.error()));
+            certification_seconds += certificate.value().seconds;
+            const auto exact_target =
+                0.01 * target_pot_percent * certificate.value().initial_pot_antes;
+            certified_exact = certificate.value().exact && !certificate.value().partial;
+            converged = certified_exact && certificate.value().report.max_gain <= exact_target;
+            auto certificate_output =
+                nlohmann::json::parse(pb::certificate_json(certificate.value()));
+            certificate_output["target_pot_percent"] = target_pot_percent;
+            certificate_output["target_antes"] = exact_target;
+            certificate_output["passes_target"] = converged;
+            if (!certificate_path.empty()) {
+              std::ofstream output(certificate_path, std::ios::binary | std::ios::trunc);
+              output << certificate_output.dump(2) << '\n';
+              if (!output)
+                throw std::runtime_error("exact certificate write failed");
+            }
+            std::cout << "{\"event\":\"exact_certification\",\"iteration\":"
+                      << trainer.iteration() << ",\"max_gain\":"
+                      << certificate.value().report.max_gain << ",\"target_antes\":"
+                      << exact_target << ",\"passes_target\":"
+                      << (converged ? "true" : "false") << "}\n";
         }
+        if (!converged && automatic_upper_bounds.size() >= 4U) {
+          const auto begin = automatic_upper_bounds.end() - 4;
+          const auto best_later = *std::min_element(begin + 1, automatic_upper_bounds.end());
+          const auto improvement = (*begin - best_later) / std::max(*begin, target);
+          plateau = best_later > target && improvement < 0.05;
+        }
+        if (!converged && !plateau) {
+          if (next_automatic_checkpoint > std::numeric_limits<std::uint64_t>::max() / 2U)
+            throw std::runtime_error("automatic checkpoint schedule overflow");
+          next_automatic_checkpoint *= 2U;
+        }
+      } else {
+        converged =
+            estimate.value().meets_stop_rule(trainer.initial_pot_antes(), target_pot_percent);
+      }
+      if (!checkpoint_path.empty()) {
+        save_checkpoint_once("checkpoint write failed");
       }
     }
     std::string policy_fingerprint_text;
     const std::string abstraction_source =
-        history_rows ? "|abstraction=history-v1|map=" + history_rows->fingerprint()
+        history_rows ? "|abstraction=" + std::string(history_rows->format_name()) +
+                           "|map=" + history_rows->fingerprint()
         : use_class_rows
             ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
                   "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
             : "";
     // Save final state even when periodic evaluation was explicitly disabled.
     if (!checkpoint_path.empty()) {
-      const auto saved = trainer.save_checkpoint(checkpoint_path);
-      if (!saved) {
-        throw std::runtime_error("final checkpoint write failed");
-      }
+      save_checkpoint_once("final checkpoint write failed");
     }
     if (!current_policy_path.empty()) {
       const auto current = trainer.take_current_policy();
@@ -420,12 +707,67 @@ int main(const int argc, char **argv) {
               << ", \"policy_fingerprint\": \"" << policy_fingerprint_text << "\""
               << ", \"boards_processed\": " << trainer.boards_processed()
               << ", \"converged\": " << (converged ? "true" : "false")
+              << ", \"plateau\": " << (plateau ? "true" : "false")
+              << ", \"convergence_status\": \""
+              << (converged && certified_exact
+                      ? "CERTIFIED_EXACT"
+                      : plateau ? "PLATEAU"
+                                : certified_exact ? "CERTIFIED_FAIL"
+                                                  : converged ? "ESTIMATED" : "NOT_REACHED")
+              << "\""
+              << ", \"target_pot_percent\": " << target_pot_percent
               << ", \"training_seconds\": " << training_seconds
               << ", \"evaluation_seconds\": " << evaluation_seconds
+              << ", \"certification_seconds\": " << certification_seconds
               << ", \"discount_seconds\": " << discount_seconds
               << ", \"policy_refresh_seconds\": " << refresh_seconds
               << ", \"board_prepare_seconds\": " << prepare_seconds
-              << ", \"traversal_seconds\": " << traversal_seconds << ", \"seconds_per_iteration\": "
+              << ", \"traversal_seconds\": " << traversal_seconds
+              << ", \"traversal_profile\": {\"enabled\":"
+              << (config.detailed_profile ? "true" : "false")
+              << ",\"board_context_cpu_seconds\":"
+              << detailed_profile.board_context_cpu_seconds
+              << ",\"all_in_cache_cpu_seconds\":"
+              << detailed_profile.all_in_cache_cpu_seconds
+              << ",\"reach_setup_cpu_seconds\":"
+              << detailed_profile.reach_setup_cpu_seconds
+              << ",\"weight_setup_seconds\":"
+              << detailed_profile.traversal_weight_setup_seconds
+              << ",\"top_down_seconds\":" << detailed_profile.traversal_top_down_seconds
+              << ",\"parallel_seconds\":" << detailed_profile.traversal_parallel_seconds
+              << ",\"top_reduce_seconds\":"
+              << detailed_profile.traversal_top_reduce_seconds
+              << ",\"nodes\":" << detailed_profile.nodes_visited
+              << ",\"decisions\":" << detailed_profile.decision_nodes_visited
+              << ",\"hero_decisions\":" << detailed_profile.hero_decision_nodes
+              << ",\"opponent_decisions\":" << detailed_profile.opponent_decision_nodes
+              << ",\"chance\":" << detailed_profile.chance_nodes_visited
+              << ",\"fold_terminals\":" << detailed_profile.fold_terminals_visited
+              << ",\"preflop_all_in_terminals\":"
+              << detailed_profile.preflop_all_in_terminals_visited
+              << ",\"postflop_showdown_terminals\":"
+              << detailed_profile.postflop_showdown_terminals_visited
+              << ",\"zero_reach_prunes\":" << detailed_profile.zero_reach_prunes
+              << ",\"policy_rows_read\":" << detailed_profile.policy_rows_read
+              << ",\"regret_cells_written\":" << detailed_profile.regret_cells_written
+              << ",\"strategy_cells_written\":"
+              << detailed_profile.strategy_cells_written
+              << ",\"sample_stride\":1024"
+              << ",\"sampled_hero_reach_seconds\":"
+              << detailed_profile.sampled_hero_reach_seconds
+              << ",\"sampled_hero_update_seconds\":"
+              << detailed_profile.sampled_hero_update_seconds
+              << ",\"sampled_opponent_reach_seconds\":"
+              << detailed_profile.sampled_opponent_reach_seconds
+              << ",\"sampled_opponent_accumulate_seconds\":"
+              << detailed_profile.sampled_opponent_accumulate_seconds
+              << ",\"sampled_fold_terminal_seconds\":"
+              << detailed_profile.sampled_fold_terminal_seconds
+              << ",\"sampled_preflop_all_in_seconds\":"
+              << detailed_profile.sampled_preflop_all_in_seconds
+              << ",\"sampled_postflop_showdown_seconds\":"
+              << detailed_profile.sampled_postflop_showdown_seconds << "}"
+              << ", \"seconds_per_iteration\": "
               << (trainer.iteration() > initial_iteration
                       ? training_seconds /
                             static_cast<double>(trainer.iteration() - initial_iteration)
@@ -434,7 +776,9 @@ int main(const int argc, char **argv) {
               << "\", \"process_bytes\": " << pb::process_working_set_bytes()
               << ", \"total_seconds\": "
               << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
-    std::cout << "PREFLOP_BLUEPRINT_TRAIN=" << (converged ? "CONVERGED" : "ITERATION_LIMIT") << '\n';
+    std::cout << "PREFLOP_BLUEPRINT_TRAIN="
+              << (converged ? "CONVERGED" : plateau ? "PLATEAU" : "ITERATION_LIMIT")
+              << '\n';
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "PREFLOP_BLUEPRINT_TRAIN=FAIL " << error.what() << '\n';

@@ -1,0 +1,58 @@
+{
+  "schema": "gtosd.hu30_bucket_causal_audit.v1",
+  "date": "2026-09-21",
+  "trained_policy": false,
+  "changed_solver_configuration": false,
+  "inputs": {
+    "config_id": "PREFLOP-BLUEPRINT-HU30-TEST-001",
+    "tree_fingerprint": "fnv1a64:17dc5c7d07ea30c2",
+    "policy_fingerprint": "fnv1a64:e52d2f110dbd2b34",
+    "history_map_fingerprint": "fnv1a64:3c9ee76ca6aad23b",
+    "flop_feature_fingerprint": "fnv1a64:0c8d163bc8511741",
+    "flop_200_fingerprint": "fnv1a64:33f06cf437f8f26d",
+    "flop_500_fingerprint": "fnv1a64:1e5539e63c0d1d4e"
+  },
+  "decision_audit": {
+    "flops": 16,
+    "seed": 20260921,
+    "nodes": [4, 5, 133, 226, 322, 323, 448, 449],
+    "exact_future_runouts": true,
+    "full_flop_coverage": false,
+    "feature_loss_range": [2.061980485239745e-8, 0.0003914206539805494],
+    "current_200_loss_range": [0.011659601780873607, 0.05767675088717574],
+    "finer_500_recovery_percent_range": [31.615887019598084, 57.340924805673474],
+    "maximum_internal_crosscheck_delta": 1.01967045917917e-14
+  },
+  "clustering_audit": {
+    "flop_relative_inertia_reduction_25_to_convergence": 0.00022518105513251736,
+    "flop_converged_iteration": 45,
+    "turn_production_converged_iteration": 8,
+    "river_one_step_relative_inertia_reduction": 0.00024280439596242008,
+    "river_changed_weight_fraction": 0.001632617856526775
+  },
+  "history_memory_audit": {
+    "full_river_rows": 4248476,
+    "cap7_river_rows": 1539270,
+    "cap23_river_rows": 3398989,
+    "cap7_row_reduction_from_full": 0.6376889,
+    "cap23_row_reduction_from_full": 0.19995099,
+    "cap7_weighted_squared_centroid_distance": 171840688.96868736,
+    "cap23_weighted_squared_centroid_distance": 19898848.168926697,
+    "cap23_distortion_reduction_from_cap7": 0.88420177,
+    "full_state_bytes_regret_strategy_policy": 31138638936,
+    "current_memory_limit_gib": 25
+  },
+  "exact_best_responses": {
+    "abstract_max_gain": 0.03487409101410591,
+    "physical_max_gain": 0.16761912899822407,
+    "representation_gap": 0.13274503798411816,
+    "representation_fraction_of_physical_max": 0.79194444
+  },
+  "classification": {
+    "features": "not_supported_as_primary_on_flop_open_on_turn_and_river",
+    "bucket_count": "local_contributor_demonstrated",
+    "clustering_convergence": "rejected_as_primary",
+    "history7_memory_cap": "strong_plausible_contributor_not_causally_isolated",
+    "combination": "best_supported_explanation_is_bucket_count_plus_history7_river_cap"
+  }
+}

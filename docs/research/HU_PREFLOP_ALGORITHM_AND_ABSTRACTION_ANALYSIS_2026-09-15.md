@@ -387,10 +387,10 @@ Tutto il materiale resta come evidenza e oracle; HU10 a corpus resta il test di 
 - Waugh, Schnizlein, Bowling, Szafron, 2009 — Abstraction Pathologies in Extensive Games.
 - Lanctot, Gibson, Burch, Zinkevich, Bowling, 2012 — No-Regret Learning in Extensive-Form Games
   with Imperfect Recall.
-- Documenti interni: [studio CPU/RAM](HU_PREFLOP_CPU_RAM_2H_ARCHITECTURE_STUDY_2026-09-10.md),
-  [README R6](preflop_r6_20260910/README.md), [V20 roadmap](preflop_r6_20260910/V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md),
-  [V22 fase 1](preflop_r6_20260910/V22_GENERIC_NASHCONV_CERTIFIER_PHASE1_REPORT_2026-09-14.md),
-  [V23 report HU10](preflop_r6_20260910/V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md).
+- Documenti interni storici: studio CPU/RAM, README R6, roadmap V20, fase V22 e
+  report HU10 V23. Sono stati rimossi dal working tree il 2026-09-15 e restano
+  nel tag `preflop-legacy-es-2026-09-15`; percorsi e comandi di recupero sono
+  nell'[indice legacy](PREFLOP_LEGACY_INDEX.md).
   Questi documenti sono stati rimossi dal working tree il 2026-09-15 e restano leggibili al tag
   `preflop-legacy-es-2026-09-15` (`git show preflop-legacy-es-2026-09-15:docs/research/<percorso>`);
   vedi [PREFLOP_LEGACY_INDEX.md](PREFLOP_LEGACY_INDEX.md). Le citazioni di codice

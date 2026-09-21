@@ -1,5 +1,12 @@
 # Audit della convergenza — 2026-09-19
 
+> **Aggiornamento 2026-09-21:** questo documento conserva l'audit storico
+> CO40. L'ultima diagnosi HU30 è in
+> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md):
+> numero di bucket responsabile di perdita locale, clustering convergente a
+> sufficienza, cap river `history7` plausibile ma non isolato. Nessun candidato
+> è stato promosso.
+
 ## Perimetro e stato
 
 Base: `744113c69342a82f3b920add498106af2b763d52`. Branch:

@@ -344,6 +344,16 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_buckets preflop_blueprint_buckets.cpp)
   target_link_libraries(gtosd_preflop_blueprint_buckets PRIVATE gtosd::card_abstraction)
   gtosd_set_warnings(gtosd_preflop_blueprint_buckets)
+  add_executable(gtosd_preflop_blueprint_flop_clustering_audit
+    preflop_blueprint_flop_clustering_audit.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_flop_clustering_audit
+    PRIVATE gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_flop_clustering_audit)
+  add_executable(gtosd_preflop_blueprint_river_clustering_audit
+    preflop_blueprint_river_clustering_audit.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_river_clustering_audit
+    PRIVATE gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_river_clustering_audit)
   add_test(NAME gtosd_preflop_blueprint_buckets_smoke
     COMMAND gtosd_preflop_blueprint_buckets --synthetic-groups --threads 8
       --flop 8 --turn 16 --river 32 --restarts 2 --screening-iterations 3
@@ -393,7 +403,7 @@ endif()
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_train preflop_blueprint_train.cpp)
   target_link_libraries(gtosd_preflop_blueprint_train
-    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction)
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
   gtosd_set_warnings(gtosd_preflop_blueprint_train)
   add_test(NAME gtosd_preflop_blueprint_train_smoke
     COMMAND gtosd_preflop_blueprint_train
@@ -411,6 +421,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   endif()
 
   add_executable(gtosd_preflop_blueprint_certify preflop_blueprint_certify.cpp)
+  add_executable(gtosd_preflop_blueprint_abstract_br preflop_blueprint_abstract_br.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_abstract_br
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_abstract_br)
   add_executable(gtosd_preflop_blueprint_history_rows preflop_blueprint_history_rows.cpp)
   target_link_libraries(gtosd_preflop_blueprint_history_rows
     PRIVATE gtosd::preflop_blueprint nlohmann_json::nlohmann_json)

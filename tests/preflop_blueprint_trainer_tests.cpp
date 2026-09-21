@@ -1,4 +1,5 @@
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
+#include "gtosd/preflop_blueprint/abstract_best_response.hpp"
 #include "gtosd/solver/enumerated_best_response.hpp"
 #include "preflop_blueprint_test_support.hpp"
 #include <map>
@@ -436,6 +437,30 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
               << " policies=" << estimate.value().policies
               << " overflow=" << estimate.value().overflow << '\n';
   }
+  if (history_mode) {
+    const auto abstract_nash =
+        gtosd::calculate_nash_conv(finite, solved.value().average_strategy);
+    require(abstract_nash.has_value(), "perfect-recall abstract NashConv computes");
+    std::vector<pb::WeightedBoard> weighted;
+    for (std::size_t board = 0; board < boards.histories.size(); ++board)
+      weighted.push_back({boards.histories[board], boards.weights[board]});
+    pb::BucketPolicy diagnostic_policy(game.value(), layout,
+                                       std::vector<double>(average.table().begin(),
+                                                           average.table().end()));
+    pb::AbstractBestResponseOptions diagnostic_options;
+    diagnostic_options.threads = 2U;
+    diagnostic_options.hand_subsets = subsets.combos;
+    const auto diagnostic = pb::evaluate_abstract_best_response(
+        game.value(), std::move(diagnostic_policy), training_resources,
+        pb::group_by_flop(weighted), diagnostic_options);
+    require(diagnostic.has_value(), "history abstract best response evaluates");
+    for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
+      const double oracle_gain = abstract_nash.value().best_response_value[player] -
+                                 abstract_nash.value().profile_value[player];
+      require(close(diagnostic.value().gain[player], oracle_gain, 1e-9),
+              "history sequence DP gain equals independent FiniteGame best response");
+    }
+  }
   std::cout << "oracle: finite game " << summary.value().nodes << " nodes, "
             << summary.value().information_sets << " information sets, " << compared
             << " cells compared, max regret error " << maximum_regret_error
@@ -593,6 +618,90 @@ void test_resume(const Resources &resources) {
           "checkpoint of another identity rejected");
   std::cout << "resume: checkpoint " << std::filesystem::file_size(path) << " bytes, fingerprint "
             << resumed.value()->state_fingerprint() << '\n';
+}
+
+void test_lazy_dcfr_discount(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "lazy-discount fixture compiles");
+  auto eager_config = resources.config();
+  eager_config.threads = 2U;
+  eager_config.batch_boards = 8U;
+  eager_config.batch_policy_refresh = true;
+  eager_config.scheme = pb::WeightingScheme::Dcfr;
+  eager_config.update_mode = pb::UpdateMode::Alternating;
+  auto lazy_config = eager_config;
+  lazy_config.lazy_discount = true;
+  auto single_config = lazy_config;
+  single_config.threads = 1U;
+  auto eager = pb::Trainer::create(game.value(), resources.view(), eager_config);
+  auto lazy = pb::Trainer::create(game.value(), resources.view(), lazy_config);
+  auto single = pb::Trainer::create(game.value(), resources.view(), single_config);
+  require(eager.has_value() && lazy.has_value() && single.has_value(),
+          "eager and lazy DCFR trainers create");
+
+  double maximum_regret_difference = 0.0;
+  double maximum_sum_difference = 0.0;
+  double maximum_policy_difference = 0.0;
+  for (int iteration = 0; iteration < 25; ++iteration) {
+    require(eager.value()->iterate().has_value() && lazy.value()->iterate().has_value() &&
+                single.value()->iterate().has_value(),
+            "eager and lazy DCFR iterations succeed");
+  }
+  const auto eager_policy = eager.value()->average_policy();
+  const auto lazy_policy = lazy.value()->average_policy();
+  const auto single_policy = single.value()->average_policy();
+  require(eager.value()->regrets().size() == lazy.value()->regrets().size() &&
+              eager.value()->strategy_sums().size() == lazy.value()->strategy_sums().size(),
+          "lazy layout matches eager layout");
+  for (std::size_t cell = 0; cell < eager.value()->regrets().size(); ++cell) {
+      maximum_regret_difference =
+          std::max(maximum_regret_difference,
+                   std::abs(eager.value()->regrets()[cell] - lazy.value()->regrets()[cell]));
+      maximum_sum_difference =
+          std::max(maximum_sum_difference,
+                   std::abs(eager.value()->strategy_sums()[cell] - lazy.value()->strategy_sums()[cell]));
+      maximum_policy_difference =
+          std::max(maximum_policy_difference,
+                   std::abs(eager_policy.table()[cell] - lazy_policy.table()[cell]));
+  }
+  std::cout << "lazy hybrid DCFR differences: regret " << maximum_regret_difference
+            << ", sum " << maximum_sum_difference << ", policy "
+            << maximum_policy_difference << '\n';
+  require(eager.value()->regrets() == lazy.value()->regrets() &&
+              maximum_sum_difference <= 1.0e-15 && maximum_policy_difference <= 1.0e-15 &&
+              lazy.value()->regrets() == single.value()->regrets() &&
+              lazy.value()->strategy_sums() == single.value()->strategy_sums() &&
+              lazy_policy.table() == single_policy.table(),
+          "hybrid lazy DCFR preserves regrets exactly, bounds averaging error, and is "
+          "thread-deterministic");
+
+  const auto directory = std::filesystem::temp_directory_path() / "gtosd_preflop_blueprint_tests";
+  std::filesystem::create_directories(directory);
+  const auto path = directory / "lazy_trainer_checkpoint.bin";
+  require(lazy.value()->save_checkpoint(path).has_value(), "lazy checkpoint saves");
+  auto resumed = pb::Trainer::create(game.value(), resources.view(), lazy_config);
+  require(resumed.has_value() && resumed.value()->load_checkpoint(path).has_value(),
+          "lazy checkpoint loads");
+  require(resumed.value()->state_fingerprint() == lazy.value()->state_fingerprint(),
+          "lazy checkpoint restores its fully materialized state");
+  for (int iteration = 0; iteration < 5; ++iteration) {
+    require(lazy.value()->iterate().has_value() && resumed.value()->iterate().has_value(),
+            "continuous and resumed lazy DCFR iterations succeed");
+  }
+  require(resumed.value()->state_fingerprint() == lazy.value()->state_fingerprint(),
+          "lazy checkpoint resume is bit-identical after further training");
+
+  auto invalid = lazy_config;
+  invalid.scheme = pb::WeightingScheme::Linear;
+  require(!pb::Trainer::create(game.value(), resources.view(), invalid),
+          "lazy discount rejects non-DCFR weighting");
+  invalid.scheme = pb::WeightingScheme::Dcfr;
+  invalid.dcfr_beta = 0.5;
+  require(!pb::Trainer::create(game.value(), resources.view(), invalid),
+          "lazy discount rejects unsupported nonzero beta");
+  std::cout << "lazy DCFR: max regret difference " << maximum_regret_difference
+            << ", sum difference " << maximum_sum_difference << ", policy difference "
+            << maximum_policy_difference << '\n';
 }
 
 // The physical best response of the lifted strategy: the responder decides
@@ -808,12 +917,35 @@ void test_history_rows(const Resources &resources) {
   require(single.value().count(ca::BucketStreet::Turn) ==
               single.value().count(ca::BucketStreet::River),
           "river cap one retains exactly one distinct row per turn history");
+  pb::HistoryHierarchyReport hierarchy_report;
+  auto hierarchy = pb::HistoryBucketRows::build_hierarchy(
+      *resources.flop, *resources.turn, *resources.river, observations, 1, 1,
+      &hierarchy_report);
+  require(hierarchy.has_value(), "compact history hierarchy builds");
+  require(hierarchy.value().count(ca::BucketStreet::Turn) <=
+              exact.value().count(ca::BucketStreet::Turn) &&
+              hierarchy.value().count(ca::BucketStreet::River) <=
+                  exact.value().count(ca::BucketStreet::River),
+          "compact hierarchy does not increase history row counts");
+  require(hierarchy_report.turn.weight == hierarchy_report.river.weight &&
+              hierarchy_report.turn.weight > 0,
+          "both hierarchy levels preserve exact physical census weight");
+  require(hierarchy.value().resident_byte_size() > hierarchy.value().byte_size() &&
+              single.value().resident_byte_size() == single.value().byte_size(),
+          "compact hierarchy accounts for dense runtime lookup caches only in resident bytes");
   std::reverse(observations.begin(), observations.end());
   auto reversed = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
                                                observations, 1);
   require(reversed.has_value() && reversed.value().fingerprint() == single.value().fingerprint(),
           "input order does not change clustering");
+  auto reversed_hierarchy = pb::HistoryBucketRows::build_hierarchy(
+      *resources.flop, *resources.turn, *resources.river, observations, 1, 1);
+  require(reversed_hierarchy.has_value() &&
+              reversed_hierarchy.value().fingerprint() == hierarchy.value().fingerprint(),
+          "input order does not change compact hierarchy");
   std::map<std::uint32_t, std::uint64_t> parent_by_row;
+  std::map<std::uint32_t, std::uint32_t> hierarchy_turn_parent;
+  std::map<std::uint32_t, std::uint32_t> hierarchy_river_parent;
   for (const auto &observation : observations) {
     const auto parent = observation.key / resources.river->capacity();
     const auto fkey = parent / resources.turn->capacity();
@@ -828,6 +960,34 @@ void test_history_rows(const Resources &resources) {
     require(single.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket) ==
                 single.value().row(gtosd::Street::Turn, cls, fb, tb, rb),
             "turn row does not depend on future river bucket");
+    const auto turn_row =
+        single.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket);
+    const auto flop_row =
+        single.value().row(gtosd::Street::Flop, cls, fb, ca::no_bucket, ca::no_bucket);
+    require(single.value().parent_row(gtosd::Street::River, row) == turn_row &&
+                single.value().parent_row(gtosd::Street::Turn, turn_row) == flop_row &&
+                single.value().parent_row(gtosd::Street::Flop, flop_row) == cls,
+            "derived history parents recover the complete abstract observation sequence");
+
+    const auto compact_turn =
+        hierarchy.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket);
+    const auto compact_river =
+        hierarchy.value().row(gtosd::Street::River, cls, fb, tb, rb);
+    const auto compact_flop =
+        hierarchy.value().row(gtosd::Street::Flop, cls, fb, ca::no_bucket, ca::no_bucket);
+    require(compact_turn != pb::no_history_row && compact_river != pb::no_history_row,
+            "all supported compact hierarchy observations mapped");
+    require(hierarchy.value().row(gtosd::Street::Turn, cls, fb, tb, rb) == compact_turn,
+            "compact turn lookup does not depend on future river bucket");
+    const auto [turn_parent, inserted_turn] =
+        hierarchy_turn_parent.emplace(compact_turn, compact_flop);
+    const auto [river_parent, inserted_river] =
+        hierarchy_river_parent.emplace(compact_river, compact_turn);
+    require((inserted_turn || turn_parent->second == compact_flop) &&
+                (inserted_river || river_parent->second == compact_turn) &&
+                hierarchy.value().parent_row(gtosd::Street::Turn, compact_turn) == compact_flop &&
+                hierarchy.value().parent_row(gtosd::Street::River, compact_river) == compact_turn,
+            "every compact row has one causal parent");
   }
   auto duplicate = observations;
   duplicate.push_back(duplicate.front());
@@ -842,6 +1002,11 @@ void test_history_rows(const Resources &resources) {
   require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
                                         observations, 0),
           "zero child capacity rejected");
+  require(!pb::HistoryBucketRows::build_hierarchy(*resources.flop, *resources.turn,
+                                                  *resources.river, observations, 0, 1) &&
+              !pb::HistoryBucketRows::build_hierarchy(*resources.flop, *resources.turn,
+                                                      *resources.river, observations, 1, 0),
+          "zero hierarchy capacity rejected");
   const auto path =
       std::filesystem::temp_directory_path() /
       ("gtosd_history_" + std::to_string(Clock::now().time_since_epoch().count()) + ".bin");
@@ -849,6 +1014,10 @@ void test_history_rows(const Resources &resources) {
   auto loaded = pb::HistoryBucketRows::load(path);
   require(loaded.has_value() && loaded.value().fingerprint() == single.value().fingerprint(),
           "history map roundtrip preserves identity");
+  require(loaded.has_value() &&
+              loaded.value().parent_row(gtosd::Street::River, parent_by_row.begin()->first) !=
+                  pb::no_history_row,
+          "history map roundtrip rebuilds derived parent rows");
   auto bytes = read_file(path);
   bytes.back() ^= 1;
   {
@@ -857,6 +1026,34 @@ void test_history_rows(const Resources &resources) {
   }
   require(!pb::HistoryBucketRows::load(path), "corrupt history map rejected");
   std::filesystem::remove(path);
+
+  const auto hierarchy_path =
+      std::filesystem::temp_directory_path() /
+      ("gtosd_history_hierarchy_" +
+       std::to_string(Clock::now().time_since_epoch().count()) + ".bin");
+  require(hierarchy.value().save(hierarchy_path).has_value(), "compact hierarchy saves");
+  auto loaded_hierarchy = pb::HistoryBucketRows::load(hierarchy_path);
+  require(loaded_hierarchy.has_value() &&
+              loaded_hierarchy.value().fingerprint() == hierarchy.value().fingerprint() &&
+              loaded_hierarchy.value().count(ca::BucketStreet::Turn) ==
+                  hierarchy.value().count(ca::BucketStreet::Turn) &&
+              loaded_hierarchy.value().parent_row(
+                  gtosd::Street::River, hierarchy_river_parent.begin()->first) ==
+                  hierarchy_river_parent.begin()->second,
+          "compact hierarchy roundtrip preserves rows and causal parents");
+  std::filesystem::remove(hierarchy_path);
+}
+
+void test_configurable_stop_rule() {
+  pb::ExploitabilityEstimate estimate;
+  estimate.max_gain = 0.029;
+  require(estimate.meets_stop_rule(3.0), "default stop target is one per cent of pot");
+  estimate.max_gain = 0.031;
+  require(!estimate.meets_stop_rule(3.0), "default stop target rejects gain above one per cent");
+  require(estimate.meets_stop_rule(3.0, 2.0), "explicit pot percentage changes stop target");
+  estimate.max_gain = 0.025;
+  estimate.max_gain_half_width = 0.006;
+  require(!estimate.meets_stop_rule(3.0), "estimated stop includes confidence half-width");
 }
 
 void test_batch_policy_refresh(const Resources &resources) {
@@ -885,15 +1082,17 @@ void test_batch_policy_refresh(const Resources &resources) {
           const auto state = selected.value()->state_fingerprint();
           {
             const auto expected = selected.value()->average_policy();
-            const auto taken = selected.value()->take_average_policy();
+            auto taken = selected.value()->take_average_policy();
             require(expected.table() == taken.table(),
                     "transferred average equals ordinary export");
+            selected.value()->restore_policy_buffer(std::move(taken));
           }
           {
             const auto expected = selected.value()->current_policy();
-            const auto taken = selected.value()->take_current_policy();
+            auto taken = selected.value()->take_current_policy();
             require(expected.table() == taken.table(),
                     "transferred current equals ordinary export");
+            selected.value()->restore_policy_buffer(std::move(taken));
           }
           require(selected.value()->state_fingerprint() == state,
                   "export does not perturb training state");
@@ -909,19 +1108,32 @@ int main(const int argc, char **argv) {
     std::filesystem::path resources_dir;
     std::filesystem::path buckets_dir;
     bool deep_only = false;
-    for (int index = 1; index + 1 < argc; index += 2) {
+    bool lazy_only = false;
+    for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
+      if (name == "--lazy-only") {
+        lazy_only = true;
+        continue;
+      }
+      if (index + 1 >= argc)
+        throw std::runtime_error("missing value for " + std::string{name});
+      const std::string_view value = argv[++index];
       if (name == "--resources-dir") {
-        resources_dir = argv[index + 1];
+        resources_dir = value;
       } else if (name == "--buckets-dir") {
-        buckets_dir = argv[index + 1];
+        buckets_dir = value;
       } else if (name == "--deep-only") {
-        deep_only = std::string_view(argv[index + 1]) == "true";
+        deep_only = value == "true";
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
     }
     const auto resources = load_resources(resources_dir, buckets_dir);
+    if (lazy_only) {
+      test_lazy_dcfr_discount(resources);
+      return 0;
+    }
+    test_configurable_stop_rule();
     test_history_rows(resources);
     test_batch_policy_refresh(resources);
     test_forgotten_information_witness();
@@ -944,6 +1156,7 @@ int main(const int argc, char **argv) {
     test_finite_game_oracle(resources);
     test_determinism(resources);
     test_resume(resources);
+    test_lazy_dcfr_discount(resources);
     test_physical_best_response(resources);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';

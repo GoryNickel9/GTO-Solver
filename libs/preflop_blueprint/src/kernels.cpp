@@ -138,26 +138,64 @@ void showdown_masses_reference(const BoardContext &context, const ConstHandSpan 
 Result<AllInEquityCache, KernelError>
 AllInEquityCache::build(const BoardContext &context, const card_abstraction::AllInTable &table) {
   AllInEquityCache cache;
-  cache.win_.assign(live_hand_count * live_hand_count, 0.0);
-  cache.tie_.assign(live_hand_count * live_hand_count, 0.0);
+  const auto rebuilt = cache.rebuild(context, table);
+  if (!rebuilt)
+    return Result<AllInEquityCache, KernelError>::failure(rebuilt.error());
+  return Result<AllInEquityCache, KernelError>::success(std::move(cache));
+}
+
+Result<bool, KernelError>
+AllInEquityCache::rebuild(const BoardContext &context,
+                          const card_abstraction::AllInTable &table) {
+  win_.resize(live_hand_count * live_hand_count);
+  tie_.resize(live_hand_count * live_hand_count);
+  std::fill(win_.begin(), win_.end(), 0.0);
+  std::fill(tie_.begin(), tie_.end(), 0.0);
   const auto cards = context.cards();
   const auto combos = context.combo_ids();
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
-    for (std::size_t other = 0; other < live_hand_count; ++other) {
-      if (other == hand || !disjoint(cards[hand], cards[other])) {
+    for (std::size_t other = hand + 1U; other < live_hand_count; ++other) {
+      if (!disjoint(cards[hand], cards[other])) {
         continue;
       }
       const auto outcome = table.outcome(combos[hand], combos[other]);
       const auto total = outcome.total();
       if (total == 0U) {
-        return Result<AllInEquityCache, KernelError>::failure(KernelError::InvalidInput);
+        return Result<bool, KernelError>::failure(KernelError::InvalidInput);
       }
-      const auto index = hand * live_hand_count + other;
-      cache.win_[index] = static_cast<double>(outcome.wins) / total;
-      cache.tie_[index] = static_cast<double>(outcome.ties) / total;
+      const auto forward = hand * live_hand_count + other;
+      const auto reverse = other * live_hand_count + hand;
+      win_[forward] = static_cast<double>(outcome.wins) / total;
+      win_[reverse] = static_cast<double>(outcome.losses) / total;
+      const auto tie = static_cast<double>(outcome.ties) / total;
+      tie_[forward] = tie;
+      tie_[reverse] = tie;
     }
   }
-  return Result<AllInEquityCache, KernelError>::success(std::move(cache));
+  return Result<bool, KernelError>::success(true);
+}
+
+Result<bool, KernelError>
+AllInEquityCache::rebuild(const BoardContext &context,
+                          const std::span<const double> win_probability,
+                          const std::span<const double> tie_probability) {
+  constexpr std::size_t dense_entries = card_abstraction::combo_count *
+                                         card_abstraction::combo_count;
+  if (win_probability.size() != dense_entries || tie_probability.size() != dense_entries)
+    return Result<bool, KernelError>::failure(KernelError::InvalidInput);
+  win_.resize(live_hand_count * live_hand_count);
+  tie_.resize(live_hand_count * live_hand_count);
+  const auto combos = context.combo_ids();
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    const auto source = static_cast<std::size_t>(combos[hand]) * card_abstraction::combo_count;
+    const auto target = hand * live_hand_count;
+    for (std::size_t other = 0; other < live_hand_count; ++other) {
+      const auto index = source + combos[other];
+      win_[target + other] = win_probability[index];
+      tie_[target + other] = tie_probability[index];
+    }
+  }
+  return Result<bool, KernelError>::success(true);
 }
 
 void AllInEquityCache::masses(const BoardContext &context, const ConstHandSpan reach,

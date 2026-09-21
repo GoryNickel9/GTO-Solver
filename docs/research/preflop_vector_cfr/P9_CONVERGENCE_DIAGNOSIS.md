@@ -1,5 +1,16 @@
 # P9 — Diagnosi della convergenza CO40
 
+> **Aggiornamento, 2026-09-21:** il bersaglio corrente è la qualificazione
+> generale HU10/HU20/HU30/HU40. I giochi sono una matrice di regressione, non
+> casi da riconoscere nel codice. HU30 `history7` a 32.000 ha BR astratta esatta
+> 0,034874091 a e BR fisica esatta 0,167619129 a. La differenza di 0,132745038 a
+> localizza il problema dominante nella rappresentazione. L'audit causale
+> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md)
+> trova un costo locale dimostrato nel numero di bucket e un contributo forte ma
+> non isolato nel cap river di `history7`. L'arresto del clustering non è una
+> causa materiale; le feature flop identiche producono una perdita trascurabile
+> nel campione. Nessuna soluzione è stata promossa o addestrata.
+
 > **Riapertura, 2026-09-19:** l'[audit della normalizzazione](NASH_AUDIT_2026-09-19.md)
 > corregge un fattore 630 nella perdita postflop del diario, con test indipendenti
 > e metriche globali invariate. Le conclusioni di esaurimento delle possibilita
@@ -32,10 +43,20 @@ Sintesi in **§ Esito della fase**; il resto del documento è il registro di com
 CO40 usa una sola size postflop del 100% del piatto, più all-in. Confermato
 dall'utente il 2026-09-16: il passaggio a tre size non fa parte di questa attività.
 
-Il lavoro attuale si concentra su CO40. L'utente ha chiesto di non avviare
-ulteriori test a 100 e 300 ante; i risultati già ottenuti restano riportati
-come controlli precedenti. La correzione deve essere generale, senza rami
-di codice o parametri scelti per far passare questa fixture.
+Il lavoro corrente procede nell'ordine HU10, HU20, HU30 e HU40. I risultati a
+100 e 300 ante restano controlli storici. La correzione deve essere generale,
+senza rami di codice o parametri scelti per far passare una fixture. L'utente
+imposta soltanto la soglia in percentuale del piatto; il solver ricava budget di
+iterazioni, memoria e raffinamento dalla configurazione e dalle risorse locali.
+
+### BR astratta e BR fisica
+
+Una BR astratta esatta enumera tutti gli esiti di chance, ma impone al deviatore
+gli stessi bucket e le stesse righe di storia della policy. Una BR fisica esatta
+enumera gli stessi esiti e consente al deviatore di distinguere le hole card e
+le osservazioni pubbliche disponibili. Non consente di vedere carte future e
+non aggiunge size all'albero. La prima misura la convergenza nel gioco astratto;
+la seconda misura anche la perdita dell'astrazione ed è il gate di prodotto.
 
 ## Esito della fase
 

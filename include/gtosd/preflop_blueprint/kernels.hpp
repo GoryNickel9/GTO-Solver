@@ -45,6 +45,15 @@ class AllInEquityCache {
 public:
   [[nodiscard]] static Result<AllInEquityCache, KernelError>
   build(const BoardContext &context, const card_abstraction::AllInTable &table);
+  // Refill an existing cache while retaining its allocations. Training uses
+  // this path because every iteration prepares many boards of the same size.
+  [[nodiscard]] Result<bool, KernelError>
+  rebuild(const BoardContext &context, const card_abstraction::AllInTable &table);
+  // Gather a board-local cache from dense, oriented 630x630 probability
+  // tables prepared once by the trainer. Overlapping pairs must be zero.
+  [[nodiscard]] Result<bool, KernelError>
+  rebuild(const BoardContext &context, std::span<const double> win_probability,
+          std::span<const double> tie_probability);
 
   // W[h] = sum_o r[o] p_win(h, o), T[h] = sum_o r[o] p_tie(h, o), L = D - W - T.
   void masses(const BoardContext &context, ConstHandSpan reach, HandSpan win, HandSpan tie,

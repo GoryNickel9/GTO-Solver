@@ -3,6 +3,7 @@
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/action_labels.hpp"
+#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include <algorithm>
 
@@ -59,41 +60,57 @@ Result<std::uint32_t, QueryError> policy_row(const CompiledGame &game, const Que
   }
   std::array<CardId, 3> flop{board[0], board[1], board[2]};
   std::sort(flop.begin(), flop.end());
-  Result<ca::CanonicalLookup, CardError> lookup =
-      Result<ca::CanonicalLookup, CardError>::failure(CardError::InvalidCard);
-  const ca::BucketTable *table = nullptr;
-  switch (entry.street) {
-  case Street::Flop:
-    lookup = tables.catalog->lookup_flop(flop);
-    table = tables.flop;
-    break;
-  case Street::Turn:
-    lookup = tables.catalog->lookup_flop_turn(flop, board[3]);
-    table = tables.turn;
-    break;
-  case Street::River: {
-    std::array<CardId, 5> cards{flop[0], flop[1], flop[2], board[3], board[4]};
-    lookup = tables.catalog->lookup_river_board(cards);
-    table = tables.river;
-    break;
+  std::array<std::uint16_t, 3> buckets{ca::no_bucket, ca::no_bucket, ca::no_bucket};
+  const auto assign_bucket = [&](const std::size_t index, const ca::BucketTable *table,
+                                 const Result<ca::CanonicalLookup, CardError> &lookup)
+      -> Result<bool, QueryError> {
+    if (table == nullptr) {
+      return Result<bool, QueryError>::failure(QueryError::MissingTable);
+    }
+    if (!lookup) {
+      return Result<bool, QueryError>::failure(QueryError::InvalidBoard);
+    }
+    const auto &permutation = lookup.value().permutation;
+    const auto first = ca::permute_card(hand[0], permutation);
+    const auto second = ca::permute_card(hand[1], permutation);
+    buckets[index] = table->bucket(lookup.value().index, ca::combo_index(first, second));
+    if (buckets[index] == ca::no_bucket) {
+      return Result<bool, QueryError>::failure(QueryError::MissingTable);
+    }
+    return Result<bool, QueryError>::success(true);
+  };
+  auto assigned = assign_bucket(0U, tables.flop, tables.catalog->lookup_flop(flop));
+  if (!assigned) {
+    return Outcome::failure(assigned.error());
   }
-  case Street::Preflop:
-    break;
+  if (entry.street == Street::Turn || entry.street == Street::River) {
+    assigned = assign_bucket(1U, tables.turn, tables.catalog->lookup_flop_turn(flop, board[3]));
+    if (!assigned) {
+      return Outcome::failure(assigned.error());
+    }
   }
-  if (table == nullptr) {
-    return Outcome::failure(QueryError::MissingTable);
+  if (entry.street == Street::River) {
+    const std::array<CardId, 5> cards{flop[0], flop[1], flop[2], board[3], board[4]};
+    assigned = assign_bucket(2U, tables.river, tables.catalog->lookup_river_board(cards));
+    if (!assigned) {
+      return Outcome::failure(assigned.error());
+    }
   }
-  if (!lookup) {
-    return Outcome::failure(QueryError::InvalidBoard);
+  if (tables.history_rows != nullptr) {
+    if (tables.flop == nullptr || tables.turn == nullptr || tables.river == nullptr ||
+        !tables.history_rows->matches(*tables.flop) || !tables.history_rows->matches(*tables.turn) ||
+        !tables.history_rows->matches(*tables.river)) {
+      return Outcome::failure(QueryError::MissingTable);
+    }
+    const auto mapped = tables.history_rows->row(
+        entry.street, ca::combo_table().hand_class[combo], buckets[0], buckets[1], buckets[2]);
+    if (mapped == no_history_row) {
+      return Outcome::failure(QueryError::MissingTable);
+    }
+    return Outcome::success(mapped);
   }
-  const auto &permutation = lookup.value().permutation;
-  const auto first = ca::permute_card(hand[0], permutation);
-  const auto second = ca::permute_card(hand[1], permutation);
-  const auto bucket = table->bucket(lookup.value().index, ca::combo_index(first, second));
-  if (bucket == ca::no_bucket) {
-    return Outcome::failure(QueryError::MissingTable);
-  }
-  return Outcome::success(static_cast<std::uint32_t>(bucket));
+  return Outcome::success(
+      static_cast<std::uint32_t>(buckets[static_cast<std::size_t>(entry.street) - 1U]));
 }
 
 Result<QueryResult, QueryError> query_policy(const CompiledGame &game, const BucketPolicy &policy,
@@ -142,6 +159,12 @@ Result<QueryResult, QueryError> query_policy(const CompiledGame &game, const Buc
   const auto row = policy_row(game, tables, node, request.hand, request.board);
   if (!row) {
     return Outcome::failure(row.error());
+  }
+  const auto rows = StateLayout::rows_for(entry.street, policy.layout().flop_capacity,
+                                          policy.layout().turn_capacity,
+                                          policy.layout().river_capacity);
+  if (row.value() >= rows) {
+    return Outcome::failure(QueryError::MissingTable);
   }
   QueryResult result;
   result.node = node;

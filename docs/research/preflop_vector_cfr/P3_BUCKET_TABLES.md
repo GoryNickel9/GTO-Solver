@@ -83,10 +83,11 @@ gli id confrontabili fra costruzioni.
 
 ## 4. Osservazioni e dubbi
 
-1. Flop e river si sono fermati al limite di 25 iterazioni; il turn ha raggiunto la convergenza
-   in 8. La roadmap §3.4 fissa i riavvii (10, intervallo 3–50) ma non il numero massimo di
-   iterazioni: per le tabelle finali di P9 conviene misurare l'inerzia con 50 e 100 iterazioni e
-   registrare la differenza. Non è un requisito del gate P3.
+1. **Chiuso il 2026-09-21.** Il flop converge a 45 iterazioni, ma l'inerzia scende solo dello
+   0,0225% rispetto alla tabella fermata a 25. Sul river un passo Lloyd esatto aggiuntivo riduce
+   l'inerzia dello 0,0243% e cambia lo 0,163% del peso. Il limite di iterazioni non spiega il
+   problema di convergenza HU30. Report:
+   [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
 2. Il costo è dominato dal river (814 s) e dal turn (416 s): l'assegnazione di 9,3 milioni e 6,8
    milioni di osservazioni pesate a 1.000 e 500 centroidi per iterazione. È una costruzione una
    tantum per identità dell'astrazione; il file salvato evita di ripeterla.

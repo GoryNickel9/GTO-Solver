@@ -42,6 +42,8 @@
 // accumulated state once per iteration before the increments.
 namespace gtosd::preflop_blueprint {
 
+class ParallelExecutor;
+
 enum class TrainerError : std::uint8_t {
   InvalidConfiguration,
   MissingResource,
@@ -61,8 +63,24 @@ struct TrainerConfig {
   std::uint32_t river_capacity{1'000U};
   std::uint32_t batch_boards{32U};
   unsigned threads{1U};
+  // Physical best response parallelism can differ from the memory-bandwidth
+  // limited CFR traversal. Zero reuses `threads`. Excluded from identity.
+  unsigned evaluation_threads{0U};
   // Storage/traversal optimization only; deliberately excluded from identity.
   bool batch_policy_refresh{false};
+  // Benchmark-only counters and coarse timers. Excluded from identity and
+  // disabled in production because even thread-local counters perturb the hot path.
+  bool detailed_profile{false};
+  // Experimental alternating-update optimization. DCFR multiplies every
+  // positive regret in a row by the same factor, so its regret-matched policy
+  // is invariant in real arithmetic. Floating-point rounding changes, so this
+  // remains opt-in until its convergence is independently certified.
+  bool reuse_discount_invariant_policy{false};
+  // Apply DCFR discounts when a row is next read instead of scanning both
+  // dense tables every iteration. Checkpoints and exports materialize every
+  // row first. This changes only floating-point association, so it is part of
+  // the trainer identity and must be validated against eager discounting.
+  bool lazy_discount{false};
   WeightingScheme scheme{WeightingScheme::Linear};
   UpdateMode update_mode{UpdateMode::Simultaneous};
   double dcfr_alpha{1.5};
@@ -143,9 +161,11 @@ struct ExploitabilityEstimate {
   double normalized_dev{0.0};
   double normalized_stack{0.0};
   double seconds{0.0};
-  // Decision D3: estimate plus half-width within one per cent of the initial pot.
-  [[nodiscard]] bool meets_stop_rule(const double initial_pot_antes) const noexcept {
-    return max_gain + max_gain_half_width <= 0.01 * initial_pot_antes;
+  // Estimated upper bound compared with a user-facing percentage of the
+  // initial pot. One per cent remains the default product target.
+  [[nodiscard]] bool meets_stop_rule(const double initial_pot_antes,
+                                     const double target_pot_percent = 1.0) const noexcept {
+    return max_gain + max_gain_half_width <= 0.01 * target_pot_percent * initial_pot_antes;
   }
 };
 
@@ -157,8 +177,33 @@ struct IterationTelemetry {
   double discount_seconds{0.0};
   double policy_refresh_seconds{0.0};
   double board_prepare_seconds{0.0};
+  double board_context_cpu_seconds{0.0};
+  double all_in_cache_cpu_seconds{0.0};
+  double reach_setup_cpu_seconds{0.0};
   double traversal_seconds{0.0};
+  double traversal_weight_setup_seconds{0.0};
+  double traversal_top_down_seconds{0.0};
+  double traversal_parallel_seconds{0.0};
+  double traversal_top_reduce_seconds{0.0};
+  double sampled_hero_reach_seconds{0.0};
+  double sampled_hero_update_seconds{0.0};
+  double sampled_opponent_reach_seconds{0.0};
+  double sampled_opponent_accumulate_seconds{0.0};
+  double sampled_fold_terminal_seconds{0.0};
+  double sampled_preflop_all_in_seconds{0.0};
+  double sampled_postflop_showdown_seconds{0.0};
   std::uint64_t nodes_visited{0U};
+  std::uint64_t decision_nodes_visited{0U};
+  std::uint64_t hero_decision_nodes{0U};
+  std::uint64_t opponent_decision_nodes{0U};
+  std::uint64_t chance_nodes_visited{0U};
+  std::uint64_t fold_terminals_visited{0U};
+  std::uint64_t preflop_all_in_terminals_visited{0U};
+  std::uint64_t postflop_showdown_terminals_visited{0U};
+  std::uint64_t zero_reach_prunes{0U};
+  std::uint64_t policy_rows_read{0U};
+  std::uint64_t regret_cells_written{0U};
+  std::uint64_t strategy_cells_written{0U};
   std::uint64_t process_bytes{0U};
 };
 
@@ -177,13 +222,17 @@ public:
   [[nodiscard]] Result<ExploitabilityEstimate, TrainerError>
   estimate_exploitability(std::uint32_t flops, bool exact_on_list = false);
 
-  [[nodiscard]] BucketPolicy average_policy() const;
-  [[nodiscard]] BucketPolicy current_policy() const;
+  [[nodiscard]] BucketPolicy average_policy();
+  [[nodiscard]] BucketPolicy current_policy();
   // Transfer the cache to a final export instead of allocating a fourth array.
   // The next iterate rebuilds its cache; discard the returned export first
   // when enforcing a three-array memory budget.
   [[nodiscard]] BucketPolicy take_average_policy();
   [[nodiscard]] BucketPolicy take_current_policy();
+  // Return a policy buffer obtained from take_*_policy to the trainer and
+  // rebuild the current regret-matched cache without allocating another dense
+  // table. Used by in-process evaluation under the desktop memory budget.
+  void restore_policy_buffer(BucketPolicy &&policy);
   [[nodiscard]] const std::vector<double> &regrets() const noexcept { return regrets_; }
   [[nodiscard]] const std::vector<double> &strategy_sums() const noexcept {
     return strategy_sums_;
@@ -197,14 +246,17 @@ public:
   [[nodiscard]] double effective_stack_antes() const noexcept { return stack_antes_; }
   // FNV-1a over iteration, RNG states and the two tables: equal fingerprints
   // mean bit-identical state.
-  [[nodiscard]] std::string state_fingerprint() const;
+  [[nodiscard]] std::string state_fingerprint();
   [[nodiscard]] std::uint64_t state_bytes() const noexcept {
-    return (regrets_.size() + strategy_sums_.size() + policy_.size()) * sizeof(double);
+    return (regrets_.size() + strategy_sums_.size() + policy_.size()) * sizeof(double) +
+           discount_iterations_.size() * sizeof(std::uint32_t) +
+           (positive_discount_factors_.size() + strategy_discount_prefix_.size()) *
+               sizeof(double);
   }
   [[nodiscard]] const std::string &identity() const noexcept { return identity_; }
 
   // Atomic checkpoint (temporary file then rename) with checksum and identity.
-  [[nodiscard]] Result<bool, TrainerError> save_checkpoint(const std::filesystem::path &path) const;
+  [[nodiscard]] Result<bool, TrainerError> save_checkpoint(const std::filesystem::path &path);
   // Restores iteration, RNG states and tables into a trainer created with the
   // same game, resources, configuration and hooks.
   [[nodiscard]] Result<bool, TrainerError> load_checkpoint(const std::filesystem::path &path);
@@ -221,15 +273,24 @@ private:
   struct BoardWork;
   struct Workspace;
   struct Unit;
+  using ActiveRows = std::array<std::vector<std::uint32_t>, 4>;
 
   Trainer(const CompiledGame &game, const TrainerResources &resources, const TrainerConfig &config);
-  Result<bool, TrainerError> initialize(const TrainingBoards *boards, const HandSubsets *subsets);
+  Result<bool, TrainerError> initialize(const TrainingBoards *boards, const HandSubsets *subsets,
+                                        std::vector<double> *fixed_policy = nullptr);
   Result<bool, TrainerError> prepare_board(const card_abstraction::BoardHistory &history,
                                            double weight, BoardWork &work) const;
-  void refresh_policy(const std::vector<BoardWork> *batch = nullptr);
-  void fill_average_policy(std::vector<double> &table) const;
+  [[nodiscard]] ActiveRows collect_active_rows(const std::vector<BoardWork> &batch) const;
+  void refresh_policy(const std::vector<BoardWork> *batch = nullptr, int actor = -1,
+                      const ActiveRows *prepared_rows = nullptr);
+  void materialize_active_rows(const ActiveRows &active, std::uint8_t actor);
+  void fill_average_policy(std::vector<double> &table);
   void discount_state(std::uint64_t iteration);
-  void pass(const BoardWork &board, std::uint8_t hero, double iteration_weight);
+  void prepare_discount_factors(std::uint64_t iteration);
+  void materialize_row(std::uint32_t node, std::uint32_t row, std::uint64_t iteration);
+  void materialize_all_discounts();
+  void pass(const BoardWork &board, std::uint8_t hero, double iteration_weight,
+            IterationTelemetry *telemetry = nullptr);
   void top_down_reach(std::uint32_t node, const double *hero_reach, const double *opponent_reach,
                       std::uint8_t hero, const BoardWork &board, Workspace &workspace,
                       std::uint32_t depth);
@@ -249,14 +310,29 @@ private:
   bool usable_{true};
   TrainerResources resources_;
   TrainerConfig config_;
+  std::unique_ptr<ParallelExecutor> executor_;
   StateLayout layout_;
   SubtreePartition partition_;
   std::vector<double> regrets_;
   std::vector<double> strategy_sums_;
   std::vector<double> policy_;
+  bool fixed_policy_evaluation_{false};
+  std::vector<std::uint64_t> discount_offsets_;
+  std::vector<std::uint32_t> discount_iterations_;
+  // Positive regrets retain the original per-step multiplication order because
+  // their rounded value feeds the next CFR update. Strategy sums do not feed
+  // training, so their prefix products safely collapse a skipped interval.
+  std::vector<double> positive_discount_factors_{1.0};
+  std::vector<double> strategy_discount_prefix_{1.0};
+  std::vector<double> all_in_win_probability_;
+  std::vector<double> all_in_tie_probability_;
+  std::uint64_t discount_target_{0U};
   std::vector<std::uint32_t> unit_of_node_;
   std::vector<Unit> units_;
   std::vector<std::unique_ptr<Workspace>> workspaces_;
+  // Reused across iterations so the two 465x465 all-in matrices per sampled
+  // board do not return hundreds of MiB to the allocator every iteration.
+  std::vector<BoardWork> board_batch_;
   std::vector<card_abstraction::BoardHistory> board_list_;
   std::vector<double> board_weights_;
   std::vector<double> board_cumulative_;

@@ -15,17 +15,21 @@ using Clock = std::chrono::steady_clock;
 
 int main(int argc, char **argv) {
   try {
-    if (argc != 6)
-      throw std::runtime_error("usage: RESOURCES BUCKETS MAP REPORT MAXIMUM_CHILDREN");
+    if (argc != 6 && argc != 7)
+      throw std::runtime_error(
+          "usage: RESOURCES BUCKETS MAP REPORT RIVER_CHILDREN [TURN_CHILDREN]");
     const auto started = Clock::now();
     const std::filesystem::path resources(argv[1]), buckets(argv[2]);
-    const auto cap = static_cast<std::uint32_t>(std::stoul(argv[5]));
+    const auto river_cap = static_cast<std::uint32_t>(std::stoul(argv[5]));
+    const bool hierarchy = argc == 7;
     auto ranks = ca::RankTable::load(resources / "rank_table_v1.bin");
     auto flop = ca::BucketTable::load(buckets / "flop_buckets_v1.bin");
     auto turn = ca::BucketTable::load(buckets / "turn_buckets_v1.bin");
     auto river = ca::BucketTable::load(buckets / "river_buckets_v1.bin");
     if (!ranks || !flop || !turn || !river)
       throw std::runtime_error("resource load failed");
+    const auto turn_cap = hierarchy ? static_cast<std::uint32_t>(std::stoul(argv[6]))
+                                    : turn.value().capacity();
     const auto catalog = ca::BoardCatalog::build();
     pb::AbstractionTables tables{&catalog, &flop.value(), &turn.value(), &river.value()};
     std::unordered_map<std::uint64_t, std::uint64_t> weights;
@@ -58,8 +62,13 @@ int main(int argc, char **argv) {
     weights.clear();
     weights.rehash(0);
     pb::HistoryClusteringReport clustering;
-    auto rows = pb::HistoryBucketRows::build(flop.value(), turn.value(), river.value(),
-                                             std::move(observations), cap, &clustering);
+    pb::HistoryHierarchyReport hierarchy_clustering;
+    auto rows = hierarchy
+                    ? pb::HistoryBucketRows::build_hierarchy(
+                          flop.value(), turn.value(), river.value(), std::move(observations),
+                          turn_cap, river_cap, &hierarchy_clustering)
+                    : pb::HistoryBucketRows::build(flop.value(), turn.value(), river.value(),
+                                                   std::move(observations), river_cap, &clustering);
     if (!rows)
       throw std::runtime_error("history clustering failed");
     const auto clustering_end = Clock::now();
@@ -70,24 +79,50 @@ int main(int argc, char **argv) {
       throw std::runtime_error("map roundtrip failed");
     const std::uint64_t expected_weight =
         static_cast<std::uint64_t>(ca::physical_board_histories) * pb::live_hand_count;
-    if (clustering.weight != expected_weight)
+    const auto physical_weight =
+        hierarchy ? hierarchy_clustering.river.weight : clustering.weight;
+    if (physical_weight != expected_weight ||
+        (hierarchy && hierarchy_clustering.turn.weight != expected_weight))
       throw std::runtime_error("physical support weight mismatch");
     Json output{
-        {"schema", "gtosd.research.history_rows.v1"},
+        {"schema", hierarchy ? "gtosd.research.history_rows.v2"
+                              : "gtosd.research.history_rows.v1"},
         {"complete", true},
-        {"maximum_children", cap},
+        {"abstraction", hierarchy ? "compact_hierarchy" : "full_turn_history"},
+        {"maximum_children", river_cap},
+        {"maximum_turn_children", turn_cap},
+        {"maximum_river_children", river_cap},
         {"fingerprint", rows.value().fingerprint()},
         {"base_tables",
          {flop.value().fingerprint(), turn.value().fingerprint(), river.value().fingerprint()}},
         {"capacities",
          {rows.value().count(ca::BucketStreet::Flop), rows.value().count(ca::BucketStreet::Turn),
           rows.value().count(ca::BucketStreet::River)}},
-        {"support", clustering.support},
-        {"physical_weight", clustering.weight},
-        {"weighted_squared_centroid_distance", clustering.weighted_squared_distance},
-        {"maximum_squared_centroid_distance", clustering.maximum_squared_distance},
-        {"maximum_lloyd_iterations", clustering.maximum_iterations},
+        {"support", hierarchy ? hierarchy_clustering.river.support : clustering.support},
+        {"physical_weight", physical_weight},
+        {"turn_clustering",
+         {{"metric", "cdf_l1"},
+          {"support", hierarchy ? hierarchy_clustering.turn.support : 0},
+          {"weighted_centroid_distance",
+           hierarchy ? hierarchy_clustering.turn.weighted_squared_distance : 0},
+          {"maximum_centroid_distance",
+           hierarchy ? hierarchy_clustering.turn.maximum_squared_distance : 0},
+          {"maximum_lloyd_iterations",
+           hierarchy ? hierarchy_clustering.turn.maximum_iterations : 0}}},
+        {"river_clustering",
+         {{"metric", "fixed_l2_squared"},
+          {"support", hierarchy ? hierarchy_clustering.river.support : clustering.support},
+          {"weighted_squared_centroid_distance",
+           hierarchy ? hierarchy_clustering.river.weighted_squared_distance
+                     : clustering.weighted_squared_distance},
+          {"maximum_squared_centroid_distance",
+           hierarchy ? hierarchy_clustering.river.maximum_squared_distance
+                     : clustering.maximum_squared_distance},
+          {"maximum_lloyd_iterations",
+           hierarchy ? hierarchy_clustering.river.maximum_iterations
+                     : clustering.maximum_iterations}}},
         {"map_bytes", rows.value().byte_size()},
+        {"resident_map_bytes", rows.value().resident_byte_size()},
         {"census_seconds", std::chrono::duration<double>(census_end - started).count()},
         {"clustering_seconds", std::chrono::duration<double>(clustering_end - census_end).count()},
         {"total_seconds", std::chrono::duration<double>(Clock::now() - started).count()}};

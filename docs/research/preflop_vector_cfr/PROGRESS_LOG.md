@@ -14,13 +14,14 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Fase in corso | P9: diagnosi e correzione generale della convergenza; CO40 non qualificato |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `codex/nash-convergence-audit` (indagine autorizzata il 2026-09-19) |
-| Worktree | `C:/Users/GoryNickel/.codex/worktrees/nash-convergence-audit/GTO-Solver`; risorse del checkout principale in lettura |
+| Branch di fase | `codex/fix-preflop-deep-stack-convergence` |
+| Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
-| Build | `out/build/windows-release` del worktree (Release, MSVC, /W4 /WX) |
+| Build | `out/build/windows-release-current` del worktree (Release, MSVC, /W4 /WX) |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Gate di accettazione | **0,03 a, l'1 % del piatto iniziale** (D27, decisione dell'utente del 2026-09-18, stringe lo 0,1 a provvisorio di D2). Unico gioco qualificato: **HU10** a 0,003981 a |
-| Prossimo passo | HU20 class a 8.000: certificazione integrale 0,049244482 a, FAIL. Controllo ASAN del nuovo trainer, poi pilot gerarchico HU20 entro 12 GiB. HU30 e HU40 restano in attesa. [Protocollo del goal](HU20_HU30_HU40_GOAL_2026-09-19.md). |
+| Gate di accettazione | **1 % del piatto iniziale**, quindi 0,03 a per HU10/HU20/HU30/HU40. Qualificati con BR fisica esatta: **HU10** a 0,003981 a; **HU20 history7** a 0,0279995887 a. HU30 history7 a 32.000: 0,167619129 a, FAIL. |
+| Limite RAM corrente | **8 GiB** di picco per il solver di prodotto. I censimenti a 12 e 25 GiB restano misure storiche. |
+| Prossimo passo | Formalizzare il vettore universale `[equity, hand strength, draw potential, nut potential, blockers, future distribution]` e riallineare il contratto delle fixture prima di altri training. |
 
 ## 2. Registro dei gate
 
@@ -41,6 +42,401 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-21 — pilot HU40 `history7` entro 12 GiB
+
+Il pilot HU40 richiesto ha completato 500 iterazioni con DCFR alternato,
+batch 32, otto thread, partizione 64 e `lazy-discount-v2-hybrid`. Il training
+ha richiesto 96,489 s, pari a 0,192977 s/iterazione; la valutazione diagnostica
+su otto flop ha richiesto 18,517 s. Il processo è terminato normalmente in
+130,956 s con `PREFLOP_BLUEPRINT_TRAIN=ITERATION_LIMIT`.
+
+Il picco di working set osservato dal monitor esterno è 12.728.139.776 byte,
+11,854 GiB: restano 156.762.112 byte, circa 149,5 MiB, rispetto al tetto
+temporaneo di 12 GiB. Il margine è sufficiente per questo pilot ma non qualifica
+il layout per il limite di prodotto da 8 GiB. La stima campionata a 500
+iterazioni è max gain 1,39651 ante, semiampiezza 0,305243 ante; è un punto
+iniziale su otto flop, non una BR esatta né una misura di convergenza finale.
+Log: `out/hu40_pilot/hu40_history7_lazy_v2_pilot500.jsonl`.
+
+### 2026-09-21 — budget 8 GiB e protocollo unico dei benchmark
+
+Il requisito di prodotto è ora un picco di processo non superiore a **8 GiB**.
+I 25 GiB restano il tetto usato dall'audit cap 23, non una configurazione
+candidabile. HU20 `history7` conserva il PASS matematico a 0,0279995887 ante,
+ma usa circa 11,44 GiB e quindi fallisce il nuovo requisito di memoria. Cap 23
+HU30 usa 24,67 GiB ed è escluso anche senza considerare il tempo.
+
+HU10, HU20, HU30 e HU40 devono usare un solo solver automatico. I benchmark
+possono variare soltanto stack, numero di size preflop e numero di size
+postflop. Iterazioni, batch, capacità, feature, clustering, arresto e
+certificazione non possono essere regolati per fare passare una fixture. Le
+fixture correnti non sono ancora uniformi nelle percentuali: HU10 ridotto usa
+66 % postflop, mentre HU20/HU30/HU40 di test usano 100 %. I confronti restano
+diagnostici finché il profilo condiviso non viene riallineato.
+
+La prossima ipotesi documentata è una rappresentazione universale
+`[equity, hand strength, draw potential, nut potential, blockers, future distribution]`.
+L'audit precedente non la dimostra: esclude soltanto le collisioni flop
+esattamente identiche come causa primaria. La geometria fra osservazioni
+vicine e le feature di turn e river restano da isolare. Il requisito temporale
+resta almeno il 50 % in meno del riferimento HU20 da 74m54s, quindi massimo
+37m27s end-to-end sullo stesso hardware e con la stessa BR fisica.
+
+### 2026-09-21 — audit causale: numero di bucket sì, clustering no, cap `history7` plausibile
+
+Su richiesta dell'utente è stato eseguito un audit senza cambiare il solver e
+senza avviare training. Report completo:
+[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
+
+La policy HU30 `fnv1a64:e52d2f110dbd2b34` a 32.000 è stata valutata su 16
+flop fissati dal seed `20260921`, otto nodi flop e tutti i futuri esatti. La
+perdita causata da collisioni fra feature flop identiche va da `2,06e-8` a
+`0,000391` ante. La partizione corrente da 200 bucket perde invece da
+`0,011660` a `0,057677` ante. La partizione da 500 bucket recupera fra il
+31,6% e il 57,3% di questa perdita locale. Il controllo coincide con il
+diagnostico C++ esistente entro `1,02e-14`.
+
+Il limite di 25 iterazioni del clustering non è una causa materiale. A parità
+di feature, capacità, seed e riavvii, il flop converge a 45 iterazioni con una
+riduzione d'inerzia dello 0,0225%. Il turn era già convergente a 8. Un passo
+Lloyd esatto aggiuntivo sul river riduce l'inerzia dello 0,0243% e cambia lo
+0,163% del peso. Nessuna tabella prodotta dall'audit è stata salvata per il
+solver.
+
+La memoria resta una causa plausibile ma non isolata. `history7` cap 7 riduce
+le righe river da 4.248.476 a 1.539.270, cioè del 63,77%. Cap 23 ne conserva
+3.398.989 e riduce la distorsione geometrica dell'88,42%, ma il solo pilot a
+2.000 è sotto-allenato e non è un confronto causale. La storia completa
+richiede 31.138.638.936 byte per regret, strategy sum e policy, oltre 25 GiB
+prima di mappe e temporanei.
+
+Classificazione finale: feature flop non supportate come causa primaria;
+numero di bucket contributo locale dimostrato; mancata convergenza del
+clustering esclusa come causa primaria; cap river di `history7` contributo
+forte ma non certificato; combinazione numero di bucket più cap river è la
+spiegazione meglio sostenuta. Nessuna di queste misure dimostra una soluzione
+che superi il gate.
+
+### 2026-09-21 — HU30 a 32k: il limite dominante è l'astrazione, non la 3-bet
+
+Il run HU30 `history7`, batch 32, otto thread, partizione 64 e DCFR alternato è
+stato ripreso da 16.000 a 32.000 iterazioni. La BR fisica esatta su 573 flop e
+605.088 board misura max gain **0,16761912899822407 a**, NashConv
+**0,23267577680425217 a**, quindi FAIL rispetto alla soglia 0,03. A 16.000 il
+max gain era 0,191818521 a: il raddoppio ha ridotto il massimo del 12,6 %.
+
+La BR vincolata a `history7` è stata prima confrontata con `FiniteGame` su un
+gioco ridotto. La misura su otto flop non è un estimatore non distorto del gioco
+completo: risolve il gioco ristretto ai flop estratti e serve soltanto per
+confronti appaiati. La valutazione esatta successiva ha enumerato tutti i 573
+flop e 605.088 board in 3.194,826 s. Guadagni astratti:
+**[0,03487409101410591, 0,01879786537775447] a**. Il massimo astratto manca il
+gate di 0,004874091 a; il massimo fisico lo manca di 0,137619129 a. Per il
+giocatore peggiore, la differenza fisico-astratto è **0,132745038 a**, il 79,2 %
+del guadagno fisico. Altre iterazioni possono chiudere il piccolo residuo
+astratto, ma non spiegano né rimuovono il divario fisico.
+
+HU20 e HU30 condividono ruleset, range, apertura a 5 ante, size postflop pot più
+all-in e gate. Non hanno lo stesso albero preflop: a 30 ante la risposta 3-bet a
+17 ante resta distinta dallo shove ed è obbligatoria nel prodotto. Non è però
+la rotta scelta dalla BR responsabile del massimo: la deviazione dominante passa
+da `CO_call_BTN_check_chance`; la risposta 3-bet ha probabilità zero nella BR e
+probabilità media 1,75e-5 nel profilo certificato. Il piatto limpato passa da SPR
+4,75 su HU20 a SPR 7,25 su HU30. Lo stack maggiore aumenta il costo delle mani
+fisiche fuse nella stessa informazione astratta, soprattutto al river.
+
+La copertura a 32.000 non indica tabelle abbandonate: righe regret flop/turn/river
+100/100/99,1 %, righe di strategia 99,8/98,0/87,9 %. Tra 16.000 e 32.000 la TV
+media pesata della policy cresce per street: 1,08 % preflop, 2,35 % flop, 4,37 %
+turn e 6,27 % river. Le strategie profonde restano più mobili, ma la BR astratta
+esatta mostra che questo è il problema minore.
+
+Il limite RAM è stato alzato da 12 a **25 GiB**. Sono state censite mappe con cap
+river 8/12/16/23/24/28/30/32. Cap 28 ha raggiunto 25,56 GiB e cap 24 25,043 GiB:
+entrambi sono stati fermati come `RESOURCE_LIMIT`. Cap 23 conserva 3.398.989
+righe river, ha un picco osservato di 24,67 GiB e riduce l'errore quadratico
+medio dei centroidi da 171.840.689 a 19.898.848. Nel pilot simultaneo a 2.000
+iterazioni richiede 394,354 s, contro 320,833 s del cap 7, e la BR astratta sullo
+stesso gioco ristretto a otto flop peggiora da 0,496262101 a **0,726731922 a**.
+Il numero di board è rimasto 64.000 mentre le righe river sono più che
+raddoppiate: il pilot è sotto-allenato. Non dimostra che cap 23 abbia un limite
+asintotico peggiore, ma esclude l'aumento uniforme del cap come soluzione rapida.
+
+Artefatti principali: `out/history7_optimized/hu30_history7_lazy_v2_auto_certificate.json`,
+`hu30_history7_lazy_v2_t32000_abstract_br_exact.json`,
+`history_cap23_candidate.json`, `hu30_cap23_simultaneous_t2000.jsonl` e
+`hu30_cap23_simultaneous_t2000_abstract_br_sample8.json`.
+
+Validazione della build corrente: kernel PASS, 1.633.676 asserzioni; trainer
+PASS, 1.581.361 asserzioni. Il vecchio prototipo `recall_full` conferma che lo
+storage compatto della storia completa entra in memoria (circa 12,92 GiB), ma
+il suo eseguibile compila un albero HU30 obsoleto da 637 nodi invece dei 604
+attuali. Il pilot da 26,79 s/100 vale quindi solo come misura di risorse e non
+come confronto di convergenza. Prima di usarlo occorre integrare lo storage
+compatto nell'albero corrente e ripetere gli oracoli.
+
+`Esatta` qualifica la valutazione, non la policy. La BR astratta enumera tutto il
+gioco ma vincola il deviatore agli information set della mappa `history7`; la BR
+fisica enumera lo stesso gioco e permette al deviatore di distinguere le hole
+card, senza conoscere carte future. Entrambe mantengono l'albero discreto delle
+puntate. La prima misura l'errore di ottimizzazione entro l'astrazione; la
+seconda include anche l'errore della rappresentazione ed è l'unico gate.
+
+Il requisito di generalità è ora esplicito nel documento del goal. Nessun ramo
+può dipendere da `HU30`, dallo stack 30 o dal fingerprint della fixture. La
+stessa regola deve conservare HU10 e HU20, mantenere la 3-bet quando produce uno
+stato distinto e qualificare HU30 e HU40. Iterazioni, memoria e raffinamento
+restano scelte interne derivate dalla soglia sul piatto e dalle risorse locali.
+
+### 2026-09-20 — HU20 `history7` ottimizzato: PASS esatto in 74m54s
+
+Il run batch 32 precedente è stato fermato a 3.000 iterazioni. Il tempo medio
+era salito da 0,2231 s/iter nelle prime 500 a 0,2862 s/iter; la proiezione era
+76m19s di training più circa 15m05s di BR. Board e RAM restavano lineari. La
+telemetria ogni 250 iterazioni ha localizzato la crescita nel refresh policy:
+17,900, 22,479, 26,418 e 34,785 secondi per blocco, mentre preparazione board e
+traversata restavano quasi piatte.
+
+La causa era `materialize_row()`: il catch-up DCFR delle righe rare eseguiva
+una moltiplicazione per ogni iterazione saltata, per ogni azione, sia sui regret
+sia sulle somme strategiche. Il costo cresceva con l'età della riga. La nuova
+modalità `lazy-discount-v2-hybrid` conserva l'ordine originale sui regret
+positivi, usa `ldexp` per il fattore negativo 0,5 e applica alle sole somme
+strategiche il rapporto fra prodotti prefissi. Il trainer usa una nuova
+identità, quindi non carica checkpoint v1 con la nuova associazione numerica.
+
+La variante che cumulava anche i regret positivi è stata rimossa: dopo 25
+iterazioni produceva differenza regret 0,0110507 e differenza policy 1,0. La
+versione conservata misura differenza regret 0, strategy sum `8,32667e-17` e
+policy media `4,44089e-16`; determinismo tra thread e resume PASS.
+
+Sul confronto a 3.000 iterazioni, la v1 richiedeva 858,616 s e la v2 680,659 s:
+20,73 % in meno. Il run definitivo ha completato 16.000 iterazioni e 1.024.000
+board in 3.469,540 s di training. Le fasi sono: refresh 1.436,170 s,
+preparazione board 387,171 s, traversata 1.646,170 s e discount 0,017 s.
+Inizializzazione, materializzazione, checksum e scrittura portano il trainer a
+3.570,710 s, 59m31s. Working set finale: 12.285.771.776 byte, circa 11,44 GiB.
+
+La BR fisica esatta ha enumerato 573 flop canonici e 605.088 board in 903,558
+s, più 19,827 s di preparazione. Certificato: max gain
+0,027999588711995 ante, NashConv 0,0299431715909233 ante, soglia 0,03, PASS.
+Il tempo end-to-end è 4.494,095 s, 74m54s. Policy
+`fnv1a64:362045ee45623b7a`, stato trainer `fnv1a64:449bbb9b17798709`.
+
+Artefatti e SHA-256 sono in
+[HISTORY7_TIME_AUDIT_2026-09-20.md](HISTORY7_TIME_AUDIT_2026-09-20.md).
+Regressioni finali: trainer PASS 21.310.536 assertion, kernel PASS 1.636.010,
+certificatore PASS 146.545. HU20 è riproducibile e qualificato; il prossimo
+bersaglio sequenziale è HU30.
+
+### 2026-09-20 — audit del tempo `history7`; run 8k fermato e ipotesi corretta
+
+Su richiesta dell'utente ogni training è stato fermato. Il tentativo
+`history7` batch 64 avviato verso 8.000 iterazioni è terminato a 1.800:
+865,789 s di training, 230.400 board, 0,480994 s/iterazione e working set
+12.416.487.424 byte. Non sono stati scritti checkpoint o policy. Considerare
+8.000 come possibile chiusura sotto 90 minuti era scorretto: il solo punto
+qualificato è 16.000 con BR fisica 0,0279995887 a.
+
+Il profilo pulito di 100 iterazioni, stato
+`fnv1a64:505f4de576707bf5`, divide 43,2937 s di training in: discount lazy
+0,000184 s, refresh policy 11,3242 s, preparazione board 8,38124 s e
+traversata CFR 23,5881 s. Le quote sono 0,0004 %, 26,16 %, 19,36 % e
+54,48 %. La proiezione sostenuta a 16.000 è 2 h 08 min 16 s di solo
+training; aggiungendo i 933,681 s della certificazione fisica, il limite
+inferiore supera 2 h 23 min prima dell'I/O.
+
+Sono state rimosse tre ottimizzazioni non sufficienti: cache netta all-in
+(circa 1,5 % ma traiettoria numerica diversa), cache policy locale copiata
+(0,399115 s/iter) e cache policy locale calcolata direttamente
+(0,395803 s/iter e circa 135 MB in più). Ordinamento radix, mark
+generazionali, buffer piccoli persistenti e `/arch:AVX2` non hanno prodotto
+un guadagno ripetibile. Una partizione target 8 ha peggiorato il profilo a
+0,531683 s/iter. Restano discount lazy, preparazione board parallela, pool
+persistente, bitmap delle righe attive, otto thread e partizione 32.
+
+Il programma evita ora di riscrivere lo stesso checkpoint più volte alla
+stessa iterazione. La modifica riduce solo I/O e non è ancora benchmarkata.
+Il log e gli artefatti completi del vecchio 16k non sono presenti in `out`:
+restano verificabili il PASS, il max gain, le iterazioni, circa 11,48 GiB e
+la durata riferita di circa tre ore, non la scomposizione delle sue fasi.
+
+Audit completo, inclusi tentativi falliti, budget temporale e opzioni:
+[HISTORY7_TIME_AUDIT_2026-09-20.md](HISTORY7_TIME_AUDIT_2026-09-20.md).
+
+### 2026-09-20 — gerarchia compatta su censimento esatto e arresto automatico
+
+L'audit successivo a `history7` conferma due fatti distinti. HU20 a 16.000
+iterazioni passa la certificazione fisica esatta con max gain
+**0,0279995887 a**. HU30 allo stesso checkpoint resta sfruttabile anche nel
+gioco astratto: max gain campionato 0,154603646 a e max gain fisico esatto
+0,191818521 a. `history7` risolve quindi la perdita di memoria astratta di
+HU20, ma costa circa 11,48 GiB e non generalizza: sul gioco HU10 completo la
+proiezione è 34,10 GiB per le maggiori colonne d'azione.
+
+È stata aggiunta una gerarchia fissa e serializzata `GTOSDHR2`. Mantiene tutte
+le coppie classe/bucket flop; al turn raggruppa soltanto figli dello stesso
+padre con distanza CDF-L1 e mediana pesata; al river raggruppa soltanto figli
+del turn già compresso con distanza L2 quadratica e media pesata. La mappa
+nasce dall'intero censimento di 3.506.025.600 osservazioni fisiche pesate. La
+lookup al turn non riceve il bucket river e ogni riga ha un solo padre.
+
+Con otto figli massimi per padre il risultato è
+**7.585 / 60.097 / 474.047** righe, fingerprint
+`fnv1a64:e1b177635b19fe48`, file da 34.178.340 byte. Una cache diretta HR2
+di turn e river porta la mappa residente a 306.966.340 byte senza cambiare
+file o fingerprint; elimina le ricerche binarie dall'hot path. Il layout HU20 contiene
+142.896.501 celle per tabella: regret, somme e policy richiedono
+3.429.516.024 byte. HU30 e HU40 richiedono 3.533.539.656 byte. Costruzione e
+round-trip: 40,10 s. Report:
+`out/hierarchy32/history_rows_v2_cap8.json`.
+
+Due prove sono state invalidate e fermate. `32/32` significava erroneamente
+32 figli, mentre nel vecchio nome `recall32` il numero indicava indici a 32
+bit e il prototipo usava otto figli: la mappa ottenuta avrebbe richiesto
+22,32 GB su HU20. La prima mappa `8/8` usava erroneamente L2 anche al turn;
+il run HU20 è stato interrotto a 500 prima della valutazione. File e
+checkpoint sono prefissati `INVALID_L2_TURN_` e non costituiscono evidenza.
+
+Il trainer accetta ora soltanto la soglia sul piatto come controllo di
+convergenza, `--target-pot-percent`, default 1. In modalità automatica usa
+batch 64, al massimo otto thread disponibili, DCFR lazy e refresh
+selettivo; valuta checkpoint 250/500/1.000/2.000 e successivi raddoppi sugli
+stessi otto flop. Quando il max gain stimato scende sotto quattro volte la
+soglia, il trainer passa direttamente ai 573 flop canonici con BR fisica
+esatta, nello stesso processo; se l'esatto fallisce, il training riprende
+dal checkpoint successivo. Quattro
+checkpoint con meno del 5 % di miglioramento producono `PLATEAU`, mai un
+PASS. Il certificatore esatto riceve la stessa percentuale e scrive
+`passes_target`. `--iterations` resta un override esclusivamente di ricerca.
+
+Il primo screening senza cache è stato interrotto a 250 dopo oltre 13 minuti
+di sola valutazione ancora incompleta; il log è prefissato
+`INCOMPLETE_SLOW_LOOKUP_` e non contiene una misura di exploitability. Un
+secondo tentativo con cache, ancora su 64 flop e quattro thread, è rimasto
+incompleto dopo oltre 14 minuti. La cache costa 272.788.000 byte oltre alla
+mappa serializzata. Sulle prime dieci iterazioni il training passa da 0,6831
+a 0,6699 s/iterazione.
+
+Il primo screening completo usa otto flop e otto thread al checkpoint 500:
+8.448 board completi in 14,9321 s, max gain stimato 0,301785 a, limite
+inferiore 0,0125834 a e semilarghezza 0,172672 a. Il valore centrale è dieci
+volte la soglia 0,03 a. Il vecchio gate usava anche il limite inferiore e ha
+avviato per errore la certificazione esatta: un campione piccolo può avere un
+intervallo largo anche quando il valore centrale è lontano dalla soglia. La
+certificazione è stata fermata dopo 32/573 flop, il checkpoint 500 era già
+salvo, e il gate ora richiede max gain stimato <= quattro volte la soglia.
+
+La curva successiva sugli stessi otto flop scende a 0,268395 a a 1.000,
+0,238778 a a 2.000, 0,224014 a a 4.000 e 0,219175 a a 8.000. I quattro
+miglioramenti relativi sono 11,1 %, 11,0 %, 6,2 % e 2,2 %. Il BR richiede
+13,4-14,9 s per 8.448 board completi.
+Il training usa ora quattro thread, mentre il BR ne usa otto: su questa CPU
+la traversata CFR è limitata dalla banda memoria e passa da circa 0,72 a 0,69
+s/iterazione; il parallelismo aggiuntivo resta utile sui flop indipendenti.
+
+Al checkpoint 8.000 la BR vincolata alla stessa astrazione e agli stessi otto
+flop misura max gain 0,154556 a. La BR fisica è 0,219175 a: la differenza
+osservata è 0,064619 a, ma non è una decomposizione additiva dell'errore.
+Poiché anche la BR astratta supera di oltre cinque volte la soglia, il punto
+è ancora undertrained nel gioco astratto. Il checkpoint 8.000 viene quindi
+esteso a 16.000 prima di decidere se aumentare la capacità della gerarchia.
+
+L'estensione è stata fermata su decisione dell'utente prima di 16.000. Il
+percorso `8/8` è **FAIL** rispetto al nuovo requisito operativo: almeno il 50
+% di tempo in meno di `history7`, con la stessa soglia fisica di 0,03 a. A
+8.000 richiede già 2 h 32 min di lavoro complessivo includendo diagnosi e
+tentativi interrotti; proseguire fino a 16.000 avrebbe superato il tempo del
+run `history7`. Il checkpoint 8.000, la policy e le due BR restano come
+evidenza. Il prossimo intervento deve ridurre il costo dominante del trainer
+o il numero di traversate richiesto; una sola riduzione della memoria non
+soddisfa il requisito.
+
+Build MSVC Release `/W4 /WX` PASS. Suite trainer deep, inclusi formato HR1,
+HR2, determinismo, causalità, round-trip e soglia configurabile: PASS con
+1.581.361 asserzioni. Il run automatico HU20 è ripreso dal checkpoint 500
+con PID 9640; nessun limite di tempo, RAM o iterazioni è stato fornito al
+processo.
+
+### 2026-09-20 — stima esatta del layout HU10 `history7`, nessun solve avviato
+
+Su richiesta dell'utente e stato calcolato il layout di HU10 senza allocare gli array e senza
+avviare il training. Il benchmark esistente ha contato per street nodi decisionali e colonne di
+azione con capacita unitarie; il report applica poi le capacita della mappa `history7`
+`7.585/222.865/1.539.270` (`fnv1a64:3c9ee76ca6aad23b`).
+
+HU10 completo (1.501 nodi, 584 decisioni) richiede 1.425.343.821 celle per tabella: policy
+10,62 GiB, checkpoint R+S 21,24 GiB, tre tabelle 31,86 GiB e timestamp lazy 2,24 GiB. Stato
+trainer a 2.000 iterazioni: **34,10 GiB**; picco di processo proiettato dal margine osservato su
+HU20: 34,35-34,38 GiB. Non entra nel limite di 12 GiB. HU10 ridotto (193 nodi, 80 decisioni)
+richiede invece 116.534.101 celle: stato trainer **2,81 GiB**, checkpoint 1,74 GiB, policy
+0,87 GiB e picco proiettato 3,06-3,08 GiB; entra nel limite. Il layout completo e 3,04 volte lo
+stato HU20 `history7`, perche le tre size postflop portano le colonne d'azione per riga da 512 a
+1.396. Report: `out/hu_goal/hu10_history7_layout_estimate.json`.
+
+Nessun training HU10 e stato avviato. Un confronto `class`/`history7` entro 12 GiB deve quindi
+usare inizialmente HU10 ridotto oppure cambiare esplicitamente rappresentazione/storage; non si
+chiama `history7` una mappa con cap diverso.
+
+### 2026-09-19 — HU20: BR astratta, batch più grande e discount lazy
+
+Il pilot history7 a 2.000 iterazioni termina su 128.000 board. Media
+`fnv1a64:195f8c83b3582c3b`, stato `fnv1a64:dd5ce5f6230f5b4e`; training
+3.153,17 s, totale 3.545,12 s. Sul campione fissato di 64 flop, seed 20260919,
+il max gain fisico e 0,221344071 a. Il valore scende da 0,595749411 a a 500,
+ma resta lontano dal gate.
+
+La BR vincolata all'astrazione history7 e stata implementata con la ricorrenza
+preregistrata e confrontata con una BR FiniteGame indipendente: errore massimo
+1e-9 sul gioco ridotto. Sullo stesso campione a 2.000, il max gain astratto e
+0,142510257 a. Quindi il profilo e ancora sfruttabile dentro history7; l'errore
+di ottimizzazione e sostanziale prima ancora della perdita dovuta
+all'astrazione. La misura e campionata e non sostituisce il gate fisico.
+
+Il tentativo batch 512 per 125 iterazioni e stato interrotto al working set
+13.154.013.184 byte, oltre 12 GiB. La correzione batch 320 per 200 iterazioni
+resta sotto il limite, 12.484.063.232 byte, ma a pari 128.000 board produce
+max gain astratto 0,172034656 a: peggio di 0,142510257. Ridurre il numero di
+update e discount non risolve il transitorio; il ramo non viene esteso.
+
+Il discount DCFR lazy evita le scansioni dense e conserva l'ordine esatto dei
+fattori per ogni riga. Una prima versione con prodotti cumulativi e fallita:
+una differenza di 3,47e-17 ha cambiato il regret matching di una riga quasi
+nulla e poi la traiettoria. La versione corretta applica gli stessi fattori
+nello stesso ordine dell'eager. Dopo righe inattive per più iterazioni,
+regret, strategy sums e policy sono bit-identici; checkpoint/resume passa.
+Suite completa: 21.310.122 asserzioni PASS.
+
+Profilo HU20 reale, 10 iterazioni: stato dichiarato 12.037.793.016 byte,
+picco working set 12.305.924.096 e memoria privata 12.329.254.912 byte
+(11,48 GiB). Training 5,527 s, contro 10,269 s dell'eager alle prime 10
+iterazioni del pilot precedente. Il training esplorativo a 8.000 e avviato
+solo su HU20, con arresto automatico oltre 12 GiB.
+
+### 2026-09-19 — pilot history7 HU20: transitorio a 500, continuazione a 2.000
+
+I test ASAN di trainer, certificatore ed export passano: 1.057,65, 511,17 e
+560,36 secondi. Il codice del pilot e identificato dal commit locale `17041a8`;
+SHA256 trainer `5aa6b71c53441d688261f61dc636403c6cb1f1bf9504c812a868ef22bb0c430a`
+e certificatore `aeaeaa1da7a0139d1a348056fa8023087836d45b0247095be44288b01ee57db1`.
+
+HU20 history7 a 500: media `fnv1a64:b88c44f1d9642cdf`, stato
+`fnv1a64:a887da709d4f75e6`, 32.000 board. Training 754,891 s; totale
+945,459 s incluso I/O. Il discount globale richiede 576,296 s, il refresh
+selettivo 27,148 s, la preparazione 71,420 s e le traversate 80,027 s.
+Picchi: working set 11.475.062.784 byte, memoria privata 11.496.087.552 byte,
+entrambi sotto 12 GiB. Checkpoint SHA256
+`f2a10ef2f664bc6300e52115b293e15ec24b162416cffb84d3345013f4f301ea`;
+policy SHA256
+`4bd38b2072b044b327a5442939b594e2af33277c2d035bb66a8fd5f3072f46d9`.
+
+Sul campione preregistrato di 64 flop, seed 20260919, max gain 0,595749411 a,
+lower bound 0,053709052 a e semiampiezza 0,069883159 a. Il class a 2.000 sullo
+stesso campione vale 0,113256300 a. Il transitorio e molto peggiore, ma il
+protocollo vieta di arrestare il pilot sulla sola misura a 500. Checkpoint
+conservato in `hu20_history7_t500_ckpt.bin`; ripresa a 2.000 avviata con
+identita, capacità e seed invariati. Nessun run HU30 o HU40 concorrente.
 
 ### 2026-09-19 — HU20 class a 8.000: FAIL, difetto congiunto persistente
 
@@ -732,9 +1128,10 @@ che si potevano fare prima.
 
 ## Fixture nuove
 
-`preflop_blueprint_hu20_test_v1.json` e `preflop_blueprint_hu30_test_v1.json`, identiche alla
-variante di test CO40 tranne lo stack. Aggiunte al test di validazione dello schema. Su
-indicazione dell'utente HU20 ha `response_target_units: []` come HU10: a 20 ante un 3bet a 17 a
+`preflop_blueprint_hu20_test_v1.json` e `preflop_blueprint_hu30_test_v1.json` condividono
+ruleset, range, open a 5 ante e astrazione postflop della variante di test CO40, ma non hanno lo
+stesso albero preflop. Aggiunte al test di validazione dello schema. Su indicazione dell'utente
+HU20 ha `response_target_units: []` come HU10: a 20 ante un 3bet a 17 a
 lascia 3 a dietro in un piatto da 36 e non e distinguibile dallo shove a 19 a. Il suo albero ha
 quindi 571 nodi e la stessa parte preflop di HU10 (22 nodi, 8 decisioni, 3 ingressi).
 
@@ -2261,3 +2658,10 @@ Prossimo passo: P0.
 | 46 | 2026-09-16 | P8 | Lista di risposte vuota nella configurazione = nessuna size di rilancio sopra un open (livello 1: fold, call, all-in); con lista non vuota resta una risposta per open | regola dell'utente per HU10 (contro l'open 5 a BTN ha solo l'all-in); nessun secondo formato, la fixture CO40 non cambia |
 | 47 | 2026-09-16 | P8 | Le misure di tempo del certificatore si fanno con `--chunk` ≥ numero di thread (il parallelismo è sui flop di uno stesso chunk); i tempi per flop nei report sono a 8 thread con chunk 16 salvo indicazione | le proiezioni di P7 §5 (chunk 2) e della voce CO40-TEST (chunk 1) avevano 2 e 1 thread attivi e sovrastimavano di 2,3 e 4,2 volte |
 | 48 | 2026-09-16 | P8 | La soluzione della variante CO40 di test entra nel viewer come terza sorgente (chart preflop con badge e exploitability esatta dichiarata, il run migliore fra DCFR 2.000/10.000 e Linear 2.000); la navigazione postflop resta sull'albero e sulla policy HU10 completo | il generatore accetta un solo `--postflop-tree` e il server una sola policy; estenderli non era richiesto |
+| 49 | 2026-09-21 | P9 | Separare sempre BR astratta esatta e BR fisica esatta; solo la seconda qualifica | su HU30 a 32.000 valgono 0,034874091 e 0,167619129 a: confonderle attribuirebbe alle iterazioni un errore di rappresentazione pari a 0,132745038 a |
+| 50 | 2026-09-21 | P9 | Nessuna correzione specifica per stack, fixture o fingerprint; HU10/HU20/HU30/HU40 formano una matrice di regressione ordinata | il solver deve risolvere giochi configurati, non i benchmark usati per scoprirne i difetti |
+| 51 | 2026-09-21 | P9 | Non promuovere l'aumento uniforme del cap river | cap 23 usa 24,67 GiB, costa il 22,9 % in più e a 2.000 iterazioni peggiora la BR astratta ristretta da 0,496262101 a 0,726731922 a; non è una prova asintotica, ma fallisce il filtro di tempo |
+| 52 | 2026-09-21 | P9 | Valutare un raffinamento annidato automatico con trasferimento della policy; usare la storia completa compatta soltanto come controllo diagnostico finché non passa sull'albero corrente | il raffinamento annidato conserva la strategia precedente al momento dello split e può assegnare memoria agli information set con disaccordo fisico misurato; il prototipo full-recall corrente usa un albero obsoleto e conserva comunque i bucket base |
+| 53 | 2026-09-21 | P9 | Fissare a 8 GiB il picco del solver di prodotto | HU20 `history7` a 11,44 GiB resta il riferimento matematico ma non soddisfa il requisito; cap 23 a 24,67 GiB è escluso |
+| 54 | 2026-09-21 | P9 | Usare un solo protocollo automatico su HU10/HU20/HU30/HU40; i benchmark variano soltanto stack e numero di size preflop/postflop | i benchmark misurano il solver; non possono selezionare iterazioni, batch, cap o feature per una singola fixture |
+| 55 | 2026-09-21 | P9 | Formalizzare e valutare lo stesso vettore ricco di feature su tutte le street e tutti gli stack | a parità di righe può migliorare la distanza strategica senza aumentare lo stato CFR; l'audit corrente non copre la geometria delle osservazioni vicine su turn e river |
