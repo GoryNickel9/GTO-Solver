@@ -5,8 +5,11 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <span>
 #include <string>
+#include <vector>
 
 // Portable file for a bucket policy (the average strategy of the trainer):
 // magic "GTOSDPOL", version, fingerprint of the compiled tree, capacities of
@@ -40,6 +43,35 @@ struct PolicyFileInfo {
                                                         const CompiledGame &game,
                                                         const BucketPolicy &policy,
                                                         const std::string &source);
+
+// Same file, written incrementally: the caller appends the dense table in
+// layout order through a bounded buffer instead of holding it in memory.
+// finish() renames the temporary file into place and returns the policy
+// fingerprint (FNV-1a over the table bytes, as policy_fingerprint does).
+class PolicyStreamWriter {
+public:
+  PolicyStreamWriter(const std::filesystem::path &path, const CompiledGame &game,
+                     const StateLayout &layout, const std::string &source);
+  ~PolicyStreamWriter();
+  PolicyStreamWriter(const PolicyStreamWriter &) = delete;
+  PolicyStreamWriter &operator=(const PolicyStreamWriter &) = delete;
+  [[nodiscard]] bool ok() const noexcept { return ok_; }
+  void append(std::span<const double> values);
+  [[nodiscard]] Result<std::string, PolicyFileError> finish();
+
+private:
+  void flush_buffer();
+  std::filesystem::path path_;
+  std::filesystem::path temporary_;
+  std::ofstream output_;
+  std::vector<double> buffer_;
+  std::uint64_t expected_entries_{0U};
+  std::uint64_t written_entries_{0U};
+  std::uint64_t file_hash_{0U};
+  std::uint64_t table_hash_{0U};
+  bool ok_{true};
+  bool finished_{false};
+};
 
 // Reads the header only (no game needed).
 [[nodiscard]] Result<PolicyFileInfo, PolicyFileError>

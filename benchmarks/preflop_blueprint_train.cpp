@@ -13,7 +13,6 @@
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
-#include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include <nlohmann/json.hpp>
 
@@ -90,6 +89,45 @@ void print_estimate(const std::uint64_t iteration, const double elapsed,
             << ", \"process_bytes\": " << process_bytes << "}\n";
 }
 
+nlohmann::json memory_breakdown_json(const pb::MemoryBreakdown &breakdown) {
+  return nlohmann::json{
+      {"event", "memory_breakdown"},
+      {"regret_bytes", breakdown.regret_bytes},
+      {"strategy_sum_bytes", breakdown.strategy_sum_bytes},
+      {"regret_bytes_per_cell", breakdown.regret_bytes_per_cell},
+      {"strategy_sum_bytes_per_cell", breakdown.strategy_sum_bytes_per_cell},
+      {"compact_policy_capacity_bytes", breakdown.compact_policy_capacity_bytes},
+      {"compact_policy_offsets_bytes", breakdown.compact_policy_offsets_bytes},
+      {"discount_timestamp_bytes", breakdown.discount_timestamp_bytes},
+      {"discount_factor_bytes", breakdown.discount_factor_bytes},
+      {"discount_offset_bytes", breakdown.discount_offset_bytes},
+      {"all_in_dense_bytes", breakdown.all_in_dense_bytes},
+      {"board_batch_bytes", breakdown.board_batch_bytes},
+      {"workspace_bytes", breakdown.workspace_bytes},
+      {"unit_bytes", breakdown.unit_bytes},
+      {"layout_offset_bytes", breakdown.layout_offset_bytes},
+      {"partition_bytes", breakdown.partition_bytes},
+      {"board_list_bytes", breakdown.board_list_bytes},
+      {"hand_mask_bytes", breakdown.hand_mask_bytes},
+      {"tree_bytes", breakdown.tree_bytes},
+      {"history_map_resident_bytes", breakdown.history_map_resident_bytes},
+      {"bucket_table_bytes", breakdown.bucket_table_bytes},
+      {"rank_table_bytes", breakdown.rank_table_bytes},
+      {"catalog_bytes", breakdown.catalog_bytes},
+      {"all_in_table_bytes", breakdown.all_in_table_bytes},
+      {"cells_by_street", breakdown.cells_by_street},
+      {"rows_by_street", breakdown.rows_by_street},
+      {"accounted_total_bytes", breakdown.total()}};
+}
+
+nlohmann::json peaks_json(const pb::ProcessMemoryPeaks &peaks) {
+  return nlohmann::json{{"working_set_bytes", peaks.working_set_bytes},
+                        {"peak_working_set_bytes", peaks.peak_working_set_bytes},
+                        {"private_commit_bytes", peaks.private_commit_bytes},
+                        {"peak_private_commit_bytes", peaks.peak_private_commit_bytes},
+                        {"page_faults", peaks.page_faults}};
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -138,6 +176,7 @@ int main(const int argc, char **argv) {
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
       if (name == "--batch-policy-refresh") {
+        // Compatibility with the reference protocol: always in effect.
         config.batch_policy_refresh = true;
         continue;
       }
@@ -150,8 +189,8 @@ int main(const int argc, char **argv) {
         continue;
       }
       if (name == "--reuse-discount-invariant-policy") {
-        config.reuse_discount_invariant_policy = true;
-        continue;
+        throw std::runtime_error("--reuse-discount-invariant-policy is no longer supported: the "
+                                 "compact policy is rebuilt for every batch");
       }
       if (name == "--class-rows") {
         use_class_rows = true;
@@ -225,6 +264,16 @@ int main(const int argc, char **argv) {
           config.update_mode = pb::UpdateMode::Alternating;
         } else {
           throw std::runtime_error("unknown update mode " + std::string{value});
+        }
+      } else if (name == "--table-storage") {
+        if (value == "double") {
+          config.storage = pb::TableStorage::Double;
+        } else if (value == "mixed") {
+          config.storage = pb::TableStorage::MixedFloatSums;
+        } else if (value == "float32") {
+          config.storage = pb::TableStorage::Float32;
+        } else {
+          throw std::runtime_error("unknown table storage " + std::string{value});
         }
       } else if (name == "--seed") {
         config.training_seed = parse_unsigned(value);
@@ -360,6 +409,8 @@ int main(const int argc, char **argv) {
       trainer.reseed_evaluation(*evaluation_seed);
     }
     const auto &stats = compiled.value().stats();
+    const double preparation_seconds =
+        std::chrono::duration<double>(Clock::now() - started).count();
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id
               << "\", \"tree_fingerprint\": \"" << compiled.value().fingerprint()
               << "\", \"trainer_identity\": \"" << trainer.identity()
@@ -378,21 +429,33 @@ int main(const int argc, char **argv) {
               << "\", \"lazy_discount\": " << (config.lazy_discount ? "true" : "false")
               << ", \"reuse_discount_invariant_policy\": "
               << (config.reuse_discount_invariant_policy ? "true" : "false")
+              << ", \"table_storage\": \"" << pb::table_storage_name(config.storage)
+              << "\", \"policy_storage\": \"compact-batch-v1\""
               << ", \"update\": \"" << pb::update_mode_name(config.update_mode)
               << "\", \"resumed_iteration\": " << trainer.iteration()
               << ", \"initial_pot_antes\": " << trainer.initial_pot_antes()
               << ", \"target_pot_percent\": " << target_pot_percent
               << ", \"automatic_target\": " << (automatic_target ? "true" : "false")
-              << ", \"preparation_seconds\": "
-              << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
+              << ", \"preparation_seconds\": " << preparation_seconds << "}\n";
+    {
+      auto breakdown = memory_breakdown_json(trainer.memory_breakdown());
+      breakdown["process"] = peaks_json(pb::process_memory_peaks());
+      breakdown["stage"] = "after_initialization";
+      std::cout << breakdown.dump() << "\n" << std::flush;
+    }
 
     double training_seconds = 0.0;
     const auto initial_iteration = trainer.iteration();
     double discount_seconds = 0.0, refresh_seconds = 0.0, prepare_seconds = 0.0,
            traversal_seconds = 0.0;
     pb::IterationTelemetry detailed_profile;
+    std::array<std::uint64_t, 4> rows_materialized{};
+    std::array<std::uint64_t, 4> cells_materialized{};
+    std::array<std::uint64_t, 4> hand_lookups{};
+    std::uint64_t compact_policy_bytes_peak = 0U;
     double evaluation_seconds = 0.0;
     double certification_seconds = 0.0;
+    double write_seconds = 0.0;
     bool converged = false;
     bool certified_exact = false;
     bool plateau = false;
@@ -404,7 +467,9 @@ int main(const int argc, char **argv) {
     const auto save_checkpoint_once = [&](const std::string_view failure) {
       if (checkpoint_path.empty() || saved_checkpoint_iteration == trainer.iteration())
         return;
+      const auto write_started = Clock::now();
       const auto saved = trainer.save_checkpoint(checkpoint_path);
+      write_seconds += std::chrono::duration<double>(Clock::now() - write_started).count();
       if (!saved)
         throw std::runtime_error(std::string(failure));
       saved_checkpoint_iteration = trainer.iteration();
@@ -425,8 +490,6 @@ int main(const int argc, char **argv) {
       std::array<std::uint64_t, 4> possible_by_street{};
       std::array<std::uint64_t, 4> strategy_by_street{};
       std::array<std::uint64_t, 4> regret_by_street{};
-      const auto &sums = trainer.strategy_sums();
-      const auto &regrets = trainer.regrets();
       const auto &layout = trainer.layout();
       for (const auto &node : compiled.value().nodes()) {
         if (node.kind != pb::NodeKind::Decision)
@@ -442,8 +505,8 @@ int main(const int argc, char **argv) {
           bool has_strategy = false;
           bool has_regret = false;
           for (std::uint8_t action = 0; action < node.action_count; ++action) {
-            has_strategy = has_strategy || sums[offset + action] != 0.0;
-            has_regret = has_regret || regrets[offset + action] != 0.0;
+            has_strategy = has_strategy || trainer.strategy_sum(offset + action) != 0.0;
+            has_regret = has_regret || trainer.regret(offset + action) != 0.0;
           }
           strategy_rows += has_strategy ? 1U : 0U;
           regret_rows += has_regret ? 1U : 0U;
@@ -499,6 +562,7 @@ int main(const int argc, char **argv) {
       automatic_target = false;
       iterations = trainer.iteration();
     }
+    bool breakdown_after_first_iteration = false;
     while ((automatic_target || trainer.iteration() < iterations) && !converged && !plateau) {
       const auto telemetry = trainer.iterate();
       if (!telemetry) {
@@ -510,6 +574,13 @@ int main(const int argc, char **argv) {
       refresh_seconds += telemetry.value().policy_refresh_seconds;
       prepare_seconds += telemetry.value().board_prepare_seconds;
       traversal_seconds += telemetry.value().traversal_seconds;
+      for (std::size_t street = 0; street < 4U; ++street) {
+        rows_materialized[street] += telemetry.value().policy_rows_materialized[street];
+        cells_materialized[street] += telemetry.value().policy_cells_materialized[street];
+        hand_lookups[street] += telemetry.value().policy_hand_lookups[street];
+      }
+      compact_policy_bytes_peak =
+          std::max(compact_policy_bytes_peak, telemetry.value().compact_policy_bytes);
       detailed_profile.traversal_weight_setup_seconds +=
           telemetry.value().traversal_weight_setup_seconds;
       detailed_profile.board_context_cpu_seconds +=
@@ -553,6 +624,13 @@ int main(const int argc, char **argv) {
       detailed_profile.sampled_postflop_showdown_seconds +=
           telemetry.value().sampled_postflop_showdown_seconds;
       process_bytes = telemetry.value().process_bytes;
+      if (!breakdown_after_first_iteration) {
+        breakdown_after_first_iteration = true;
+        auto breakdown = memory_breakdown_json(trainer.memory_breakdown());
+        breakdown["process"] = peaks_json(pb::process_memory_peaks());
+        breakdown["stage"] = "after_first_iteration";
+        std::cout << breakdown.dump() << "\n" << std::flush;
+      }
       if (progress_every > 0U && trainer.iteration() % progress_every == 0U) {
         std::cout << "{\"event\":\"training_progress\",\"iteration\":" << trainer.iteration()
                   << ",\"training_seconds\":" << training_seconds
@@ -602,7 +680,9 @@ int main(const int argc, char **argv) {
             estimate.value().max_gain <= 4.0 * target ||
             estimate.value().max_gain_lower <= 2.0 * target;
         if (certification_candidate) {
-            auto average = trainer.take_average_policy();
+            // The exact pass needs the average strategy as a dense table for
+            // its duration (one table of layout().entries doubles).
+            const auto average = trainer.average_policy();
             pb::BestResponseResources certification_resources;
             certification_resources.ranks = resources.ranks;
             certification_resources.all_in = resources.all_in;
@@ -624,7 +704,6 @@ int main(const int argc, char **argv) {
             };
             const auto certificate = pb::certify(compiled.value(), average,
                                                  certification_resources, options);
-            trainer.restore_policy_buffer(std::move(average));
             if (!certificate)
               throw std::runtime_error(std::string("exact certification failed: ") +
                                        pb::certifier_error_name(certificate.error()));
@@ -669,6 +748,7 @@ int main(const int argc, char **argv) {
         save_checkpoint_once("checkpoint write failed");
       }
     }
+    const auto training_end_peaks = pb::process_memory_peaks();
     std::string policy_fingerprint_text;
     const std::string abstraction_source =
         history_rows ? "|abstraction=" + std::string(history_rows->format_name()) +
@@ -682,30 +762,34 @@ int main(const int argc, char **argv) {
       save_checkpoint_once("final checkpoint write failed");
     }
     if (!current_policy_path.empty()) {
-      const auto current = trainer.take_current_policy();
-      const auto saved = pb::save_policy(
-          current_policy_path, compiled.value(), current,
+      const auto write_started = Clock::now();
+      const auto saved = trainer.save_current_policy(
+          current_policy_path,
           trainer.identity() + "|current|iteration=" + std::to_string(trainer.iteration()) +
               abstraction_source);
+      write_seconds += std::chrono::duration<double>(Clock::now() - write_started).count();
       if (!saved) {
         throw std::runtime_error("current policy write failed");
       }
     }
     if (!policy_path.empty()) {
-      const auto average = trainer.take_average_policy();
-      const auto saved =
-          pb::save_policy(policy_path, compiled.value(), average,
-                          trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
-                              abstraction_source);
+      const auto write_started = Clock::now();
+      const auto saved = trainer.save_average_policy(
+          policy_path, trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
+                           abstraction_source);
+      write_seconds += std::chrono::duration<double>(Clock::now() - write_started).count();
       if (!saved) {
         throw std::runtime_error(std::string("policy write failed: ") +
-                                 pb::policy_file_error_name(saved.error()));
+                                 pb::trainer_error_name(saved.error()));
       }
-      policy_fingerprint_text = pb::policy_fingerprint(average);
+      policy_fingerprint_text = saved.value();
     }
+    const auto final_peaks = pb::process_memory_peaks();
     std::cout << "{\"event\": \"end\", \"iteration\": " << trainer.iteration()
               << ", \"policy_fingerprint\": \"" << policy_fingerprint_text << "\""
               << ", \"boards_processed\": " << trainer.boards_processed()
+              << ", \"boards_distinct\": " << trainer.boards_distinct()
+              << ", \"boards_repeated\": " << trainer.boards_repeated()
               << ", \"converged\": " << (converged ? "true" : "false")
               << ", \"plateau\": " << (plateau ? "true" : "false")
               << ", \"convergence_status\": \""
@@ -716,13 +800,23 @@ int main(const int argc, char **argv) {
                                                   : converged ? "ESTIMATED" : "NOT_REACHED")
               << "\""
               << ", \"target_pot_percent\": " << target_pot_percent
+              << ", \"preparation_seconds\": " << preparation_seconds
               << ", \"training_seconds\": " << training_seconds
               << ", \"evaluation_seconds\": " << evaluation_seconds
               << ", \"certification_seconds\": " << certification_seconds
+              << ", \"write_seconds\": " << write_seconds
               << ", \"discount_seconds\": " << discount_seconds
               << ", \"policy_refresh_seconds\": " << refresh_seconds
               << ", \"board_prepare_seconds\": " << prepare_seconds
               << ", \"traversal_seconds\": " << traversal_seconds
+              << ", \"policy_cells\": {\"rows_materialized\":[" << rows_materialized[0] << ","
+              << rows_materialized[1] << "," << rows_materialized[2] << ","
+              << rows_materialized[3] << "],\"cells_materialized\":[" << cells_materialized[0]
+              << "," << cells_materialized[1] << "," << cells_materialized[2] << ","
+              << cells_materialized[3] << "],\"hand_lookups\":[" << hand_lookups[0] << ","
+              << hand_lookups[1] << "," << hand_lookups[2] << "," << hand_lookups[3]
+              << "],\"compact_policy_bytes_peak\":" << compact_policy_bytes_peak
+              << ",\"policy_rows_read_profiled\":" << detailed_profile.policy_rows_read << "}"
               << ", \"traversal_profile\": {\"enabled\":"
               << (config.detailed_profile ? "true" : "false")
               << ",\"board_context_cpu_seconds\":"
@@ -774,6 +868,8 @@ int main(const int argc, char **argv) {
                       : 0.0)
               << ", \"state_fingerprint\": \"" << trainer.state_fingerprint()
               << "\", \"process_bytes\": " << pb::process_working_set_bytes()
+              << ", \"process_after_training\": " << peaks_json(training_end_peaks).dump()
+              << ", \"process_final\": " << peaks_json(final_peaks).dump()
               << ", \"total_seconds\": "
               << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
     std::cout << "PREFLOP_BLUEPRINT_TRAIN="

@@ -15,13 +15,14 @@
 // with bounded temporary storage instead of copies of the numeric arrays.
 namespace gtosd::preflop_blueprint::stream_io {
 
-inline bool write(std::ostream &output, const std::string &header,
-                  const std::span<const std::span<const double>> arrays) {
+// Header, then every array as raw bytes, then the FNV-1a checksum of all the
+// preceding bytes. Arrays may have different element types (checkpoint
+// storage formats); the byte sequence is what is hashed.
+inline bool write_raw(std::ostream &output, const std::string &header,
+                      const std::span<const std::string_view> arrays) {
   auto hash = detail::fnv1a_text(header);
   output.write(header.data(), static_cast<std::streamsize>(header.size()));
-  for (const auto values : arrays) {
-    const std::string_view bytes(reinterpret_cast<const char *>(values.data()),
-                                 values.size_bytes());
+  for (const auto bytes : arrays) {
     hash = detail::fnv1a_text(bytes, hash);
     output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
   }
@@ -30,6 +31,19 @@ inline bool write(std::ostream &output, const std::string &header,
   output.write(checksum.data(), static_cast<std::streamsize>(checksum.size()));
   output.flush();
   return static_cast<bool>(output);
+}
+
+inline bool write(std::ostream &output, const std::string &header,
+                  const std::span<const std::span<const double>> arrays) {
+  std::array<std::string_view, 8> views{};
+  std::size_t count = 0U;
+  for (const auto values : arrays) {
+    if (count >= views.size())
+      return false;
+    views[count++] = std::string_view(reinterpret_cast<const char *>(values.data()),
+                                      values.size_bytes());
+  }
+  return write_raw(output, header, std::span<const std::string_view>(views.data(), count));
 }
 
 class Reader {
@@ -77,7 +91,8 @@ public:
     value.resize(length);
     return bytes(value.data(), value.size());
   }
-  bool doubles(const std::span<double> values, const bool nonnegative = false) {
+  template <typename Number>
+  bool numbers(const std::span<Number> values, const bool nonnegative = false) {
     if (!bytes(reinterpret_cast<char *>(values.data()), values.size_bytes()))
       return false;
     for (const auto value : values)
@@ -85,16 +100,23 @@ public:
         return false;
     return true;
   }
-  bool scan_doubles(std::uint64_t count, const bool nonnegative = false,
+  bool doubles(const std::span<double> values, const bool nonnegative = false) {
+    return numbers(values, nonnegative);
+  }
+  bool floats(const std::span<float> values, const bool nonnegative = false) {
+    return numbers(values, nonnegative);
+  }
+  template <typename Number>
+  bool scan_numbers(std::uint64_t count, const bool nonnegative = false,
                     std::uint64_t *array_hash = nullptr) {
-    if (count > remaining_ / sizeof(double))
+    if (count > remaining_ / sizeof(Number))
       return false;
-    std::array<double, 8192> buffer{};
+    std::array<Number, 8192> buffer{};
     auto hash = detail::fnv_offset_basis;
     while (count > 0) {
       const auto size = static_cast<std::size_t>(std::min<std::uint64_t>(count, buffer.size()));
-      const auto part = std::span<double>(buffer.data(), size);
-      if (!doubles(part, nonnegative))
+      const auto part = std::span<Number>(buffer.data(), size);
+      if (!numbers(part, nonnegative))
         return false;
       if (array_hash)
         hash = detail::fnv1a_text(
@@ -104,6 +126,14 @@ public:
     if (array_hash)
       *array_hash = hash;
     return true;
+  }
+  bool scan_doubles(const std::uint64_t count, const bool nonnegative = false,
+                    std::uint64_t *array_hash = nullptr) {
+    return scan_numbers<double>(count, nonnegative, array_hash);
+  }
+  bool scan_floats(const std::uint64_t count, const bool nonnegative = false,
+                   std::uint64_t *array_hash = nullptr) {
+    return scan_numbers<float>(count, nonnegative, array_hash);
   }
   [[nodiscard]] std::uint64_t remaining() const noexcept { return remaining_; }
   bool finish() {

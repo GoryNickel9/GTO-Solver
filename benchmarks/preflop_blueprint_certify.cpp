@@ -11,6 +11,7 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
+#include "gtosd/preflop_blueprint/trainer.hpp"
 #include <nlohmann/json.hpp>
 
 #include <chrono>
@@ -21,6 +22,7 @@
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -178,19 +180,24 @@ int main(const int argc, char **argv) {
                                             : turn.value().capacity();
     const auto river_capacity = history_rows ? history_rows->count(ca::BucketStreet::River)
                                              : river.value().capacity();
-    pb::BucketPolicy policy(compiled.value(),
-                            pb::layout_state(compiled.value(), flop_capacity, turn_capacity,
-                                             river_capacity));
-    if (!uniform) {
+    // The policy is held through a pointer: a uniform placeholder table followed by a
+    // move-assignment of the loaded table kept two full tables alive (7.6 GB on HU20).
+    std::unique_ptr<pb::BucketPolicy> policy_holder;
+    if (uniform) {
+      policy_holder = std::make_unique<pb::BucketPolicy>(
+          compiled.value(),
+          pb::layout_state(compiled.value(), flop_capacity, turn_capacity, river_capacity));
+    } else {
       pb::PolicyFileInfo info;
       auto loaded = pb::load_policy(policy_path, compiled.value(), &info);
       if (!loaded) {
         throw std::runtime_error(std::string("policy rejected: ") +
                                  pb::policy_file_error_name(loaded.error()));
       }
-      policy = std::move(*loaded.value());
+      policy_holder = std::move(loaded.value());
       policy_source = info.source;
     }
+    const pb::BucketPolicy &policy = *policy_holder;
 
     if (history_rows && !uniform) {
       const auto &layout = policy.layout();
@@ -228,6 +235,9 @@ int main(const int argc, char **argv) {
         }
       }
     }
+    const double preparation_seconds =
+        std::chrono::duration<double>(Clock::now() - started).count();
+    const auto load_peaks = pb::process_memory_peaks();
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id
               << "\", \"tree_fingerprint\": \"" << compiled.value().fingerprint()
               << "\", \"policy_fingerprint\": \"" << pb::policy_fingerprint(policy)
@@ -236,7 +246,11 @@ int main(const int argc, char **argv) {
               << ", \"threads\": " << options.threads << ", \"chunk\": " << options.chunk_flops
               << ", \"flop_limit\": " << options.flop_limit
               << ", \"sample_flops\": " << options.sample_flops << ", \"preparation_seconds\": "
-              << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
+              << preparation_seconds << ", \"process_after_load\": {\"working_set_bytes\": "
+              << load_peaks.working_set_bytes << ", \"peak_working_set_bytes\": "
+              << load_peaks.peak_working_set_bytes << ", \"private_commit_bytes\": "
+              << load_peaks.private_commit_bytes << ", \"peak_private_commit_bytes\": "
+              << load_peaks.peak_private_commit_bytes << "}}\n";
 
     options.progress = [&](const pb::CertifierProgress &progress) {
       const double rate = progress.flops_done > 0U ? progress.seconds / progress.flops_done : 0.0;
@@ -260,6 +274,18 @@ int main(const int argc, char **argv) {
     json["target_antes"] = target_antes;
     json["passes_target"] = certificate.value().exact && !certificate.value().partial &&
                             certificate.value().report.max_gain <= target_antes;
+    {
+      const auto peaks = pb::process_memory_peaks();
+      json["process_peaks"] = {{"working_set_bytes", peaks.working_set_bytes},
+                               {"peak_working_set_bytes", peaks.peak_working_set_bytes},
+                               {"private_commit_bytes", peaks.private_commit_bytes},
+                               {"peak_private_commit_bytes", peaks.peak_private_commit_bytes},
+                               {"page_faults", peaks.page_faults}};
+      json["policy_table_bytes"] = policy.table().size() * sizeof(double);
+      json["history_map_resident_bytes"] =
+          history_rows ? history_rows->resident_byte_size() : std::uint64_t{0};
+      json["preparation_seconds"] = preparation_seconds;
+    }
     if (!output_path.empty()) {
       std::ofstream output(output_path, std::ios::binary | std::ios::trunc);
       if (!output) {

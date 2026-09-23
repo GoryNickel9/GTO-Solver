@@ -1,0 +1,502 @@
+{
+  "schema": "gtosd.preflop_blueprint_benchmark_suite_resolved.v1",
+  "generated": "2026-09-21T21:32:21",
+  "suite_sha256": "796a0038597733348d36e1f9b1a4233f7aeef359b42d32d87017a4c6b7a4ed5c",
+  "scenarios": [
+    {
+      "name": "HU10",
+      "id": "PREFLOP-BLUEPRINT-HU10-POT-001",
+      "stack_antes": 10,
+      "preflop_sizes": 1,
+      "postflop_sizes": 1,
+      "fixture": "benchmarks/suite/fixtures/HU10.json",
+      "fixture_sha256": "da6907e2033c7d67950138841783d26d802e5c3ffd832aa3f373089ea4ed40e8",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [],
+      "postflop_sizes_basis_points": [
+        10000
+      ],
+      "tree_fingerprint": "fnv1a64:d7b31d6f2cb759fc",
+      "config_fingerprint": "fnv1a64:d7585ed4add81e39",
+      "nodes": 193,
+      "decision_nodes": 80,
+      "preflop": {
+        "nodes": 22,
+        "decisions": 8,
+        "terminal_folds": 7,
+        "all_in_runouts": 4,
+        "postflop_entries": 3
+      },
+      "postflop": {
+        "represented_nodes": 174,
+        "action_edges": 156,
+        "decisions": 72,
+        "decisions_flop": 16,
+        "decisions_turn": 24,
+        "decisions_river": 32,
+        "chance_frontiers": 15,
+        "terminal_folds": 42,
+        "terminal_showdowns": 25,
+        "terminal_all_in_runouts": 20
+      },
+      "maximum_depth": 13,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 1701,
+          "flop": 36,
+          "turn": 52,
+          "river": 68
+        },
+        "entries_by_street": {
+          "preflop": 1701,
+          "flop": 273060,
+          "turn": 11588980,
+          "river": 104670360
+        },
+        "entries": 116534101,
+        "rows_by_street": {
+          "preflop": 648,
+          "flop": 121360,
+          "turn": 5348760,
+          "river": 49256640
+        },
+        "rows": 54727408,
+        "double_table_bytes": 932272808,
+        "two_double_tables_bytes": 1864545616,
+        "three_double_tables_bytes": 2796818424,
+        "lazy_timestamp_bytes_uint32": 218909632
+      },
+      "baseline_trainer_state_bytes": 3015728056,
+      "fits_ram": true,
+      "fits_budget_8gib": true
+    },
+    {
+      "name": "HU10-FULL",
+      "id": "PREFLOP-BLUEPRINT-HU10-FULL-001",
+      "stack_antes": 10,
+      "preflop_sizes": 1,
+      "postflop_sizes": 3,
+      "fixture": "benchmarks/suite/fixtures/HU10-FULL.json",
+      "fixture_sha256": "58c6f5a6a3bd4a35f904e06b9a207d7cccc0e147a486315e31030bb19da227e0",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [],
+      "postflop_sizes_basis_points": [
+        3300,
+        6600,
+        12000
+      ],
+      "tree_fingerprint": "fnv1a64:bc9e7b35ad8c021d",
+      "config_fingerprint": "fnv1a64:d3ea597979f33cbd",
+      "nodes": 1501,
+      "decision_nodes": 584,
+      "preflop": {
+        "nodes": 22,
+        "decisions": 8,
+        "terminal_folds": 7,
+        "all_in_runouts": 4,
+        "postflop_entries": 3
+      },
+      "postflop": {
+        "represented_nodes": 1482,
+        "action_edges": 1396,
+        "decisions": 576,
+        "decisions_flop": 48,
+        "decisions_turn": 160,
+        "decisions_river": 368,
+        "chance_frontiers": 83,
+        "terminal_folds": 410,
+        "terminal_showdowns": 309,
+        "terminal_all_in_runouts": 104
+      },
+      "maximum_depth": 15,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 1701,
+          "flop": 132,
+          "turn": 396,
+          "river": 868
+        },
+        "entries_by_street": {
+          "preflop": 1701,
+          "flop": 1001220,
+          "turn": 88254540,
+          "river": 1336086360
+        },
+        "entries": 1425343821,
+        "rows_by_street": {
+          "preflop": 648,
+          "flop": 364080,
+          "turn": 35658400,
+          "river": 566451360
+        },
+        "rows": 602474488,
+        "double_table_bytes": 11402750568,
+        "two_double_tables_bytes": 22805501136,
+        "three_double_tables_bytes": 34208251704,
+        "lazy_timestamp_bytes_uint32": 2409897952
+      },
+      "baseline_trainer_state_bytes": 36618149656,
+      "fits_ram": false,
+      "fits_budget_8gib": false
+    },
+    {
+      "name": "HU20",
+      "id": "PREFLOP-BLUEPRINT-HU20-TEST-001",
+      "stack_antes": 20,
+      "preflop_sizes": 1,
+      "postflop_sizes": 1,
+      "fixture": "benchmarks/suite/fixtures/HU20.json",
+      "fixture_sha256": "7f7560ff59ebdaaddf19e865105ab65a7e2b83c184ff3ea331faf519c7a13fef",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [],
+      "postflop_sizes_basis_points": [
+        10000
+      ],
+      "tree_fingerprint": "fnv1a64:f5b432de223744cc",
+      "config_fingerprint": "fnv1a64:6c7f8a7484f87014",
+      "nodes": 571,
+      "decision_nodes": 228,
+      "preflop": {
+        "nodes": 22,
+        "decisions": 8,
+        "terminal_folds": 7,
+        "all_in_runouts": 4,
+        "postflop_entries": 3
+      },
+      "postflop": {
+        "represented_nodes": 552,
+        "action_edges": 512,
+        "decisions": 220,
+        "decisions_flop": 28,
+        "decisions_turn": 68,
+        "decisions_river": 124,
+        "chance_frontiers": 37,
+        "terminal_folds": 146,
+        "terminal_showdowns": 101,
+        "terminal_all_in_runouts": 48
+      },
+      "maximum_depth": 14,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 1701,
+          "flop": 72,
+          "turn": 160,
+          "river": 280
+        },
+        "entries_by_street": {
+          "preflop": 1701,
+          "flop": 546120,
+          "turn": 35658400,
+          "river": 430995600
+        },
+        "entries": 467201821,
+        "rows_by_street": {
+          "preflop": 648,
+          "flop": 212380,
+          "turn": 15154820,
+          "river": 190869480
+        },
+        "rows": 206237328,
+        "double_table_bytes": 3737614568,
+        "two_double_tables_bytes": 7475229136,
+        "three_double_tables_bytes": 11212843704,
+        "lazy_timestamp_bytes_uint32": 824949312
+      },
+      "baseline_trainer_state_bytes": 12037793016,
+      "fits_ram": true,
+      "fits_budget_8gib": false
+    },
+    {
+      "name": "HU30",
+      "id": "PREFLOP-BLUEPRINT-HU30-TEST-001",
+      "stack_antes": 30,
+      "preflop_sizes": 2,
+      "postflop_sizes": 1,
+      "fixture": "benchmarks/suite/fixtures/HU30.json",
+      "fixture_sha256": "b551c7126670e56d9e13b1eb3e53f1d7e12be9ad6bc060443671959bb98c01d9",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [
+        170000
+      ],
+      "postflop_sizes_basis_points": [
+        10000
+      ],
+      "tree_fingerprint": "fnv1a64:17dc5c7d07ea30c2",
+      "config_fingerprint": "fnv1a64:e89fbd8a269c7494",
+      "nodes": 604,
+      "decision_nodes": 242,
+      "preflop": {
+        "nodes": 28,
+        "decisions": 10,
+        "terminal_folds": 9,
+        "all_in_runouts": 5,
+        "postflop_entries": 4
+      },
+      "postflop": {
+        "represented_nodes": 580,
+        "action_edges": 536,
+        "decisions": 232,
+        "decisions_flop": 32,
+        "decisions_turn": 72,
+        "decisions_river": 128,
+        "chance_frontiers": 40,
+        "terminal_folds": 152,
+        "terminal_showdowns": 104,
+        "terminal_all_in_runouts": 52
+      },
+      "maximum_depth": 14,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 2187,
+          "flop": 80,
+          "turn": 168,
+          "river": 288
+        },
+        "entries_by_street": {
+          "preflop": 2187,
+          "flop": 606800,
+          "turn": 37441320,
+          "river": 443309760
+        },
+        "entries": 481360067,
+        "rows_by_street": {
+          "preflop": 810,
+          "flop": 242720,
+          "turn": 16046280,
+          "river": 197026560
+        },
+        "rows": 213316370,
+        "double_table_bytes": 3850880536,
+        "two_double_tables_bytes": 7701761072,
+        "three_double_tables_bytes": 11552641608,
+        "lazy_timestamp_bytes_uint32": 853265480
+      },
+      "baseline_trainer_state_bytes": 12405907088,
+      "fits_ram": true,
+      "fits_budget_8gib": false
+    },
+    {
+      "name": "HU40",
+      "id": "PREFLOP-BLUEPRINT-CO40-TEST-001",
+      "stack_antes": 40,
+      "preflop_sizes": 2,
+      "postflop_sizes": 1,
+      "fixture": "benchmarks/suite/fixtures/HU40.json",
+      "fixture_sha256": "589d9a533ab7be77ba47fe800993f4dc99fc8a3df27b9099600231b2a3008125",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [
+        170000
+      ],
+      "postflop_sizes_basis_points": [
+        10000
+      ],
+      "tree_fingerprint": "fnv1a64:18d08f453034ac0f",
+      "config_fingerprint": "fnv1a64:abbaffde7936699f",
+      "nodes": 604,
+      "decision_nodes": 242,
+      "preflop": {
+        "nodes": 28,
+        "decisions": 10,
+        "terminal_folds": 9,
+        "all_in_runouts": 5,
+        "postflop_entries": 4
+      },
+      "postflop": {
+        "represented_nodes": 580,
+        "action_edges": 536,
+        "decisions": 232,
+        "decisions_flop": 32,
+        "decisions_turn": 72,
+        "decisions_river": 128,
+        "chance_frontiers": 40,
+        "terminal_folds": 152,
+        "terminal_showdowns": 104,
+        "terminal_all_in_runouts": 52
+      },
+      "maximum_depth": 14,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 2187,
+          "flop": 80,
+          "turn": 168,
+          "river": 288
+        },
+        "entries_by_street": {
+          "preflop": 2187,
+          "flop": 606800,
+          "turn": 37441320,
+          "river": 443309760
+        },
+        "entries": 481360067,
+        "rows_by_street": {
+          "preflop": 810,
+          "flop": 242720,
+          "turn": 16046280,
+          "river": 197026560
+        },
+        "rows": 213316370,
+        "double_table_bytes": 3850880536,
+        "two_double_tables_bytes": 7701761072,
+        "three_double_tables_bytes": 11552641608,
+        "lazy_timestamp_bytes_uint32": 853265480
+      },
+      "baseline_trainer_state_bytes": 12405907088,
+      "fits_ram": true,
+      "fits_budget_8gib": false
+    },
+    {
+      "name": "HU40-FULL",
+      "id": "PREFLOP-BLUEPRINT-CO40-001",
+      "stack_antes": 40,
+      "preflop_sizes": 2,
+      "postflop_sizes": 3,
+      "fixture": "benchmarks/suite/fixtures/HU40-FULL.json",
+      "fixture_sha256": "7fbcfbf642b2b9d7c668850185e03f7506183ee11c632829e9483cfbc8d4c3c3",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [
+        170000
+      ],
+      "postflop_sizes_basis_points": [
+        3300,
+        6600,
+        12000
+      ],
+      "tree_fingerprint": "fnv1a64:d6c10723d35b9503",
+      "config_fingerprint": "fnv1a64:51e0b2530dc3511e",
+      "nodes": 26878,
+      "decision_nodes": 9958,
+      "preflop": {
+        "nodes": 28,
+        "decisions": 10,
+        "terminal_folds": 9,
+        "all_in_runouts": 5,
+        "postflop_entries": 4
+      },
+      "postflop": {
+        "represented_nodes": 26854,
+        "action_edges": 25852,
+        "decisions": 9948,
+        "decisions_flop": 300,
+        "decisions_turn": 1988,
+        "decisions_river": 7660,
+        "chance_frontiers": 998,
+        "terminal_folds": 7952,
+        "terminal_showdowns": 6812,
+        "terminal_all_in_runouts": 1144
+      },
+      "maximum_depth": 17,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 2187,
+          "flop": 884,
+          "turn": 5380,
+          "river": 19588
+        },
+        "entries_by_street": {
+          "preflop": 2187,
+          "flop": 6705140,
+          "turn": 1199013700,
+          "river": 30151220760
+        },
+        "entries": 31356941787,
+        "rows_by_street": {
+          "preflop": 810,
+          "flop": 2275500,
+          "turn": 443055620,
+          "river": 11790808200
+        },
+        "rows": 12236140130,
+        "double_table_bytes": 250855534296,
+        "two_double_tables_bytes": 501711068592,
+        "three_double_tables_bytes": 752566602888,
+        "lazy_timestamp_bytes_uint32": 48944560520
+      },
+      "baseline_trainer_state_bytes": 801511163408,
+      "fits_ram": false,
+      "fits_budget_8gib": false
+    },
+    {
+      "name": "HU20-2",
+      "id": "PREFLOP-BLUEPRINT-HU20-RESP17-001",
+      "stack_antes": 20,
+      "preflop_sizes": 2,
+      "postflop_sizes": 1,
+      "fixture": "benchmarks/suite/fixtures/HU20-2.json",
+      "fixture_sha256": "f169fe24fd17ca0bd7f402db3807b63fdac044a2f1cf362c2504ea67254ba2e9",
+      "open_target_units": [
+        50000
+      ],
+      "response_target_units": [
+        170000
+      ],
+      "postflop_sizes_basis_points": [
+        10000
+      ],
+      "tree_fingerprint": "fnv1a64:7b59c6cacc9f5da5",
+      "config_fingerprint": "fnv1a64:daec4717349ea62c",
+      "nodes": 604,
+      "decision_nodes": 242,
+      "preflop": {
+        "nodes": 28,
+        "decisions": 10,
+        "terminal_folds": 9,
+        "all_in_runouts": 5,
+        "postflop_entries": 4
+      },
+      "postflop": {
+        "represented_nodes": 580,
+        "action_edges": 536,
+        "decisions": 232,
+        "decisions_flop": 32,
+        "decisions_turn": 72,
+        "decisions_river": 128,
+        "chance_frontiers": 40,
+        "terminal_folds": 152,
+        "terminal_showdowns": 104,
+        "terminal_all_in_runouts": 52
+      },
+      "maximum_depth": 14,
+      "history7_layout": {
+        "action_columns_per_row": {
+          "preflop": 2187,
+          "flop": 80,
+          "turn": 168,
+          "river": 288
+        },
+        "entries_by_street": {
+          "preflop": 2187,
+          "flop": 606800,
+          "turn": 37441320,
+          "river": 443309760
+        },
+        "entries": 481360067,
+        "rows_by_street": {
+          "preflop": 810,
+          "flop": 242720,
+          "turn": 16046280,
+          "river": 197026560
+        },
+        "rows": 213316370,
+        "double_table_bytes": 3850880536,
+        "two_double_tables_bytes": 7701761072,
+        "three_double_tables_bytes": 11552641608,
+        "lazy_timestamp_bytes_uint32": 853265480
+      },
+      "baseline_trainer_state_bytes": 12405907088,
+      "fits_ram": true,
+      "fits_budget_8gib": false
+    }
+  ]
+}

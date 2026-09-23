@@ -17,11 +17,11 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Branch di fase | `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
-| Build | `out/build/windows-release-current` del worktree (Release, MSVC, /W4 /WX) |
+| Build | `out/build/windows-release-suite` (HEAD `ba93c75` pulito per la baseline, poi le candidate), Release, MSVC, /W4 /WX |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **1 % del piatto iniziale**, quindi 0,03 a per HU10/HU20/HU30/HU40. Qualificati con BR fisica esatta: **HU10** a 0,003981 a; **HU20 history7** a 0,0279995887 a. HU30 history7 a 32.000: 0,167619129 a, FAIL. |
 | Limite RAM corrente | **8 GiB** di picco per il solver di prodotto. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Formalizzare il vettore universale `[equity, hand strength, draw potential, nut potential, blockers, future distribution]` e riallineare il contratto delle fixture prima di altri training. |
+| Prossimo passo | Milestone RAM/tempi concluso il 2026-09-23 (A bit-identica, -31 % memoria; B -46 %; C -61 %): revisione e commit del codice candidato su branch dedicato, poi riduzione dei timestamp del discount lazy e HU10 completo con storage narrow |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,106 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-21 — milestone RAM e tempi su tutta la suite: censimento, protocollo comune, baseline rieseguita, candidate in coda
+
+Fatto: (1) censimento di tutti i benchmark del solver preflop blueprint (HU10 ridotto e completo,
+HU20, HU30, HU40 = CO40 test, CO40 completo) piu' le famiglie legacy e postflop, con
+implementazione, astrazione, protocollo, certificazione, risultati e stato di ogni run storico:
+[BENCHMARK_SUITE_INVENTORY_2026-09-21.md](BENCHMARK_SUITE_INVENTORY_2026-09-21.md). Rapporto sulle
+differenze originarie: tre astrazioni diverse (bucket diretti per HU10, class-major, history7),
+iterazioni 2.000-37.000, size postflop 66 % contro 100 %, HU20 senza la 3-bet a 17a per decisione
+dell'utente (a 20 ante il motore la terrebbe distinta: scenario derivato `HU20-2`), HU30 in
+modalita' automatica con certificazione in-process, nessun SHA-256 dell'eseguibile del run HU20 di
+riferimento. (2) Profilo comune `benchmarks/suite/preflop_blueprint_suite.json` con i soli tre
+parametri per scenario (stack, numero di size preflop, numero di size postflop), catalogo delle
+size con regola deterministica (preflop `[5a, 17a]` con cap allo stack; postflop `{1: [100 %],
+3: [33/66/120 %]}`), astrazione `history7`, protocollo 16.000 iterazioni / batch 32 / 8 thread /
+partizione 64 / DCFR alternato lazy v2 / BR fisica esatta chunk 16, SHA-256 di risorse, tabelle e
+mappa; resolver che genera le fixture (`benchmarks/suite/fixtures/`: HU10-FULL, HU20, HU30, HU40,
+HU40-FULL byte per byte uguali alle storiche, `HU10` nuova con il 100 % postflop, id
+`PREFLOP-BLUEPRINT-HU10-POT-001`, albero `fnv1a64:d7b31d6f2cb759fc`); controllo automatico
+`tools/preflop_suite/suite.py check` che confronta fixture, artefatti, eseguibili e eventi
+`start` dei run ammettendo solo i campi derivati dai tre parametri; driver `run` con monitor di
+memoria (campioni ogni 0,5 s piu' contatori esatti dal processo uscito: picco di private commit
+e di working set, page fault, tempi CPU, memoria disponibile e paging del sistema) e manifest con
+hash; `report` con tabelle per scenario. Protocollo, misure e criteri di accettazione
+preregistrati: [BENCHMARK_SUITE_PROTOCOL_2026-09-21.md](BENCHMARK_SUITE_PROTOCOL_2026-09-21.md).
+(3) Build pulita dell'HEAD `ba93c75` in `out/build/windows-release-suite` (trainer SHA-256
+`d9d7bba6...`), archiviata in `out/suite/bin/baseline-ba93c75`; baseline canonica in esecuzione
+sequenziale (`out/suite/baseline-ba93c75`). (4) Codice delle candidate scritto nel working tree
+(non compilato finche' la baseline gira, per non perturbare i tempi): policy compatta per batch al
+posto della terza tabella densa, matrici all-in raccolte dalle tabelle dense 630 x 630 senza copia
+per board, export della policy in streaming (`PolicyStreamWriter`), storage delle tabelle
+`double` / `mixed` (somme float32) / `float32` con arrotondamento solo alla scrittura,
+strumentazione (evento `memory_breakdown`, `write_seconds`, contatori delle celle di policy,
+picchi di processo nel trainer e nel certificatore, `--actions` nel report dell'albero); test
+aggiornati (export in streaming uguale byte per byte, storage narrow, opzione di riuso rifiutata).
+Descrizione: [MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md).
+Comandi: `suite.py resolve --game-exe ...`, `suite.py check`, `suite.py run --version
+baseline-ba93c75 --scenario HU10|HU20|HU30|HU40`; driver della fase candidate
+(`candidate_phase.sh`: attende la baseline, compila, esegue i test, verifica l'identita' bit per
+bit su HU10 a 40 iterazioni e HU20 a 100, archivia, lancia la suite di A) e coda sequenziale
+(`tools/preflop_suite/run_queue.sh out/suite/queue.txt`: B, C, ripetizioni 2 e 3 di baseline e A).
+Risultati: HU10 canonico (history7, protocollo comune) baseline: training 1.481,95 s (0,0926
+s/iterazione; refresh 376,3 s, board 363,3 s, traversata 742,4 s), trainer 1.508,1 s, BR esatta
+281,4 s (+7,7 s di preparazione), end-to-end interno 1.797,1 s; picco private commit 3.292.786.688
+B (3,07 GiB) nel trainer e 2.010.173.440 B nel certificatore; **max gain 0,002045731569542797 a,
+PASS** (NashConv 0,003674811 a, EV CO 0,136116 a); policy `fnv1a64:38564a90b4f1577d`, stato
+`fnv1a64:f5f34a40bc39910f`. HU20 baseline avviata con identita' del trainer
+`fnv1a64:90d07de511eb9968`, uguale a quella del run di riferimento del 2026-09-20. HU10-FULL e
+HU40-FULL: `RESOURCE_LIMIT` con `history7` (34,1 GiB e oltre 18,6 GB di sole tabelle).
+Fallimenti: (1) `gtosd_preflop_blueprint_game` accettava capacita' a 16 bit: con `history7` i
+valori 222.865 e 1.539.270 venivano troncati; corretto a 32 bit nel codice candidato, il resolver
+calcola il layout dalle colonne per riga. (2) Il fingerprint dell'albero include la
+serializzazione della configurazione: la chiave opzionale `limp_response_target_units: []`
+cambia il fingerprint anche a struttura identica; il resolver la emette solo quando la lista
+delle risposte non e' vuota, come nelle fixture storiche. (3) Il certificatore su HU10 con
+`history7` ha un picco di commit di 2,0 GiB nella fase di preparazione e 1,05 GiB stabili: da
+misurare con la build strumentata (il picco non e' spiegato dalla policy da 30 MB).
+Dubbi: (1) il catalogo postflop non e' annidato (100 % contro 33/66/120 %): entrambe le righe
+sono decisioni dell'utente e non vengono cambiate; (2) tre ripetizioni per scenario e versione
+richiedono circa 30 ore di macchina: la coda esegue prima le ripetizioni 1 di tutte le versioni,
+poi le 2 e le 3 di baseline e A; le versioni B e C ricevono ripetizioni ulteriori solo se
+promosse.
+Prossimo passo: al termine della baseline il driver compila le candidate; se i test e l'identita'
+bit per bit passano, suite di A, poi B, C e ripetizioni; report finale con le tabelle per
+scenario, la scomposizione di memoria e tempi per street e componente, e la valutazione di
+qualita' (EV, certificato).
+Aggiornamento 2026-09-22 03:45: baseline canonica completa e uniforme (`UNIFORMITY_CHECK=PASS`
+sui quattro run): HU10 PASS 0,002046 a (e2e 1.797 s, picco 3,07 GiB), HU20 PASS 0,028000 a
+(policy `fnv1a64:362045ee45623b7a` uguale al run di riferimento; e2e 5.679 s, picco 11,49 GiB),
+HU30 FAIL a lavoro fisso 0,191819 a (uguale al valore storico a 16.000; e2e 5.442 s, picco 11,83
+GiB), HU40 FAIL a lavoro fisso 0,289557 a (e2e 5.036 s, picco 11,83 GiB); certificatore 7,6-7,9 GB
+di picco su HU20-HU40. Revisione statica del codice candidato (agente Opus 5) senza errori di
+compilazione; build pulita alle 02:40; sei suite di test PASS dopo l'emendamento del test dello
+storage (C non supera il criterio per cella preregistrato: divergenza di traiettoria dalla
+seconda iterazione, documentata nel protocollo 7.2); identita' bit per bit di A con la baseline
+PASS su HU10 (40 iterazioni) e HU20 (100 iterazioni: stato `fnv1a64:81695fcdc36df274`, policy
+`fnv1a64:437892420c1b3714`). Sonda HU20 a 100 iterazioni: picco del trainer 7,94 GiB contro 11,49
+GiB. Diagnosi E: il certificatore teneva due tabelle della policy durante il caricamento
+(segnaposto uniforme piu' tabella caricata): corretto in `preflop_blueprint_certify.cpp`, stesso
+certificato sulla sonda HU10 e picco 1,14 GB contro 2,01 GB. Liste delle azioni legali per i
+sette scenari in `benchmarks/suite/actions/`. Coda sequenziale avviata alle 03:40: A (ripetizione
+1 su HU10-HU40), poi B, C e le ripetizioni 2-3 di baseline e A.
+Risultati finali 2026-09-23 23:38 (48 run: 4 versioni x 4 benchmark x 3 ripetizioni, uniformita'
+PASS per ogni versione; report in `BENCHMARK_SUITE_REPORT_2026-09-23.md` e sezione 5 di
+`MEMORY_TIME_OPTIMIZATION_2026-09-21.md`): candidata A bit-identica alla baseline su tutti i
+benchmark (stesse policy e certificati), picco di commit -31 % ovunque (HU10 3,07 -> 2,11 GiB,
+HU20 11,49 -> 7,94, HU30/HU40 11,83 -> 8,18), CPU del trainer -13/-23 %, training x1,14-1,30 e
+e2e x1,11-1,29 sulle ripetizioni pulite; certificatore 7,6-7,9 GB -> 3,7-3,8 GiB (correzione E).
+B (somme float32) -45/-46 % e C (float32) -59/-61 % con delta di EV e max gain dell'ordine di
+1e-5 a, entro le tolleranze preregistrate su tutti gli scenari; C non supera il criterio per
+cella (divergenza di traiettoria, emendamento 7.2). HU30 e HU40 restano FAIL a lavoro fisso con
+ogni versione (baseline uguale allo storico). Fallimenti e limiti: tempi diurni contaminati
+dall'uso interattivo del PC (core effettivi 4,1-5,2 contro 6,0-6,5), gestiti con l'indicatore di
+contesa e le mediane sulle ripetizioni pulite; il test dello storage float32 ha richiesto
+l'emendamento del criterio per cella; due incidenti di automazione (driver non terminato,
+file della coda con CRLF) senza effetto sui risultati. Decisione: A come implementazione unica
+(`double`), `mixed` consigliato quando la memoria e' il vincolo, `float32` sperimentale.
+Prossimo passo: revisione del codice candidato e commit su branch dedicato (nessun commit
+eseguito), eventuale riduzione dei timestamp del discount lazy (0,8 GiB) e valutazione di HU10
+completo con storage narrow (34 GiB baseline: con `float32` circa 17 GiB, eseguibile).
 
 ### 2026-09-21 — pilot HU40 `history7` entro 12 GiB
 

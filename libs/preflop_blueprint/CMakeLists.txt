@@ -21,6 +21,10 @@ add_library(gtosd_preflop_blueprint
   src/postflop_tree_export.cpp
   src/query_worker.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
+if(WIN32)
+  # process_memory_peaks() uses GetProcessMemoryInfo.
+  target_link_libraries(gtosd_preflop_blueprint PRIVATE psapi)
+endif()
 
 target_include_directories(gtosd_preflop_blueprint
   PUBLIC

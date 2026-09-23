@@ -24,14 +24,24 @@
 // updates draw an independent batch for each player: the second player's
 // counterfactual values must be unbiased conditional on the updated opponent
 // policy. Exact alternating traversals reuse the complete weighted board list.
-// Within a pass the current strategy is read from a
-// snapshot taken from the regrets at the start of the pass (Simultaneous: one
-// snapshot per iteration for both players, the order of the FiniteGame
-// oracle; Alternating: a fresh snapshot before the second player). Regret and
-// strategy-sum cells are written directly with the iteration weight: every
-// cell has exactly one writer because threads split disjoint subtrees of the
-// public tree and boards are processed in order, so the result is
-// bit-identical for any thread count.
+// Within a pass the current strategy is read from a snapshot taken from the
+// regrets at the start of the pass (Simultaneous: one snapshot per iteration
+// for both players, the order of the FiniteGame oracle; Alternating: a fresh
+// snapshot before the second player). Regret and strategy-sum cells are
+// written directly with the iteration weight: every cell has exactly one
+// writer because threads split disjoint subtrees of the public tree and
+// boards are processed in order, so the result is bit-identical for any
+// thread count.
+//
+// Storage (milestone "RAM e tempi", 2026-09-21). Two dense tables persist:
+// regrets and strategy sums. The current regret-matched policy is no longer a
+// third dense table: before every pass the rows touched by the boards of the
+// batch are materialized once into a compact per-batch table indexed by
+// (decision node, slot), where the slot of a hand on a board is the index of
+// its dense row among the distinct rows the batch needs on that street. The
+// values equal regret matching on the same regrets at the same moment, so the
+// trajectory is bit-identical to the dense snapshot. A fixed-policy evaluator
+// (abstract best response) uses the dense layout as its slots.
 //
 // Contracts (roadmap section 5), per board B of weight w_B and hero hand h:
 //   R[n][b(h)][a] += w_B P(h) P(o|h) (v_a[h] - v[h])   v from the P5 kernels
@@ -57,6 +67,11 @@ enum class TrainerError : std::uint8_t {
 enum class WeightingScheme : std::uint8_t { Linear, Dcfr };
 enum class UpdateMode : std::uint8_t { Simultaneous, Alternating };
 
+// Element type of the two persistent tables. Increments are always computed
+// in double; a narrower storage rounds only when the cell is written
+// (storage error), never inside a reduction.
+enum class TableStorage : std::uint8_t { Double, MixedFloatSums, Float32 };
+
 struct TrainerConfig {
   std::uint32_t flop_capacity{200U};
   std::uint32_t turn_capacity{500U};
@@ -66,21 +81,21 @@ struct TrainerConfig {
   // Physical best response parallelism can differ from the memory-bandwidth
   // limited CFR traversal. Zero reuses `threads`. Excluded from identity.
   unsigned evaluation_threads{0U};
-  // Storage/traversal optimization only; deliberately excluded from identity.
-  bool batch_policy_refresh{false};
+  // Accepted for compatibility with the reference protocol: the policy is
+  // always materialized for the rows of the batch only. Excluded from identity.
+  bool batch_policy_refresh{true};
   // Benchmark-only counters and coarse timers. Excluded from identity and
   // disabled in production because even thread-local counters perturb the hot path.
   bool detailed_profile{false};
-  // Experimental alternating-update optimization. DCFR multiplies every
-  // positive regret in a row by the same factor, so its regret-matched policy
-  // is invariant in real arithmetic. Floating-point rounding changes, so this
-  // remains opt-in until its convergence is independently certified.
+  // Removed experimental option: the per-batch policy is always rebuilt before
+  // a pass, so there is nothing to reuse. Rejected when set.
   bool reuse_discount_invariant_policy{false};
   // Apply DCFR discounts when a row is next read instead of scanning both
   // dense tables every iteration. Checkpoints and exports materialize every
   // row first. This changes only floating-point association, so it is part of
   // the trainer identity and must be validated against eager discounting.
   bool lazy_discount{false};
+  TableStorage storage{TableStorage::Double};
   WeightingScheme scheme{WeightingScheme::Linear};
   UpdateMode update_mode{UpdateMode::Simultaneous};
   double dcfr_alpha{1.5};
@@ -172,6 +187,9 @@ struct ExploitabilityEstimate {
 struct IterationTelemetry {
   std::uint64_t iteration{0U};
   std::uint32_t boards{0U};
+  // Boards of this iteration whose context had already been built in an earlier batch of
+  // this run (identical rebuilds, see boards_repeated()).
+  std::uint32_t boards_repeated{0U};
   double seconds{0.0};
   double seconds_per_board{0.0};
   double discount_seconds{0.0};
@@ -204,7 +222,62 @@ struct IterationTelemetry {
   std::uint64_t policy_rows_read{0U};
   std::uint64_t regret_cells_written{0U};
   std::uint64_t strategy_cells_written{0U};
+  // Per-batch policy accounting (always on: computed per pass, not per hand).
+  // Rows and cells of the compact table built for the passes of this
+  // iteration, by street; hand-row lookups count every (board, hand, street)
+  // pair the batch maps, so lookups - distinct rows = reuses of a row.
+  std::array<std::uint64_t, 4> policy_rows_materialized{};
+  std::array<std::uint64_t, 4> policy_cells_materialized{};
+  std::array<std::uint64_t, 4> policy_hand_lookups{};
+  std::uint64_t compact_policy_bytes{0U};
   std::uint64_t process_bytes{0U};
+};
+
+// Bytes actually reserved by the trainer, component by component (capacity of
+// the containers, not theoretical cell counts). Nothing here is measured from
+// the operating system; see process_memory_peaks for the process view.
+struct MemoryBreakdown {
+  std::uint64_t regret_bytes{0U};
+  std::uint64_t strategy_sum_bytes{0U};
+  std::uint64_t compact_policy_capacity_bytes{0U};
+  std::uint64_t compact_policy_offsets_bytes{0U};
+  std::uint64_t discount_timestamp_bytes{0U};
+  std::uint64_t discount_factor_bytes{0U};
+  std::uint64_t discount_offset_bytes{0U};
+  std::uint64_t all_in_dense_bytes{0U};
+  std::uint64_t board_batch_bytes{0U};
+  std::uint64_t workspace_bytes{0U};
+  std::uint64_t unit_bytes{0U};
+  std::uint64_t layout_offset_bytes{0U};
+  std::uint64_t partition_bytes{0U};
+  std::uint64_t board_list_bytes{0U};
+  std::uint64_t hand_mask_bytes{0U};
+  std::uint64_t tree_bytes{0U};
+  std::uint64_t history_map_resident_bytes{0U};
+  std::uint64_t bucket_table_bytes{0U};
+  std::uint64_t rank_table_bytes{0U};
+  std::uint64_t catalog_bytes{0U};
+  std::uint64_t all_in_table_bytes{0U};
+  std::array<std::uint64_t, 4> cells_by_street{};
+  std::array<std::uint64_t, 4> rows_by_street{};
+  std::uint32_t regret_bytes_per_cell{8U};
+  std::uint32_t strategy_sum_bytes_per_cell{8U};
+  [[nodiscard]] std::uint64_t total() const noexcept {
+    return regret_bytes + strategy_sum_bytes + compact_policy_capacity_bytes +
+           compact_policy_offsets_bytes + discount_timestamp_bytes + discount_factor_bytes +
+           discount_offset_bytes + all_in_dense_bytes + board_batch_bytes + workspace_bytes +
+           unit_bytes + layout_offset_bytes + partition_bytes + board_list_bytes +
+           hand_mask_bytes + tree_bytes + history_map_resident_bytes + bucket_table_bytes +
+           rank_table_bytes + catalog_bytes + all_in_table_bytes;
+  }
+};
+
+struct ProcessMemoryPeaks {
+  std::uint64_t working_set_bytes{0U};
+  std::uint64_t peak_working_set_bytes{0U};
+  std::uint64_t private_commit_bytes{0U};
+  std::uint64_t peak_private_commit_bytes{0U};
+  std::uint64_t page_faults{0U};
 };
 
 class Trainer {
@@ -218,41 +291,45 @@ public:
   // runouts. The evaluation is exact (all listed boards with their weights)
   // when the trainer runs on an explicit non-sampled board list, or when
   // exact_on_list is requested for a trainer that samples from a list; a
-  // sampling trainer on a list draws `flops` boards from it instead.
+  // sampling trainer on a list draws `flops` boards from it instead. The
+  // evaluator needs the average strategy as a dense table: it is allocated
+  // for the duration of the call and released afterwards.
   [[nodiscard]] Result<ExploitabilityEstimate, TrainerError>
   estimate_exploitability(std::uint32_t flops, bool exact_on_list = false);
 
+  // Dense average / current strategy (allocates one table of layout().entries).
   [[nodiscard]] BucketPolicy average_policy();
   [[nodiscard]] BucketPolicy current_policy();
-  // Transfer the cache to a final export instead of allocating a fourth array.
-  // The next iterate rebuilds its cache; discard the returned export first
-  // when enforcing a three-array memory budget.
-  [[nodiscard]] BucketPolicy take_average_policy();
-  [[nodiscard]] BucketPolicy take_current_policy();
-  // Return a policy buffer obtained from take_*_policy to the trainer and
-  // rebuild the current regret-matched cache without allocating another dense
-  // table. Used by in-process evaluation under the desktop memory budget.
-  void restore_policy_buffer(BucketPolicy &&policy);
-  [[nodiscard]] const std::vector<double> &regrets() const noexcept { return regrets_; }
-  [[nodiscard]] const std::vector<double> &strategy_sums() const noexcept {
-    return strategy_sums_;
-  }
+  // Write the average / current strategy as a GTOSDPOL file row by row through
+  // a bounded buffer, without a dense table; same bytes and checksum as
+  // save_policy on the dense export. Returns the policy fingerprint.
+  [[nodiscard]] Result<std::string, TrainerError>
+  save_average_policy(const std::filesystem::path &path, const std::string &source);
+  [[nodiscard]] Result<std::string, TrainerError>
+  save_current_policy(const std::filesystem::path &path, const std::string &source);
+
+  // Cell accessors of the two persistent tables (any storage format).
+  [[nodiscard]] double regret(std::uint64_t cell) const noexcept;
+  [[nodiscard]] double strategy_sum(std::uint64_t cell) const noexcept;
+  [[nodiscard]] std::uint64_t cell_count() const noexcept { return layout_.entries; }
+  // Copies of the tables as double (tests and diagnostics; allocates).
+  [[nodiscard]] std::vector<double> regrets() const;
+  [[nodiscard]] std::vector<double> strategy_sums() const;
   [[nodiscard]] const StateLayout &layout() const noexcept { return layout_; }
   [[nodiscard]] const TrainerConfig &config() const noexcept { return config_; }
   [[nodiscard]] const SubtreePartition &partition() const noexcept { return partition_; }
   [[nodiscard]] std::uint64_t iteration() const noexcept { return iteration_; }
   [[nodiscard]] std::uint64_t boards_processed() const noexcept { return boards_processed_; }
+  [[nodiscard]] std::uint64_t boards_distinct() const noexcept { return boards_distinct_; }
+  [[nodiscard]] std::uint64_t boards_repeated() const noexcept { return boards_repeated_; }
   [[nodiscard]] double initial_pot_antes() const noexcept { return initial_pot_antes_; }
   [[nodiscard]] double effective_stack_antes() const noexcept { return stack_antes_; }
   // FNV-1a over iteration, RNG states and the two tables: equal fingerprints
-  // mean bit-identical state.
+  // mean bit-identical state. The bytes hashed are the table bytes in their
+  // storage format.
   [[nodiscard]] std::string state_fingerprint();
-  [[nodiscard]] std::uint64_t state_bytes() const noexcept {
-    return (regrets_.size() + strategy_sums_.size() + policy_.size()) * sizeof(double) +
-           discount_iterations_.size() * sizeof(std::uint32_t) +
-           (positive_discount_factors_.size() + strategy_discount_prefix_.size()) *
-               sizeof(double);
-  }
+  [[nodiscard]] std::uint64_t state_bytes() const noexcept;
+  [[nodiscard]] MemoryBreakdown memory_breakdown() const noexcept;
   [[nodiscard]] const std::string &identity() const noexcept { return identity_; }
 
   // Atomic checkpoint (temporary file then rename) with checksum and identity.
@@ -281,10 +358,15 @@ private:
   Result<bool, TrainerError> prepare_board(const card_abstraction::BoardHistory &history,
                                            double weight, BoardWork &work) const;
   [[nodiscard]] ActiveRows collect_active_rows(const std::vector<BoardWork> &batch) const;
-  void refresh_policy(const std::vector<BoardWork> *batch = nullptr, int actor = -1,
-                      const ActiveRows *prepared_rows = nullptr);
-  void materialize_active_rows(const ActiveRows &active, std::uint8_t actor);
+  void assign_slots(std::vector<BoardWork> &batch, const ActiveRows &active) const;
+  // Materialize the regret-matched policy of the rows of the batch into the
+  // compact table and map every (board, street, hand) to its slot.
+  void refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *telemetry);
+  template <typename Function> void for_each_row(Function &&function) const;
+  void average_row(std::uint64_t offset, std::uint8_t actions, double *out) const noexcept;
+  void current_row(std::uint64_t offset, std::uint8_t actions, double *out) const noexcept;
   void fill_average_policy(std::vector<double> &table);
+  void fill_current_policy(std::vector<double> &table);
   void discount_state(std::uint64_t iteration);
   void prepare_discount_factors(std::uint64_t iteration);
   void materialize_row(std::uint32_t node, std::uint32_t row, std::uint64_t iteration);
@@ -299,12 +381,20 @@ private:
                 const BoardWork &board, Workspace &workspace, bool top_phase);
   void terminal(const CompiledNode &node, const double *opponent_reach, double *values,
                 double *scratch, std::uint8_t hero, const BoardWork &board) const;
+  void all_in_masses(const BoardContext &context, const double *reach, double *win, double *tie,
+                     double *lose) const noexcept;
   [[nodiscard]] const double *policy_row(std::uint32_t node, std::uint16_t hand,
-                                         const BoardContext &context) const noexcept;
-  [[nodiscard]] std::uint64_t cell_offset(std::uint32_t node, std::uint16_t hand,
-                                          const BoardContext &context) const noexcept;
+                                         const BoardWork &board) const noexcept;
   card_abstraction::BoardHistory sample_history(card_abstraction::DeterministicRandom &random,
-                                                double &weight) const;
+                                                double &weight,
+                                                std::size_t *index_out = nullptr) const;
+  void note_board_sample(const card_abstraction::BoardHistory &history, std::size_t list_index,
+                         IterationTelemetry &telemetry);
+  [[nodiscard]] std::uint64_t regret_table_bytes() const noexcept;
+  [[nodiscard]] std::uint64_t strategy_table_bytes() const noexcept;
+  [[nodiscard]] const char *regret_table_data() const noexcept;
+  [[nodiscard]] const char *strategy_table_data() const noexcept;
+  void add_regret(std::uint64_t cell, double increment) noexcept;
 
   const CompiledGame *game_;
   bool usable_{true};
@@ -313,9 +403,15 @@ private:
   std::unique_ptr<ParallelExecutor> executor_;
   StateLayout layout_;
   SubtreePartition partition_;
+  // Persistent tables; one pair is used according to config_.storage.
   std::vector<double> regrets_;
   std::vector<double> strategy_sums_;
-  std::vector<double> policy_;
+  std::vector<float> regrets_f32_;
+  std::vector<float> strategy_sums_f32_;
+  // Per-batch policy: compact_offsets_[node] is the first entry of the node's
+  // (slot, action) block. In fixed-policy mode the block is the dense layout.
+  std::vector<double> compact_policy_;
+  std::vector<std::uint64_t> compact_offsets_;
   bool fixed_policy_evaluation_{false};
   std::vector<std::uint64_t> discount_offsets_;
   std::vector<std::uint32_t> discount_iterations_;
@@ -324,19 +420,26 @@ private:
   // training, so their prefix products safely collapse a skipped interval.
   std::vector<double> positive_discount_factors_{1.0};
   std::vector<double> strategy_discount_prefix_{1.0};
+  // Dense, oriented 630 x 630 probabilities of the exact preflop all-in
+  // outcomes, prepared once; boards gather rows through their live combo ids
+  // instead of copying a 465 x 465 block per board.
   std::vector<double> all_in_win_probability_;
   std::vector<double> all_in_tie_probability_;
+  bool all_in_available_{false};
   std::uint64_t discount_target_{0U};
   std::vector<std::uint32_t> unit_of_node_;
   std::vector<Unit> units_;
   std::vector<std::unique_ptr<Workspace>> workspaces_;
-  // Reused across iterations so the two 465x465 all-in matrices per sampled
-  // board do not return hundreds of MiB to the allocator every iteration.
   std::vector<BoardWork> board_batch_;
   std::vector<card_abstraction::BoardHistory> board_list_;
   std::vector<double> board_weights_;
   std::vector<double> board_cumulative_;
   bool sample_boards_{true};
+  // One bit per possible board (list index, or flop combination x turn x river when the
+  // catalog samples): counts identical rebuilds of board contexts. Not persisted.
+  std::vector<std::uint64_t> board_seen_bits_;
+  std::uint64_t boards_distinct_{0U};
+  std::uint64_t boards_repeated_{0U};
   std::array<std::vector<std::uint8_t>, 2> hand_masks_{};
   bool subsets_{false};
   card_abstraction::DeterministicRandom training_random_;
@@ -350,8 +453,10 @@ private:
 };
 
 [[nodiscard]] std::uint64_t process_working_set_bytes() noexcept;
+[[nodiscard]] ProcessMemoryPeaks process_memory_peaks() noexcept;
 [[nodiscard]] const char *trainer_error_name(TrainerError error) noexcept;
 [[nodiscard]] const char *weighting_scheme_name(WeightingScheme scheme) noexcept;
 [[nodiscard]] const char *update_mode_name(UpdateMode mode) noexcept;
+[[nodiscard]] const char *table_storage_name(TableStorage storage) noexcept;
 
 } // namespace gtosd::preflop_blueprint

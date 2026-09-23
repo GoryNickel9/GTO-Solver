@@ -5,9 +5,9 @@
 #include "stream_io.hpp"
 
 #include <cstring>
-#include <memory>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <string_view>
 
 namespace gtosd::preflop_blueprint {
@@ -15,6 +15,21 @@ namespace {
 
 constexpr std::string_view policy_magic = "GTOSDPOL";
 constexpr std::uint32_t policy_version = 1U;
+constexpr std::size_t stream_buffer_entries = 65'536U;
+
+std::string policy_header(const CompiledGame &game, const StateLayout &layout,
+                          const std::string &source) {
+  std::string buffer;
+  buffer.append(policy_magic.data(), policy_magic.size());
+  binary_io::append_little32(buffer, policy_version);
+  binary_io::append_string(buffer, game.fingerprint());
+  binary_io::append_little32(buffer, layout.flop_capacity);
+  binary_io::append_little32(buffer, layout.turn_capacity);
+  binary_io::append_little32(buffer, layout.river_capacity);
+  binary_io::append_little(buffer, layout.entries);
+  binary_io::append_string(buffer, source);
+  return buffer;
+}
 
 struct ParsedPolicy {
   PolicyFileInfo info;
@@ -87,16 +102,7 @@ Result<bool, PolicyFileError> save_policy(const std::filesystem::path &path,
   if (policy.table().size() != layout.entries) {
     return Outcome::failure(PolicyFileError::IntegrityFailure);
   }
-  std::string buffer;
-  buffer.append(policy_magic.data(), policy_magic.size());
-  binary_io::append_little32(buffer, policy_version);
-  binary_io::append_string(buffer, game.fingerprint());
-  binary_io::append_little32(buffer, layout.flop_capacity);
-  binary_io::append_little32(buffer, layout.turn_capacity);
-  binary_io::append_little32(buffer, layout.river_capacity);
-  binary_io::append_little(buffer, layout.entries);
-  binary_io::append_string(buffer, source);
-
+  const auto buffer = policy_header(game, layout, source);
   const auto temporary = std::filesystem::path(path.string() + ".tmp");
   {
     std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
@@ -115,6 +121,92 @@ Result<bool, PolicyFileError> save_policy(const std::filesystem::path &path,
     return Outcome::failure(PolicyFileError::IoFailure);
   }
   return Outcome::success(true);
+}
+
+PolicyStreamWriter::PolicyStreamWriter(const std::filesystem::path &path,
+                                       const CompiledGame &game, const StateLayout &layout,
+                                       const std::string &source)
+    : path_(path), temporary_(path.string() + ".tmp"),
+      output_(temporary_, std::ios::binary | std::ios::trunc), expected_entries_(layout.entries),
+      table_hash_(detail::fnv_offset_basis) {
+  buffer_.reserve(stream_buffer_entries);
+  const auto header = policy_header(game, layout, source);
+  file_hash_ = detail::fnv1a_text(header);
+  if (!output_) {
+    ok_ = false;
+    return;
+  }
+  output_.write(header.data(), static_cast<std::streamsize>(header.size()));
+  ok_ = static_cast<bool>(output_);
+}
+
+PolicyStreamWriter::~PolicyStreamWriter() {
+  if (!finished_) {
+    output_.close();
+    std::error_code error;
+    std::filesystem::remove(temporary_, error);
+  }
+}
+
+void PolicyStreamWriter::flush_buffer() {
+  if (buffer_.empty() || !ok_)
+    return;
+  const std::string_view bytes(reinterpret_cast<const char *>(buffer_.data()),
+                               buffer_.size() * sizeof(double));
+  file_hash_ = detail::fnv1a_text(bytes, file_hash_);
+  table_hash_ = detail::fnv1a_text(bytes, table_hash_);
+  output_.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  ok_ = static_cast<bool>(output_);
+  written_entries_ += buffer_.size();
+  buffer_.clear();
+}
+
+void PolicyStreamWriter::append(const std::span<const double> values) {
+  if (!ok_ || finished_)
+    return;
+  std::size_t offset = 0U;
+  while (offset < values.size()) {
+    const auto room = stream_buffer_entries - buffer_.size();
+    const auto count = std::min(room, values.size() - offset);
+    buffer_.insert(buffer_.end(), values.begin() + static_cast<std::ptrdiff_t>(offset),
+                   values.begin() + static_cast<std::ptrdiff_t>(offset + count));
+    offset += count;
+    if (buffer_.size() == stream_buffer_entries)
+      flush_buffer();
+  }
+}
+
+Result<std::string, PolicyFileError> PolicyStreamWriter::finish() {
+  using Outcome = Result<std::string, PolicyFileError>;
+  if (finished_)
+    return Outcome::failure(PolicyFileError::IoFailure);
+  flush_buffer();
+  finished_ = true;
+  if (!ok_ || written_entries_ != expected_entries_) {
+    output_.close();
+    std::error_code error;
+    std::filesystem::remove(temporary_, error);
+    return Outcome::failure(written_entries_ != expected_entries_
+                                ? PolicyFileError::IntegrityFailure
+                                : PolicyFileError::IoFailure);
+  }
+  std::string checksum;
+  binary_io::append_little(checksum, file_hash_);
+  output_.write(checksum.data(), static_cast<std::streamsize>(checksum.size()));
+  output_.flush();
+  const bool written = static_cast<bool>(output_);
+  output_.close();
+  std::error_code error;
+  if (!written) {
+    std::filesystem::remove(temporary_, error);
+    return Outcome::failure(PolicyFileError::IoFailure);
+  }
+  std::filesystem::rename(temporary_, path_, error);
+  if (error) {
+    std::filesystem::remove(temporary_, error);
+    return Outcome::failure(PolicyFileError::IoFailure);
+  }
+  return Outcome::success("fnv1a64:" + detail::hex64_text(table_hash_));
 }
 
 Result<PolicyFileInfo, PolicyFileError> read_policy_info(const std::filesystem::path &path) {

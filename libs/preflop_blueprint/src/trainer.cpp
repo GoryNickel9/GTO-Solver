@@ -1,6 +1,7 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include "gtosd/preflop_blueprint/abstract_best_response.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
+#include "gtosd/preflop_blueprint/policy_file.hpp"
 
 #include "binary_io.hpp"
 #include "stream_io.hpp"
@@ -45,6 +46,7 @@ constexpr double ante_scale = 1.0 / static_cast<double>(Money::units_per_ante);
 constexpr std::array<char, 8> checkpoint_magic{'G', 'T', 'O', 'S', 'D', 'C', 'K', 'P'};
 constexpr std::uint32_t checkpoint_version = 2U;
 constexpr std::uint64_t profile_sample_stride = 1'024U;
+constexpr std::size_t export_block_entries = 65'536U;
 
 bool all_zero(const double *values) noexcept {
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
@@ -104,6 +106,67 @@ bool supported_diagnostic_prior(const std::vector<card_abstraction::BoardHistory
 
 using binary_io::append_little;
 using binary_io::append_little32;
+
+// Every numeric increment is computed in double and rounded once when the
+// cell is stored: a narrower storage introduces a storage error only.
+template <typename Number> inline void store(Number &cell, const double value) noexcept {
+  cell = static_cast<Number>(value);
+}
+
+// Regret matching of one row: the current strategy from the (possibly
+// narrow) stored regrets, evaluated in double exactly as the dense snapshot did.
+template <typename RegretT>
+inline void regret_match_row(const RegretT *regrets, const std::uint8_t actions,
+                             double *out) noexcept {
+  double positive = 0.0;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    positive += std::max(0.0, static_cast<double>(regrets[action]));
+  }
+  if (positive <= 0.0) {
+    const double uniform = 1.0 / actions;
+    for (std::uint8_t action = 0; action < actions; ++action) {
+      out[action] = uniform;
+    }
+  } else {
+    for (std::uint8_t action = 0; action < actions; ++action) {
+      out[action] = std::max(0.0, static_cast<double>(regrets[action])) / positive;
+    }
+  }
+}
+
+template <typename Function>
+void dispatch_tables(const TableStorage storage, std::vector<double> &regrets_d,
+                     std::vector<double> &sums_d, std::vector<float> &regrets_f,
+                     std::vector<float> &sums_f, Function &&function) {
+  switch (storage) {
+  case TableStorage::Double:
+    function(regrets_d.data(), sums_d.data());
+    return;
+  case TableStorage::MixedFloatSums:
+    function(regrets_d.data(), sums_f.data());
+    return;
+  case TableStorage::Float32:
+    function(regrets_f.data(), sums_f.data());
+    return;
+  }
+}
+
+template <typename Function>
+void dispatch_tables(const TableStorage storage, const std::vector<double> &regrets_d,
+                     const std::vector<double> &sums_d, const std::vector<float> &regrets_f,
+                     const std::vector<float> &sums_f, Function &&function) {
+  switch (storage) {
+  case TableStorage::Double:
+    function(regrets_d.data(), sums_d.data());
+    return;
+  case TableStorage::MixedFloatSums:
+    function(regrets_d.data(), sums_f.data());
+    return;
+  case TableStorage::Float32:
+    function(regrets_f.data(), sums_f.data());
+    return;
+  }
+}
 
 } // namespace
 
@@ -207,6 +270,7 @@ struct Trainer::Workspace {
     std::vector<double> child_values;
     std::vector<double> scratch;
     std::array<std::uint64_t, live_hand_count> cell_offsets{};
+    std::array<std::uint64_t, live_hand_count> policy_offsets{};
   };
   std::vector<Level> levels;
   std::vector<double> regret_weight;
@@ -241,19 +305,47 @@ struct Trainer::Workspace {
     regret_weight.assign(live_hand_count, 0.0);
     strategy_weight.assign(live_hand_count, 0.0);
   }
+
+  void reset_counters() noexcept {
+    nodes_visited = decision_nodes_visited = hero_decision_nodes = opponent_decision_nodes =
+        chance_nodes_visited = fold_terminals_visited = preflop_all_in_terminals_visited =
+            postflop_showdown_terminals_visited = zero_reach_prunes = policy_rows_read =
+                regret_cells_written = strategy_cells_written = 0U;
+    sampled_hero_reach_seconds = sampled_hero_update_seconds = sampled_opponent_reach_seconds =
+        sampled_opponent_accumulate_seconds = sampled_fold_terminal_seconds =
+            sampled_preflop_all_in_seconds = sampled_postflop_showdown_seconds = 0.0;
+  }
+
+  [[nodiscard]] std::uint64_t bytes() const noexcept {
+    std::uint64_t total = sizeof(Workspace) + levels.capacity() * sizeof(Level);
+    for (const auto &level : levels)
+      total += (level.child_reach.capacity() + level.child_values.capacity() +
+                level.scratch.capacity()) *
+               sizeof(double);
+    return total + (regret_weight.capacity() + strategy_weight.capacity()) * sizeof(double);
+  }
 };
 
 struct Trainer::BoardWork {
   BoardContext context;
-  AllInEquityCache all_in;
-  bool has_all_in{false};
   double weight{1.0};
   std::array<std::vector<double>, 2> initial_reach;
   std::array<std::vector<double>, 2> hand_probability;
   std::array<std::vector<double>, 2> pair_probability;
+  // Slot of every hand in the compact policy of the current pass, per
+  // postflop street (dense row in fixed-policy mode).
+  std::array<std::array<std::uint32_t, live_hand_count>, 3> slot{};
   double context_cpu_seconds{0.0};
   double all_in_cpu_seconds{0.0};
   double reach_cpu_seconds{0.0};
+
+  [[nodiscard]] std::uint64_t bytes() const noexcept {
+    std::uint64_t total = sizeof(BoardWork);
+    for (const auto *arrays : {&initial_reach, &hand_probability, &pair_probability})
+      for (const auto &values : *arrays)
+        total += values.capacity() * sizeof(double);
+    return total;
+  }
 };
 
 SubtreePartition SubtreePartition::build(const CompiledGame &game, const std::uint32_t target_nodes) {
@@ -309,9 +401,9 @@ Trainer::create(const CompiledGame &game, const TrainerResources &resources,
       config.batch_boards > std::numeric_limits<std::uint32_t>::max() / 2U) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
   }
-  if (config.reuse_discount_invariant_policy &&
-      (!config.lazy_discount || config.scheme != WeightingScheme::Dcfr ||
-       config.update_mode != UpdateMode::Alternating || config.dcfr_beta != 0.0)) {
+  // The per-batch policy is rebuilt before every pass: the former experimental
+  // reuse of a discount-invariant snapshot no longer has a meaning.
+  if (config.reuse_discount_invariant_policy) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
   }
   if (resources.ranks == nullptr) {
@@ -361,6 +453,7 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   if (stats.preflop_all_in_runouts > 0U && resources_.all_in == nullptr) {
     return Outcome::failure(TrainerError::MissingResource);
   }
+  all_in_available_ = false;
   if (stats.preflop_all_in_runouts > 0U) {
     constexpr std::size_t count = card_abstraction::combo_count;
     all_in_win_probability_.assign(count * count, 0.0);
@@ -380,6 +473,7 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
         all_in_tie_probability_[reverse] = tie;
       }
     }
+    all_in_available_ = true;
   }
   layout_ = layout_state(*game_, config_.flop_capacity, config_.turn_capacity,
                          config_.river_capacity);
@@ -401,7 +495,13 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     units_[index].values.assign(live_hand_count, 0.0);
     unit_of_node_[units_[index].root] = static_cast<std::uint32_t>(index);
   }
-  regrets_.assign(layout_.entries, 0.0);
+  fixed_policy_evaluation_ = fixed_policy != nullptr;
+  const bool float_regrets = config_.storage == TableStorage::Float32;
+  const bool float_sums = config_.storage != TableStorage::Double;
+  if (float_regrets)
+    regrets_f32_.assign(layout_.entries, 0.0f);
+  else
+    regrets_.assign(layout_.entries, 0.0);
   discount_offsets_.assign(game_->nodes().size(), no_offset);
   if (config_.lazy_discount) {
     std::uint64_t discount_rows = 0U;
@@ -416,15 +516,18 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
       return Outcome::failure(TrainerError::InvalidConfiguration);
     discount_iterations_.assign(static_cast<std::size_t>(discount_rows), 0U);
   }
-  fixed_policy_evaluation_ = fixed_policy != nullptr;
+  compact_offsets_.assign(game_->nodes().size(), no_offset);
   if (fixed_policy_evaluation_) {
     if (fixed_policy->size() != layout_.entries)
       return Outcome::failure(TrainerError::InvalidConfiguration);
-    policy_ = std::move(*fixed_policy);
+    compact_policy_ = std::move(*fixed_policy);
+    compact_offsets_ = layout_.offsets;
   } else {
-    strategy_sums_.assign(layout_.entries, 0.0);
-    policy_.assign(layout_.entries, 0.0);
-    refresh_policy();
+    if (float_sums)
+      strategy_sums_f32_.assign(layout_.entries, 0.0f);
+    else
+      strategy_sums_.assign(layout_.entries, 0.0);
+    compact_policy_.clear();
   }
   const auto depth = static_cast<std::size_t>(stats.maximum_depth) + 2U;
   workspaces_.clear();
@@ -529,8 +632,10 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   }
   if (resources_.history_rows)
     identity += "|history-rows=" + resources_.history_rows->fingerprint();
-  if (config_.reuse_discount_invariant_policy)
-    identity += "|reuse-discount-invariant-policy-v1";
+  // Double storage keeps the historical identity; a narrower storage cannot
+  // silently resume a double checkpoint.
+  if (config_.storage != TableStorage::Double)
+    identity += std::string("|storage=") + table_storage_name(config_.storage);
   identity_ = "fnv1a64:" + detail::hex64_text(detail::fnv1a_text(identity));
   return Outcome::success(true);
 }
@@ -561,19 +666,14 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
     work.context_cpu_seconds =
         std::chrono::duration<double>(phase - prepare_started).count();
   work.weight = weight;
-  work.has_all_in = false;
-  if (game_->stats().preflop_all_in_runouts > 0U && resources_.all_in != nullptr) {
-    const auto rebuilt = work.all_in.rebuild(work.context, all_in_win_probability_,
-                                             all_in_tie_probability_);
-    if (!rebuilt) {
-      return Outcome::failure(TrainerError::BoardFailure);
+  if (fixed_policy_evaluation_) {
+    // The fixed table keeps the dense layout: the slot of a hand is its row.
+    for (std::size_t street = 0; street < 3U; ++street) {
+      const auto current = static_cast<Street>(street + 1U);
+      const bool present = work.context.has_buckets(current);
+      for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
+        work.slot[street][hand] = present ? work.context.row(current, hand) : 0U;
     }
-    work.has_all_in = true;
-  }
-  if (config_.detailed_profile) {
-    const auto now = Clock::now();
-    work.all_in_cpu_seconds = std::chrono::duration<double>(now - phase).count();
-    phase = now;
   }
   const auto combos = work.context.combo_ids();
   const auto cards = work.context.cards();
@@ -654,67 +754,87 @@ Trainer::ActiveRows Trainer::collect_active_rows(const std::vector<BoardWork> &b
   return active;
 }
 
-void Trainer::refresh_policy(const std::vector<BoardWork> *batch, const int actor,
-                             const ActiveRows *prepared_rows) {
-  policy_.resize(layout_.entries);
-  ActiveRows owned_rows;
-  if (batch != nullptr && prepared_rows == nullptr)
-    owned_rows = collect_active_rows(*batch);
-  const auto *active =
-      prepared_rows != nullptr ? prepared_rows : (batch != nullptr ? &owned_rows : nullptr);
-  executor_->run(game_->nodes().size(), [&](const std::size_t node_index, const unsigned) {
-    const auto &node = game_->nodes()[node_index];
-    if (node.kind != NodeKind::Decision ||
-        (actor >= 0 && node.actor != static_cast<std::uint8_t>(actor))) {
-      return;
-    }
-    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
-                                            config_.turn_capacity, config_.river_capacity);
-    const auto actions = node.action_count;
-    const auto base = layout_.offsets[node.id];
-    const auto &selected = active != nullptr ? (*active)[static_cast<std::size_t>(node.street)]
-                                             : owned_rows[0];
-    const auto count = active != nullptr ? selected.size() : rows;
-    for (std::size_t index = 0; index < count; ++index) {
-      const auto row = active != nullptr ? selected[index] : static_cast<std::uint32_t>(index);
-      materialize_row(node.id, row, discount_target_);
-      const auto offset = base + static_cast<std::uint64_t>(row) * actions;
-      double positive = 0.0;
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        positive += std::max(0.0, regrets_[offset + action]);
+void Trainer::assign_slots(std::vector<BoardWork> &batch, const ActiveRows &active) const {
+  executor_->run(batch.size(), [&](const std::size_t index, const unsigned) {
+    auto &work = batch[index];
+    for (std::size_t street = 1; street < 4; ++street) {
+      const auto current = static_cast<Street>(street);
+      auto &slots = work.slot[street - 1U];
+      if (!work.context.has_buckets(current)) {
+        slots.fill(0U);
+        continue;
       }
-      if (positive <= 0.0) {
-        const double uniform = 1.0 / actions;
-        for (std::uint8_t action = 0; action < actions; ++action) {
-          policy_[offset + action] = uniform;
-        }
-      } else {
-        for (std::uint8_t action = 0; action < actions; ++action) {
-          policy_[offset + action] = std::max(0.0, regrets_[offset + action]) / positive;
-        }
+      const auto &rows = active[street];
+      for (std::uint16_t hand = 0; hand < live_hand_count; ++hand) {
+        const auto row = work.context.row(current, hand);
+        const auto found = std::lower_bound(rows.begin(), rows.end(), row);
+        slots[hand] = static_cast<std::uint32_t>(found - rows.begin());
       }
     }
   });
 }
 
-void Trainer::materialize_active_rows(const ActiveRows &active, const std::uint8_t actor) {
-  if (!config_.lazy_discount)
-    return;
-  executor_->run(game_->nodes().size(), [&](const std::size_t node_index, const unsigned) {
-    const auto &node = game_->nodes()[node_index];
-    if (node.kind != NodeKind::Decision || node.actor != actor)
-      return;
-    for (const auto row : active[static_cast<std::size_t>(node.street)])
-      materialize_row(node.id, row, discount_target_);
-  });
+void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *telemetry) {
+  const auto active = collect_active_rows(batch);
+  assign_slots(batch, active);
+  std::uint64_t total = 0U;
+  for (const auto &node : game_->nodes()) {
+    if (node.kind != NodeKind::Decision) {
+      compact_offsets_[node.id] = no_offset;
+      continue;
+    }
+    compact_offsets_[node.id] = total;
+    total += static_cast<std::uint64_t>(active[static_cast<std::size_t>(node.street)].size()) *
+             node.action_count;
+  }
+  compact_policy_.resize(static_cast<std::size_t>(total));
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](const auto *regrets, const auto *) {
+                    executor_->run(game_->nodes().size(), [&](const std::size_t node_index,
+                                                              const unsigned) {
+                      const auto &node = game_->nodes()[node_index];
+                      if (node.kind != NodeKind::Decision)
+                        return;
+                      const auto &selected = active[static_cast<std::size_t>(node.street)];
+                      const auto actions = node.action_count;
+                      const auto base = layout_.offsets[node.id];
+                      auto *out = compact_policy_.data() + compact_offsets_[node.id];
+                      for (std::size_t index = 0; index < selected.size(); ++index) {
+                        const auto row = selected[index];
+                        materialize_row(node.id, row, discount_target_);
+                        regret_match_row(regrets + base + static_cast<std::uint64_t>(row) * actions,
+                                         actions, out + index * actions);
+                      }
+                    });
+                  });
+  if (telemetry != nullptr) {
+    std::array<std::uint64_t, 4> cells{};
+    for (const auto &node : game_->nodes()) {
+      if (node.kind == NodeKind::Decision)
+        cells[static_cast<std::size_t>(node.street)] +=
+            static_cast<std::uint64_t>(active[static_cast<std::size_t>(node.street)].size()) *
+            node.action_count;
+    }
+    for (std::size_t street = 0; street < 4U; ++street) {
+      telemetry->policy_rows_materialized[street] += active[street].size();
+      telemetry->policy_cells_materialized[street] += cells[street];
+      std::uint64_t lookups = 0U;
+      for (const auto &board : batch)
+        if (street == 0U || board.context.has_buckets(static_cast<Street>(street)))
+          lookups += live_hand_count;
+      telemetry->policy_hand_lookups[street] += lookups;
+    }
+    telemetry->compact_policy_bytes = std::max<std::uint64_t>(telemetry->compact_policy_bytes,
+                                                              total * sizeof(double));
+  }
 }
 
 void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t row,
                               const std::uint64_t iteration) {
   if (!config_.lazy_discount)
     return;
-  if (iteration > std::numeric_limits<std::uint32_t>::max())
-    throw std::overflow_error("lazy discount iteration overflow");
+  // iterate() refuses iterations beyond the 32-bit timestamp range before any
+  // worker reaches this point, so no exception can escape a thread here.
   const auto timestamp_index = discount_offsets_[node_id] + row;
   auto &last = discount_iterations_[static_cast<std::size_t>(timestamp_index)];
   if (last >= iteration)
@@ -722,31 +842,39 @@ void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t r
   const auto &node = game_->nodes()[node_id];
   const auto offset = layout_.offsets[node_id] +
                       static_cast<std::uint64_t>(row) * node.action_count;
-  bool nonzero = false;
-  for (std::uint8_t action = 0; action < node.action_count; ++action) {
-    nonzero = nonzero || regrets_[offset + action] != 0.0 ||
-              strategy_sums_[offset + action] != 0.0;
-  }
-  if (nonzero) {
-    const auto first = static_cast<std::size_t>(last);
-    const auto final = static_cast<std::size_t>(iteration);
-    const auto skipped = iteration - last;
-    const double strategy = strategy_discount_prefix_[final] / strategy_discount_prefix_[first];
-    for (std::uint8_t action = 0; action < node.action_count; ++action) {
-      auto &regret = regrets_[offset + action];
-      if (regret > 0.0) {
-        for (std::uint64_t step = static_cast<std::uint64_t>(last) + 1U; step <= iteration;
-             ++step) {
-          regret *= positive_discount_factors_[static_cast<std::size_t>(step)];
-        }
-      } else if (skipped > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
-        regret = 0.0;
-      } else {
-        regret = std::ldexp(regret, -static_cast<int>(skipped));
-      }
-      strategy_sums_[offset + action] *= strategy;
-    }
-  }
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](auto *regrets, auto *sums) {
+                    bool nonzero = false;
+                    for (std::uint8_t action = 0; action < node.action_count; ++action) {
+                      nonzero = nonzero || regrets[offset + action] != 0 ||
+                                sums[offset + action] != 0;
+                    }
+                    if (!nonzero)
+                      return;
+                    const auto first = static_cast<std::size_t>(last);
+                    const auto final = static_cast<std::size_t>(iteration);
+                    const auto skipped = iteration - last;
+                    const double strategy =
+                        strategy_discount_prefix_[final] / strategy_discount_prefix_[first];
+                    for (std::uint8_t action = 0; action < node.action_count; ++action) {
+                      auto &regret_cell = regrets[offset + action];
+                      double regret = static_cast<double>(regret_cell);
+                      if (regret > 0.0) {
+                        for (std::uint64_t step = static_cast<std::uint64_t>(last) + 1U;
+                             step <= iteration; ++step) {
+                          regret *= positive_discount_factors_[static_cast<std::size_t>(step)];
+                        }
+                      } else if (skipped >
+                                 static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+                        regret = 0.0;
+                      } else {
+                        regret = std::ldexp(regret, -static_cast<int>(skipped));
+                      }
+                      store(regret_cell, regret);
+                      auto &sum_cell = sums[offset + action];
+                      store(sum_cell, static_cast<double>(sum_cell) * strategy);
+                    }
+                  });
   last = static_cast<std::uint32_t>(iteration);
 }
 
@@ -782,32 +910,34 @@ void Trainer::discount_state(const std::uint64_t iteration) {
   const double positive_discount = positive_power / (positive_power + 1.0);
   const double negative_discount = negative_power / (negative_power + 1.0);
   const double strategy_discount = std::pow(t / (t + 1.0), config_.dcfr_gamma);
-  for (auto &regret : regrets_) {
-    regret *= regret > 0.0 ? positive_discount : negative_discount;
-  }
-  for (auto &sum : strategy_sums_) {
-    sum *= strategy_discount;
-  }
+  const auto entries = layout_.entries;
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](auto *regrets, auto *sums) {
+                    for (std::uint64_t cell = 0; cell < entries; ++cell) {
+                      auto &regret = regrets[cell];
+                      const double value = static_cast<double>(regret);
+                      store(regret, value * (value > 0.0 ? positive_discount : negative_discount));
+                    }
+                    for (std::uint64_t cell = 0; cell < entries; ++cell) {
+                      auto &sum = sums[cell];
+                      store(sum, static_cast<double>(sum) * strategy_discount);
+                    }
+                  });
 }
 
 const double *Trainer::policy_row(const std::uint32_t node, const std::uint16_t hand,
-                                  const BoardContext &context) const noexcept {
+                                  const BoardWork &board) const noexcept {
   const auto &entry = game_->nodes()[node];
-  const auto offset = layout_.offsets[node] +
-                      static_cast<std::uint64_t>(context.row(entry.street, hand)) *
-                          entry.action_count;
-  return policy_.data() + offset;
-}
-
-std::uint64_t Trainer::cell_offset(const std::uint32_t node, const std::uint16_t hand,
-                                   const BoardContext &context) const noexcept {
-  const auto &entry = game_->nodes()[node];
-  return layout_.offsets[node] +
-         static_cast<std::uint64_t>(context.row(entry.street, hand)) * entry.action_count;
+  const std::uint64_t slot =
+      entry.street == Street::Preflop
+          ? board.context.hand_classes()[hand]
+          : board.slot[static_cast<std::size_t>(entry.street) - 1U][hand];
+  return compact_policy_.data() + compact_offsets_[node] + slot * entry.action_count;
 }
 
 card_abstraction::BoardHistory Trainer::sample_history(card_abstraction::DeterministicRandom &random,
-                                                      double &weight) const {
+                                                      double &weight,
+                                                      std::size_t *const index_out) const {
   if (!board_list_.empty()) {
     const auto quantile = random.uniform_unit();
     const auto found = std::lower_bound(board_cumulative_.begin(), board_cumulative_.end(), quantile);
@@ -815,10 +945,48 @@ card_abstraction::BoardHistory Trainer::sample_history(card_abstraction::Determi
         std::min<std::ptrdiff_t>(found - board_cumulative_.begin(),
                                  static_cast<std::ptrdiff_t>(board_list_.size()) - 1));
     weight = 1.0;
+    if (index_out != nullptr)
+      *index_out = index;
     return board_list_[index];
   }
   weight = 1.0;
+  if (index_out != nullptr)
+    *index_out = board_list_.size();
   return resources_.catalog->sample_physical_history(random);
+}
+
+void Trainer::note_board_sample(const card_abstraction::BoardHistory &history,
+                                const std::size_t list_index, IterationTelemetry &telemetry) {
+  // Exact count of identical board rebuilds: one bit per possible board. With a
+  // board list the key is the list index; with catalog sampling it is the flop
+  // combination (52 choose 3 = 22,100) times turn times river, 7.5 MB of bits.
+  constexpr std::uint64_t card_count = 52U;
+  std::uint64_t key = 0U;
+  std::uint64_t universe = 0U;
+  if (!board_list_.empty()) {
+    key = list_index;
+    universe = board_list_.size();
+  } else {
+    std::array<std::uint64_t, 3> flop{history.flop[0].value(), history.flop[1].value(),
+                                      history.flop[2].value()};
+    std::sort(flop.begin(), flop.end());
+    const auto choose2 = [](const std::uint64_t n) { return n * (n - 1U) / 2U; };
+    const auto choose3 = [](const std::uint64_t n) { return n * (n - 1U) * (n - 2U) / 6U; };
+    const auto flop_index = choose3(flop[2]) + choose2(flop[1]) + flop[0];
+    key = (flop_index * card_count + history.turn.value()) * card_count + history.river.value();
+    universe = 22'100ULL * card_count * card_count;
+  }
+  if (board_seen_bits_.empty())
+    board_seen_bits_.assign(static_cast<std::size_t>((universe + 63U) / 64U), 0U);
+  auto &word = board_seen_bits_[static_cast<std::size_t>(key / 64U)];
+  const auto mask = std::uint64_t{1} << (key % 64U);
+  if ((word & mask) != 0U) {
+    ++boards_repeated_;
+    ++telemetry.boards_repeated;
+  } else {
+    word |= mask;
+    ++boards_distinct_;
+  }
 }
 
 Result<IterationTelemetry, TrainerError> Trainer::iterate() {
@@ -827,6 +995,8 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
     return Outcome::failure(TrainerError::IntegrityFailure);
   const auto started = Clock::now();
   const auto iteration = iteration_ + 1U;
+  if (config_.lazy_discount && iteration > std::numeric_limits<std::uint32_t>::max())
+    return Outcome::failure(TrainerError::InvalidConfiguration);
   discount_target_ = iteration - 1U;
   if (config_.lazy_discount)
     prepare_discount_factors(discount_target_);
@@ -849,215 +1019,73 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
       config_.scheme == WeightingScheme::Linear ? static_cast<double>(iteration) : 1.0;
 
   auto &batch = board_batch_;
-  if (!sample_boards_) {
-    batch.resize(board_list_.size());
-    std::atomic<bool> failed{false};
-    executor_->run(board_list_.size(), [&](const std::size_t index, const unsigned) {
-      const auto prepared = prepare_board(board_list_[index], board_weights_[index], batch[index]);
-      if (!prepared)
-        failed.store(true, std::memory_order_relaxed);
-    });
-    if (failed.load(std::memory_order_relaxed))
-      return Outcome::failure(TrainerError::BoardFailure);
-    record_prepare_cpu(batch);
-  } else {
-    batch.resize(config_.batch_boards);
-    std::vector<card_abstraction::BoardHistory> histories(batch.size());
-    std::vector<double> weights(batch.size());
-    for (std::size_t index = 0; index < batch.size(); ++index) {
-      double weight = 1.0;
-      histories[index] = sample_history(training_random_, weight);
-      weights[index] = weight / config_.batch_boards;
-    }
-    std::atomic<bool> failed{false};
+  std::vector<card_abstraction::BoardHistory> histories;
+  std::vector<double> weights;
+  std::atomic<bool> failed{false};
+  const auto prepare_batch = [&]() -> bool {
+    failed.store(false, std::memory_order_relaxed);
     executor_->run(batch.size(), [&](const std::size_t index, const unsigned) {
       const auto prepared = prepare_board(histories[index], weights[index], batch[index]);
       if (!prepared)
         failed.store(true, std::memory_order_relaxed);
     });
-    if (failed.load(std::memory_order_relaxed))
-      return Outcome::failure(TrainerError::BoardFailure);
     record_prepare_cpu(batch);
-
-    // Reused for the independent second-player chance batch below.
-    auto prepare_next_sample = [&]() -> bool {
-      for (std::size_t index = 0; index < batch.size(); ++index) {
-        double weight = 1.0;
-        histories[index] = sample_history(training_random_, weight);
-        weights[index] = weight / config_.batch_boards;
-      }
-      failed.store(false, std::memory_order_relaxed);
-      executor_->run(batch.size(), [&](const std::size_t index, const unsigned) {
-        const auto prepared = prepare_board(histories[index], weights[index], batch[index]);
-        if (!prepared)
-          failed.store(true, std::memory_order_relaxed);
-      });
-      return !failed.load(std::memory_order_relaxed);
-    };
-
-    telemetry.board_prepare_seconds = std::chrono::duration<double>(Clock::now() - phase).count();
-    for (auto &workspace : workspaces_)
-      workspace->nodes_visited = workspace->decision_nodes_visited =
-          workspace->hero_decision_nodes = workspace->opponent_decision_nodes =
-              workspace->chance_nodes_visited = workspace->fold_terminals_visited =
-                  workspace->preflop_all_in_terminals_visited =
-                      workspace->postflop_showdown_terminals_visited =
-                          workspace->zero_reach_prunes = workspace->policy_rows_read =
-                              workspace->regret_cells_written =
-                                  workspace->strategy_cells_written = 0U;
-    for (auto &workspace : workspaces_)
-      workspace->sampled_hero_reach_seconds = workspace->sampled_hero_update_seconds =
-          workspace->sampled_opponent_reach_seconds =
-              workspace->sampled_opponent_accumulate_seconds =
-                  workspace->sampled_fold_terminal_seconds =
-                      workspace->sampled_preflop_all_in_seconds =
-                          workspace->sampled_postflop_showdown_seconds = 0.0;
-    std::size_t drawn_boards = batch.size();
-    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-      std::optional<ActiveRows> active_rows;
-      if (hero == 1U && config_.update_mode == UpdateMode::Alternating) {
-        phase = Clock::now();
-        if (!prepare_next_sample())
-          return Outcome::failure(TrainerError::BoardFailure);
-        record_prepare_cpu(batch);
-        drawn_boards += batch.size();
-        telemetry.board_prepare_seconds +=
-            std::chrono::duration<double>(Clock::now() - phase).count();
-      }
-      if (config_.update_mode == UpdateMode::Alternating &&
-          config_.reuse_discount_invariant_policy) {
-        phase = Clock::now();
-        active_rows.emplace(collect_active_rows(batch));
-        materialize_active_rows(*active_rows, hero);
-        telemetry.policy_refresh_seconds +=
-            std::chrono::duration<double>(Clock::now() - phase).count();
-      } else if (hero == 0U || config_.update_mode == UpdateMode::Alternating) {
-        phase = Clock::now();
-        refresh_policy(config_.batch_policy_refresh ? &batch : nullptr);
-        telemetry.policy_refresh_seconds +=
-            std::chrono::duration<double>(Clock::now() - phase).count();
-      }
-      phase = Clock::now();
-      for (const auto &work : batch)
-        pass(work, hero, iteration_weight, &telemetry);
-      telemetry.traversal_seconds += std::chrono::duration<double>(Clock::now() - phase).count();
-      if (config_.update_mode == UpdateMode::Alternating &&
-          config_.reuse_discount_invariant_policy) {
-        phase = Clock::now();
-        refresh_policy(config_.batch_policy_refresh ? &batch : nullptr, hero,
-                       config_.batch_policy_refresh && active_rows ? &*active_rows : nullptr);
-        telemetry.policy_refresh_seconds +=
-            std::chrono::duration<double>(Clock::now() - phase).count();
-      }
+    return !failed.load(std::memory_order_relaxed);
+  };
+  const auto draw_batch = [&] {
+    for (std::size_t index = 0; index < batch.size(); ++index) {
+      double weight = 1.0;
+      std::size_t list_index = 0;
+      histories[index] = sample_history(training_random_, weight, &list_index);
+      weights[index] = weight / config_.batch_boards;
+      note_board_sample(histories[index], list_index, telemetry);
     }
-    iteration_ = iteration;
-    boards_processed_ += drawn_boards;
-    telemetry.iteration = iteration_;
-    telemetry.boards = static_cast<std::uint32_t>(drawn_boards);
-    telemetry.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-    telemetry.seconds_per_board =
-        telemetry.seconds / static_cast<double>(std::max<std::size_t>(1U, drawn_boards));
-    for (const auto &workspace : workspaces_) {
-      telemetry.nodes_visited += workspace->nodes_visited;
-      telemetry.decision_nodes_visited += workspace->decision_nodes_visited;
-      telemetry.hero_decision_nodes += workspace->hero_decision_nodes;
-      telemetry.opponent_decision_nodes += workspace->opponent_decision_nodes;
-      telemetry.chance_nodes_visited += workspace->chance_nodes_visited;
-      telemetry.fold_terminals_visited += workspace->fold_terminals_visited;
-      telemetry.preflop_all_in_terminals_visited +=
-          workspace->preflop_all_in_terminals_visited;
-      telemetry.postflop_showdown_terminals_visited +=
-          workspace->postflop_showdown_terminals_visited;
-      telemetry.zero_reach_prunes += workspace->zero_reach_prunes;
-      telemetry.policy_rows_read += workspace->policy_rows_read;
-      telemetry.regret_cells_written += workspace->regret_cells_written;
-      telemetry.strategy_cells_written += workspace->strategy_cells_written;
-      telemetry.sampled_hero_reach_seconds += workspace->sampled_hero_reach_seconds;
-      telemetry.sampled_hero_update_seconds += workspace->sampled_hero_update_seconds;
-      telemetry.sampled_opponent_reach_seconds += workspace->sampled_opponent_reach_seconds;
-      telemetry.sampled_opponent_accumulate_seconds +=
-          workspace->sampled_opponent_accumulate_seconds;
-      telemetry.sampled_fold_terminal_seconds += workspace->sampled_fold_terminal_seconds;
-      telemetry.sampled_preflop_all_in_seconds +=
-          workspace->sampled_preflop_all_in_seconds;
-      telemetry.sampled_postflop_showdown_seconds +=
-          workspace->sampled_postflop_showdown_seconds;
-    }
-    telemetry.process_bytes = process_working_set_bytes();
-    return Outcome::success(telemetry);
+  };
+  if (!sample_boards_) {
+    batch.resize(board_list_.size());
+    histories = board_list_;
+    weights = board_weights_;
+  } else {
+    batch.resize(config_.batch_boards);
+    histories.resize(batch.size());
+    weights.resize(batch.size());
+    draw_batch();
   }
-
+  if (!prepare_batch())
+    return Outcome::failure(TrainerError::BoardFailure);
   telemetry.board_prepare_seconds = std::chrono::duration<double>(Clock::now() - phase).count();
-  for (auto &workspace : workspaces_) {
-    workspace->nodes_visited = workspace->decision_nodes_visited =
-        workspace->hero_decision_nodes = workspace->opponent_decision_nodes =
-            workspace->chance_nodes_visited = workspace->fold_terminals_visited =
-                workspace->preflop_all_in_terminals_visited =
-                    workspace->postflop_showdown_terminals_visited =
-                        workspace->zero_reach_prunes = workspace->policy_rows_read =
-                            workspace->regret_cells_written =
-                                workspace->strategy_cells_written = 0U;
-    workspace->sampled_hero_reach_seconds = workspace->sampled_hero_update_seconds =
-        workspace->sampled_opponent_reach_seconds =
-            workspace->sampled_opponent_accumulate_seconds =
-                workspace->sampled_fold_terminal_seconds =
-                    workspace->sampled_preflop_all_in_seconds =
-                        workspace->sampled_postflop_showdown_seconds = 0.0;
-  }
+  for (auto &workspace : workspaces_)
+    workspace->reset_counters();
   std::size_t drawn_boards = batch.size();
   for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-    std::optional<ActiveRows> active_rows;
-    if (hero == 1U && config_.update_mode == UpdateMode::Alternating) {
+    if (hero == 1U && config_.update_mode == UpdateMode::Alternating && sample_boards_) {
+      // The opponent's new policy depends on the first batch. Reusing that
+      // batch here conditions chance on the policy being evaluated, biasing
+      // the second player's counterfactual values. Draw from the unchanged
+      // chance law. Exact traversals reuse their weighted list instead.
       phase = Clock::now();
-      if (sample_boards_) {
-        // The opponent's new policy depends on the first batch. Reusing that
-        // batch here conditions chance on the policy being evaluated, biasing
-        // the second player's counterfactual values. Draw from the unchanged
-        // chance law. Snapshot the selected rows after preparing this independent
-        // batch, before any update; exact traversals can reuse their list.
-        for (auto &work : batch) {
-          double weight = 1.0;
-          const auto history = sample_history(training_random_, weight);
-          const auto prepared = prepare_board(history, weight / config_.batch_boards, work);
-          if (!prepared) {
-            return Outcome::failure(prepared.error());
-          }
-        }
-        drawn_boards += batch.size();
-      }
+      draw_batch();
+      if (!prepare_batch())
+        return Outcome::failure(TrainerError::BoardFailure);
+      drawn_boards += batch.size();
       telemetry.board_prepare_seconds +=
           std::chrono::duration<double>(Clock::now() - phase).count();
     }
-    if (config_.update_mode == UpdateMode::Alternating &&
-        config_.reuse_discount_invariant_policy) {
+    if (hero == 0U || config_.update_mode == UpdateMode::Alternating) {
+      // Snapshot of the current strategy on the rows of this batch, taken
+      // before the pass (and, alternating, after the first player's update).
       phase = Clock::now();
-      active_rows.emplace(collect_active_rows(batch));
-      materialize_active_rows(*active_rows, hero);
-      telemetry.policy_refresh_seconds +=
-          std::chrono::duration<double>(Clock::now() - phase).count();
-    } else if (hero == 0U || config_.update_mode == UpdateMode::Alternating) {
-      phase = Clock::now();
-      refresh_policy(config_.batch_policy_refresh ? &batch : nullptr);
+      refresh_policy(batch, &telemetry);
       telemetry.policy_refresh_seconds +=
           std::chrono::duration<double>(Clock::now() - phase).count();
     }
     phase = Clock::now();
-    for (const auto &work : batch) {
+    for (const auto &work : batch)
       pass(work, hero, iteration_weight, &telemetry);
-    }
     telemetry.traversal_seconds += std::chrono::duration<double>(Clock::now() - phase).count();
-    if (config_.update_mode == UpdateMode::Alternating &&
-        config_.reuse_discount_invariant_policy) {
-      phase = Clock::now();
-      refresh_policy(config_.batch_policy_refresh ? &batch : nullptr, hero,
-                     config_.batch_policy_refresh && active_rows ? &*active_rows : nullptr);
-      telemetry.policy_refresh_seconds +=
-          std::chrono::duration<double>(Clock::now() - phase).count();
-    }
   }
   iteration_ = iteration;
   boards_processed_ += drawn_boards;
-
   telemetry.iteration = iteration_;
   telemetry.boards = static_cast<std::uint32_t>(drawn_boards);
   telemetry.seconds = std::chrono::duration<double>(Clock::now() - started).count();
@@ -1070,8 +1098,7 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
     telemetry.opponent_decision_nodes += workspace->opponent_decision_nodes;
     telemetry.chance_nodes_visited += workspace->chance_nodes_visited;
     telemetry.fold_terminals_visited += workspace->fold_terminals_visited;
-    telemetry.preflop_all_in_terminals_visited +=
-        workspace->preflop_all_in_terminals_visited;
+    telemetry.preflop_all_in_terminals_visited += workspace->preflop_all_in_terminals_visited;
     telemetry.postflop_showdown_terminals_visited +=
         workspace->postflop_showdown_terminals_visited;
     telemetry.zero_reach_prunes += workspace->zero_reach_prunes;
@@ -1169,8 +1196,7 @@ void Trainer::top_down_reach(const std::uint32_t node_id, const double *hero_rea
       }
       continue;
     }
-    const auto probabilities =
-        policy_row(node_id, static_cast<std::uint16_t>(hand), board.context);
+    const auto probabilities = policy_row(node_id, static_cast<std::uint16_t>(hand), board);
     ++policy_rows;
     for (std::uint8_t action = 0; action < actions; ++action) {
       level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
@@ -1263,6 +1289,9 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
   const auto actions = node.action_count;
   if (node.actor == hero) {
     const auto base = layout_.offsets[node_id];
+    const auto policy_base = compact_offsets_[node_id];
+    const bool preflop = node.street == Street::Preflop;
+    const auto street_index = preflop ? 0U : static_cast<std::size_t>(node.street) - 1U;
     std::uint64_t policy_rows = 0U;
     std::uint64_t regret_cells = 0U;
     std::uint64_t strategy_cells = 0U;
@@ -1273,6 +1302,10 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
                             node.street, static_cast<std::uint16_t>(hand))) *
                             actions;
       level.cell_offsets[hand] = cell;
+      const std::uint64_t slot =
+          preflop ? board.context.hand_classes()[hand] : board.slot[street_index][hand];
+      const auto policy_offset = policy_base + slot * actions;
+      level.policy_offsets[hand] = policy_offset;
       const double reach = hero_reach[hand];
       if (reach == 0.0) {
         for (std::uint8_t action = 0; action < actions; ++action) {
@@ -1280,7 +1313,7 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
         }
         continue;
       }
-      const double *probabilities = policy_.data() + cell;
+      const double *probabilities = compact_policy_.data() + policy_offset;
       ++policy_rows;
       for (std::uint8_t action = 0; action < actions; ++action) {
         level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
@@ -1298,33 +1331,44 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
                board, workspace, top_phase);
     }
     const auto update_started = profile_sample ? Clock::now() : Clock::time_point{};
-    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
-      const auto cell = level.cell_offsets[hand];
-      const double *probabilities = policy_.data() + cell;
-      ++policy_rows;
-      double value = 0.0;
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        value += probabilities[action] *
-                 level.child_values[static_cast<std::size_t>(action) * live_hand_count + hand];
-      }
-      values[hand] = value;
-      const double regret_weight = workspace.regret_weight[hand];
-      if (!opponent_zero && regret_weight != 0.0) {
-        regret_cells += actions;
-        for (std::uint8_t action = 0; action < actions; ++action) {
-          regrets_[cell + action] +=
-              regret_weight *
-              (level.child_values[static_cast<std::size_t>(action) * live_hand_count + hand] - value);
-        }
-      }
-      const double strategy_weight = workspace.strategy_weight[hand] * hero_reach[hand];
-      if (!fixed_policy_evaluation_ && strategy_weight != 0.0) {
-        strategy_cells += actions;
-        for (std::uint8_t action = 0; action < actions; ++action) {
-          strategy_sums_[cell + action] += strategy_weight * probabilities[action];
-        }
-      }
-    }
+    const bool accumulate_strategy = !fixed_policy_evaluation_;
+    dispatch_tables(
+        config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+        [&](auto *regrets, auto *sums) {
+          for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+            const auto cell = level.cell_offsets[hand];
+            const double *probabilities = compact_policy_.data() + level.policy_offsets[hand];
+            ++policy_rows;
+            double value = 0.0;
+            for (std::uint8_t action = 0; action < actions; ++action) {
+              value += probabilities[action] *
+                       level.child_values[static_cast<std::size_t>(action) * live_hand_count + hand];
+            }
+            values[hand] = value;
+            const double regret_weight = workspace.regret_weight[hand];
+            if (!opponent_zero && regret_weight != 0.0) {
+              regret_cells += actions;
+              for (std::uint8_t action = 0; action < actions; ++action) {
+                auto &regret = regrets[cell + action];
+                store(regret,
+                      static_cast<double>(regret) +
+                          regret_weight *
+                              (level.child_values[static_cast<std::size_t>(action) *
+                                                      live_hand_count +
+                                                  hand] -
+                               value));
+              }
+            }
+            const double strategy_weight = workspace.strategy_weight[hand] * hero_reach[hand];
+            if (accumulate_strategy && strategy_weight != 0.0) {
+              strategy_cells += actions;
+              for (std::uint8_t action = 0; action < actions; ++action) {
+                auto &sum = sums[cell + action];
+                store(sum, static_cast<double>(sum) + strategy_weight * probabilities[action]);
+              }
+            }
+          }
+        });
     if (profile_sample)
       workspace.sampled_hero_update_seconds +=
           std::chrono::duration<double>(Clock::now() - update_started).count();
@@ -1346,8 +1390,7 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
       }
       continue;
     }
-    const auto probabilities =
-        policy_row(node_id, static_cast<std::uint16_t>(hand), board.context);
+    const auto probabilities = policy_row(node_id, static_cast<std::uint16_t>(hand), board);
     ++policy_rows;
     for (std::uint8_t action = 0; action < actions; ++action) {
       level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
@@ -1374,6 +1417,32 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
   }
 }
 
+void Trainer::all_in_masses(const BoardContext &context, const double *reach, double *win,
+                            double *tie, double *lose) const noexcept {
+  // Same terms in the same order as the former per-board 465 x 465 copy: the
+  // live combos are enumerated in increasing combo id on every board, so the
+  // gathered rows reproduce the copied rows element by element.
+  constexpr std::size_t stride = card_abstraction::combo_count;
+  const ConstHandSpan reach_span(reach, live_hand_count);
+  const HandSpan lose_span(lose, live_hand_count);
+  fold_mass(context, reach_span, lose_span);
+  const auto combos = context.combo_ids();
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    const double *win_row = all_in_win_probability_.data() + combos[hand] * stride;
+    const double *tie_row = all_in_tie_probability_.data() + combos[hand] * stride;
+    double win_mass = 0.0;
+    double tie_mass = 0.0;
+    for (std::size_t other = 0; other < live_hand_count; ++other) {
+      const auto combo = combos[other];
+      win_mass += win_row[combo] * reach[other];
+      tie_mass += tie_row[combo] * reach[other];
+    }
+    win[hand] = win_mass;
+    tie[hand] = tie_mass;
+    lose[hand] -= win_mass + tie_mass;
+  }
+}
+
 void Trainer::terminal(const CompiledNode &node, const double *opponent_reach, double *values,
                        double *scratch, const std::uint8_t hero, const BoardWork &board) const {
   const ConstHandSpan reach(opponent_reach, live_hand_count);
@@ -1389,11 +1458,11 @@ void Trainer::terminal(const CompiledNode &node, const double *opponent_reach, d
     return;
   }
   if (node.street == Street::Preflop) {
-    if (!board.has_all_in) {
+    if (!all_in_available_) {
       std::fill_n(values, live_hand_count, 0.0);
       return;
     }
-    board.all_in.masses(board.context, reach, first, second, third);
+    all_in_masses(board.context, opponent_reach, first.data(), second.data(), third.data());
   } else {
     const std::array<ConstHandSpan, 2> reach_by_player{reach, reach};
     kernel_.evaluate(board.context, node.active_mask, hero,
@@ -1411,10 +1480,66 @@ void Trainer::terminal(const CompiledNode &node, const double *opponent_reach, d
   }
 }
 
-BucketPolicy Trainer::average_policy() {
-  std::vector<double> table(layout_.entries);
-  fill_average_policy(table);
-  return BucketPolicy(*game_, layout_, std::move(table));
+template <typename Function> void Trainer::for_each_row(Function &&function) const {
+  for (const auto &node : game_->nodes()) {
+    if (node.kind != NodeKind::Decision) {
+      continue;
+    }
+    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
+                                            config_.turn_capacity, config_.river_capacity);
+    const auto actions = node.action_count;
+    const auto base = layout_.offsets[node.id];
+    for (std::uint32_t row = 0; row < rows; ++row) {
+      function(base + static_cast<std::uint64_t>(row) * actions, actions);
+    }
+  }
+}
+
+void Trainer::average_row(const std::uint64_t offset, const std::uint8_t actions,
+                          double *out) const noexcept {
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](const auto *regrets, const auto *sums) {
+                    double total = 0.0;
+                    for (std::uint8_t action = 0; action < actions; ++action) {
+                      total += std::max(0.0, static_cast<double>(sums[offset + action]));
+                    }
+                    if (total > 0.0) {
+                      for (std::uint8_t action = 0; action < actions; ++action) {
+                        out[action] =
+                            std::max(0.0, static_cast<double>(sums[offset + action])) / total;
+                      }
+                      return;
+                    }
+                    double positive = 0.0;
+                    for (std::uint8_t action = 0; action < actions; ++action) {
+                      positive += std::max(0.0, static_cast<double>(regrets[offset + action]));
+                    }
+                    for (std::uint8_t action = 0; action < actions; ++action) {
+                      out[action] =
+                          positive > 0.0
+                              ? std::max(0.0, static_cast<double>(regrets[offset + action])) /
+                                    positive
+                              : 1.0 / actions;
+                    }
+                  });
+}
+
+void Trainer::current_row(const std::uint64_t offset, const std::uint8_t actions,
+                          double *out) const noexcept {
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](const auto *regrets, const auto *) {
+                    double positive = 0.0;
+                    for (std::uint8_t action = 0; action < actions; ++action) {
+                      positive += std::max(0.0, static_cast<double>(regrets[offset + action]));
+                    }
+                    for (std::uint8_t action = 0; action < actions; ++action) {
+                      out[action] =
+                          positive > 0.0
+                              ? std::max(0.0, static_cast<double>(regrets[offset + action])) /
+                                    positive
+                              : 1.0 / actions;
+                    }
+                  });
 }
 
 void Trainer::fill_average_policy(std::vector<double> &table) {
@@ -1422,86 +1547,199 @@ void Trainer::fill_average_policy(std::vector<double> &table) {
     throw std::logic_error("trainer state invalid after failed checkpoint load");
   materialize_all_discounts();
   table.resize(layout_.entries);
-  for (const auto &node : game_->nodes()) {
-    if (node.kind != NodeKind::Decision) {
-      continue;
-    }
-    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
-                                            config_.turn_capacity, config_.river_capacity);
-    const auto actions = node.action_count;
-    const auto base = layout_.offsets[node.id];
-    for (std::uint32_t row = 0; row < rows; ++row) {
-      const auto offset = base + static_cast<std::uint64_t>(row) * actions;
-      double total = 0.0;
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        total += std::max(0.0, strategy_sums_[offset + action]);
-      }
-      if (total > 0.0) {
-        for (std::uint8_t action = 0; action < actions; ++action) {
-          table[offset + action] = std::max(0.0, strategy_sums_[offset + action]) / total;
-        }
-        continue;
-      }
-      double positive = 0.0;
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        positive += std::max(0.0, regrets_[offset + action]);
-      }
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        table[offset + action] = positive > 0.0
-                                     ? std::max(0.0, regrets_[offset + action]) / positive
-                                     : 1.0 / actions;
-      }
-    }
-  }
+  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
+    average_row(offset, actions, table.data() + offset);
+  });
 }
 
-BucketPolicy Trainer::current_policy() {
+void Trainer::fill_current_policy(std::vector<double> &table) {
   if (!usable_)
     throw std::logic_error("trainer state invalid after failed checkpoint load");
   materialize_all_discounts();
-  BucketPolicy policy(*game_, layout_);
-  auto &table = policy.table();
-  for (const auto &node : game_->nodes()) {
-    if (node.kind != NodeKind::Decision) {
-      continue;
-    }
-    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
-                                            config_.turn_capacity, config_.river_capacity);
-    const auto actions = node.action_count;
-    const auto base = layout_.offsets[node.id];
-    for (std::uint32_t row = 0; row < rows; ++row) {
-      const auto offset = base + static_cast<std::uint64_t>(row) * actions;
-      double positive = 0.0;
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        positive += std::max(0.0, regrets_[offset + action]);
-      }
-      for (std::uint8_t action = 0; action < actions; ++action) {
-        table[offset + action] = positive > 0.0
-                                     ? std::max(0.0, regrets_[offset + action]) / positive
-                                     : 1.0 / actions;
-      }
-    }
-  }
-  return policy;
+  table.resize(layout_.entries);
+  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
+    current_row(offset, actions, table.data() + offset);
+  });
 }
 
-BucketPolicy Trainer::take_average_policy() {
-  fill_average_policy(policy_);
-  return BucketPolicy(*game_, layout_, std::move(policy_));
+BucketPolicy Trainer::average_policy() {
+  std::vector<double> table;
+  fill_average_policy(table);
+  return BucketPolicy(*game_, layout_, std::move(table));
 }
 
-BucketPolicy Trainer::take_current_policy() {
+BucketPolicy Trainer::current_policy() {
+  std::vector<double> table;
+  fill_current_policy(table);
+  return BucketPolicy(*game_, layout_, std::move(table));
+}
+
+Result<std::string, TrainerError> Trainer::save_average_policy(const std::filesystem::path &path,
+                                                               const std::string &source) {
+  using Outcome = Result<std::string, TrainerError>;
   if (!usable_)
-    throw std::logic_error("trainer state invalid after failed checkpoint load");
-  refresh_policy();
-  return BucketPolicy(*game_, layout_, std::move(policy_));
+    return Outcome::failure(TrainerError::IntegrityFailure);
+  materialize_all_discounts();
+  PolicyStreamWriter writer(path, *game_, layout_, source);
+  if (!writer.ok())
+    return Outcome::failure(TrainerError::IoFailure);
+  std::vector<double> block;
+  block.reserve(export_block_entries + maximum_actions);
+  std::array<double, maximum_actions> row{};
+  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
+    average_row(offset, actions, row.data());
+    block.insert(block.end(), row.begin(), row.begin() + actions);
+    if (block.size() >= export_block_entries) {
+      writer.append(block);
+      block.clear();
+    }
+  });
+  writer.append(block);
+  const auto finished = writer.finish();
+  if (!finished)
+    return Outcome::failure(TrainerError::IoFailure);
+  return Outcome::success(finished.value());
 }
 
-void Trainer::restore_policy_buffer(BucketPolicy &&policy) {
-  if (policy.layout().entries != layout_.entries || policy.table().size() != layout_.entries)
-    throw std::invalid_argument("policy buffer layout mismatch");
-  policy_ = std::move(policy.table());
-  refresh_policy();
+Result<std::string, TrainerError> Trainer::save_current_policy(const std::filesystem::path &path,
+                                                               const std::string &source) {
+  using Outcome = Result<std::string, TrainerError>;
+  if (!usable_)
+    return Outcome::failure(TrainerError::IntegrityFailure);
+  materialize_all_discounts();
+  PolicyStreamWriter writer(path, *game_, layout_, source);
+  if (!writer.ok())
+    return Outcome::failure(TrainerError::IoFailure);
+  std::vector<double> block;
+  block.reserve(export_block_entries + maximum_actions);
+  std::array<double, maximum_actions> row{};
+  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
+    current_row(offset, actions, row.data());
+    block.insert(block.end(), row.begin(), row.begin() + actions);
+    if (block.size() >= export_block_entries) {
+      writer.append(block);
+      block.clear();
+    }
+  });
+  writer.append(block);
+  const auto finished = writer.finish();
+  if (!finished)
+    return Outcome::failure(TrainerError::IoFailure);
+  return Outcome::success(finished.value());
+}
+
+double Trainer::regret(const std::uint64_t cell) const noexcept {
+  return config_.storage == TableStorage::Float32 ? static_cast<double>(regrets_f32_[cell])
+                                                  : regrets_[cell];
+}
+
+double Trainer::strategy_sum(const std::uint64_t cell) const noexcept {
+  return config_.storage == TableStorage::Double ? strategy_sums_[cell]
+                                                 : static_cast<double>(strategy_sums_f32_[cell]);
+}
+
+std::vector<double> Trainer::regrets() const {
+  if (config_.storage != TableStorage::Float32)
+    return regrets_;
+  return std::vector<double>(regrets_f32_.begin(), regrets_f32_.end());
+}
+
+std::vector<double> Trainer::strategy_sums() const {
+  if (config_.storage == TableStorage::Double)
+    return strategy_sums_;
+  return std::vector<double>(strategy_sums_f32_.begin(), strategy_sums_f32_.end());
+}
+
+std::uint64_t Trainer::regret_table_bytes() const noexcept {
+  return config_.storage == TableStorage::Float32 ? regrets_f32_.size() * sizeof(float)
+                                                  : regrets_.size() * sizeof(double);
+}
+
+std::uint64_t Trainer::strategy_table_bytes() const noexcept {
+  return config_.storage == TableStorage::Double ? strategy_sums_.size() * sizeof(double)
+                                                 : strategy_sums_f32_.size() * sizeof(float);
+}
+
+const char *Trainer::regret_table_data() const noexcept {
+  return config_.storage == TableStorage::Float32
+             ? reinterpret_cast<const char *>(regrets_f32_.data())
+             : reinterpret_cast<const char *>(regrets_.data());
+}
+
+const char *Trainer::strategy_table_data() const noexcept {
+  return config_.storage == TableStorage::Double
+             ? reinterpret_cast<const char *>(strategy_sums_.data())
+             : reinterpret_cast<const char *>(strategy_sums_f32_.data());
+}
+
+void Trainer::add_regret(const std::uint64_t cell, const double increment) noexcept {
+  if (config_.storage == TableStorage::Float32)
+    store(regrets_f32_[cell], static_cast<double>(regrets_f32_[cell]) + increment);
+  else
+    regrets_[cell] += increment;
+}
+
+std::uint64_t Trainer::state_bytes() const noexcept {
+  return regret_table_bytes() + strategy_table_bytes() +
+         compact_policy_.capacity() * sizeof(double) +
+         discount_iterations_.size() * sizeof(std::uint32_t) +
+         (positive_discount_factors_.size() + strategy_discount_prefix_.size()) * sizeof(double);
+}
+
+MemoryBreakdown Trainer::memory_breakdown() const noexcept {
+  MemoryBreakdown breakdown;
+  breakdown.regret_bytes =
+      regrets_.capacity() * sizeof(double) + regrets_f32_.capacity() * sizeof(float);
+  breakdown.strategy_sum_bytes =
+      strategy_sums_.capacity() * sizeof(double) + strategy_sums_f32_.capacity() * sizeof(float);
+  breakdown.regret_bytes_per_cell = config_.storage == TableStorage::Float32 ? 4U : 8U;
+  breakdown.strategy_sum_bytes_per_cell = config_.storage == TableStorage::Double ? 8U : 4U;
+  breakdown.compact_policy_capacity_bytes = compact_policy_.capacity() * sizeof(double);
+  breakdown.compact_policy_offsets_bytes = compact_offsets_.capacity() * sizeof(std::uint64_t);
+  breakdown.discount_timestamp_bytes = discount_iterations_.capacity() * sizeof(std::uint32_t);
+  breakdown.discount_factor_bytes =
+      (positive_discount_factors_.capacity() + strategy_discount_prefix_.capacity()) *
+      sizeof(double);
+  breakdown.discount_offset_bytes = discount_offsets_.capacity() * sizeof(std::uint64_t);
+  breakdown.all_in_dense_bytes =
+      (all_in_win_probability_.capacity() + all_in_tie_probability_.capacity()) * sizeof(double);
+  breakdown.board_batch_bytes = 0U;
+  for (const auto &work : board_batch_)
+    breakdown.board_batch_bytes += work.bytes();
+  breakdown.board_batch_bytes +=
+      (board_batch_.capacity() - board_batch_.size()) * sizeof(BoardWork);
+  for (const auto &workspace : workspaces_)
+    breakdown.workspace_bytes += workspace->bytes();
+  for (const auto &unit : units_)
+    breakdown.unit_bytes +=
+        sizeof(Unit) +
+        (unit.hero_reach.capacity() + unit.opponent_reach.capacity() + unit.values.capacity()) *
+            sizeof(double);
+  breakdown.layout_offset_bytes = layout_.offsets.capacity() * sizeof(std::uint64_t);
+  breakdown.partition_bytes = partition_.unit_roots.capacity() * sizeof(std::uint32_t) +
+                              partition_.is_top.capacity() + unit_of_node_.capacity() * 4U;
+  breakdown.board_list_bytes =
+      board_list_.capacity() * sizeof(card_abstraction::BoardHistory) +
+      (board_weights_.capacity() + board_cumulative_.capacity()) * sizeof(double) +
+      board_seen_bits_.capacity() * sizeof(std::uint64_t);
+  breakdown.hand_mask_bytes = hand_masks_[0].capacity() + hand_masks_[1].capacity();
+  breakdown.tree_bytes = game_->nodes().size() * sizeof(CompiledNode) +
+                         game_->edges().size() * sizeof(CompiledEdge) +
+                         game_->states().size() * sizeof(PublicState);
+  breakdown.history_map_resident_bytes =
+      resources_.history_rows ? resources_.history_rows->resident_byte_size() : 0U;
+  for (const auto *table : {resources_.flop, resources_.turn, resources_.river})
+    if (table != nullptr)
+      breakdown.bucket_table_bytes += table->payload_bytes();
+  breakdown.rank_table_bytes = resources_.ranks ? resources_.ranks->payload_bytes() : 0U;
+  breakdown.catalog_bytes = resources_.catalog ? resources_.catalog->byte_size() : 0U;
+  breakdown.all_in_table_bytes = resources_.all_in ? resources_.all_in->payload_bytes() : 0U;
+  breakdown.cells_by_street = layout_.entries_by_street;
+  for (const auto &node : game_->nodes())
+    if (node.kind == NodeKind::Decision)
+      breakdown.rows_by_street[static_cast<std::size_t>(node.street)] += StateLayout::rows_for(
+          node.street, config_.flop_capacity, config_.turn_capacity, config_.river_capacity);
+  return breakdown;
 }
 
 Result<ExploitabilityEstimate, TrainerError>
@@ -1563,9 +1801,8 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
       }
     }
   }
-  auto average = take_average_policy();
+  const auto average = average_policy();
   const auto report = evaluate_best_response(*game_, average, resources, groups, options);
-  restore_policy_buffer(std::move(average));
   if (!report) {
     return Outcome::failure(TrainerError::BoardFailure);
   }
@@ -1609,10 +1846,8 @@ std::string Trainer::state_fingerprint() {
     append_little(header, word);
   }
   hash = detail::fnv1a_text(header, hash);
-  const std::string_view regrets(reinterpret_cast<const char *>(regrets_.data()),
-                                 regrets_.size() * sizeof(double));
-  const std::string_view sums(reinterpret_cast<const char *>(strategy_sums_.data()),
-                              strategy_sums_.size() * sizeof(double));
+  const std::string_view regrets(regret_table_data(), regret_table_bytes());
+  const std::string_view sums(strategy_table_data(), strategy_table_bytes());
   hash = detail::fnv1a_text(regrets, hash);
   hash = detail::fnv1a_text(sums, hash);
   return "fnv1a64:" + detail::hex64_text(hash);
@@ -1636,7 +1871,7 @@ Result<bool, TrainerError> Trainer::save_checkpoint(const std::filesystem::path 
   for (const auto word : evaluation_random_.state()) {
     append_little(buffer, word);
   }
-  append_little(buffer, regrets_.size());
+  append_little(buffer, layout_.entries);
 
   const auto temporary = std::filesystem::path(path.string() + ".tmp");
   {
@@ -1644,8 +1879,10 @@ Result<bool, TrainerError> Trainer::save_checkpoint(const std::filesystem::path 
     if (!output) {
       return Outcome::failure(TrainerError::IoFailure);
     }
-    const std::array<std::span<const double>, 2> arrays{regrets_, strategy_sums_};
-    if (!stream_io::write(output, buffer, arrays)) {
+    const std::array<std::string_view, 2> arrays{
+        std::string_view(regret_table_data(), regret_table_bytes()),
+        std::string_view(strategy_table_data(), strategy_table_bytes())};
+    if (!stream_io::write_raw(output, buffer, arrays)) {
       return Outcome::failure(TrainerError::IoFailure);
     }
   }
@@ -1668,6 +1905,10 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   std::uint64_t boards_processed = 0U;
   card_abstraction::DeterministicRandom::State training_state{};
   card_abstraction::DeterministicRandom::State evaluation_state{};
+  const bool float_regrets = config_.storage == TableStorage::Float32;
+  const bool float_sums = config_.storage != TableStorage::Double;
+  const std::uint64_t regret_cell_bytes = float_regrets ? sizeof(float) : sizeof(double);
+  const std::uint64_t sum_cell_bytes = float_sums ? sizeof(float) : sizeof(double);
   const auto read_header = [&](stream_io::Reader &body) -> std::optional<TrainerError> {
     std::array<char, 8> magic{};
     std::uint32_t version = 0;
@@ -1686,7 +1927,8 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
     for (auto &word : evaluation_state)
       if (!body.u64(word))
         return TrainerError::IntegrityFailure;
-    if (!body.u64(entries) || entries != regrets_.size() || body.remaining() != entries * 16ULL)
+    if (!body.u64(entries) || entries != layout_.entries ||
+        body.remaining() != entries * (regret_cell_bytes + sum_cell_bytes))
       return TrainerError::IntegrityFailure;
     return std::nullopt;
   };
@@ -1694,8 +1936,12 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   const auto header_status = read_header(validation);
   if (header_status)
     return Outcome::failure(*header_status);
-  if (!validation.scan_doubles(regrets_.size()) ||
-      !validation.scan_doubles(strategy_sums_.size(), true) || !validation.finish())
+  const bool scanned = (float_regrets ? validation.scan_floats(layout_.entries)
+                                      : validation.scan_doubles(layout_.entries)) &&
+                       (float_sums ? validation.scan_floats(layout_.entries, true)
+                                   : validation.scan_doubles(layout_.entries, true)) &&
+                       validation.finish();
+  if (!scanned)
     return Outcome::failure(TrainerError::IntegrityFailure);
   // Validate the complete file before changing existing state. The second
   // pass uses the already allocated arrays. A changed file or an I/O failure
@@ -1704,7 +1950,11 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   if (read_header(commit))
     return Outcome::failure(TrainerError::IntegrityFailure);
   usable_ = false;
-  if (!commit.doubles(regrets_) || !commit.doubles(strategy_sums_, true) || !commit.finish())
+  const bool committed = (float_regrets ? commit.floats(regrets_f32_) : commit.doubles(regrets_)) &&
+                         (float_sums ? commit.floats(strategy_sums_f32_, true)
+                                     : commit.doubles(strategy_sums_, true)) &&
+                         commit.finish();
+  if (!committed)
     return Outcome::failure(TrainerError::IntegrityFailure);
   iteration_ = iteration;
   boards_processed_ = boards_processed;
@@ -1719,7 +1969,6 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
     prepare_discount_factors(discount_target_);
   }
   usable_ = true;
-  refresh_policy();
   return Outcome::success(true);
 }
 
@@ -1853,9 +2102,9 @@ public:
         for (std::uint32_t row = 0; row < rows; ++row) {
           const auto offset = source_layout.offsets[node.id] +
                               static_cast<std::uint64_t>(row) * node.action_count;
-          const double value = *std::max_element(evaluator->regrets_.begin() + offset,
-                                                 evaluator->regrets_.begin() + offset +
-                                                     node.action_count);
+          double value = -std::numeric_limits<double>::infinity();
+          for (std::uint8_t action = 0; action < node.action_count; ++action)
+            value = std::max(value, evaluator->regret(offset + action));
           if (!std::isfinite(value))
             return Outcome::failure(TrainerError::IntegrityFailure);
           if (predecessor.node == no_node) {
@@ -1869,7 +2118,7 @@ public:
           const auto parent_offset =
               source_layout.offsets[parent.id] +
               static_cast<std::uint64_t>(parent_row) * parent.action_count + predecessor.action;
-          evaluator->regrets_[parent_offset] += value;
+          evaluator->add_regret(parent_offset, value);
         }
       }
       if (!std::isfinite(gain) || gain < -1e-9)
@@ -1902,6 +2151,24 @@ std::uint64_t process_working_set_bytes() noexcept {
   return 0U;
 }
 
+ProcessMemoryPeaks process_memory_peaks() noexcept {
+  ProcessMemoryPeaks peaks;
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS_EX counters{};
+  counters.cb = sizeof(counters);
+  if (GetProcessMemoryInfo(GetCurrentProcess(),
+                           reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&counters),
+                           sizeof(counters)) != 0) {
+    peaks.working_set_bytes = counters.WorkingSetSize;
+    peaks.peak_working_set_bytes = counters.PeakWorkingSetSize;
+    peaks.private_commit_bytes = counters.PagefileUsage;
+    peaks.peak_private_commit_bytes = counters.PeakPagefileUsage;
+    peaks.page_faults = counters.PageFaultCount;
+  }
+#endif
+  return peaks;
+}
+
 const char *trainer_error_name(const TrainerError error) noexcept {
   switch (error) {
   case TrainerError::InvalidConfiguration:
@@ -1928,6 +2195,18 @@ const char *weighting_scheme_name(const WeightingScheme scheme) noexcept {
 
 const char *update_mode_name(const UpdateMode mode) noexcept {
   return mode == UpdateMode::Simultaneous ? "simultaneous" : "alternating";
+}
+
+const char *table_storage_name(const TableStorage storage) noexcept {
+  switch (storage) {
+  case TableStorage::Double:
+    return "double";
+  case TableStorage::MixedFloatSums:
+    return "mixed-float32-sums";
+  case TableStorage::Float32:
+    return "float32";
+  }
+  return "unknown";
 }
 
 } // namespace gtosd::preflop_blueprint

@@ -1,7 +1,11 @@
 // Compiles the public game tree of a preflop blueprint configuration and
 // reports its counts, the regret/strategy state size for two bucket capacity
-// sets and the compile time.
+// sets and the compile time. With --actions it also lists every preflop
+// decision node with its legal actions (labels and amounts) and the action
+// counts of the postflop decision nodes per street: the record of which sizes
+// the engine kept, merged with the all-in or dropped for a given stack.
 
+#include "gtosd/preflop_blueprint/action_labels.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 
@@ -10,6 +14,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -48,22 +53,84 @@ void print_layout(const std::string_view name, const pb::StateLayout &layout, co
             << ", \"state_bytes\": " << layout.state_bytes() << "}" << (last ? "\n" : ",\n");
 }
 
+std::string json_string(const std::string &value) {
+  std::string out = "\"";
+  for (const auto character : value) {
+    if (character == '"' || character == '\\') {
+      out.push_back('\\');
+    }
+    out.push_back(character);
+  }
+  out.push_back('"');
+  return out;
+}
+
+void print_actions(const pb::CompiledGame &game) {
+  std::cout << "  \"preflop_decisions\": [";
+  bool first = true;
+  for (const auto node : pb::preflop_decision_nodes(game)) {
+    const auto &entry = game.nodes()[node];
+    const auto labels = pb::edge_labels(game, node);
+    const auto edges = game.edges_of(node);
+    std::cout << (first ? "\n" : ",\n") << "    {\"node\": " << node << ", \"id\": "
+              << json_string(pb::node_path_id(game, node)) << ", \"actor\": "
+              << json_string(pb::position_name(game, entry.actor)) << ", \"level\": "
+              << static_cast<unsigned>(entry.level) << ", \"limped_pot\": "
+              << (entry.limped_pot ? "true" : "false") << ", \"actions\": [";
+    for (std::size_t action = 0; action < labels.size(); ++action) {
+      std::cout << (action == 0 ? "" : ", ") << "{\"label\": " << json_string(labels[action])
+                << ", \"amount_units\": " << edges[action].action.amount.units()
+                << ", \"all_in\": "
+                << (edges[action].action.type == gtosd::ActionType::AllIn ? "true" : "false")
+                << "}";
+    }
+    std::cout << "]}";
+    first = false;
+  }
+  std::cout << "\n  ],\n";
+  // Postflop: histogram of (street, actor, action labels) over the decision
+  // nodes so a reader sees which sizes survive at every street for this stack.
+  std::map<std::string, std::uint32_t> signatures;
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::Decision || node.street == gtosd::Street::Preflop) {
+      continue;
+    }
+    std::string signature = std::string(pb::street_name(node.street)) + "|";
+    for (const auto &label : pb::edge_labels(game, node.id)) {
+      signature += label + ";";
+    }
+    ++signatures[signature];
+  }
+  std::cout << "  \"postflop_action_signatures\": {";
+  first = true;
+  for (const auto &[signature, count] : signatures) {
+    std::cout << (first ? "\n" : ",\n") << "    " << json_string(signature) << ": " << count;
+    first = false;
+  }
+  std::cout << "\n  },\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
   try {
     std::filesystem::path config_path;
-    std::uint16_t flop = 200U;
-    std::uint16_t turn = 500U;
-    std::uint16_t river = 1'000U;
-    std::uint16_t alt_flop = 500U;
-    std::uint16_t alt_turn = 1'000U;
-    std::uint16_t alt_river = 2'000U;
+    std::uint32_t flop = 200U;
+    std::uint32_t turn = 500U;
+    std::uint32_t river = 1'000U;
+    std::uint32_t alt_flop = 500U;
+    std::uint32_t alt_turn = 1'000U;
+    std::uint32_t alt_river = 2'000U;
+    bool actions = false;
     pb::CompileOptions options;
     for (int index = 1; index < argc; ++index) {
       const std::string_view name = argv[index];
       if (name == "--preflop-only") {
         options.preflop_only = true;
+        continue;
+      }
+      if (name == "--actions") {
+        actions = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -73,17 +140,17 @@ int main(const int argc, char **argv) {
       if (name == "--config") {
         config_path = value;
       } else if (name == "--flop") {
-        flop = static_cast<std::uint16_t>(parse_unsigned(value));
+        flop = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--turn") {
-        turn = static_cast<std::uint16_t>(parse_unsigned(value));
+        turn = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--river") {
-        river = static_cast<std::uint16_t>(parse_unsigned(value));
+        river = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--alt-flop") {
-        alt_flop = static_cast<std::uint16_t>(parse_unsigned(value));
+        alt_flop = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--alt-turn") {
-        alt_turn = static_cast<std::uint16_t>(parse_unsigned(value));
+        alt_turn = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--alt-river") {
-        alt_river = static_cast<std::uint16_t>(parse_unsigned(value));
+        alt_river = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--max-nodes") {
         options.maximum_nodes = parse_unsigned(value);
       } else {
@@ -144,6 +211,9 @@ int main(const int argc, char **argv) {
               << "  \"states_bytes\": " << game.states().size() * sizeof(gtosd::PublicState)
               << ", \"nodes_bytes\": " << game.nodes().size() * sizeof(pb::CompiledNode)
               << ", \"edges_bytes\": " << game.edges().size() * sizeof(pb::CompiledEdge) << ",\n";
+    if (actions) {
+      print_actions(game);
+    }
     print_layout("layout_baseline", baseline, false);
     print_layout("layout_alternative", alternative, false);
     std::cout << "  \"compile_seconds\": " << stats.compile_seconds << "\n}\n";
