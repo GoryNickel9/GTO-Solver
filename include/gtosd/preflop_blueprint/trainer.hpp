@@ -194,6 +194,10 @@ struct IterationTelemetry {
   double seconds_per_board{0.0};
   double discount_seconds{0.0};
   double policy_refresh_seconds{0.0};
+  // Parts of the refresh: active-row collection and slot assignment, then the parallel
+  // materialization (lazy discount and regret matching) of the compact policy.
+  double policy_refresh_collect_seconds{0.0};
+  double policy_refresh_materialize_seconds{0.0};
   double board_prepare_seconds{0.0};
   double board_context_cpu_seconds{0.0};
   double all_in_cache_cpu_seconds{0.0};
@@ -322,6 +326,12 @@ public:
   [[nodiscard]] std::uint64_t boards_processed() const noexcept { return boards_processed_; }
   [[nodiscard]] std::uint64_t boards_distinct() const noexcept { return boards_distinct_; }
   [[nodiscard]] std::uint64_t boards_repeated() const noexcept { return boards_repeated_; }
+  // Applies every pending lazy discount now, so later saves are read-only and can be
+  // overlapped by the caller.
+  void materialize_discounts();
+  // Positive-regret discount over the iterations in (last, iteration], as the lazy
+  // path applies it (ratio of prefix products); exposed for the tests.
+  [[nodiscard]] double positive_discount_ratio(std::uint64_t last, std::uint64_t iteration);
   [[nodiscard]] double initial_pot_antes() const noexcept { return initial_pot_antes_; }
   [[nodiscard]] double effective_stack_antes() const noexcept { return stack_antes_; }
   // FNV-1a over iteration, RNG states and the two tables: equal fingerprints
@@ -418,7 +428,12 @@ private:
   // Positive regrets retain the original per-step multiplication order because
   // their rounded value feeds the next CFR update. Strategy sums do not feed
   // training, so their prefix products safely collapse a skipped interval.
-  std::vector<double> positive_discount_factors_{1.0};
+  // Prefix products of the DCFR positive-regret factors t^a / (t^a + 1): the factor
+  // over any skipped range is one ratio (the prefix stays within [0.1, 1]).
+  std::vector<double> positive_discount_prefix_{1.0};
+  // True while every row is materialized to discount_target_: saves skip the scan and
+  // may run concurrently (read-only) once it is set.
+  bool discounts_materialized_{false};
   std::vector<double> strategy_discount_prefix_{1.0};
   // Dense, oriented 630 x 630 probabilities of the exact preflop all-in
   // outcomes, prepared once; boards gather rows through their live combo ids

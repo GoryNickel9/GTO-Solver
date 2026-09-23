@@ -5,14 +5,54 @@
 # Completed runs (manifest status COMPLETE) are skipped, so the queue file can
 # be edited and the runner restarted at any time. Usage:
 #   bash tools/preflop_suite/run_queue.sh <queue-file> [<wait-for-file-containing-BATCH_DONE>]
+# Environment:
+#   SUITE_WINDOW=HH:MM-HH:MM  measured runs start only inside this local-time window
+#                             (default 01:00-09:00, the hours when the machine is idle);
+#                             a run also has to be expected to finish inside the window.
+#   SUITE_WINDOW=off          disable the window (diagnostic runs, dedicated machines).
 set -u
 ROOT="/c/Users/GoryNickel/Documents/GitHub/GTO-Solver"
 cd "$ROOT"
 QUEUE="$1"
 WAIT_FOR="${2:-}"
+WINDOW="${SUITE_WINDOW:-01:00-09:00}"
 LOG="out/suite/queue_runner.log"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
-log "queue runner started with $QUEUE (pid $$)"
+
+# Expected duration of one run (training plus exact certification, baseline worst case)
+# in minutes, used to refuse a start that would end outside the window.
+expected_minutes() {
+  case "$1" in
+    HU10) echo 40;;
+    *) echo 100;;
+  esac
+}
+
+# Blocks until the current local time is inside the window with room for the run.
+wait_for_window() {
+  local scenario="$1"
+  [ "$WINDOW" = "off" ] && return 0
+  local start_h=${WINDOW%%:*}; local rest=${WINDOW#*:}
+  local start_m=${rest%%-*}; rest=${rest#*-}
+  local end_h=${rest%%:*}; local end_m=${rest#*:}
+  local start=$((10#$start_h * 60 + 10#$start_m))
+  local end=$((10#$end_h * 60 + 10#$end_m))
+  local need; need=$(expected_minutes "$scenario")
+  local announced=0
+  while true; do
+    local now=$((10#$(date +%H) * 60 + 10#$(date +%M)))
+    if [ "$now" -ge "$start" ] && [ $((now + need)) -le "$end" ]; then
+      return 0
+    fi
+    if [ "$announced" -eq 0 ]; then
+      log "outside the measurement window $WINDOW (or not enough time left for $scenario): waiting"
+      announced=1
+    fi
+    sleep 300
+  done
+}
+
+log "queue runner started with $QUEUE (pid $$, window $WINDOW)"
 if [ -n "$WAIT_FOR" ]; then
   log "waiting for BATCH_DONE in $WAIT_FOR"
   while ! grep -q BATCH_DONE "$WAIT_FOR" 2>/dev/null; do sleep 60; done
@@ -33,6 +73,7 @@ while true; do
   set -- $next
   version=$1; scenario=$2; rep=$3; exedir=$4
   if [ ! -d "$exedir" ]; then log "missing exe dir $exedir for $version; stopping"; break; fi
+  wait_for_window "$scenario"
   # tasklist truncates image names to 25 characters: match the truncated prefixes
   # of gtosd_preflop_blueprint_train.exe and gtosd_preflop_blueprint_certify.exe.
   while tasklist 2>/dev/null | grep -qi "gtosd_preflop_blueprint_t\|gtosd_preflop_blueprint_c"; do

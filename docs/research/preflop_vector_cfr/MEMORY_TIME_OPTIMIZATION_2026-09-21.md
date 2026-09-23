@@ -331,6 +331,46 @@ certificato. La baseline (HEAD `ba93c75`, eseguibili in `out/suite/bin/baseline-
 run restano disponibili; le ottimizzazioni sono reversibili (nessun cambiamento di formato dei
 file per `double`; identita' del trainer estesa solo per gli storage narrow).
 
+## 5.4 Roadmap successiva e fase 1 (dal 2026-09-24)
+
+Vincoli fissati dall'utente: il picco di memoria di ogni benchmark non deve superare quello
+attuale di A (HU10 2,11 GiB, HU20 7,94, HU30/HU40 8,18) e il tempo va ridotto ulteriormente; i
+run misurati girano solo fra le 01:00 e le 09:00 (protocollo, sezione 6).
+
+| Fase | Contenuto | Gate |
+|---|---|---|
+| 1. Tempo a memoria invariata | discount lazy in tempo costante (rapporto di prodotti prefissi), checkpoint finale scritto in parallelo all'export della policy, timer del refresh (raccolta righe attive / materializzazione), profilo del certificatore | HU20 e2e sotto 45 min allo stesso picco, poi 37m27s (requisito P9); criteri 7.2 |
+| 2. Margine di memoria | timestamp del discount a 16 bit (-0,4 GiB), allocazione a blocchi delle righe mai visitate (dopo misura della copertura), `mixed` quando serve | almeno -1 GiB su HU20 senza cambiare policy |
+| 3. Astrazione piu' fine nel budget | flop 200 -> 500 bucket (costo di memoria nullo, guadagno locale dimostrato dall'audit HU30), river cap 7 -> 23 con storage narrow e margine della fase 2, poi storia completa se la tendenza lo giustifica | max gain fisico su HU30/HU40 sotto 0,10 a, poi 0,03 a |
+| 4. Feature universali | `[equity, hand strength, draw potential, nut potential, blockers, future distribution]` al posto dei soli istogrammi di equity | divario BR astratta / fisica per street; gate P9 |
+
+### 5.4.1 Candidata D (fase 1): cosa cambia
+
+- **Discount lazy in tempo costante.** `materialize_row` applicava a ogni regret positivo un
+  prodotto di una moltiplicazione per iterazione saltata; con 10.647 righe materializzate per
+  passata su 206 milioni (HU20) una riga viene rivisitata in media dopo migliaia di iterazioni,
+  quindi il ciclo costava migliaia di moltiplicazioni per cella. Ora il fattore complessivo e' il
+  rapporto `prefix[iteration] / prefix[last]` dei prodotti prefissi dei fattori
+  t^1,5 / (t^1,5 + 1), che restano nell'intervallo [0,1, 1] (nessun underflow), come gia' per le
+  somme di strategia. Il fattore applicato coincide con il prodotto sequenziale a meno
+  dell'arrotondamento (test: errore relativo <= 1e-12 su 70 coppie di iterazioni fino a 20.000),
+  ma il regret matching e' discontinuo in zero: una differenza a livello di arrotondamento puo'
+  cambiare la traiettoria, come gia' osservato per lo storage float32. D non e' quindi
+  bit-identica ad A e viene valutata con i criteri 7.2; il vecchio test di uguaglianza esatta
+  eager/lazy (25 iterazioni sul gioco ridotto) mostra infatti differenze macroscopiche dopo il
+  primo scambio di argmax e viene sostituito dal test del rapporto e dal determinismo fra thread,
+  che resta esatto. Sonde: HU10 a 40 iterazioni delta max gain +5,3e-5 a, delta EV +9e-7 a;
+  HU20 a 100 iterazioni +1,4e-4 a e -1,3e-5 a (su max gain di 0,28 e 1,38 a).
+- **Scrittura finale sovrapposta.** I discount pendenti vengono materializzati una volta
+  (`materialize_discounts`, con un marcatore che rende idempotenti i salvataggi), poi il
+  checkpoint (copia grezza delle tabelle) viene scritto da un thread ausiliario mentre l'export
+  della policy media procede in streaming sul thread principale; entrambi sono in sola lettura.
+- **Timer del refresh.** `policy_refresh_collect_seconds` (raccolta righe attive, assegnazione
+  slot, offset) e `policy_refresh_materialize_seconds` (materializzazione parallela) negli
+  eventi del trainer, per guidare il passo successivo della fase 1.
+
+Risultati della fase 1: da riempire con il report della suite (run notturni).
+
 ## 6. Procedura di riproduzione
 
 Vedi la sezione 8 del protocollo. Le build delle versioni: baseline dall'HEAD pulito

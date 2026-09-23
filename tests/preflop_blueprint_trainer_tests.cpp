@@ -675,13 +675,36 @@ void test_lazy_dcfr_discount(const Resources &resources) {
   std::cout << "lazy hybrid DCFR differences: regret " << maximum_regret_difference
             << ", sum " << maximum_sum_difference << ", policy "
             << maximum_policy_difference << '\n';
-  require(eager.value()->regrets() == lazy.value()->regrets() &&
-              maximum_sum_difference <= 1.0e-15 && maximum_policy_difference <= 1.0e-15 &&
-              lazy.value()->regrets() == single.value()->regrets() &&
+  // The lazy path applies the skipped positive factors as one ratio of prefix products
+  // instead of one multiply per iteration. Regret matching is discontinuous at zero, so a
+  // rounding-level difference can change the trajectory (the differences above are
+  // reported, not bounded); what is checked is that the applied factor equals the
+  // product of the per-iteration factors to rounding, and that the lazy path itself is
+  // thread-deterministic bit for bit.
+  double maximum_ratio_error = 0.0;
+  for (const std::uint64_t last : {0ULL, 1ULL, 2ULL, 5ULL, 10ULL, 100ULL, 1000ULL, 5000ULL}) {
+    for (const std::uint64_t iteration : {1ULL, 2ULL, 3ULL, 6ULL, 11ULL, 101ULL, 1001ULL,
+                                          5001ULL, 16000ULL, 20000ULL}) {
+      if (iteration <= last)
+        continue;
+      double sequential = 1.0;
+      for (std::uint64_t step = last + 1U; step <= iteration; ++step) {
+        const double power = std::pow(static_cast<double>(step), lazy_config.dcfr_alpha);
+        sequential *= power / (power + 1.0);
+      }
+      const double ratio = lazy.value()->positive_discount_ratio(last, iteration);
+      maximum_ratio_error =
+          std::max(maximum_ratio_error, std::abs(ratio - sequential) / sequential);
+    }
+  }
+  std::cout << "lazy positive discount ratio: max relative error " << maximum_ratio_error
+            << " against the sequential product\n";
+  require(maximum_ratio_error <= 1.0e-12,
+          "lazy positive discount ratio equals the sequential product to rounding");
+  require(lazy.value()->regrets() == single.value()->regrets() &&
               lazy.value()->strategy_sums() == single.value()->strategy_sums() &&
               lazy_policy.table() == single_policy.table(),
-          "hybrid lazy DCFR preserves regrets exactly, bounds averaging error, and is "
-          "thread-deterministic");
+          "hybrid lazy DCFR is thread-deterministic");
 
   const auto directory = std::filesystem::temp_directory_path() / "gtosd_preflop_blueprint_tests";
   std::filesystem::create_directories(directory);

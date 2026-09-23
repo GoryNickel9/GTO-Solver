@@ -456,6 +456,7 @@ int main(const int argc, char **argv) {
     double evaluation_seconds = 0.0;
     double certification_seconds = 0.0;
     double write_seconds = 0.0;
+    double refresh_collect_seconds = 0.0, refresh_materialize_seconds = 0.0;
     bool converged = false;
     bool certified_exact = false;
     bool plateau = false;
@@ -572,6 +573,8 @@ int main(const int argc, char **argv) {
       training_seconds += telemetry.value().seconds;
       discount_seconds += telemetry.value().discount_seconds;
       refresh_seconds += telemetry.value().policy_refresh_seconds;
+      refresh_collect_seconds += telemetry.value().policy_refresh_collect_seconds;
+      refresh_materialize_seconds += telemetry.value().policy_refresh_materialize_seconds;
       prepare_seconds += telemetry.value().board_prepare_seconds;
       traversal_seconds += telemetry.value().traversal_seconds;
       for (std::size_t street = 0; street < 4U; ++street) {
@@ -757,33 +760,55 @@ int main(const int argc, char **argv) {
             ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
                   "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
             : "";
-    // Save final state even when periodic evaluation was explicitly disabled.
+    // Save final state even when periodic evaluation was explicitly disabled. The
+    // pending discounts are materialized once here, after which every save is a
+    // read-only pass: the checkpoint (raw copy of the tables) is written by a helper
+    // thread while the policy exports stream on this one.
+    trainer.materialize_discounts();
+    struct ThreadJoiner {
+      std::thread &thread;
+      ~ThreadJoiner() {
+        if (thread.joinable())
+          thread.join();
+      }
+    };
+    std::thread checkpoint_thread;
+    ThreadJoiner checkpoint_joiner{checkpoint_thread};
+    std::string checkpoint_failure;
+    const auto overlapped_write_started = Clock::now();
     if (!checkpoint_path.empty()) {
-      save_checkpoint_once("final checkpoint write failed");
+      checkpoint_thread = std::thread([&] {
+        const auto saved = trainer.save_checkpoint(checkpoint_path);
+        if (!saved)
+          checkpoint_failure = std::string("final checkpoint write failed: ") +
+                               pb::trainer_error_name(saved.error());
+      });
     }
     if (!current_policy_path.empty()) {
-      const auto write_started = Clock::now();
       const auto saved = trainer.save_current_policy(
           current_policy_path,
           trainer.identity() + "|current|iteration=" + std::to_string(trainer.iteration()) +
               abstraction_source);
-      write_seconds += std::chrono::duration<double>(Clock::now() - write_started).count();
       if (!saved) {
         throw std::runtime_error("current policy write failed");
       }
     }
     if (!policy_path.empty()) {
-      const auto write_started = Clock::now();
       const auto saved = trainer.save_average_policy(
           policy_path, trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
                            abstraction_source);
-      write_seconds += std::chrono::duration<double>(Clock::now() - write_started).count();
       if (!saved) {
         throw std::runtime_error(std::string("policy write failed: ") +
                                  pb::trainer_error_name(saved.error()));
       }
       policy_fingerprint_text = saved.value();
     }
+    if (checkpoint_thread.joinable())
+      checkpoint_thread.join();
+    if (!checkpoint_failure.empty())
+      throw std::runtime_error(checkpoint_failure);
+    write_seconds +=
+        std::chrono::duration<double>(Clock::now() - overlapped_write_started).count();
     const auto final_peaks = pb::process_memory_peaks();
     std::cout << "{\"event\": \"end\", \"iteration\": " << trainer.iteration()
               << ", \"policy_fingerprint\": \"" << policy_fingerprint_text << "\""
@@ -807,6 +832,8 @@ int main(const int argc, char **argv) {
               << ", \"write_seconds\": " << write_seconds
               << ", \"discount_seconds\": " << discount_seconds
               << ", \"policy_refresh_seconds\": " << refresh_seconds
+              << ", \"policy_refresh_collect_seconds\": " << refresh_collect_seconds
+              << ", \"policy_refresh_materialize_seconds\": " << refresh_materialize_seconds
               << ", \"board_prepare_seconds\": " << prepare_seconds
               << ", \"traversal_seconds\": " << traversal_seconds
               << ", \"policy_cells\": {\"rows_materialized\":[" << rows_materialized[0] << ","

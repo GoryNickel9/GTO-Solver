@@ -43,6 +43,21 @@ Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
 
+### 2026-09-24 — adozione di A, push, roadmap e fase 1 (tempo a memoria invariata)
+
+Fatto: commit `92106db` sul branch `feat/preflop-compact-policy-suite` (solver con policy
+compatta, storage narrow opzionale, certificatore corretto, suite e documenti), pushato su
+`origin`; da questo albero ogni eseguibile usa la soluzione A con `--table-storage double` di
+default. Roadmap in quattro fasi con vincolo di memoria al livello di A e finestra di misura
+01:00-09:00 (protocollo, sezione 6; `run_queue.sh` attende la finestra e verifica che il run
+possa finire prima delle 09:00). Branch `feat/preflop-phase1-time`, candidata
+`cand-d-phase1-time`: discount lazy in tempo costante con prodotti prefissi, checkpoint finale
+scritto in parallelo all'export della policy, timer del refresh; build pulita, test e sonde
+in corso (D non e' bit-identica ad A: criteri 7.2). Dettagli in
+[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md), sezione 5.4.
+Prossimo passo: archiviare gli eseguibili di D, coda notturna (ripetizioni 1-3 su HU10-HU40),
+report con confronto verso baseline e A, poi profilo del certificatore.
+
 ### 2026-09-21 — milestone RAM e tempi su tutta la suite: censimento, protocollo comune, baseline rieseguita, candidate in coda
 
 Fatto: (1) censimento di tutti i benchmark del solver preflop blueprint (HU10 ridotto e completo,

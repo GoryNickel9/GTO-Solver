@@ -775,6 +775,7 @@ void Trainer::assign_slots(std::vector<BoardWork> &batch, const ActiveRows &acti
 }
 
 void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *telemetry) {
+  const auto collect_started = Clock::now();
   const auto active = collect_active_rows(batch);
   assign_slots(batch, active);
   std::uint64_t total = 0U;
@@ -788,6 +789,7 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
              node.action_count;
   }
   compact_policy_.resize(static_cast<std::size_t>(total));
+  const auto materialize_started = Clock::now();
   dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
                   [&](const auto *regrets, const auto *) {
                     executor_->run(game_->nodes().size(), [&](const std::size_t node_index,
@@ -808,6 +810,10 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
                     });
                   });
   if (telemetry != nullptr) {
+    telemetry->policy_refresh_collect_seconds +=
+        std::chrono::duration<double>(materialize_started - collect_started).count();
+    telemetry->policy_refresh_materialize_seconds +=
+        std::chrono::duration<double>(Clock::now() - materialize_started).count();
     std::array<std::uint64_t, 4> cells{};
     for (const auto &node : game_->nodes()) {
       if (node.kind == NodeKind::Decision)
@@ -860,10 +866,10 @@ void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t r
                       auto &regret_cell = regrets[offset + action];
                       double regret = static_cast<double>(regret_cell);
                       if (regret > 0.0) {
-                        for (std::uint64_t step = static_cast<std::uint64_t>(last) + 1U;
-                             step <= iteration; ++step) {
-                          regret *= positive_discount_factors_[static_cast<std::size_t>(step)];
-                        }
+                        // Product of the positive factors over (last, iteration] as one
+                        // ratio of prefix products instead of one multiply per skipped
+                        // iteration (rows are revisited after thousands of iterations).
+                        regret *= positive_discount_prefix_[final] / positive_discount_prefix_[first];
                       } else if (skipped >
                                  static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
                         regret = 0.0;
@@ -879,18 +885,26 @@ void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t r
 }
 
 void Trainer::prepare_discount_factors(const std::uint64_t iteration) {
-  while (positive_discount_factors_.size() <= iteration) {
-    const double t = static_cast<double>(positive_discount_factors_.size());
+  while (positive_discount_prefix_.size() <= iteration) {
+    const double t = static_cast<double>(positive_discount_prefix_.size());
     const double power = std::pow(t, config_.dcfr_alpha);
     const double positive = power / (power + 1.0);
     const double strategy = std::pow(t / (t + 1.0), config_.dcfr_gamma);
-    positive_discount_factors_.push_back(positive);
+    positive_discount_prefix_.push_back(positive_discount_prefix_.back() * positive);
     strategy_discount_prefix_.push_back(strategy_discount_prefix_.back() * strategy);
   }
 }
 
+void Trainer::materialize_discounts() { materialize_all_discounts(); }
+
+double Trainer::positive_discount_ratio(const std::uint64_t last, const std::uint64_t iteration) {
+  prepare_discount_factors(iteration);
+  return positive_discount_prefix_[static_cast<std::size_t>(iteration)] /
+         positive_discount_prefix_[static_cast<std::size_t>(last)];
+}
+
 void Trainer::materialize_all_discounts() {
-  if (!config_.lazy_discount)
+  if (!config_.lazy_discount || discounts_materialized_)
     return;
   executor_->run(game_->nodes().size(), [&](const std::size_t node_index, const unsigned) {
     const auto &node = game_->nodes()[node_index];
@@ -901,6 +915,7 @@ void Trainer::materialize_all_discounts() {
     for (std::uint32_t row = 0; row < rows; ++row)
       materialize_row(node.id, row, discount_target_);
   });
+  discounts_materialized_ = true;
 }
 
 void Trainer::discount_state(const std::uint64_t iteration) {
@@ -998,6 +1013,7 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
   if (config_.lazy_discount && iteration > std::numeric_limits<std::uint32_t>::max())
     return Outcome::failure(TrainerError::InvalidConfiguration);
   discount_target_ = iteration - 1U;
+  discounts_materialized_ = false;
   if (config_.lazy_discount)
     prepare_discount_factors(discount_target_);
   IterationTelemetry telemetry;
@@ -1683,7 +1699,7 @@ std::uint64_t Trainer::state_bytes() const noexcept {
   return regret_table_bytes() + strategy_table_bytes() +
          compact_policy_.capacity() * sizeof(double) +
          discount_iterations_.size() * sizeof(std::uint32_t) +
-         (positive_discount_factors_.size() + strategy_discount_prefix_.size()) * sizeof(double);
+         (positive_discount_prefix_.size() + strategy_discount_prefix_.size()) * sizeof(double);
 }
 
 MemoryBreakdown Trainer::memory_breakdown() const noexcept {
@@ -1698,7 +1714,7 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
   breakdown.compact_policy_offsets_bytes = compact_offsets_.capacity() * sizeof(std::uint64_t);
   breakdown.discount_timestamp_bytes = discount_iterations_.capacity() * sizeof(std::uint32_t);
   breakdown.discount_factor_bytes =
-      (positive_discount_factors_.capacity() + strategy_discount_prefix_.capacity()) *
+      (positive_discount_prefix_.capacity() + strategy_discount_prefix_.capacity()) *
       sizeof(double);
   breakdown.discount_offset_bytes = discount_offsets_.capacity() * sizeof(std::uint64_t);
   breakdown.all_in_dense_bytes =
@@ -1958,6 +1974,7 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
     return Outcome::failure(TrainerError::IntegrityFailure);
   iteration_ = iteration;
   boards_processed_ = boards_processed;
+  discounts_materialized_ = false;
   training_random_.restore(training_state);
   evaluation_random_.restore(evaluation_state);
   discount_target_ = iteration_ > 0U ? iteration_ - 1U : 0U;

@@ -251,6 +251,13 @@
         "--table-storage",
         "float32"
       ]
+    },
+    "cand-d-phase1-time": {
+      "description": "Candidata D (fase 1, tempo): come A piu' discount lazy in tempo costante (rapporto di prodotti prefissi al posto di una moltiplicazione per iterazione saltata), checkpoint finale scritto in parallelo all'export della policy, timer del refresh. Non bit-identica ad A (arrotondamento), criteri 7.2.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
     }
   }
 }
