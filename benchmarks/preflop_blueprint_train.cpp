@@ -230,6 +230,10 @@ int main(const int argc, char **argv) {
         coverage_path = std::filesystem::path(value);
       } else if (name == "--checkpoint") {
         checkpoint_path = value;
+      } else if (name == "--prefetch-refresh") {
+        config.prefetch_refresh_rows = static_cast<std::uint32_t>(parse_unsigned(value));
+      } else if (name == "--prefetch-update") {
+        config.prefetch_update_hands = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--iterations") {
         iterations = parse_unsigned(value);
         automatic_target = false;
@@ -429,6 +433,8 @@ int main(const int argc, char **argv) {
               << "\", \"lazy_discount\": " << (config.lazy_discount ? "true" : "false")
               << ", \"reuse_discount_invariant_policy\": "
               << (config.reuse_discount_invariant_policy ? "true" : "false")
+              << ", \"prefetch_refresh_rows\": " << config.prefetch_refresh_rows
+              << ", \"prefetch_update_hands\": " << config.prefetch_update_hands
               << ", \"table_storage\": \"" << pb::table_storage_name(config.storage)
               << "\", \"policy_storage\": \"compact-batch-v1\""
               << ", \"update\": \"" << pb::update_mode_name(config.update_mode)

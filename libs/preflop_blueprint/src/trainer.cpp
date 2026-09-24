@@ -129,8 +129,6 @@ inline void prefetch_read(const void *const address) noexcept {
 #endif
 }
 
-constexpr std::size_t refresh_prefetch_distance = 4U;
-constexpr std::size_t update_prefetch_distance = 8U;
 
 // Regret matching of one row: the current strategy from the (possibly
 // narrow) stored regrets, evaluated in double exactly as the dense snapshot did.
@@ -824,10 +822,12 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
                           config_.lazy_discount
                               ? discount_iterations_.data() + discount_offsets_[node.id]
                               : nullptr;
+                      const std::size_t refresh_distance = config_.prefetch_refresh_rows;
                       for (std::size_t index = 0; index < selected.size(); ++index) {
-                        if (index + refresh_prefetch_distance < selected.size()) {
-                          const auto ahead = static_cast<std::uint64_t>(
-                              selected[index + refresh_prefetch_distance]);
+                        if (refresh_distance != 0U &&
+                            index + refresh_distance < selected.size()) {
+                          const auto ahead =
+                              static_cast<std::uint64_t>(selected[index + refresh_distance]);
                           prefetch_read(regrets + base + ahead * actions);
                           prefetch_read(sums + base + ahead * actions);
                           if (timestamps != nullptr)
@@ -1382,9 +1382,10 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
     dispatch_tables(
         config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
         [&](auto *regrets, auto *sums) {
+          const std::size_t update_distance = config_.prefetch_update_hands;
           for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
-            if (hand + update_prefetch_distance < live_hand_count) {
-              const auto ahead = level.cell_offsets[hand + update_prefetch_distance];
+            if (update_distance != 0U && hand + update_distance < live_hand_count) {
+              const auto ahead = level.cell_offsets[hand + update_distance];
               prefetch_read(regrets + ahead);
               prefetch_read(sums + ahead);
             }

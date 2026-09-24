@@ -164,7 +164,12 @@ solo fra le 00:00 e le 18:00 locali di ogni giorno, la fascia in cui la macchina
 (indicazione dell'utente): la coda (`run_queue.sh`, variabile `SUITE_WINDOW`, default
 `00:00-18:00`) avvia un run solo se l'ora corrente e' nella finestra e la durata attesa dello
 scenario (40 min per HU10, 100 min per gli altri) rientra nella finestra; altrimenti attende.
-La prima notte (01:00-09:00) ha usato la finestra precedente. Build, test unitari e sonde diagnostiche non sono misure di tempo e possono girare di
+La prima notte (01:00-09:00) ha usato la finestra precedente. Dal 2026-09-24 sera la fascia
+00:00-18:00 e' l'unico periodo in cui la macchina puo' essere caricata da qualsiasi attivita' del
+milestone, misurata o no: i run misurati usano 00:00-17:00 (`SUITE_WINDOW=00:00-17:00`), l'ultima
+ora 17:00-18:00 e' riservata a build, test unitari e sonde diagnostiche (che attendono comunque la
+fine di ogni processo del solver); dopo le 18:00 la macchina e' dell'utente e nessun processo del
+milestone deve girare. Build, test unitari e sonde diagnostiche non sono misure di tempo e possono girare di
 giorno, mai in concorrenza con un run misurato (il driver rifiuta di partire se trova processi
 del solver). `SUITE_WINDOW=off` disattiva la finestra per macchine dedicate.
 
@@ -254,6 +259,20 @@ valori a 12 iterazioni. La candidata C resta marcata "criterio per cella preregi
 superato" e viene valutata solo sui criteri di esito (EV, max gain, certificato, NashConv) con
 le stesse soglie di B; la candidata B, che non cambia la policy corrente (i regret restano
 `double`), e' quella con la garanzia numerica piu' forte fra le narrow.
+
+**Decisioni dell'utente del 2026-09-24 (sera).** (1) Qualunque sia l'architettura, il picco di
+memoria di ogni benchmark non deve superare il livello gia' raggiunto dalla candidata A: HU10 2,11
+GiB, HU20 7,94 GiB, HU30 e HU40 8,18 GiB (private commit, trainer e certificatore); un'astrazione
+piu' fine deve stare in questo tetto (storage narrow, fase 2). (2) L'algoritmo puo' cambiare e le
+16.000 iterazioni non sono un vincolo: gli unici vincoli sono tempo e memoria. Conseguenza per la
+valutazione: il protocollo a lavoro fisso resta come misura di confronto con i risultati storici,
+ma il criterio principale diventa il **tempo end-to-end per raggiungere la qualita' di
+riferimento** sotto il tetto di memoria, dove la qualita' di riferimento e' il certificato esatto
+sotto l'1 % del piatto quando raggiungibile (HU10, HU20) e, per HU30 e HU40, un max gain fisico non
+superiore a quello della baseline a 16.000 iterazioni (0,191819 a e 0,289557 a). Una candidata
+algoritmica e' promossa solo se raggiunge la qualita' di riferimento su tutti e quattro i benchmark
+in meno tempo senza superare il tetto; le ripetizioni e gli indicatori di contesa restano quelli
+della sezione 6.
 
 ### 7.3 Due valutazioni distinte
 

@@ -84,6 +84,10 @@ struct TrainerConfig {
   // Accepted for compatibility with the reference protocol: the policy is
   // always materialized for the rows of the batch only. Excluded from identity.
   bool batch_policy_refresh{true};
+  // Software prefetch distances (0 = off): active rows ahead in the policy refresh,
+  // hands ahead in the regret update. Prefetches change no value.
+  std::uint32_t prefetch_refresh_rows{4U};
+  std::uint32_t prefetch_update_hands{8U};
   // Benchmark-only counters and coarse timers. Excluded from identity and
   // disabled in production because even thread-local counters perturb the hot path.
   bool detailed_profile{false};
