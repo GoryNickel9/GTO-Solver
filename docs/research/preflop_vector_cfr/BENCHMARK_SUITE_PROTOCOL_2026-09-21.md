@@ -159,11 +159,12 @@ non dipendono dalla contesa. Il criterio non distingue la CPU sottratta da altri
 paginazione: la colonna della CPU di sistema media e i page fault permettono di attribuire la
 causa run per run.
 
-**Finestra di misura (dal 2026-09-24).** I run misurati partono solo fra le 01:00 e le 09:00
-locali, quando la macchina non e' usata: la coda (`run_queue.sh`, variabile `SUITE_WINDOW`,
-default `01:00-09:00`) avvia un run solo se l'ora corrente e' nella finestra e la durata attesa
-dello scenario (40 min per HU10, 100 min per gli altri) rientra nella finestra; altrimenti
-attende. Build, test unitari e sonde diagnostiche non sono misure di tempo e possono girare di
+**Finestra di misura (dal 2026-09-24, aggiornata lo stesso giorno).** I run misurati partono
+solo fra le 00:00 e le 18:00 locali di ogni giorno, la fascia in cui la macchina non e' usata
+(indicazione dell'utente): la coda (`run_queue.sh`, variabile `SUITE_WINDOW`, default
+`00:00-18:00`) avvia un run solo se l'ora corrente e' nella finestra e la durata attesa dello
+scenario (40 min per HU10, 100 min per gli altri) rientra nella finestra; altrimenti attende.
+La prima notte (01:00-09:00) ha usato la finestra precedente. Build, test unitari e sonde diagnostiche non sono misure di tempo e possono girare di
 giorno, mai in concorrenza con un run misurato (il driver rifiuta di partire se trova processi
 del solver). `SUITE_WINDOW=off` disattiva la finestra per macchine dedicate.
 

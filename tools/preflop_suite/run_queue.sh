@@ -7,7 +7,7 @@
 #   bash tools/preflop_suite/run_queue.sh <queue-file> [<wait-for-file-containing-BATCH_DONE>]
 # Environment:
 #   SUITE_WINDOW=HH:MM-HH:MM  measured runs start only inside this local-time window
-#                             (default 01:00-09:00, the hours when the machine is idle);
+#                             (default 00:00-18:00, the hours when the machine is idle);
 #                             a run also has to be expected to finish inside the window.
 #   SUITE_WINDOW=off          disable the window (diagnostic runs, dedicated machines).
 set -u
@@ -15,7 +15,7 @@ ROOT="/c/Users/GoryNickel/Documents/GitHub/GTO-Solver"
 cd "$ROOT"
 QUEUE="$1"
 WAIT_FOR="${2:-}"
-WINDOW="${SUITE_WINDOW:-01:00-09:00}"
+WINDOW="${SUITE_WINDOW:-00:00-18:00}"
 LOG="out/suite/queue_runner.log"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" >> "$LOG"; }
 
@@ -72,8 +72,14 @@ while true; do
   if [ -z "$next" ]; then log "queue empty"; break; fi
   set -- $next
   version=$1; scenario=$2; rep=$3; exedir=$4
-  if [ ! -d "$exedir" ]; then log "missing exe dir $exedir for $version; stopping"; break; fi
   wait_for_window "$scenario"
+  # A version whose executables are not archived yet is waited for, not skipped:
+  # the queue is edited while candidates are being built.
+  announced=0
+  while [ ! -d "$exedir" ]; do
+    if [ "$announced" -eq 0 ]; then log "exe dir $exedir for $version missing: waiting"; announced=1; fi
+    sleep 300
+  done
   # tasklist truncates image names to 25 characters: match the truncated prefixes
   # of gtosd_preflop_blueprint_train.exe and gtosd_preflop_blueprint_certify.exe.
   while tasklist 2>/dev/null | grep -qi "gtosd_preflop_blueprint_t\|gtosd_preflop_blueprint_c"; do
