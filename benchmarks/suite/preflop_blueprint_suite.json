@@ -265,6 +265,13 @@
         "--table-storage",
         "double"
       ]
+    },
+    "cand-f-certifier": {
+      "description": "Candidata F (fase 1, tempo): trainer di E piu' certificatore con un solo pool e scheduling dinamico dei 573 flop (niente barriera ogni 16 flop); stato e aggregazione invariati, certificato bit-identico.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
     }
   }
 }

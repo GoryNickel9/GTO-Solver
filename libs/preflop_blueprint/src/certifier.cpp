@@ -19,6 +19,7 @@
 #include <optional>
 #include <sstream>
 #include <string_view>
+#include <mutex>
 #include <thread>
 
 namespace gtosd::preflop_blueprint {
@@ -335,50 +336,62 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
   }
   std::atomic<bool> failed{false};
   std::atomic<bool> inconsistent{false};
-  for (std::size_t start = 0; start < pending.size(); start += options.chunk_flops) {
-    const auto count = std::min<std::size_t>(options.chunk_flops, pending.size() - start);
-    std::vector<FlopValues> chunk(count);
-    run_parallel(options.threads, count, [&](const std::size_t offset) {
-      const auto index = pending[start + offset];
-      auto flop = canonical[index].cards;
-      std::sort(flop.begin(), flop.end());
-      auto values = evaluator.value().evaluate_flop(full_runouts(flop));
-      if (!values) {
-        failed.store(true);
-        return;
-      }
-      values.value().images = flop_images(flop);
-      if (values.value().images.size() != canonical[index].multiplicity) {
-        inconsistent.store(true);
-      }
-      chunk[offset] = std::move(values.value());
-    });
-    if (failed.load()) {
-      return Outcome::failure(CertifierError::EvaluationFailure);
+  std::atomic<bool> io_failed{false};
+  // One pool over every pending flop with dynamic scheduling: a barrier after each
+  // chunk of 16 left threads idle while the slowest flop of the chunk finished. The
+  // state file still receives a batch of records every chunk_flops completed flops,
+  // in completion order (records carry the flop index, so the reader accepts any
+  // order), and the aggregation below stays in flop order: the certificate is the
+  // same bit for bit.
+  std::mutex completion_mutex;
+  std::string pending_records;
+  std::size_t records_pending = 0U;
+  std::size_t flops_completed = 0U;
+  const auto flush_records = [&]() -> bool {
+    if (options.state_path.empty() || pending_records.empty()) {
+      return true;
     }
-    if (inconsistent.load()) {
-      return Outcome::failure(CertifierError::IntegrityFailure);
+    std::ofstream output(options.state_path, std::ios::binary | std::ios::app);
+    if (!output) {
+      return false;
     }
+    output.write(pending_records.data(), static_cast<std::streamsize>(pending_records.size()));
+    output.flush();
+    pending_records.clear();
+    records_pending = 0U;
+    return static_cast<bool>(output);
+  };
+  run_parallel(options.threads, pending.size(), [&](const std::size_t offset) {
+    if (failed.load() || inconsistent.load() || io_failed.load()) {
+      return;
+    }
+    const auto index = pending[offset];
+    auto flop = canonical[index].cards;
+    std::sort(flop.begin(), flop.end());
+    auto values = evaluator.value().evaluate_flop(full_runouts(flop));
+    if (!values) {
+      failed.store(true);
+      return;
+    }
+    values.value().images = flop_images(flop);
+    if (values.value().images.size() != canonical[index].multiplicity) {
+      inconsistent.store(true);
+      return;
+    }
+    std::lock_guard<std::mutex> lock(completion_mutex);
     if (!options.state_path.empty()) {
-      std::string records;
-      for (std::size_t offset = 0; offset < count; ++offset) {
-        append_record(records, pending[start + offset], chunk[offset]);
-      }
-      std::ofstream output(options.state_path, std::ios::binary | std::ios::app);
-      if (!output) {
-        return Outcome::failure(CertifierError::IoFailure);
-      }
-      output.write(records.data(), static_cast<std::streamsize>(records.size()));
-      output.flush();
-      if (!output) {
-        return Outcome::failure(CertifierError::IoFailure);
-      }
+      append_record(pending_records, index, values.value());
+      ++records_pending;
     }
-    for (std::size_t offset = 0; offset < count; ++offset) {
-      boards_done += chunk[offset].boards;
-      done[pending[start + offset]] = std::move(chunk[offset]);
+    boards_done += values.value().boards;
+    done[index] = std::move(values.value());
+    ++flops_completed;
+    const bool flush = records_pending >= options.chunk_flops || flops_completed == pending.size();
+    if (flush && !flush_records()) {
+      io_failed.store(true);
+      return;
     }
-    if (options.progress) {
+    if (options.progress && (flush || flops_completed % options.chunk_flops == 0U)) {
       CertifierProgress progress;
       progress.flops_total = static_cast<std::uint32_t>(total);
       progress.flops_done = static_cast<std::uint32_t>(
@@ -387,6 +400,15 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
       progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
       options.progress(progress);
     }
+  });
+  if (failed.load()) {
+    return Outcome::failure(CertifierError::EvaluationFailure);
+  }
+  if (inconsistent.load()) {
+    return Outcome::failure(CertifierError::IntegrityFailure);
+  }
+  if (io_failed.load() || !flush_records()) {
+    return Outcome::failure(CertifierError::IoFailure);
   }
   certificate.evaluation_seconds =
       std::chrono::duration<double>(Clock::now() - evaluation_started).count();
