@@ -267,12 +267,14 @@ piu' fine deve stare in questo tetto (storage narrow, fase 2). (2) L'algoritmo p
 16.000 iterazioni non sono un vincolo: gli unici vincoli sono tempo e memoria. Conseguenza per la
 valutazione: il protocollo a lavoro fisso resta come misura di confronto con i risultati storici,
 ma il criterio principale diventa il **tempo end-to-end per raggiungere la qualita' di
-riferimento** sotto il tetto di memoria, dove la qualita' di riferimento e' il certificato esatto
-sotto l'1 % del piatto quando raggiungibile (HU10, HU20) e, per HU30 e HU40, un max gain fisico non
-superiore a quello della baseline a 16.000 iterazioni (0,191819 a e 0,289557 a). Una candidata
-algoritmica e' promossa solo se raggiunge la qualita' di riferimento su tutti e quattro i benchmark
-in meno tempo senza superare il tetto; le ripetizioni e gli indicatori di contesa restano quelli
-della sezione 6.
+riferimento** sotto il tetto di memoria. (3) La qualita' di riferimento e' una sola per tutti i
+benchmark: il certificato esatto della BR fisica sotto l'1 % del piatto, anche per HU30 e HU40 che
+oggi non lo raggiungono con nessuna versione. Finche' un benchmark non e' certificato, per esso si
+riportano il miglior max gain fisico raggiunto e il tempo speso, mai un "superato"; una candidata
+(di codice, di astrazione o di algoritmo) e' promossa solo se certifica tutti e quattro i benchmark
+sotto l'1 % in meno tempo della versione corrente senza superare il tetto di memoria; le
+ripetizioni e gli indicatori di contesa restano quelli della sezione 6. Il completamento del
+programma coincide quindi con la qualificazione di HU30 e HU40 (gate P9).
 
 ### 7.3 Due valutazioni distinte
 
