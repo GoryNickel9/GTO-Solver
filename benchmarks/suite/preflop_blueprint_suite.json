@@ -258,6 +258,13 @@
         "--table-storage",
         "double"
       ]
+    },
+    "cand-e-prefetch": {
+      "description": "Candidata E (fase 1, tempo): come D piu' prefetch software delle righe delle tabelle nel refresh (regret, somme, timestamp della riga 4 posizioni avanti) e nell'aggiornamento dei regret della traversata (celle della mano 8 posizioni avanti). Bit-identica a D.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
     }
   }
 }

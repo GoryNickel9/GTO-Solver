@@ -21,6 +21,11 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#elif defined(__SSE__)
+#include <xmmintrin.h>
+#endif
 #include <mutex>
 #include <numeric>
 #include <optional>
@@ -112,6 +117,20 @@ using binary_io::append_little32;
 template <typename Number> inline void store(Number &cell, const double value) noexcept {
   cell = static_cast<Number>(value);
 }
+
+// Software prefetch of a table row that will be read a few steps later: the rows of a
+// batch are scattered over gigabytes, so each one is a cache and TLB miss otherwise.
+// A prefetch never faults and changes no value: the arithmetic stays bit-identical.
+inline void prefetch_read(const void *const address) noexcept {
+#if defined(_MSC_VER) || defined(__SSE__)
+  _mm_prefetch(static_cast<const char *>(address), _MM_HINT_T0);
+#else
+  (void)address;
+#endif
+}
+
+constexpr std::size_t refresh_prefetch_distance = 4U;
+constexpr std::size_t update_prefetch_distance = 8U;
 
 // Regret matching of one row: the current strategy from the (possibly
 // narrow) stored regrets, evaluated in double exactly as the dense snapshot did.
@@ -791,7 +810,7 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
   compact_policy_.resize(static_cast<std::size_t>(total));
   const auto materialize_started = Clock::now();
   dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
-                  [&](const auto *regrets, const auto *) {
+                  [&](const auto *regrets, const auto *sums) {
                     executor_->run(game_->nodes().size(), [&](const std::size_t node_index,
                                                               const unsigned) {
                       const auto &node = game_->nodes()[node_index];
@@ -801,7 +820,19 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
                       const auto actions = node.action_count;
                       const auto base = layout_.offsets[node.id];
                       auto *out = compact_policy_.data() + compact_offsets_[node.id];
+                      const std::uint32_t *timestamps =
+                          config_.lazy_discount
+                              ? discount_iterations_.data() + discount_offsets_[node.id]
+                              : nullptr;
                       for (std::size_t index = 0; index < selected.size(); ++index) {
+                        if (index + refresh_prefetch_distance < selected.size()) {
+                          const auto ahead = static_cast<std::uint64_t>(
+                              selected[index + refresh_prefetch_distance]);
+                          prefetch_read(regrets + base + ahead * actions);
+                          prefetch_read(sums + base + ahead * actions);
+                          if (timestamps != nullptr)
+                            prefetch_read(timestamps + ahead);
+                        }
                         const auto row = selected[index];
                         materialize_row(node.id, row, discount_target_);
                         regret_match_row(regrets + base + static_cast<std::uint64_t>(row) * actions,
@@ -1352,6 +1383,11 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
         config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
         [&](auto *regrets, auto *sums) {
           for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+            if (hand + update_prefetch_distance < live_hand_count) {
+              const auto ahead = level.cell_offsets[hand + update_prefetch_distance];
+              prefetch_read(regrets + ahead);
+              prefetch_read(sums + ahead);
+            }
             const auto cell = level.cell_offsets[hand];
             const double *probabilities = compact_policy_.data() + level.policy_offsets[hand];
             ++policy_rows;

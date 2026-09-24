@@ -369,7 +369,38 @@ run misurati girano solo fra le 01:00 e le 09:00 (protocollo, sezione 6).
   slot, offset) e `policy_refresh_materialize_seconds` (materializzazione parallela) negli
   eventi del trainer, per guidare il passo successivo della fase 1.
 
-Risultati della fase 1: da riempire con il report della suite (run notturni).
+### 5.4.2 Candidata D, ripetizione 1 (notte del 2026-09-24, finestra 01:37-04:52)
+
+| Benchmark | Training D / A (s) | Refresh D / A (s) | di cui materializzazione | Scrittura D / A (s) | CPU D / A (s) | E2E D / A (s) | Speedup e2e vs baseline | Criterio |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| HU10 | 1.144 / 1.202 | 271 / 372 | 252 | 8 / 19 | 5.095 / 5.782 | 1.439 / 1.497 | x1,21 | 7.2 PASS (delta max gain -9e-8 a) |
+| HU20 | 2.594 / 2.680 | 928 / 1.194 | 908 | 33 / 77 | 14.141 / 16.816 | 3.487 / 3.687 | x1,17 | 7.2 PASS (+7e-7 a) |
+| HU30 | 2.426 / 2.740 | 825 / 1.322 | 808 | 35 / 90 | 15.804 / 18.674 | 3.324 / 3.697 | x1,44 | 7.2 PASS (-4,3e-5 a) |
+| HU40 | 2.441 / 2.873 | 816 / 1.241 | 798 | 34 / 78 | 15.911 / 18.785 | 3.358 / 3.968 | x1,50 | 7.2 PASS (+1,5e-5 a) |
+
+Picchi di memoria identici ad A (2,11 / 7,94 / 8,18 / 8,18 GiB). Il refresh scende del 27-38 % e la
+scrittura finale del 55-60 %; la CPU del trainer del 12-16 % rispetto ad A. Il run HU20 (02:00-03:00)
+ha avuto 5,35 core effettivi contro 6,4 degli altri (manutenzione notturna di Windows, probabile):
+la sua traversata (1.622 s contro 1.454 di A) e' contaminata, le ripetizioni lo chiariranno.
+
+Cosa resta nel refresh: la materializzazione (800-910 s su HU20-HU40) e' ormai un costo di accesso
+casuale alla memoria. Ogni passata materializza le righe attive di ogni nodo di decisione della
+street (HU20: 28 nodi flop x 2.375 righe + 68 turn x 4.016 + 124 river x 4.175 = 857.000
+materializzazioni per passata, 27 miliardi in 16.000 iterazioni), circa 200 ns di CPU ciascuna:
+il costo di un cache miss e di un page walk su tabelle da 7 GB, non di aritmetica. Lo stesso vale
+per l'aggiornamento dei regret nella traversata (la fase dominante nel profilo campionato).
+
+### 5.4.3 Candidata E (fase 1): prefetch software
+
+Come D, con `_mm_prefetch` delle righe che verranno lette poche posizioni piu' avanti: nel
+refresh la riga attiva 4 posizioni avanti (regret, somme, timestamp del discount), nella
+traversata le celle di regret e somme della mano 8 posizioni avanti nel ciclo di aggiornamento.
+Un prefetch non cambia alcun valore, quindi E e' bit-identica a D (stessi fingerprint di stato e
+policy nelle sonde); si misura solo il tempo, con la stessa memoria. Alternativa successiva se il
+prefetch non basta: pagine grandi (2 MB) per le tabelle, che riducono i page walk ma richiedono
+il privilegio di lock della memoria su Windows.
+
+Risultati di E: da riempire con il report della suite (run notturni, dopo le ripetizioni di D).
 
 ## 6. Procedura di riproduzione
 
