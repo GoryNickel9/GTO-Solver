@@ -400,7 +400,34 @@ policy nelle sonde); si misura solo il tempo, con la stessa memoria. Alternativa
 prefetch non basta: pagine grandi (2 MB) per le tabelle, che riducono i page walk ma richiedono
 il privilegio di lock della memoria su Windows.
 
-Risultati di E: da riempire con il report della suite (run notturni, dopo le ripetizioni di D).
+Risultati di E: da riempire con il report della suite (run notturni: ripetizione 1 nella notte
+del 25 settembre, poi 2 e 3). Sonde diurne (indicative, non misure): HU10 40 iterazioni 2,60 s ->
+2,12 s di training, HU20 100 iterazioni 14,8 s -> 11,1 s; fingerprint identici a D.
+
+### 5.4.4 Candidata F (fase 1): scheduling dinamico del certificatore
+
+Il certificatore valutava i 573 flop a blocchi di 16 con un pool di thread ricreato a ogni blocco
+e una barriera alla fine di ognuno. F usa un solo pool con un contatore atomico su tutti i flop
+pendenti; il file di stato riceve comunque un gruppo di record ogni 16 flop completati (i record
+portano l'indice del flop e il lettore accetta qualsiasi ordine) e l'aggregazione resta in ordine
+di flop: il certificato e' identico bit per bit (sonda HU10: stessi max gain, NashConv, EV, guadagni
+e limiti inferiori). Il guadagno atteso e' pero' piccolo: nei run notturni il certificatore usa
+gia' 7,2-7,5 core su 8 (HU20 e HU40 di D: 826 e 850 s di valutazione, aggregazione 0,5-0,7 s,
+caricamento 15 s) e i 5,8-6,7 core visti in precedenza erano run contaminati; la sonda HU10 passa
+da 201,9 a 200,0 s. La BR esatta e' quindi limitata dal suo lavoro di valutazione (6.100-6.350 s
+di CPU su HU20-HU40), non dall'inattivita': una riduzione sostanziale richiederebbe la
+vettorizzazione di `evaluate_flop`, fuori dalla fase 1. F resta nella coda (tre ripetizioni) come
+versione di riferimento "trainer di E + certificatore corretto".
+
+### 5.4.5 Prossimo candidato in valutazione (G): righe intercalate
+
+Dopo E, se la materializzazione e l'aggiornamento dei regret restano dominati dagli accessi
+casuali, il passo successivo e' cambiare il layout delle due tabelle: oggi regret e somme di una
+riga stanno in due tabelle separate (due cache miss per riga, piu' il timestamp in una terza
+struttura); un layout per riga `[regret x azioni | somme x azioni | timestamp]` porta tutto in
+una o due linee di cache contigue. Stessi byte totali (memoria invariata al byte), stessi valori
+(bit-identico), formato del checkpoint diverso (identita' del trainer estesa). Da misurare con la
+stessa suite; da decidere dopo i risultati di E.
 
 ## 6. Procedura di riproduzione
 
