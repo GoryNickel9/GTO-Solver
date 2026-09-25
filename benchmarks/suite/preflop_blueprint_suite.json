@@ -272,6 +272,13 @@
         "--table-storage",
         "double"
       ]
+    },
+    "cand-h-timestamps16": {
+      "description": "Candidata H (fase 2, memoria): trainer di F con i timestamp del discount lazy a 16 bit in epoche (rebase ogni 65.535 iterazioni: bit-identica a F sotto quella soglia) e conteggio della copertura delle righe (righe e pagine da 4 KiB della tabella dei regret toccate per street) nell'evento finale. Stessi argomenti di F.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
     }
   }
 }

@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -87,6 +88,15 @@ void print_estimate(const std::uint64_t iteration, const double elapsed,
             << ", \"normalized_stack\": " << estimate.normalized_stack
             << ", \"evaluation_seconds\": " << estimate.seconds
             << ", \"process_bytes\": " << process_bytes << "}\n";
+}
+
+std::string array_text(const std::array<std::uint64_t, 4> &values) {
+  std::string text = "[";
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    text += (index == 0U ? "" : ", ");
+    text += std::to_string(values[index]);
+  }
+  return text + "]";
 }
 
 nlohmann::json memory_breakdown_json(const pb::MemoryBreakdown &breakdown) {
@@ -234,6 +244,11 @@ int main(const int argc, char **argv) {
         config.prefetch_refresh_rows = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--prefetch-update") {
         config.prefetch_update_hands = static_cast<std::uint32_t>(parse_unsigned(value));
+      } else if (name == "--lazy-discount-epoch") {
+        const auto epoch = parse_unsigned(value);
+        if (epoch == 0U || epoch > 65'535U)
+          throw std::runtime_error("--lazy-discount-epoch must be in 1..65535");
+        config.lazy_discount_epoch = static_cast<std::uint32_t>(epoch);
       } else if (name == "--iterations") {
         iterations = parse_unsigned(value);
         automatic_target = false;
@@ -435,6 +450,7 @@ int main(const int argc, char **argv) {
               << (config.reuse_discount_invariant_policy ? "true" : "false")
               << ", \"prefetch_refresh_rows\": " << config.prefetch_refresh_rows
               << ", \"prefetch_update_hands\": " << config.prefetch_update_hands
+              << ", \"lazy_discount_epoch\": " << config.lazy_discount_epoch
               << ", \"table_storage\": \"" << pb::table_storage_name(config.storage)
               << "\", \"policy_storage\": \"compact-batch-v1\""
               << ", \"update\": \"" << pb::update_mode_name(config.update_mode)
@@ -770,6 +786,9 @@ int main(const int argc, char **argv) {
     // pending discounts are materialized once here, after which every save is a
     // read-only pass: the checkpoint (raw copy of the tables) is written by a helper
     // thread while the policy exports stream on this one.
+    // Row coverage of the lazy discount (rows ever materialized and the 4 KiB regret
+    // pages they span); meaningful unless the run was resumed from a checkpoint.
+    const auto row_coverage = trainer.row_coverage();
     trainer.materialize_discounts();
     struct ThreadJoiner {
       std::thread &thread;
@@ -821,6 +840,10 @@ int main(const int argc, char **argv) {
               << ", \"boards_processed\": " << trainer.boards_processed()
               << ", \"boards_distinct\": " << trainer.boards_distinct()
               << ", \"boards_repeated\": " << trainer.boards_repeated()
+              << ", \"rows_total\": " << array_text(row_coverage.rows_total)
+              << ", \"rows_touched\": " << array_text(row_coverage.rows_touched)
+              << ", \"regret_pages_total\": " << array_text(row_coverage.regret_pages_total)
+              << ", \"regret_pages_touched\": " << array_text(row_coverage.regret_pages_touched)
               << ", \"converged\": " << (converged ? "true" : "false")
               << ", \"plateau\": " << (plateau ? "true" : "false")
               << ", \"convergence_status\": \""

@@ -99,6 +99,13 @@ struct TrainerConfig {
   // row first. This changes only floating-point association, so it is part of
   // the trainer identity and must be validated against eager discounting.
   bool lazy_discount{false};
+  // The lazy-discount timestamps are 16-bit slots relative to an epoch base. When the
+  // discount target reaches base + lazy_discount_epoch, every touched row is
+  // materialized to the target and the base moves there. Runs shorter than the epoch
+  // never rebase and are bit-identical to unbounded timestamps; a rebase changes only
+  // the association of the discount products (rounding). Range 1..65535. Excluded from
+  // the identity: checkpoints are fully materialized, so a resume is valid with any epoch.
+  std::uint32_t lazy_discount_epoch{65'535U};
   TableStorage storage{TableStorage::Double};
   WeightingScheme scheme{WeightingScheme::Linear};
   UpdateMode update_mode{UpdateMode::Simultaneous};
@@ -336,6 +343,24 @@ public:
   // Positive-regret discount over the iterations in (last, iteration], as the lazy
   // path applies it (ratio of prefix products); exposed for the tests.
   [[nodiscard]] double positive_discount_ratio(std::uint64_t last, std::uint64_t iteration);
+  // Epoch base of the 16-bit lazy-discount timestamps and the decoded iteration of one
+  // row's last materialization (0 when the row was never touched); for the tests.
+  [[nodiscard]] std::uint64_t discount_epoch_base() const noexcept { return discount_epoch_base_; }
+  [[nodiscard]] std::uint64_t discount_last_iteration(std::uint32_t node,
+                                                      std::uint32_t row) const noexcept;
+  // Rows the lazy discount has materialized at least once (rows a batch touched) per
+  // street, and the 4 KiB pages of the regret table those rows span (pages counted from
+  // the start of the table; a page shared by two nodes belongs to the street of the first
+  // node that reaches it): the coverage a page-granular sparse allocation could exploit.
+  // Full materializations skip the untouched rows, so the coverage survives saves and
+  // evaluations; a checkpoint load marks every row.
+  struct RowCoverage {
+    std::array<std::uint64_t, 4> rows_total{};
+    std::array<std::uint64_t, 4> rows_touched{};
+    std::array<std::uint64_t, 4> regret_pages_total{};
+    std::array<std::uint64_t, 4> regret_pages_touched{};
+  };
+  [[nodiscard]] RowCoverage row_coverage() const;
   [[nodiscard]] double initial_pot_antes() const noexcept { return initial_pot_antes_; }
   [[nodiscard]] double effective_stack_antes() const noexcept { return stack_antes_; }
   // FNV-1a over iteration, RNG states and the two tables: equal fingerprints
@@ -384,6 +409,11 @@ private:
   void discount_state(std::uint64_t iteration);
   void prepare_discount_factors(std::uint64_t iteration);
   void materialize_row(std::uint32_t node, std::uint32_t row, std::uint64_t iteration);
+  // Discount of one row over the iterations in (last, iteration] (no timestamp update).
+  void apply_row_discount(std::uint32_t node, std::uint32_t row, std::uint64_t last,
+                          std::uint64_t iteration);
+  // Materializes every touched row to `target` and makes it the epoch base.
+  void rebase_discount_epoch(std::uint64_t target);
   void materialize_all_discounts();
   void pass(const BoardWork &board, std::uint8_t hero, double iteration_weight,
             IterationTelemetry *telemetry = nullptr);
@@ -428,7 +458,11 @@ private:
   std::vector<std::uint64_t> compact_offsets_;
   bool fixed_policy_evaluation_{false};
   std::vector<std::uint64_t> discount_offsets_;
-  std::vector<std::uint32_t> discount_iterations_;
+  // Per row: 0 = never materialized (all cells zero), otherwise the iteration of the last
+  // materialization is discount_epoch_base_ + slot - 1. iterate() rebases the epoch
+  // (rebase_discount_epoch) before a slot could overflow.
+  std::vector<std::uint16_t> discount_iterations_;
+  std::uint64_t discount_epoch_base_{0U};
   // Positive regrets retain the original per-step multiplication order because
   // their rounded value feeds the next CFR update. Strategy sums do not feed
   // training, so their prefix products safely collapse a skipped interval.

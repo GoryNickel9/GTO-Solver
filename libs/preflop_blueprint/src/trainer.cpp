@@ -423,6 +423,11 @@ Trainer::create(const CompiledGame &game, const TrainerResources &resources,
   if (config.reuse_discount_invariant_policy) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
   }
+  // The 16-bit lazy-discount timestamps need an epoch of at most 65,535 iterations.
+  if (config.lazy_discount &&
+      (config.lazy_discount_epoch == 0U || config.lazy_discount_epoch > 65'535U)) {
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  }
   if (resources.ranks == nullptr) {
     return Outcome::failure(TrainerError::MissingResource);
   }
@@ -531,7 +536,8 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     }
     if (discount_rows > std::numeric_limits<std::size_t>::max())
       return Outcome::failure(TrainerError::InvalidConfiguration);
-    discount_iterations_.assign(static_cast<std::size_t>(discount_rows), 0U);
+    discount_iterations_.assign(static_cast<std::size_t>(discount_rows), std::uint16_t{0U});
+    discount_epoch_base_ = 0U;
   }
   compact_offsets_.assign(game_->nodes().size(), no_offset);
   if (fixed_policy_evaluation_) {
@@ -818,7 +824,7 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
                       const auto actions = node.action_count;
                       const auto base = layout_.offsets[node.id];
                       auto *out = compact_policy_.data() + compact_offsets_[node.id];
-                      const std::uint32_t *timestamps =
+                      const std::uint16_t *timestamps =
                           config_.lazy_discount
                               ? discount_iterations_.data() + discount_offsets_[node.id]
                               : nullptr;
@@ -870,12 +876,23 @@ void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t r
                               const std::uint64_t iteration) {
   if (!config_.lazy_discount)
     return;
-  // iterate() refuses iterations beyond the 32-bit timestamp range before any
-  // worker reaches this point, so no exception can escape a thread here.
-  const auto timestamp_index = discount_offsets_[node_id] + row;
-  auto &last = discount_iterations_[static_cast<std::size_t>(timestamp_index)];
-  if (last >= iteration)
+  // iterate() rebases the epoch before any worker reaches this point, so the slot
+  // written below always fits 16 bits and no exception can escape a thread here.
+  auto &slot = discount_iterations_[static_cast<std::size_t>(discount_offsets_[node_id] + row)];
+  const std::uint64_t last = slot == 0U ? 0U : discount_epoch_base_ + (slot - 1U);
+  if (last >= iteration) {
+    // A row first seen while the target is still 0 is marked as touched (coverage);
+    // the mark changes no value because the discount over (0, 0] is empty.
+    if (slot == 0U)
+      slot = static_cast<std::uint16_t>(iteration - discount_epoch_base_ + 1U);
     return;
+  }
+  apply_row_discount(node_id, row, last, iteration);
+  slot = static_cast<std::uint16_t>(iteration - discount_epoch_base_ + 1U);
+}
+
+void Trainer::apply_row_discount(const std::uint32_t node_id, const std::uint32_t row,
+                                 const std::uint64_t last, const std::uint64_t iteration) {
   const auto &node = game_->nodes()[node_id];
   const auto offset = layout_.offsets[node_id] +
                       static_cast<std::uint64_t>(row) * node.action_count;
@@ -912,7 +929,6 @@ void Trainer::materialize_row(const std::uint32_t node_id, const std::uint32_t r
                       store(sum_cell, static_cast<double>(sum_cell) * strategy);
                     }
                   });
-  last = static_cast<std::uint32_t>(iteration);
 }
 
 void Trainer::prepare_discount_factors(const std::uint64_t iteration) {
@@ -943,10 +959,122 @@ void Trainer::materialize_all_discounts() {
       return;
     const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
                                             config_.turn_capacity, config_.river_capacity);
-    for (std::uint32_t row = 0; row < rows; ++row)
-      materialize_row(node.id, row, discount_target_);
+    const auto *slots = discount_iterations_.data() + discount_offsets_[node.id];
+    for (std::uint32_t row = 0; row < rows; ++row) {
+      // Slot 0: never materialized, every cell still zero. Skipping it changes no value
+      // and keeps the row coverage meaningful across mid-run saves and evaluations.
+      if (slots[row] != 0U)
+        materialize_row(node.id, row, discount_target_);
+    }
   });
   discounts_materialized_ = true;
+}
+
+void Trainer::rebase_discount_epoch(const std::uint64_t target) {
+  // Every touched row is materialized to `target` (one ratio of prefix products from
+  // its last materialization) and re-timestamped to slot 1 of the new epoch; untouched
+  // rows (slot 0, all cells zero) keep their sentinel, so coverage survives a rebase.
+  const auto base = discount_epoch_base_;
+  executor_->run(game_->nodes().size(), [&](const std::size_t node_index, const unsigned) {
+    const auto &node = game_->nodes()[node_index];
+    if (node.kind != NodeKind::Decision)
+      return;
+    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
+                                            config_.turn_capacity, config_.river_capacity);
+    auto *slots = discount_iterations_.data() + discount_offsets_[node.id];
+    for (std::uint32_t row = 0; row < rows; ++row) {
+      const auto slot = slots[row];
+      if (slot == 0U)
+        continue;
+      const std::uint64_t last = base + (slot - 1U);
+      if (last < target)
+        apply_row_discount(node.id, row, last, target);
+      slots[row] = 1U;
+    }
+  });
+  discount_epoch_base_ = target;
+}
+
+std::uint64_t Trainer::discount_last_iteration(const std::uint32_t node,
+                                               const std::uint32_t row) const noexcept {
+  if (!config_.lazy_discount || node >= discount_offsets_.size() ||
+      discount_offsets_[node] == no_offset ||
+      row >= StateLayout::rows_for(game_->nodes()[node].street, config_.flop_capacity,
+                                   config_.turn_capacity, config_.river_capacity))
+    return 0U;
+  const auto slot = discount_iterations_[static_cast<std::size_t>(discount_offsets_[node] + row)];
+  return slot == 0U ? 0U : discount_epoch_base_ + (slot - 1U);
+}
+
+Trainer::RowCoverage Trainer::row_coverage() const {
+  RowCoverage coverage;
+  if (!config_.lazy_discount)
+    return coverage;
+  // 4 KiB pages of the regret table counted from its first byte (the model of a page-aligned
+  // sparse allocation) in one scan over the nodes, whose regions follow each other in id
+  // order: a page shared by two nodes belongs to the street of the first node that reaches
+  // it, in the totals and in the touched pages alike.
+  constexpr std::uint64_t page_bytes = 4096U;
+  const std::uint64_t cell_bytes =
+      config_.storage == TableStorage::Float32 ? sizeof(float) : sizeof(double);
+  struct PageCounter {
+    bool any{false};
+    std::uint64_t marked{0U};
+    std::uint64_t add(const std::uint64_t first, const std::uint64_t last) noexcept {
+      std::uint64_t added = 0U;
+      if (!any || first > marked)
+        added = last - first + 1U;
+      else if (last > marked)
+        added = last - marked;
+      any = true;
+      marked = std::max(marked, last);
+      return added;
+    }
+  };
+  PageCounter total_pages;
+  PageCounter touched_pages;
+  std::size_t previous_street = 0U;
+  for (const auto &node : game_->nodes()) {
+    if (node.kind != NodeKind::Decision)
+      continue;
+    const auto street = static_cast<std::size_t>(node.street);
+    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
+                                            config_.turn_capacity, config_.river_capacity);
+    const std::uint64_t row_bytes = static_cast<std::uint64_t>(node.action_count) * cell_bytes;
+    const std::uint64_t first_byte = layout_.offsets[node.id] * cell_bytes;
+    const auto *slots = discount_iterations_.data() + discount_offsets_[node.id];
+    coverage.rows_total[street] += rows;
+    if (rows == 0U || row_bytes == 0U)
+      continue;
+    const std::uint64_t node_first = first_byte / page_bytes;
+    // The first page of this node may start inside an earlier node: it then belongs to
+    // the street that owns the last counted page, also when a row of this node is the
+    // first to touch it.
+    const std::size_t first_owner =
+        total_pages.any && node_first == total_pages.marked ? previous_street : street;
+    const std::uint64_t counted =
+        total_pages.add(node_first, (first_byte + rows * row_bytes - 1U) / page_bytes);
+    coverage.regret_pages_total[street] += counted;
+    if (counted != 0U)
+      previous_street = street; // street owning total_pages.marked
+    std::uint64_t touched = 0U;
+    for (std::uint32_t row = 0; row < rows; ++row) {
+      if (slots[row] == 0U)
+        continue;
+      ++touched;
+      const std::uint64_t start = first_byte + row * row_bytes;
+      const std::uint64_t first_page = start / page_bytes;
+      const bool fresh = !touched_pages.any || first_page > touched_pages.marked;
+      std::uint64_t pages = touched_pages.add(first_page, (start + row_bytes - 1U) / page_bytes);
+      if (fresh && first_page == node_first && first_owner != street) {
+        ++coverage.regret_pages_touched[first_owner];
+        --pages;
+      }
+      coverage.regret_pages_touched[street] += pages;
+    }
+    coverage.rows_touched[street] += touched;
+  }
+  return coverage;
 }
 
 void Trainer::discount_state(const std::uint64_t iteration) {
@@ -1041,12 +1169,15 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
     return Outcome::failure(TrainerError::IntegrityFailure);
   const auto started = Clock::now();
   const auto iteration = iteration_ + 1U;
-  if (config_.lazy_discount && iteration > std::numeric_limits<std::uint32_t>::max())
-    return Outcome::failure(TrainerError::InvalidConfiguration);
   discount_target_ = iteration - 1U;
   discounts_materialized_ = false;
-  if (config_.lazy_discount)
+  if (config_.lazy_discount) {
     prepare_discount_factors(discount_target_);
+    // A 16-bit slot holds target - base + 1 <= lazy_discount_epoch; beyond that every
+    // touched row is materialized to the target, which becomes the new base.
+    if (discount_target_ - discount_epoch_base_ + 1U > config_.lazy_discount_epoch)
+      rebase_discount_epoch(discount_target_);
+  }
   IterationTelemetry telemetry;
   const auto record_prepare_cpu = [&](const std::vector<BoardWork> &prepared) {
     if (!config_.detailed_profile)
@@ -1735,7 +1866,7 @@ void Trainer::add_regret(const std::uint64_t cell, const double increment) noexc
 std::uint64_t Trainer::state_bytes() const noexcept {
   return regret_table_bytes() + strategy_table_bytes() +
          compact_policy_.capacity() * sizeof(double) +
-         discount_iterations_.size() * sizeof(std::uint32_t) +
+         discount_iterations_.size() * sizeof(std::uint16_t) +
          (positive_discount_prefix_.size() + strategy_discount_prefix_.size()) * sizeof(double);
 }
 
@@ -1749,7 +1880,7 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
   breakdown.strategy_sum_bytes_per_cell = config_.storage == TableStorage::Double ? 8U : 4U;
   breakdown.compact_policy_capacity_bytes = compact_policy_.capacity() * sizeof(double);
   breakdown.compact_policy_offsets_bytes = compact_offsets_.capacity() * sizeof(std::uint64_t);
-  breakdown.discount_timestamp_bytes = discount_iterations_.capacity() * sizeof(std::uint32_t);
+  breakdown.discount_timestamp_bytes = discount_iterations_.capacity() * sizeof(std::uint16_t);
   breakdown.discount_factor_bytes =
       (positive_discount_prefix_.capacity() + strategy_discount_prefix_.capacity()) *
       sizeof(double);
@@ -2016,10 +2147,14 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   evaluation_random_.restore(evaluation_state);
   discount_target_ = iteration_ > 0U ? iteration_ - 1U : 0U;
   if (config_.lazy_discount) {
-    if (discount_target_ > std::numeric_limits<std::uint32_t>::max())
-      return Outcome::failure(TrainerError::UnsupportedVersion);
+    // A checkpoint holds every row materialized to its iteration. The epoch base is the
+    // one a continuous run has at this target (a multiple of the epoch), so later rebases
+    // fall on the same iterations and a resume stays bit-identical; every slot marks its
+    // row as touched (the coverage is unknown after a load).
+    const std::uint64_t epoch = config_.lazy_discount_epoch;
+    discount_epoch_base_ = discount_target_ - discount_target_ % epoch;
     std::fill(discount_iterations_.begin(), discount_iterations_.end(),
-              static_cast<std::uint32_t>(discount_target_));
+              static_cast<std::uint16_t>(discount_target_ - discount_epoch_base_ + 1U));
     prepare_discount_factors(discount_target_);
   }
   usable_ = true;

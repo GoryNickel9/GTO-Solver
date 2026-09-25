@@ -735,6 +735,128 @@ void test_lazy_dcfr_discount(const Resources &resources) {
             << maximum_policy_difference << '\n';
 }
 
+// The 16-bit lazy-discount timestamps live in epochs. A run shorter than the epoch never
+// rebases and is bit-identical to unbounded timestamps; a rebase materializes every touched
+// row to the target, so a rebase whose target is also the final materialization target
+// leaves the state bit-identical (one ratio of prefix products per row in both trainers).
+void test_lazy_discount_epoch(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "lazy-epoch fixture compiles");
+  auto config = resources.config();
+  config.threads = 2U;
+  config.batch_boards = 8U;
+  config.batch_policy_refresh = true;
+  config.scheme = pb::WeightingScheme::Dcfr;
+  config.update_mode = pb::UpdateMode::Alternating;
+  config.lazy_discount = true;
+  auto epoch_config = config;
+  epoch_config.lazy_discount_epoch = 4U;
+  auto reference = pb::Trainer::create(game.value(), resources.view(), config);
+  auto epochs = pb::Trainer::create(game.value(), resources.view(), epoch_config);
+  require(reference.has_value() && epochs.has_value(), "lazy-epoch trainers create");
+  // Iterations 1-5 have the discount targets 0-4: the epoch of 4 rebases at the start of
+  // iteration 5 to target 4, which is also the target of the final materialization.
+  for (int iteration = 0; iteration < 5; ++iteration) {
+    require(reference.value()->iterate().has_value() && epochs.value()->iterate().has_value(),
+            "lazy-epoch iterations succeed");
+  }
+  require(epochs.value()->discount_epoch_base() == 4U &&
+              reference.value()->discount_epoch_base() == 0U,
+          "lazy-epoch base moves to the rebase target");
+  const auto coverage = epochs.value()->row_coverage();
+  const auto reference_coverage = reference.value()->row_coverage();
+  std::uint64_t touched = 0U;
+  std::uint64_t total = 0U;
+  for (std::size_t street = 0; street < 4U; ++street) {
+    touched += coverage.rows_touched[street];
+    total += coverage.rows_total[street];
+    require(coverage.rows_touched[street] <= coverage.rows_total[street] &&
+                coverage.regret_pages_touched[street] <= coverage.regret_pages_total[street],
+            "lazy-epoch coverage is bounded by the layout");
+  }
+  require(touched > 0U && touched <= total, "lazy-epoch coverage counts touched rows");
+  require(coverage.rows_touched == reference_coverage.rows_touched &&
+              coverage.regret_pages_touched == reference_coverage.regret_pages_touched,
+          "row coverage does not depend on the epoch");
+  std::uint64_t pages_total = 0U;
+  for (std::size_t street = 0; street < 4U; ++street)
+    pages_total += coverage.regret_pages_total[street];
+  require(pages_total == (epochs.value()->cell_count() * sizeof(double) + 4095U) / 4096U,
+          "lazy-epoch page totals cover the regret table exactly");
+  std::uint64_t decoded_maximum = 0U;
+  for (const auto &node : game.value().nodes()) {
+    if (node.kind != pb::NodeKind::Decision)
+      continue;
+    decoded_maximum = std::max(decoded_maximum, epochs.value()->discount_last_iteration(node.id, 0U));
+  }
+  // The preflop rows are active in every pass, so their decoded timestamp is the target.
+  require(decoded_maximum == 4U, "lazy-epoch decoded timestamps reach the target");
+  require(epochs.value()->state_fingerprint() == reference.value()->state_fingerprint(),
+          "a rebase at the final target is bit-identical to unbounded timestamps");
+  std::cout << "lazy-epoch: rows touched " << touched << " of " << total << '\n';
+  // Further rebases (targets 8, 12, 16) change the association of the discount
+  // products, so the states may differ at rounding level: reported, not asserted.
+  for (int iteration = 0; iteration < 12; ++iteration) {
+    require(reference.value()->iterate().has_value() && epochs.value()->iterate().has_value(),
+            "lazy-epoch iterations succeed after a rebase");
+  }
+  require(epochs.value()->discount_epoch_base() >= 12U, "lazy-epoch keeps rebasing");
+  const auto reference_regrets = reference.value()->regrets();
+  const auto epoch_regrets = epochs.value()->regrets();
+  require(reference_regrets.size() == epoch_regrets.size(), "lazy-epoch layouts match");
+  double maximum_difference = 0.0;
+  for (std::size_t cell = 0; cell < reference_regrets.size(); ++cell) {
+    maximum_difference = std::max(maximum_difference,
+                                  std::abs(reference_regrets[cell] - epoch_regrets[cell]));
+  }
+  std::cout << "lazy-epoch: max regret difference after 17 iterations with epoch 4: "
+            << maximum_difference << '\n';
+  // A resumed run keeps the rebase iterations of the continuous run: with epoch 4, save
+  // after 6 iterations (target 5, base 4); both trainers then cross the rebase at target 8.
+  auto continuous = pb::Trainer::create(game.value(), resources.view(), epoch_config);
+  require(continuous.has_value(), "lazy-epoch continuous trainer creates");
+  for (int iteration = 0; iteration < 6; ++iteration) {
+    require(continuous.value()->iterate().has_value(),
+            "lazy-epoch iterations before the save succeed");
+  }
+  const auto directory = std::filesystem::temp_directory_path() / "gtosd_preflop_blueprint_tests";
+  std::filesystem::create_directories(directory);
+  const auto path = directory / "lazy_epoch_checkpoint.bin";
+  require(continuous.value()->save_checkpoint(path).has_value(), "lazy-epoch checkpoint saves");
+  auto resumed = pb::Trainer::create(game.value(), resources.view(), epoch_config);
+  require(resumed.has_value() && resumed.value()->load_checkpoint(path).has_value(),
+          "lazy-epoch checkpoint loads");
+  require(resumed.value()->discount_epoch_base() == 4U &&
+              continuous.value()->discount_epoch_base() == 4U,
+          "lazy-epoch resume restores the epoch base of the continuous run");
+  for (int iteration = 0; iteration < 4; ++iteration) {
+    require(continuous.value()->iterate().has_value() && resumed.value()->iterate().has_value(),
+            "lazy-epoch iterations after the resume succeed");
+  }
+  require(continuous.value()->discount_epoch_base() == 8U &&
+              resumed.value()->discount_epoch_base() == 8U,
+          "lazy-epoch both trainers rebased at target 8");
+  require(resumed.value()->state_fingerprint() == continuous.value()->state_fingerprint(),
+          "lazy-epoch resume across a rebase is bit-identical to the continuous run");
+  // Epoch 1: a rebase at every iteration.
+  auto every_config = config;
+  every_config.lazy_discount_epoch = 1U;
+  auto every = pb::Trainer::create(game.value(), resources.view(), every_config);
+  require(every.has_value(), "lazy-epoch trainer with epoch 1 creates");
+  for (int iteration = 0; iteration < 6; ++iteration) {
+    require(every.value()->iterate().has_value(), "lazy-epoch iterations with epoch 1 succeed");
+  }
+  require(every.value()->discount_epoch_base() == 5U,
+          "lazy-epoch base with epoch 1 follows the target");
+  auto invalid = config;
+  invalid.lazy_discount_epoch = 0U;
+  require(!pb::Trainer::create(game.value(), resources.view(), invalid).has_value(),
+          "lazy-epoch rejects an epoch of 0");
+  invalid.lazy_discount_epoch = 65'536U;
+  require(!pb::Trainer::create(game.value(), resources.view(), invalid).has_value(),
+          "lazy-epoch rejects an epoch above 65535");
+}
+
 // The physical best response of the lifted strategy: the responder decides
 // per hand and per public prefix, never per full board. On the reduced game
 // the exact value is the best response of the lossless FiniteGame (information
@@ -1300,6 +1422,7 @@ int main(const int argc, char **argv) {
     const auto resources = load_resources(resources_dir, buckets_dir);
     if (lazy_only) {
       test_lazy_dcfr_discount(resources);
+      test_lazy_discount_epoch(resources);
       return 0;
     }
     test_configurable_stop_rule();
@@ -1327,6 +1450,7 @@ int main(const int argc, char **argv) {
     test_determinism(resources);
     test_resume(resources);
     test_lazy_dcfr_discount(resources);
+    test_lazy_discount_epoch(resources);
     test_physical_best_response(resources);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';
