@@ -172,6 +172,20 @@ fine di ogni processo del solver); dopo le 18:00 la macchina e' dell'utente e ne
 milestone deve girare. Build, test unitari e sonde diagnostiche non sono misure di tempo e possono girare di
 giorno, mai in concorrenza con un run misurato (il driver rifiuta di partire se trova processi
 del solver). `SUITE_WINDOW=off` disattiva la finestra per macchine dedicate.
+Dal 2026-09-26 (decisione dell'utente del 25 settembre) la fascia disponibile e' 00:00-21:00: i
+run misurati usano 00:00-20:00 (`SUITE_WINDOW=00:00-20:00`), l'ultima ora 20:00-21:00 e'
+riservata a build, test unitari e sonde diagnostiche (che attendono comunque la fine di ogni
+processo del solver) e dopo le 21:00 nessun processo del milestone gira. Il runner accetta anche
+una pausa giornaliera facoltativa (`SUITE_PAUSE=HH:MM-HH:MM`: un run parte solo se la sua durata
+attesa termina prima della pausa o se la pausa e' finita) e `SUITE_NOT_BEFORE="YYYY-MM-DD HH:MM"`,
+che rinvia il primo avvio a una data e ora (regole che entrano in vigore un giorno successivo).
+
+**Obiettivo di tempo (decisione dell'utente del 2026-09-25).** Ogni benchmark della suite
+(HU10, HU20, HU30, HU40) deve chiudere in meno di 35 minuti end-to-end (training, scrittura e
+certificazione fisica esatta con max gain <= 1 % del piatto) sotto il tetto di memoria di A. Lo
+stato di partenza (F, 2026-09-25): HU10 20 minuti certificato; HU20 47,5 minuti misurati con
+macchina contaminata (43-44 stimati puliti) certificato; HU30 e HU40 53-54 minuti a 16.000
+iterazioni senza certificato. La metrica resta il tempo end-to-end per certificare l'1 %.
 
 Scomposizione interna (eventi JSONL, senza doppi conteggi):
 

@@ -21,7 +21,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **1 % del piatto iniziale**, quindi 0,03 a per HU10/HU20/HU30/HU40. Qualificati con BR fisica esatta: **HU10** a 0,003981 a; **HU20 history7** a 0,0279995887 a. HU30 history7 a 32.000: 0,167619129 a, FAIL. |
 | Limite RAM corrente | **8 GiB** di picco per il solver di prodotto. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Milestone RAM/tempi concluso il 2026-09-23 (A bit-identica, -31 % memoria; B -46 %; C -61 %): revisione e commit del codice candidato su branch dedicato, poi riduzione dei timestamp del discount lazy e HU10 completo con storage narrow |
+| Prossimo passo | Fase 1 (tempo a memoria invariata) conclusa il 2026-09-25: F e' la versione di riferimento (-19/-20/-14/-19 % end-to-end rispetto ad A, memoria invariata). Fase 2 in corso: H (timestamp a 16 bit, copertura delle righe) in coda per il 26/09 dopo la ripetizione 4 appaiata D/E/F; allocazione sparsa a pagine esclusa (pagine tutte toccate gia' a 100 iterazioni), margine dallo storage narrow. Obiettivo dell'utente (25/09): ogni benchmark sotto i 35 minuti end-to-end con certificato all'1 %. Due linee: A tempo per certificare su HU20 (certificatore vettorizzato, meno iterazioni), B convergenza su HU30/HU40 (riferimento a 32k, fase 3 flop 500 / river 23 nel tetto, accelerazione) |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,48 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-25 — fase 1 conclusa (D, E, F su tre ripetizioni), finestra e decisioni dell'utente, fase 2 avviata (candidata H)
+
+Fatto: coda della fase 1 completata alle 13:10 (D: ripetizioni 1-2 su HU20-HU40 e 1-3 su HU10;
+E ed F: 1-3 su tutti e quattro i benchmark), report in `out/suite/report.md` e tabella
+conclusiva nella sezione 5.4.6 di
+[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md). F (trainer di E
+con prefetch, certificatore a scheduling dinamico) e' la versione di riferimento: end-to-end
+1.216 / 2.953 / 3.190 / 3.221 s su HU10/HU20/HU30/HU40 (-19 / -20 / -14 / -19 % rispetto ad A,
+-30 / -28 / -33 / -36 % rispetto alla baseline), picchi di memoria identici ad A, criteri 7.2
+PASS ovunque, policy identiche fra ripetizioni. Le ripetizioni di E ed F sono state misurate
+con 5,2-6,0 core contro i 6,3-6,5 delle notti di D: la fonte e' l'app Claude stessa (0,3-0,5
+core continui) oltre a Brave finche' era aperto; il confronto robusto e' la CPU del trainer
+(-17 % da D a E/F su HU20-HU40) e il verdetto sul tempo di parete viene dalla ripetizione 4
+appaiata (D, E, F consecutive nelle stesse condizioni). HU20 appaiata (13:10-15:45): training D 2.418 s, E 1.928, F 1.932 (-20 %), CPU del trainer -18,5 %, certificatore F 877 s contro 908 di E e 938 di D, end-to-end F 2.853 s (-16 % su D, -23 % su A); HU40, HU30 e HU10 appaiati nella notte del 26 settembre (sezione 5.4.8).
+
+Regole e decisioni dell'utente (protocollo, sezioni 6 e 7.2): nessun processo del milestone
+puo' caricare la macchina fuori dalle 00:00-18:00 (regola del 24 e del 25 settembre; dal 26 la
+fascia e' 00:00-21:00: run misurati 00:00-20:00, manutenzione 20:00-21:00); fino al 25 i run
+misurati usano 00:00-17:00 (`SUITE_WINDOW=00:00-17:00`) e build, test e sonde solo 17:00-18:00;
+il runner della coda e'
+avviato in modo distaccato (`start /min bash -lc ...` da un file .cmd: il lancio inline da cmd
+falliva in silenzio) cosi' l'app puo' restare chiusa durante le misure. Vincoli fissati: il
+picco di RAM non deve superare quello di A (2,11 / 7,94 / 8,18 / 8,18 GiB) con qualsiasi
+architettura; l'algoritmo puo' cambiare e le 16.000 iterazioni non sono un vincolo (contano
+solo tempo e RAM); la convergenza a Nash certificata (1 % del piatto) e' richiesta su tutti e
+quattro i benchmark, HU30 e HU40 compresi. La metrica principale diventa il tempo end-to-end
+per certificare l'1 % sotto il tetto di memoria.
+
+Fase 2 avviata: candidata H (`cand-h-timestamps16`, sezione 5.4.7): timestamp del discount
+lazy a 16 bit in epoche (bit-identica a F sotto 65.535 iterazioni, -0,38 GiB su HU20, -0,40 su
+HU30/HU40, -0,10 su HU10), materializzazioni complete che saltano le righe mai toccate, base
+dell'epoca allineata al caricamento di un checkpoint (ripresa bit-identica), telemetria di
+copertura delle righe e delle pagine da 4 KiB nell'evento finale, test `test_lazy_discount_epoch`.
+Revisione statica (agent Opus) prima della build: due difetti logici corretti (copertura
+azzerata dalle materializzazioni intermedie; base dell'epoca al caricamento) e tre minori
+(conteggio delle pagine a cavallo dei nodi, limite di riga in `discount_last_iteration`,
+validazione dell'opzione CLI). Catena di manutenzione delle 17:05 (build, sei suite di test,
+sonde di identita' HU10/HU20 contro E, archiviazione, sonde sulle distanze di prefetch):
+build riuscita alle 17:07, sei suite di test PASS alle 17:10 (test delle epoche: 34.696 righe toccate su 47.848 nel gioco ridotto), identita' PASS su HU10 e HU20, eseguibili archiviati in `out/suite/bin/cand-h-timestamps16`. Prima misura di copertura: a 100 iterazioni su HU20 e' toccato il 26 % delle righe river ma il 100 % delle pagine da 4 KiB su ogni street (righe da 18 byte sparse ovunque): l'allocazione sparsa a pagine (candidata I) e' esclusa; il margine per la fase 3 verra' dallo storage narrow e dai timestamp a 16 bit, salvo che la copertura per riga a 16.000 iterazioni (run di H del 26/09) giustifichi un indice per riga. Sonde sulle distanze di prefetch (HU20, 2.000 iterazioni, stato bit-identico in tutte): senza prefetch 284 s di training, 4/8 (predefinite) 244,5, 8/16 242,9, 16/32 252,6; distanze maggiori non rendono, i default restano 4/8 e la variante E2 e' chiusa.
+
+Prossimo passo: dal 26 settembre la finestra di misura e' 00:00-20:00 con build, test e sonde 20:00-21:00 (runner riavviato con `SUITE_NOT_BEFORE`) e ogni benchmark deve chiudere sotto i 35 minuti end-to-end con certificato all'1 % (decisioni dell'utente, protocollo sezione 6). Domani: verdetto appaiato notturno, tre ripetizioni di H con la copertura a 16.000 iterazioni, run di riferimento a 32.000 iterazioni su HU30/HU40 con F, e alle 20:05 la build della candidata successiva: certificatore vettorizzato (linea A, tempo per certificare su HU20) e preparazione delle tabelle della fase 3 (linea B, convergenza su HU30/HU40).
 
 ### 2026-09-24 — adozione di A, push, roadmap e fase 1 (tempo a memoria invariata)
 

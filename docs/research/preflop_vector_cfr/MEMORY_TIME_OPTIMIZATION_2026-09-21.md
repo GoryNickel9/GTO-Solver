@@ -134,7 +134,10 @@ certificatore; la baseline conserva il suo.
 - Evento `end` del trainer: `write_seconds` (materializzazione, checksum e scrittura),
   `policy_cells` (righe e celle materializzate, lookup mano-riga, picco della tabella compatta),
   `boards_distinct` / `boards_repeated` (rebuild identici dei contesti di board), picchi di
-  working set e di commit privato dopo il training e alla fine.
+  working set e di commit privato dopo il training e alla fine; dalla candidata H
+  `rows_total` / `rows_touched` / `regret_pages_total` / `regret_pages_touched` per street
+  (copertura delle righe materializzate almeno una volta e delle pagine da 4 KiB della
+  tabella dei regret), `lazy_discount_epoch` nell'evento `start`.
 - Opzioni della CLI: `--reuse-discount-invariant-policy` viene rifiutata con un messaggio
   (la policy compatta e' ricostruita a ogni batch); `--batch-policy-refresh` resta accettata
   per compatibilita' con il protocollo comune ma non cambia il comportamento (il refresh per
@@ -335,7 +338,9 @@ file per `double`; identita' del trainer estesa solo per gli storage narrow).
 
 Vincoli fissati dall'utente: il picco di memoria di ogni benchmark non deve superare quello
 attuale di A (HU10 2,11 GiB, HU20 7,94, HU30/HU40 8,18) e il tempo va ridotto ulteriormente; i
-run misurati girano solo fra le 01:00 e le 09:00 (protocollo, sezione 6).
+run misurati girano solo fra le 00:00 e le 17:00 con build, test e sonde fra le 17:00 e le 18:00
+fino al 25 settembre, e dal 26 settembre fra le 00:00 e le 20:00 con la manutenzione fra le 20:00
+e le 21:00 (protocollo, sezione 6; la prima notte la finestra era 01:00-09:00, poi 00:00-18:00).
 
 | Fase | Contenuto | Gate |
 |---|---|---|
@@ -400,9 +405,11 @@ policy nelle sonde); si misura solo il tempo, con la stessa memoria. Alternativa
 prefetch non basta: pagine grandi (2 MB) per le tabelle, che riducono i page walk ma richiedono
 il privilegio di lock della memoria su Windows.
 
-Risultati di E: da riempire con il report della suite (run notturni: ripetizione 1 nella notte
-del 25 settembre, poi 2 e 3). Sonde diurne (indicative, non misure): HU10 40 iterazioni 2,60 s ->
-2,12 s di training, HU20 100 iterazioni 14,8 s -> 11,1 s; fingerprint identici a D.
+Risultati di E: sezione 5.4.6 (tre ripetizioni). Sonde diurne (indicative, non misure): HU10 40
+iterazioni 2,60 s -> 2,12 s di training, HU20 100 iterazioni 14,8 s -> 11,1 s; fingerprint
+identici a D. Distanze di prefetch (sonde del 25 settembre, HU20 a 2.000 iterazioni, stato
+bit-identico in tutte): nessun prefetch 284 s di training, 4/8 244,5 s, 8/16 242,9 s, 16/32
+252,6 s: le distanze predefinite 4/8 restano e la variante E2 non entra nella suite.
 
 ### 5.4.4 Candidata F (fase 1): scheduling dinamico del certificatore
 
@@ -428,6 +435,108 @@ struttura); un layout per riga `[regret x azioni | somme x azioni | timestamp]` 
 una o due linee di cache contigue. Stessi byte totali (memoria invariata al byte), stessi valori
 (bit-identico), formato del checkpoint diverso (identita' del trainer estesa). Da misurare con la
 stessa suite; da decidere dopo i risultati di E.
+
+### 5.4.6 Risultati della fase 1: D, E, F su tre ripetizioni (2026-09-24/25)
+
+Report completo: `out/suite/report.md` (`suite.py report --baseline baseline-ba93c75`). Mediane
+sulle ripetizioni pulite (D: due ripetizioni su HU20-HU40, tre su HU10; E e F: tre ovunque);
+picchi di memoria identici ad A su ogni benchmark e ogni ripetizione (2,112 / 7,940 / 8,180 /
+8,180 GiB); policy identiche fra ripetizioni della stessa versione e fra D, E, F (stessi
+fingerprint: E e F sono bit-identiche a D per costruzione); criteri 7.2 PASS ovunque
+(delta max gain rispetto alla baseline: HU10 -9e-8 a, HU20 +6,8e-7, HU30 -4,3e-5, HU40 +1,5e-5).
+
+| Benchmark | Training D / E / F (s) | Refresh D / E / F (s) | Traversata D / E / F (s) | BR esatta D / E / F (s) | CPU trainer D / E / F (s) | Core trainer D / E / F | E2E D / E / F (s) | E2E A / baseline (s) | E2E F vs A / baseline |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| HU10 | 976 / 991 / 961 | 241 / 180 / 178 | 707 / 772 / 745 | 218 / 253 / 241 | 4.853 / 4.435 / 4.386 | 4,9 / 4,4 / 4,5 | 1.209 / 1.266 / 1.216 | 1.497 / 1.739 | -19 % / -30 % |
+| HU20 | 2.142 / 2.090 / 2.009 | 857 / 598 / 582 | 1.471 / 1.451 / 1.387 | 818 / 962 / 892 | 14.006 / 11.532 / 11.569 | 6,3 / 5,2-5,6 / 5,5-5,7 | 3.007 / 3.102 / 2.953 | 3.687 / 4.084 | -20 % / -28 % |
+| HU30 | 2.393 / 2.314 / 2.218 | 816 / 617 / 604 | 1.540 / 1.657 / 1.573 | 850 / 958 / 929 | 15.768 / 13.121 / 13.230 | 6,4-6,5 / 5,4-6,0 / 5,8-6,1 | 3.291 / 3.321 / 3.190 | 3.697 / 4.786 | -14 % / -33 % |
+| HU40 | 2.424 / 2.443 / 2.239 | 811 / 636 / 600 | 1.576 / 1.764 / 1.600 | 860 / 956 / 930 | 15.919 / 13.232 / 13.358 | 6,4-6,5 / 5,3-5,8 / 5,8-5,9 | 3.332 / 3.448 / 3.221 | 3.968 / 5.036 | -19 % / -36 % |
+
+Lettura.
+
+- **Condizioni di misura.** Le ripetizioni di D su HU20-HU40 sono notturne e pulite (6,3-6,5 core
+  su 8); tutte quelle di E e F hanno girato con 5,2-6,0 core: dal 24 settembre i processi
+  dell'app Claude (0,3-0,5 core continui, circa 20.000 s di CPU in 16 ore) e, fino alla
+  chiusura, Brave sottraggono capacita' anche nella finestra di misura. Il tempo di parete di E
+  e F e' quindi sottostimato rispetto a D; il confronto robusto e' la CPU del trainer, che scende
+  del 17 % da D a E/F su HU20-HU40 (del 9-10 % su HU10) a lavoro identico. Il verdetto sul tempo
+  di parete e' affidato alla ripetizione 4 appaiata (D, E, F consecutive nelle stesse
+  condizioni, sezione 5.4.8).
+- **Refresh.** Il prefetch di E taglia la materializzazione del refresh del 25-30 % su HU20-HU40
+  (857 -> 598, 816 -> 617, 811 -> 636 s) e del 25 % su HU10: la latenza di memoria era il costo
+  dominante, come previsto in 5.4.2.
+- **Traversata.** In tempo di parete non migliora (contaminazione: E su HU30/HU40 e' anche piu'
+  lenta di D), ma la CPU totale del trainer scende: il prefetch nell'aggiornamento dei regret
+  vale circa un terzo del guadagno di CPU.
+- **Certificatore.** Con la stessa macchina contaminata E e F pagano 100-140 s in piu' di D
+  (6,5-7,1 core contro 7,2-7,3); F rispetto a E recupera 30-70 s su HU20-HU40 (scheduling
+  dinamico) con CPU uguale. Come stimato in 5.4.4 il guadagno di F e' piccolo: il certificatore
+  e' limitato dalla valutazione (6.100-6.600 s di CPU).
+- **Stabilita'.** F ha le ripetizioni piu' stabili della suite: HU10 961/961/964 s di training,
+  HU20 2.009/1.995/2.068, HU30 2.218/2.221/2.120, HU40 2.243/2.239/2.188.
+- **Obiettivo P9.** HU20 end-to-end e' a 49 minuti misurati (F) contro 61 di A e 68 della
+  baseline; a 6,4 core (stima da CPU) sarebbero circa 45 minuti. Il requisito P9 (37 m 27 s)
+  richiede ancora -20 %: non lo si ottiene con altre micro-ottimizzazioni del trainer, ma con
+  la fase 2/3 e la linea sulla convergenza (meno iterazioni per lo stesso certificato).
+
+Decisione: F (trainer di E + certificatore a scheduling dinamico) e' la versione di riferimento
+del branch `feat/preflop-phase1-time` (HEAD = F piu' le distanze di prefetch configurabili con
+gli stessi default 4/8). La candidata G (righe intercalate) resta rinviata: il prefetch ha gia'
+tolto la parte del costo che G avrebbe attaccato, e il passo successivo con piu' valore e' la
+fase 2 (margine di memoria), da cui dipende la fase 3.
+
+### 5.4.7 Fase 2, candidata H: timestamp del discount lazy a 16 bit e copertura delle righe
+
+Il discount lazy conservava per ogni riga delle tabelle l'iterazione dell'ultima
+materializzazione in 32 bit: 0,77 GiB su HU20, 0,80 su HU30/HU40, 0,20 su HU10 (sezione 5.2.3,
+colonna "Timestamp discount"). H la porta a 16 bit con un'epoca: lo slot di una riga vale 0 se
+la riga non e' mai stata materializzata (tutte le celle ancora a zero), altrimenti
+`ultima = base + slot - 1`; quando il target del discount raggiunge `base + epoca` (epoca
+predefinita 65.535 iterazioni, opzione `--lazy-discount-epoch`), ogni riga toccata viene
+materializzata al target con un solo rapporto di prodotti prefissi e la base si sposta li'. Un
+run piu' corto dell'epoca non fa mai il rebase ed e' bit-identico a F (sonde HU10 40 iterazioni
+e HU20 100 iterazioni: stato e policy identici a E, HU10 9a60bc552a23db61 / b2a5843bba44c910 e HU20 4a64454160bbf7b8 / 6f061ce7618487ff, sei suite di test PASS il 25 settembre alle 17:10); oltre l'epoca cambia solo l'associazione dei prodotti
+(arrotondamento, come D rispetto ad A), e un run ripreso da checkpoint mantiene le iterazioni
+di rebase del run continuo (base allineata all'epoca al caricamento; test
+`test_lazy_discount_epoch`: rebase coincidente con la materializzazione finale bit-identico,
+ripresa attraverso un rebase bit-identica, epoca 1). Le materializzazioni complete saltano le
+righe mai toccate (nessun valore cambia), cosi' il conteggio resta valido anche con salvataggi
+e valutazioni intermedie.
+
+Il secondo contenuto di H e' la telemetria di copertura: nell'evento finale il trainer riporta,
+per street, le righe che una passata ha toccato almeno una volta e le pagine da 4 KiB della
+tabella dei regret che quelle righe attraversano (`rows_touched`, `regret_pages_touched`).
+Sono i numeri da cui dipende la candidata I (allocazione sparsa: riserva dello spazio di
+indirizzi e commit delle sole pagine toccate al primo accesso, su Windows `MEM_RESERVE` +
+`MEM_COMMIT` con una mappa di bit delle pagine; su Linux `mmap` senza riserva): a 16.000
+iterazioni con 32 board per iterazione il river di HU20 materializza 4.175 righe per passata
+(66,8 milioni di materializzazioni in tutto, con ripetizioni) su 190,9 milioni di righe, quindi
+la frazione toccata e' al massimo il 35 % e il risparmio potenziale sulle due tabelle del river
+(6,4 GiB) e' di alcuni GiB, prima di ogni raffinamento dell'astrazione (fase 3), che aumenta le
+righe totali ma non quelle toccate per iterazione. Prima misura (sonde del 25 settembre): a 40 iterazioni su HU10 sono gia' toccate il 14 % delle righe river e il 47 % delle righe turn, a 100 iterazioni su HU20 il 26 % delle righe river (49,6 su 190,9 milioni) e il 67 % delle righe turn, ma le pagine da 4 KiB toccate sono gia' il 100 % su ogni street: una riga occupa in media 2,3 celle (18 byte), una pagina ne contiene piu' di 200 e le righe toccate sono sparse su tutta la tabella. L'allocazione sparsa a granularita' di pagina (candidata I come progettata) non puo' quindi risparmiare nulla; una granularita' di riga richiederebbe un indice per riga (4 byte, 0,77 GiB su HU20) e solo la copertura a 16.000 iterazioni, misurata dai run di H, puo' dire se ha senso. Il margine di memoria per la fase 3 verra' percio' dallo storage narrow (B mixed -46 %, C float32 -61 %, gia' misurati con criteri 7.2 PASS) e dai timestamp a 16 bit di H.
+
+Memoria attesa di H: HU10 2,01 GiB, HU20 7,56, HU30/HU40 7,78 (stessi tempi di F). Risultati
+misurati: in coda per il 26 settembre (tre ripetizioni su HU10-HU40 dalle 06:30).
+
+### 5.4.8 Ripetizione 4 appaiata: D, E, F consecutive nelle stesse condizioni
+
+Per neutralizzare la contaminazione diurna, la ripetizione 4 esegue D, E ed F una dopo l'altra
+sullo stesso benchmark (stesse condizioni entro un'ora): il confronto e' fra run adiacenti, non
+fra notti diverse. HU20 (25 settembre, 13:10-15:45, app Claude aperta per tutti e tre):
+
+| Versione | Training (s) | Refresh (s) | Traversata (s) | CPU trainer (s) | Core trainer | BR esatta (s) | Core BR | E2E (s) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| D | 2.418 | 868 | 1.509 | 14.034 | 5,69 | 938 | 6,68 | 3.398 |
+| E | 1.928 | 560 | 1.330 | 11.434 | 5,79 | 908 | 6,89 | 2.878 |
+| F | 1.932 | 565 | 1.329 | 11.535 | 5,83 | 877 | 7,22 | 2.853 |
+
+A parita' di condizioni E riduce il training del 20 % rispetto a D (refresh -35 %, traversata
+-12 %, CPU -18,5 %), quindi il guadagno di CPU misurato nelle ripetizioni 1-3 si trasferisce
+quasi interamente al tempo di parete; F ha lo stesso trainer di E (differenze entro l'1 %) e un
+certificatore piu' veloce del 3,4 % (877 contro 908 s, 7,2 contro 6,9 core). End-to-end F e' il
+16 % sotto D e il 23 % sotto A (2.853 contro 3.687 s): 47,5 minuti con la macchina contaminata,
+circa 43-44 stimati a 6,4 core. HU40, HU30 e HU10 appaiati nella notte del 26 settembre
+(00:00-06:30, macchina libera): da aggiungere qui.
 
 ## 6. Procedura di riproduzione
 
