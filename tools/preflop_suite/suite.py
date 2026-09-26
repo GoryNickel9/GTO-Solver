@@ -1071,7 +1071,10 @@ def main() -> int:
     p.add_argument("--scenario", required=True)
     p.add_argument("--rep", type=int, default=1)
     p.add_argument("--iterations", type=int, help="research override (marks the run as deviating)")
-    p.add_argument("--train-extra", nargs="*", help="extra trainer flags (marks the run as deviating)")
+    # REMAINDER: trainer flags start with "--" and would otherwise be taken for options of
+    # this tool; --train-extra must therefore be the last option on the command line.
+    p.add_argument("--train-extra", nargs=argparse.REMAINDER,
+                   help="extra trainer flags, last option (marks the run as deviating)")
     p.add_argument("--keep-policy", action="store_true")
     p.add_argument("--keep-checkpoint", action="store_true")
     p.add_argument("--overwrite", action="store_true")

@@ -369,6 +369,29 @@
         "float32"
       ]
     },
+    "ref-j-12k": {
+      "description": "Linea A (tempo per certificare HU20): eseguibili di J, astrazione history7, 12.000 iterazioni invece di 16.000 (deviazione): se il certificato passa l'1 %, HU20 chiude in circa 35 minuti.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
+    "ref-j-8k": {
+      "description": "Linea A: eseguibili di J, astrazione history7, 8.000 iterazioni (deviazione): secondo punto della curva di convergenza di HU20 sotto le 16.000.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
+    "var-j-batch64": {
+      "description": "Linea A: eseguibili di J, batch da 64 board per 8.000 iterazioni (stessi board di 32 x 16.000; deviazione): meno passate di refresh per board, da confrontare per qualita' e tempo con 16.000 x 32.",
+      "train_arguments": [
+        "--table-storage",
+        "double",
+        "--batch",
+        "64"
+      ]
+    },
     "ref-h-32k": {
       "description": "Run di riferimento (deviazione dal protocollo: 32.000 iterazioni) con gli eseguibili di H: curva di convergenza dell'astrazione history7 su HU30/HU40 per le fasi 3 e 4. Non entra nei confronti a lavoro fisso.",
       "train_arguments": [
