@@ -147,15 +147,22 @@ while true; do
   manifest="out/suite/$version/$scenario/rep$rep/manifest.json"
   wait_if_running "$manifest"
   [ "$(manifest_status "$manifest")" = "COMPLETE" ] && continue
-  wait_for_slot "$version $scenario" "$need"
-  # A version whose executables are not archived yet is waited for, not skipped:
-  # the queue is edited while candidates are being built.
+  # The start conditions must hold together: the slot is re-checked after any wait for
+  # the executables (a candidate archived by the evening build) or for another solver
+  # process (maintenance probes), so a run never starts outside the window.
   announced=0
-  while [ ! -d "$exedir" ]; do
-    if [ "$announced" -eq 0 ]; then log "exe dir $exedir for $version missing: waiting"; announced=1; fi
-    sleep 300
+  while true; do
+    wait_for_slot "$version $scenario" "$need"
+    # A version whose executables are not archived yet is waited for, not skipped:
+    # the queue is edited while candidates are being built.
+    if [ ! -d "$exedir" ]; then
+      if [ "$announced" -eq 0 ]; then log "exe dir $exedir for $version missing: waiting"; announced=1; fi
+      sleep 300
+      continue
+    fi
+    if solver_alive; then sleep 60; continue; fi
+    break
   done
-  wait_for_no_solver
   # The manifest may have been completed by another driver while waiting.
   [ "$(manifest_status "$manifest")" = "COMPLETE" ] && continue
   args=()
