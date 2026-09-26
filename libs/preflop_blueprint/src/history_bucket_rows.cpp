@@ -516,6 +516,51 @@ std::uint32_t HistoryBucketRows::row(const Street street, const std::uint8_t han
              : no_history_row;
 }
 
+RiverRowCursor HistoryBucketRows::river_cursor(const std::uint8_t hand_class,
+                                               const std::uint16_t flop,
+                                               const std::uint16_t turn) const noexcept {
+  // The key arithmetic and checks of row(Street::River, ...) up to the river
+  // bucket; an invalid cursor makes every river_row() return no_history_row.
+  RiverRowCursor cursor;
+  if (hand_class >= 81 || flop >= capacities_[0] || turn >= capacities_[1])
+    return cursor;
+  const auto fkey = static_cast<std::uint64_t>(hand_class) * capacities_[0] + flop;
+  const auto tkey = fkey * capacities_[1] + turn;
+  std::uint64_t river_parent = tkey;
+  if (format_version_ == 2) {
+    if (tkey >= turn_lookup_.size() || turn_lookup_[tkey] == no_history_row)
+      return cursor;
+    river_parent = turn_lookup_[tkey];
+  }
+  cursor.first_key = river_parent * capacities_[2];
+  if (format_version_ != 2) {
+    const auto begin = std::lower_bound(river_keys_.begin(), river_keys_.end(), cursor.first_key);
+    const auto end =
+        std::lower_bound(begin, river_keys_.end(), cursor.first_key + capacities_[2]);
+    cursor.begin = static_cast<std::uint32_t>(begin - river_keys_.begin());
+    cursor.end = static_cast<std::uint32_t>(end - river_keys_.begin());
+  }
+  cursor.valid = true;
+  return cursor;
+}
+
+std::uint32_t HistoryBucketRows::river_row(const RiverRowCursor &cursor,
+                                           const std::uint16_t river) const noexcept {
+  if (!cursor.valid || river >= capacities_[2])
+    return no_history_row;
+  const auto rkey = cursor.first_key + river;
+  if (format_version_ == 2)
+    return rkey < river_lookup_.size() ? river_lookup_[rkey] : no_history_row;
+  // Keys are sorted and unique, so rkey, which lies in the key interval of
+  // the cursor's parent, is in the parent's index range whenever it exists.
+  const auto first = river_keys_.begin() + static_cast<std::ptrdiff_t>(cursor.begin);
+  const auto last = river_keys_.begin() + static_cast<std::ptrdiff_t>(cursor.end);
+  const auto found = std::lower_bound(first, last, rkey);
+  return found != last && *found == rkey
+             ? river_rows_[static_cast<std::size_t>(found - river_keys_.begin())]
+             : no_history_row;
+}
+
 bool HistoryBucketRows::matches(const ca::BucketTable &table) const noexcept {
   const auto index = static_cast<std::size_t>(table.street());
   return index < 3 && tables_[index] == table.fingerprint();

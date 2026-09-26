@@ -200,6 +200,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
   if (!evaluator) {
     return Outcome::failure(CertifierError::EvaluationFailure);
   }
+  evaluator.value().set_river_engine(options.river_engine);
 
   Certificate certificate;
   const auto &config = game.config();
@@ -240,6 +241,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
     }
     BestResponseOptions evaluation;
     evaluation.threads = options.threads;
+    evaluation.river_engine = options.river_engine;
     const auto report = evaluate_best_response(game, policy, resources, groups, evaluation);
     if (!report) {
       return Outcome::failure(CertifierError::EvaluationFailure);

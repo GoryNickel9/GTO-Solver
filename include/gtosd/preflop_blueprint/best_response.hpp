@@ -60,10 +60,18 @@ struct BestResponseResources {
   const HistoryBucketRows *history_rows{nullptr};
 };
 
+// River evaluation path of stage one. Joint (river_engine.hpp) evaluates every
+// river subtree of a board once for both heroes and both modes; Reference is
+// the per-hero, per-mode ValueTraversal loop it replaces, kept to verify it.
+// Both produce bit-identical flop values.
+enum class RiverEngine : std::uint8_t { Joint, Reference };
+[[nodiscard]] const char *river_engine_name(RiverEngine engine) noexcept;
+
 struct BestResponseOptions {
   unsigned threads{1U};
   // Optional uniform hand subsets per player (combo ids); empty = all hands.
   std::array<std::vector<std::uint16_t>, 2> hand_subsets{};
+  RiverEngine river_engine{RiverEngine::Joint};
 };
 
 inline constexpr std::size_t response_mode = 0U;
@@ -249,11 +257,16 @@ public:
   // (equal group weights).
   [[nodiscard]] Result<PreflopActionValues, KernelError>
   preflop_action_values(const std::vector<const FlopValues *> &flops, std::uint8_t hero) const;
+  // River path of evaluate_flop and probe_node for this evaluator object
+  // (copies made afterwards inherit it); Joint by default.
+  void set_river_engine(RiverEngine engine) noexcept { river_engine_ = engine; }
+  [[nodiscard]] RiverEngine river_engine() const noexcept { return river_engine_; }
 
   struct Impl;
 
 private:
   std::shared_ptr<const Impl> impl_;
+  RiverEngine river_engine_{RiverEngine::Joint};
 };
 
 // Stage one in parallel over the groups.

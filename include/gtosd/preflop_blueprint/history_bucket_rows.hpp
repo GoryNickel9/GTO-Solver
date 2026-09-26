@@ -9,6 +9,18 @@ namespace gtosd::preflop_blueprint {
 
 inline constexpr std::uint32_t no_history_row = std::numeric_limits<std::uint32_t>::max();
 
+// Position of one turn history among the river rows of a map, made by
+// HistoryBucketRows::river_cursor and valid only for that map.
+struct RiverRowCursor {
+  // Key of river bucket 0 below the turn history.
+  std::uint64_t first_key{0};
+  // history-v1: index range of the keys of the turn history in the sorted
+  // key list (the river keys of one parent are contiguous).
+  std::uint32_t begin{0};
+  std::uint32_t end{0};
+  bool valid{false};
+};
+
 struct HistoryObservation {
   std::uint64_t key{0}; // ((class * F + flop) * T + turn) * R + river
   std::uint64_t weight{0};
@@ -61,6 +73,15 @@ public:
   // no_history_row. These links are derived from the persisted keys and do
   // not change the map format or fingerprint.
   [[nodiscard]] std::uint32_t parent_row(Street street, std::uint32_t row) const noexcept;
+  // River rows of one turn history for callers that visit every river of a
+  // turn (joint river engine): river_row(river_cursor(c, f, t), r) equals
+  // row(Street::River, c, f, t, r) for every input, but reads one dense
+  // entry (v2) or searches only the keys of the turn history (v1) instead of
+  // the whole map.
+  [[nodiscard]] RiverRowCursor river_cursor(std::uint8_t hand_class, std::uint16_t flop,
+                                            std::uint16_t turn) const noexcept;
+  [[nodiscard]] std::uint32_t river_row(const RiverRowCursor &cursor,
+                                        std::uint16_t river) const noexcept;
   [[nodiscard]] std::uint32_t count(card_abstraction::BucketStreet street) const noexcept {
     return counts_[static_cast<std::size_t>(street)];
   }

@@ -566,6 +566,35 @@ HU30/HU40 7,40 GiB stimati), con la mappa `out/phase3/history_f200_cap16.bin`
 suite (il run e' marcato come deviazione dal protocollo comune e non entra nei confronti a
 lavoro fisso). Il flop a 500 con cap 7 in mixed (6,93 / 7,14 GiB) e' la seconda opzione.
 
+### 5.4.10 Linea A, candidata J: motore river congiunto del certificatore (2026-09-26)
+
+Analisi (agent architetto, conteggio delle operazioni calibrato sui run): per ogni board il
+certificatore attraversava ogni sottoalbero river quattro volte (due eroi per due modalita',
+risposta e media), ripeteva tre volte su quattro le stesse passate di showdown, leggeva ogni riga
+della policy tre volte con una chiamata virtuale per mano e ricostruiva per ogni board il
+contesto di flop e turn che il river non usa. J valuta ogni sottoalbero river una sola volta
+per board con i due eroi come corsie SSE2 e le due modalita' insieme, copia le righe della policy
+del nodo in blocchi contigui con prefetch, costruisce solo il contesto river con un cursore di
+storia per (turn, mano) e replica i kernel operazione per operazione: il certificato e'
+bit-identico al motore di riferimento, che resta selezionabile (`--river-engine reference`).
+Revisione statica (agent Opus) prima dell'unica build: nessun errore di compilazione o di
+esattezza, quattro modifiche minori applicate (flop ordinato nel prefisso, caso di massa nulla
+nei test, confronto del certificato completo, commenti).
+
+Build del 26 settembre alle 20:06: sei suite di test PASS (kernel a due corsie identici a quelli
+scalari su 100 board; cursore di storia uguale a `row()` su 127.256 ricerche; 1.386 sottoalberi
+identici a `ValueTraversal`; 7 flop identici al motore di riferimento, 2,89 s contro 4,80 s).
+Sonda HU10 (policy a 40 iterazioni, fingerprint identici a E/F/H): certificato identico
+(max gain 0,2845395268589276 in entrambi), valutazione 84,4 s contro 223,2 s, **2,6 volte piu'
+veloce**. Misure sui quattro benchmark nella notte del 27 settembre.
+
+Primi riferimenti a 32.000 iterazioni (astrazione history7, eseguibili di H): HU30 max gain
+0,1676 a (0,1918 a 16.000), HU40 0,2526 a (0,2896), end-to-end 91 e 92 minuti: raddoppiare le
+iterazioni riduce il max gain del 13 % circa, lontano dall'1 % (0,03 a). Prima misura della
+candidata L (flop 500, river cap 12, float32) su HU30 a 16.000: max gain 0,2062 a (peggiore
+dell'astrazione attuale allo stesso numero di iterazioni), picco 7,48 GiB (stima 7,46), training
+2.229 s come H; il confronto utile e' a 32.000 iterazioni (27 settembre).
+
 ## 6. Procedura di riproduzione
 
 Vedi la sezione 8 del protocollo. Le build delle versioni: baseline dall'HEAD pulito

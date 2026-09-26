@@ -50,6 +50,9 @@ struct CertifierOptions {
   std::uint32_t sample_flops{0U};
   std::uint64_t sample_seed{0x4345'5254'4946'5931ULL};
   std::function<void(const CertifierProgress &)> progress;
+  // River path of the flop evaluations; the certificate is the same bit for
+  // bit with either engine.
+  RiverEngine river_engine{RiverEngine::Joint};
 };
 
 struct Certificate {

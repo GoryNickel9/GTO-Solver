@@ -7,10 +7,12 @@
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/kernels.hpp"
+#include "gtosd/preflop_blueprint/river_engine.hpp"
 #include "gtosd/preflop_blueprint/traversal.hpp"
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -268,6 +270,103 @@ void test_kernels_against_reference(const Resources &resources) {
   }
   require(boards_with_ties == 200U, "every board has hands of equal rank");
   std::cout << "kernels: 200 boards x 3 reach patterns match the pairwise reference\n";
+}
+
+// The joint river engine must reproduce every double of the reference,
+// signed zeros included, so its tests compare bit patterns.
+bool same_bits(const double left, const double right) {
+  return std::bit_cast<std::uint64_t>(left) == std::bit_cast<std::uint64_t>(right);
+}
+
+// The river-only board has the hands, ranks, rank order and rank groups of
+// BoardContext, and the pair kernels equal the scalar kernels lane by lane,
+// bit for bit, on reaches with exact zeros of both signs.
+void test_river_board_and_pair_kernels(const Resources &resources) {
+  ca::DeterministicRandom random(0x5031'0007ULL);
+  pb::RiverBoard river;
+  std::array<double, pb::pair_values> reach{};
+  std::array<double, pb::pair_values> fold_pair{};
+  std::array<double, pb::pair_values> worse_pair{};
+  std::array<double, pb::pair_values> tied_pair{};
+  std::array<double, pb::pair_values> better_pair{};
+  std::array<double, pb::live_hand_count> fold_lane{};
+  std::array<double, pb::live_hand_count> worse_lane{};
+  std::array<double, pb::live_hand_count> tied_lane{};
+  std::array<double, pb::live_hand_count> better_lane{};
+  const std::array<std::array<ReachMode, 2>, 6> patterns{{{ReachMode::Sparse, ReachMode::Sparse},
+                                                          {ReachMode::Uniform, ReachMode::Sparse},
+                                                          {ReachMode::Sparse, ReachMode::Zeros},
+                                                          {ReachMode::Zeros, ReachMode::Uniform},
+                                                          {ReachMode::Ones, ReachMode::Sparse},
+                                                          {ReachMode::Zeros, ReachMode::Zeros}}};
+  constexpr int boards = 100;
+  for (int board = 0; board < boards; ++board) {
+    const auto history = random_board(random);
+    const auto context = make_context(resources, history, false);
+    require(river.assign(history, resources.ranks).has_value(), "river board builds");
+    for (std::size_t hand = 0; hand < pb::live_hand_count; ++hand) {
+      require(river.combo_ids()[hand] == context.combo_ids()[hand] &&
+                  river.cards()[hand] == context.cards()[hand] &&
+                  river.ranks()[hand] == context.ranks()[hand] &&
+                  river.order_by_rank()[hand] == context.order_by_rank()[hand] &&
+                  river.rows()[hand] == pb::no_history_row,
+              "river board has the hands, ranks and rank order of the context");
+    }
+    const auto starts = river.group_starts();
+    require(river.rank_groups() == context.distinct_rank_groups() &&
+                starts.size() == static_cast<std::size_t>(river.rank_groups()) + 1U &&
+                static_cast<std::size_t>(starts.front()) == 0U &&
+                static_cast<std::size_t>(starts.back()) == pb::live_hand_count,
+            "river board has the rank groups of the context");
+    const auto order = context.order_by_rank();
+    for (std::size_t group = 0; group < river.rank_groups(); ++group) {
+      const std::size_t start = starts[group];
+      const std::size_t end = starts[group + 1U];
+      require(start < end, "rank groups are not empty");
+      for (std::size_t position = start; position < end; ++position) {
+        require(context.ranks()[order[position]] == context.ranks()[order[start]],
+                "a rank group holds one rank");
+      }
+      require(end == pb::live_hand_count ||
+                  context.ranks()[order[end]] != context.ranks()[order[start]],
+              "rank groups are maximal runs");
+    }
+    for (const auto &pattern : patterns) {
+      std::array<std::array<double, pb::live_hand_count>, pb::hero_lanes> lanes{};
+      for (std::size_t lane = 0; lane < pb::hero_lanes; ++lane) {
+        lanes[lane] = random_reach(random, pattern[lane]);
+        for (auto &value : lanes[lane]) {
+          if (value == 0.0 && random.uniform_below(2U) == 0U) {
+            value = -0.0;
+          }
+        }
+      }
+      for (std::size_t hand = 0; hand < pb::live_hand_count; ++hand) {
+        for (std::size_t lane = 0; lane < pb::hero_lanes; ++lane) {
+          reach[pb::hero_lanes * hand + lane] = lanes[lane][hand];
+        }
+      }
+      pb::fold_mass_pair(river, reach, fold_pair);
+      pb::showdown_masses_pair(river, reach, worse_pair, tied_pair, better_pair);
+      for (std::size_t lane = 0; lane < pb::hero_lanes; ++lane) {
+        pb::fold_mass(context, lanes[lane], fold_lane);
+        pb::showdown_masses(context, lanes[lane], worse_lane, tied_lane, better_lane);
+        for (std::size_t hand = 0; hand < pb::live_hand_count; ++hand) {
+          const auto index = pb::hero_lanes * hand + lane;
+          require(same_bits(fold_pair[index], fold_lane[hand]) &&
+                      same_bits(worse_pair[index], worse_lane[hand]) &&
+                      same_bits(tied_pair[index], tied_lane[hand]) &&
+                      same_bits(better_pair[index], better_lane[hand]),
+                  "pair kernels equal the scalar kernels bit for bit");
+        }
+      }
+    }
+  }
+  ca::BoardHistory bad = random_board(random);
+  bad.river = bad.flop[0];
+  require(!river.assign(bad, resources.ranks).has_value(), "duplicate board card rejected");
+  std::cout << "river board and pair kernels: " << boards << " boards x " << patterns.size()
+            << " reach pairs bit-identical to the scalar kernels\n";
 }
 
 void test_all_in_kernel(const Resources &resources) {
@@ -570,6 +669,7 @@ int main(const int argc, char **argv) {
               << (resources.buckets ? "loaded" : "absent") << '\n';
     test_board_context(resources);
     test_kernels_against_reference(resources);
+    test_river_board_and_pair_kernels(resources);
     test_all_in_kernel(resources);
     test_traversal_against_pairwise(resources, "preflop_blueprint_hu10_reduced_v1.json", 2, true);
     test_traversal_against_pairwise(resources, "preflop_blueprint_hu10_full_v1.json", 1, false);

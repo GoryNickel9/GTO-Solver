@@ -6,13 +6,17 @@
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/kernels.hpp"
+#include "gtosd/preflop_blueprint/river_engine.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <emmintrin.h>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <thread>
 #include <utility>
@@ -384,8 +388,277 @@ struct BestResponseEvaluator::Impl {
 
 namespace {
 
+// Joint river pass of one flop group (RiverEngine::Joint). For every board of
+// a turn it evaluates each turn->river subtree once for both heroes and both
+// modes, and each turn or flop all-in runout with one pair sweep, then adds
+// the values to the leaf accumulators with the expressions of the reference
+// loop in evaluate_flop_group, board after board in the same order: every
+// accumulator entry receives the same additions of the same doubles, so the
+// flop values are bit-identical to the reference path.
+class JointRivers {
+public:
+  JointRivers(const BestResponseEvaluator::Impl &context, const Universe &flop_universe,
+              const std::vector<double> &flop_weight,
+              const std::array<NodeVectors, 2> &flop_leaf_reach,
+              std::array<std::array<NodeVectors, 2>, 2> &flop_leaf_values)
+      : context_(context), flop_universe_(flop_universe), flop_weight_(flop_weight),
+        flop_leaf_reach_(flop_leaf_reach), flop_leaf_values_(flop_leaf_values),
+        traversal_(*context.game, *context.average) {
+    tables_.catalog = context.resources.catalog;
+    tables_.flop = context.resources.flop;
+    tables_.turn = context.resources.turn;
+    tables_.river = context.resources.river;
+    tables_.class_rows = context.resources.class_rows;
+    tables_.history_rows = context.resources.history_rows;
+    const auto &nodes = context.game->nodes();
+    for (std::uint32_t node = 0; node < nodes.size(); ++node) {
+      const auto lanes = present_lanes(flop_leaf_reach, node);
+      if (lanes != 0U && nodes[node].kind == NodeKind::TerminalShowdown) {
+        flop_all_ins_.push_back({node, lanes});
+      }
+    }
+  }
+
+  // Adds the rivers of one turn to its leaves (river chance nodes and all-in
+  // runouts) and to the flop all-in runouts.
+  [[nodiscard]] bool accumulate_turn(const std::array<CardId, 3> &flop, const CardId turn,
+                                     const Universe &turn_universe,
+                                     const std::vector<double> &turn_weight,
+                                     const std::array<NodeVectors, 2> &turn_leaf_reach,
+                                     std::array<std::array<NodeVectors, 2>, 2> &turn_leaf_values,
+                                     const std::vector<const WeightedBoard *> &boards) {
+    // The prefix repeats the lookups that BoardContext::build makes with each
+    // board's own flop, which is in increasing order (any other order is
+    // rejected), and RiverBoard::assign requires the two flops to match:
+    // sorting keeps a group flop listed in another order working as in the
+    // reference.
+    std::array<CardId, 3> sorted_flop = flop;
+    std::sort(sorted_flop.begin(), sorted_flop.end());
+    if (!prefix_.assign(sorted_flop, turn, tables_)) {
+      return false;
+    }
+    const auto &game = *context_.game;
+    chance_leaves_.clear();
+    all_in_leaves_.clear();
+    for (std::uint32_t node = 0; node < game.nodes().size(); ++node) {
+      const auto lanes = present_lanes(turn_leaf_reach, node);
+      const auto kind = game.nodes()[node].kind;
+      if (lanes == 0U || kind == NodeKind::TerminalFold) {
+        continue;
+      }
+      (kind == NodeKind::Chance ? chance_leaves_ : all_in_leaves_).push_back({node, lanes});
+    }
+    for (const auto *board : boards) {
+      if (!board_.assign(board->history, *context_.resources.ranks, &prefix_)) {
+        return false;
+      }
+      prepare_board(turn_universe, turn_weight);
+      for (const auto &leaf : chance_leaves_) {
+        restrict_pair(turn_leaf_reach, leaf, turn_index_);
+        if (!traversal_.evaluate(game.edges_of(leaf.node)[0].child, board_, reach_, response_,
+                                 average_)) {
+          return false;
+        }
+        add_river_values(leaf, board->weight, turn_leaf_values);
+      }
+      for (const auto &leaf : all_in_leaves_) {
+        restrict_pair(turn_leaf_reach, leaf, turn_index_);
+        add_showdown_values(leaf, board->weight, turn_shares_, turn_leaf_values);
+      }
+      for (const auto &leaf : flop_all_ins_) {
+        restrict_pair(flop_leaf_reach_, leaf, flop_index_);
+        add_showdown_values(leaf, board->weight, flop_shares_, flop_leaf_values_);
+      }
+    }
+    return true;
+  }
+
+private:
+  // A leaf and the heroes (bit h for hero h) whose leaf vector exists: the
+  // reference visits the leaf for those heroes only.
+  struct Leaf {
+    std::uint32_t node{no_node};
+    unsigned lanes{0U};
+  };
+  // A live hand whose accumulator entry `index` the reference updates for the
+  // heroes in `lanes`, with each hero's denominator (universe weight times
+  // opponent count); unused lanes hold 1.0.
+  struct Share {
+    std::uint16_t hand{0U};
+    std::uint16_t index{no_hand};
+    unsigned lanes{0U};
+    std::array<double, hero_lanes> denominator{1.0, 1.0};
+  };
+
+  static unsigned present_lanes(const std::array<NodeVectors, 2> &leaf_reach,
+                                const std::size_t node) {
+    unsigned lanes = 0U;
+    for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+      if (!leaf_reach[hero][node].empty()) {
+        lanes |= 1U << hero;
+      }
+    }
+    return lanes;
+  }
+
+  // Board inputs of the reference loop: the universe index of every live
+  // hand, the opponent counts of both heroes (restrict_to_board of the
+  // allowed opponent hands, then fold_mass) and the accumulation shares.
+  void prepare_board(const Universe &turn_universe, const std::vector<double> &turn_weight) {
+    const auto combos = board_.combo_ids();
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+      turn_index_[hand] = turn_universe.index[combos[hand]];
+      flop_index_[hand] = flop_universe_.index[combos[hand]];
+      const auto preflop_index = context_.preflop.index[combos[hand]];
+      for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+        reach_[hero_lanes * hand + hero] =
+            preflop_index == no_hand ? 0.0 : context_.allowed[1U - hero][preflop_index];
+      }
+    }
+    fold_mass_pair(board_, reach_, river_count_);
+    collect_shares(turn_index_, turn_weight, turn_shares_);
+    collect_shares(flop_index_, flop_weight_, flop_shares_);
+  }
+
+  // The hands the reference skips: outside the universe, without opponent
+  // mass or without universe weight.
+  void collect_shares(const std::array<std::uint16_t, live_hand_count> &index,
+                      const std::vector<double> &weight, std::vector<Share> &shares) const {
+    shares.clear();
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+      if (index[hand] == no_hand) {
+        continue;
+      }
+      Share share;
+      share.hand = static_cast<std::uint16_t>(hand);
+      share.index = index[hand];
+      const double universe_weight = weight[index[hand]];
+      for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+        const double count = river_count_[hero_lanes * hand + hero];
+        if (count <= 0.0 || universe_weight <= 0.0) {
+          continue;
+        }
+        share.lanes |= 1U << hero;
+        share.denominator[hero] = universe_weight * count;
+      }
+      if (share.lanes != 0U) {
+        shares.push_back(share);
+      }
+    }
+  }
+
+  // restrict_to_board of both heroes' leaf reach, in the pair layout; a hero
+  // without the leaf gets zero reach and no accumulation.
+  void restrict_pair(const std::array<NodeVectors, 2> &leaf_reach, const Leaf &leaf,
+                     const std::array<std::uint16_t, live_hand_count> &index) {
+    for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+      if (((leaf.lanes >> hero) & 1U) == 0U) {
+        for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+          reach_[hero_lanes * hand + hero] = 0.0;
+        }
+        continue;
+      }
+      const auto &source = leaf_reach[hero][leaf.node];
+      for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+        reach_[hero_lanes * hand + hero] = index[hand] == no_hand ? 0.0 : source[index[hand]];
+      }
+    }
+  }
+
+  // River chance leaf: target[index] += value * weight / denominator, per
+  // mode, with the river values of the joint traversal.
+  void add_river_values(const Leaf &leaf, const double board_weight,
+                        std::array<std::array<NodeVectors, 2>, 2> &leaf_values) {
+    const __m128d weight = _mm_set1_pd(board_weight);
+    std::array<double, hero_lanes> response{};
+    std::array<double, hero_lanes> average{};
+    for (const auto &share : turn_shares_) {
+      const unsigned lanes = share.lanes & leaf.lanes;
+      if (lanes == 0U) {
+        continue;
+      }
+      const std::size_t offset = hero_lanes * share.hand;
+      const __m128d denominator = _mm_loadu_pd(share.denominator.data());
+      _mm_storeu_pd(response.data(),
+                    _mm_div_pd(_mm_mul_pd(_mm_loadu_pd(response_.data() + offset), weight),
+                               denominator));
+      _mm_storeu_pd(average.data(),
+                    _mm_div_pd(_mm_mul_pd(_mm_loadu_pd(average_.data() + offset), weight),
+                               denominator));
+      for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+        if (((lanes >> hero) & 1U) != 0U) {
+          leaf_values[hero][response_mode][leaf.node][share.index] += response[hero];
+          leaf_values[hero][average_mode][leaf.node][share.index] += average[hero];
+        }
+      }
+    }
+  }
+
+  // Turn or flop all-in runout: payoffs[0] * worse + payoffs[1] * tied +
+  // payoffs[2] * better, weighted as a river value and added to both modes.
+  void add_showdown_values(const Leaf &leaf, const double board_weight,
+                           const std::vector<Share> &shares,
+                           std::array<std::array<NodeVectors, 2>, 2> &leaf_values) {
+    showdown_masses_pair(board_, reach_, worse_, tied_, better_);
+    const auto &game = *context_.game;
+    std::array<std::array<double, 3>, hero_lanes> payoffs{};
+    for (std::uint8_t hero = 0; hero < hero_lanes; ++hero) {
+      terminal_payoff(game, game.nodes()[leaf.node], hero, payoffs[hero]);
+    }
+    const __m128d win = _mm_set_pd(payoffs[1][0], payoffs[0][0]);
+    const __m128d tie = _mm_set_pd(payoffs[1][1], payoffs[0][1]);
+    const __m128d lose = _mm_set_pd(payoffs[1][2], payoffs[0][2]);
+    const __m128d weight = _mm_set1_pd(board_weight);
+    std::array<double, hero_lanes> share_value{};
+    for (const auto &share : shares) {
+      const unsigned lanes = share.lanes & leaf.lanes;
+      if (lanes == 0U) {
+        continue;
+      }
+      const std::size_t offset = hero_lanes * share.hand;
+      const __m128d value =
+          _mm_add_pd(_mm_add_pd(_mm_mul_pd(win, _mm_loadu_pd(worse_.data() + offset)),
+                                _mm_mul_pd(tie, _mm_loadu_pd(tied_.data() + offset))),
+                     _mm_mul_pd(lose, _mm_loadu_pd(better_.data() + offset)));
+      _mm_storeu_pd(share_value.data(),
+                    _mm_div_pd(_mm_mul_pd(value, weight), _mm_loadu_pd(share.denominator.data())));
+      for (std::size_t hero = 0; hero < hero_lanes; ++hero) {
+        if (((lanes >> hero) & 1U) != 0U) {
+          leaf_values[hero][response_mode][leaf.node][share.index] += share_value[hero];
+          leaf_values[hero][average_mode][leaf.node][share.index] += share_value[hero];
+        }
+      }
+    }
+  }
+
+  const BestResponseEvaluator::Impl &context_;
+  const Universe &flop_universe_;
+  const std::vector<double> &flop_weight_;
+  const std::array<NodeVectors, 2> &flop_leaf_reach_;
+  std::array<std::array<NodeVectors, 2>, 2> &flop_leaf_values_;
+  AbstractionTables tables_{};
+  RiverPrefix prefix_;
+  RiverBoard board_;
+  JointRiverTraversal traversal_;
+  std::vector<Leaf> flop_all_ins_;
+  std::vector<Leaf> chance_leaves_;
+  std::vector<Leaf> all_in_leaves_;
+  std::array<std::uint16_t, live_hand_count> turn_index_{};
+  std::array<std::uint16_t, live_hand_count> flop_index_{};
+  std::vector<Share> turn_shares_;
+  std::vector<Share> flop_shares_;
+  std::array<double, pair_values> reach_{};
+  std::array<double, pair_values> response_{};
+  std::array<double, pair_values> average_{};
+  std::array<double, pair_values> worse_{};
+  std::array<double, pair_values> tied_{};
+  std::array<double, pair_values> better_{};
+  std::array<double, pair_values> river_count_{};
+};
+
 FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const FlopGroup &group,
-                               bool &ok, NodeProbe *probe = nullptr) {
+                               const RiverEngine river_engine, bool &ok,
+                               NodeProbe *probe = nullptr) {
   const auto &game = *context.game;
   const auto &resources = context.resources;
   const auto node_count = game.nodes().size();
@@ -482,6 +755,14 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     }
   }
 
+  // Joint river engine: all the rivers of a turn in one call, both heroes and
+  // both modes at once; the reference loop below then visits no board.
+  std::unique_ptr<JointRivers> joint_rivers;
+  if (river_engine == RiverEngine::Joint) {
+    joint_rivers = std::make_unique<JointRivers>(context, flop_universe, flop_weight,
+                                                 flop_leaf_reach, flop_leaf_values);
+  }
+  const std::vector<const WeightedBoard *> no_boards;
   std::optional<ValueTraversal> traversal;
   std::array<double, live_hand_count> reach465{};
   std::array<double, live_hand_count> values465{};
@@ -560,6 +841,13 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     }
 
     // Rivers: river-street best responses and showdown terminals.
+    if (joint_rivers &&
+        !joint_rivers->accumulate_turn(group.flop, turn, turn_universe, turn_weight,
+                                       turn_leaf_reach, turn_leaf_values, turn_boards)) {
+      ok = false;
+      return result;
+    }
+    const auto &reference_boards = joint_rivers ? no_boards : turn_boards;
     AbstractionTables tables;
     tables.catalog = resources.catalog;
     tables.flop = resources.flop;
@@ -567,7 +855,7 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     tables.river = resources.river;
     tables.class_rows = resources.class_rows;
     tables.history_rows = resources.history_rows;
-    for (const auto *board : turn_boards) {
+    for (const auto *board : reference_boards) {
       const auto built = BoardContext::build(board->history, *resources.ranks, &tables);
       if (!built) {
         ok = false;
@@ -700,6 +988,16 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
 }
 
 } // namespace
+
+const char *river_engine_name(const RiverEngine engine) noexcept {
+  switch (engine) {
+  case RiverEngine::Joint:
+    return "joint";
+  case RiverEngine::Reference:
+    return "reference";
+  }
+  return "unknown";
+}
 
 FlopGroup full_runouts(const std::array<CardId, 3> &flop, const double weight) {
   FlopGroup group;
@@ -852,7 +1150,7 @@ Result<FlopValues, KernelError> BestResponseEvaluator::evaluate_flop(const FlopG
     return Outcome::failure(KernelError::MissingTable);
   }
   bool ok = true;
-  auto values = evaluate_flop_group(*impl_, group, ok);
+  auto values = evaluate_flop_group(*impl_, group, river_engine_, ok);
   if (!ok) {
     return Outcome::failure(KernelError::InvalidInput);
   }
@@ -1211,7 +1509,7 @@ Result<NodeProbe, KernelError> BestResponseEvaluator::probe_node(const FlopGroup
   probe.node = node;
   probe.hero = hero;
   bool ok = true;
-  static_cast<void>(evaluate_flop_group(*impl_, group, ok, &probe));
+  static_cast<void>(evaluate_flop_group(*impl_, group, river_engine_, ok, &probe));
   if (!ok) {
     return Outcome::failure(KernelError::InvalidInput);
   }
@@ -1658,6 +1956,7 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
   if (!evaluator) {
     return Outcome::failure(evaluator.error());
   }
+  evaluator.value().set_river_engine(options.river_engine);
   auto values = evaluate_flops(evaluator.value(), groups, options.threads);
   if (!values) {
     return Outcome::failure(values.error());

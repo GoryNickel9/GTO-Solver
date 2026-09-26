@@ -112,6 +112,14 @@ int main(const int argc, char **argv) {
         options.sample_seed = parse_unsigned(value);
       } else if (name == "--target-pot-percent") {
         target_pot_percent = parse_decimal(value);
+      } else if (name == "--river-engine") {
+        if (value == "joint") {
+          options.river_engine = pb::RiverEngine::Joint;
+        } else if (value == "reference") {
+          options.river_engine = pb::RiverEngine::Reference;
+        } else {
+          throw std::runtime_error("--river-engine must be joint or reference");
+        }
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -244,6 +252,7 @@ int main(const int argc, char **argv) {
               << "\", \"policy_source\": \"" << policy_source
               << "\", \"canonical_flops\": " << catalog.flops().size()
               << ", \"threads\": " << options.threads << ", \"chunk\": " << options.chunk_flops
+              << ", \"river_engine\": \"" << pb::river_engine_name(options.river_engine) << "\""
               << ", \"flop_limit\": " << options.flop_limit
               << ", \"sample_flops\": " << options.sample_flops << ", \"preparation_seconds\": "
               << preparation_seconds << ", \"process_after_load\": {\"working_set_bytes\": "
