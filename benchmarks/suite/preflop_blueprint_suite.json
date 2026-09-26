@@ -327,6 +327,48 @@
         "float32"
       ]
     },
+    "cand-l-flop500-river12-float32": {
+      "description": "Candidata L (fase 3): flop a 500 bucket con river cap 12 e storage float32 (HU20 7,25 GiB, HU30/HU40 7,46 GiB stimati dal censimento esatto, tetto 7,94 / 8,18); confronto con K (river cap 16) per separare l'effetto del flop da quello del river. Deviazione dal protocollo comune.",
+      "abstraction": {
+        "buckets_dir": "out/preflop_blueprint_buckets_500_500_1000",
+        "history_rows": "out/phase3/history_f500_cap12.bin",
+        "history_rows_fingerprint": "fnv1a64:8cf6e9699bb68e4c",
+        "history_rows_layout": "flop 11801, turn 267785, river 2883856 righe (tabella flop a 500 bucket, turn 500 e river 1000 invariati; river raggruppato entro il genitore turn con al massimo 12 figli)",
+        "sha256": {
+          "out/preflop_blueprint_resources/rank_table_v1.bin": "fba27febe3ea8a05e20c88480deb7dc183f9f6b1545fa89ca3b8a784ab215473",
+          "out/preflop_blueprint_resources/preflop_all_in_v1.bin": "66e77d0c6489039130e53fa4f8334aa3471cdc206f96e34ee8a5a96b156f132a",
+          "out/preflop_blueprint_buckets_500_500_1000/flop_buckets_v1.bin": "53f52fc3ce7c6ef738cad2dc8924d32da905ea32f26e5642fe37482993c62d3a",
+          "out/preflop_blueprint_buckets_500_500_1000/turn_buckets_v1.bin": "fa2b75694f7b9ef362f0bcfd8ba3f939dc517838cb4a0e52b3b1f799e5b31749",
+          "out/preflop_blueprint_buckets_500_500_1000/river_buckets_v1.bin": "52105241becbb28edaa1de5371c07a9684f0eac016b15088add528064ef2d577",
+          "out/phase3/history_f500_cap12.bin": "f52b258ae28fa2e5873883a1548d4e3099caeb972323bbb821f48b38386f13c9"
+        }
+      },
+      "train_arguments": [
+        "--table-storage",
+        "float32"
+      ]
+    },
+    "ref-l-32k": {
+      "description": "Run di riferimento a 32.000 iterazioni con l'astrazione di L (flop 500, river cap 12, float32).",
+      "abstraction": {
+        "buckets_dir": "out/preflop_blueprint_buckets_500_500_1000",
+        "history_rows": "out/phase3/history_f500_cap12.bin",
+        "history_rows_fingerprint": "fnv1a64:8cf6e9699bb68e4c",
+        "history_rows_layout": "flop 11801, turn 267785, river 2883856 righe (tabella flop a 500 bucket, turn 500 e river 1000 invariati; river raggruppato entro il genitore turn con al massimo 12 figli)",
+        "sha256": {
+          "out/preflop_blueprint_resources/rank_table_v1.bin": "fba27febe3ea8a05e20c88480deb7dc183f9f6b1545fa89ca3b8a784ab215473",
+          "out/preflop_blueprint_resources/preflop_all_in_v1.bin": "66e77d0c6489039130e53fa4f8334aa3471cdc206f96e34ee8a5a96b156f132a",
+          "out/preflop_blueprint_buckets_500_500_1000/flop_buckets_v1.bin": "53f52fc3ce7c6ef738cad2dc8924d32da905ea32f26e5642fe37482993c62d3a",
+          "out/preflop_blueprint_buckets_500_500_1000/turn_buckets_v1.bin": "fa2b75694f7b9ef362f0bcfd8ba3f939dc517838cb4a0e52b3b1f799e5b31749",
+          "out/preflop_blueprint_buckets_500_500_1000/river_buckets_v1.bin": "52105241becbb28edaa1de5371c07a9684f0eac016b15088add528064ef2d577",
+          "out/phase3/history_f500_cap12.bin": "f52b258ae28fa2e5873883a1548d4e3099caeb972323bbb821f48b38386f13c9"
+        }
+      },
+      "train_arguments": [
+        "--table-storage",
+        "float32"
+      ]
+    },
     "ref-h-32k": {
       "description": "Run di riferimento (deviazione dal protocollo: 32.000 iterazioni) con gli eseguibili di H: curva di convergenza dell'astrazione history7 su HU30/HU40 per le fasi 3 e 4. Non entra nei confronti a lavoro fisso.",
       "train_arguments": [
