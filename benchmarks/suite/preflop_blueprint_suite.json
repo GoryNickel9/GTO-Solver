@@ -280,6 +280,53 @@
         "double"
       ]
     },
+    "cand-j-river-joint": {
+      "description": "Candidata J (linea A, tempo per certificare): certificatore con motore river congiunto (entrambi gli eroi e le due modalita' in una sola traversata per sottoalbero, policy copiata per sottoalbero, kernel SSE2 a due corsie, contesto di board solo river con cursore di storia per turn); certificato bit-identico al motore di riferimento; trainer di H invariato.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
+    "cand-k-river16-float32": {
+      "description": "Candidata K (fase 3, astrazione piu' fine nel tetto di memoria): trainer e certificatore di J con la mappa di storia a cap river 16 (2,88 milioni di righe river per nodo, +87 %) e storage float32; stima di memoria HU20 7,19 GiB, HU30/HU40 7,40 GiB (tetto 7,94 / 8,18). Deviazione dal protocollo comune (astrazione diversa): confronto solo per qualita' e tempo per certificare.",
+      "abstraction": {
+        "history_rows": "out/phase3/history_f200_cap16.bin",
+        "history_rows_fingerprint": "fnv1a64:bbb89834017b028e",
+        "history_rows_layout": "flop 7585, turn 222865, river 2884576 righe (come history7 ma river raggruppato entro il genitore turn con al massimo 16 figli)",
+        "sha256": {
+          "out/preflop_blueprint_resources/rank_table_v1.bin": "fba27febe3ea8a05e20c88480deb7dc183f9f6b1545fa89ca3b8a784ab215473",
+          "out/preflop_blueprint_resources/preflop_all_in_v1.bin": "66e77d0c6489039130e53fa4f8334aa3471cdc206f96e34ee8a5a96b156f132a",
+          "out/preflop_blueprint_buckets_200_500_1000/flop_buckets_v1.bin": "66f2ae4ddc61c31acf2d65fc4af402542e2cc049a44547c9b6d646a0f708f902",
+          "out/preflop_blueprint_buckets_200_500_1000/turn_buckets_v1.bin": "fa2b75694f7b9ef362f0bcfd8ba3f939dc517838cb4a0e52b3b1f799e5b31749",
+          "out/preflop_blueprint_buckets_200_500_1000/river_buckets_v1.bin": "52105241becbb28edaa1de5371c07a9684f0eac016b15088add528064ef2d577",
+          "out/phase3/history_f200_cap16.bin": "0c95f7eafc1fb337646efc056f6eb976e469c3e8cc7c26f64491ee84e2a995f9"
+        }
+      },
+      "train_arguments": [
+        "--table-storage",
+        "float32"
+      ]
+    },
+    "ref-k-32k": {
+      "description": "Run di riferimento a 32.000 iterazioni con l'astrazione di K (river cap 16, float32): convergenza di HU30/HU40 con il river piu' fine.",
+      "abstraction": {
+        "history_rows": "out/phase3/history_f200_cap16.bin",
+        "history_rows_fingerprint": "fnv1a64:bbb89834017b028e",
+        "history_rows_layout": "flop 7585, turn 222865, river 2884576 righe (come history7 ma river raggruppato entro il genitore turn con al massimo 16 figli)",
+        "sha256": {
+          "out/preflop_blueprint_resources/rank_table_v1.bin": "fba27febe3ea8a05e20c88480deb7dc183f9f6b1545fa89ca3b8a784ab215473",
+          "out/preflop_blueprint_resources/preflop_all_in_v1.bin": "66e77d0c6489039130e53fa4f8334aa3471cdc206f96e34ee8a5a96b156f132a",
+          "out/preflop_blueprint_buckets_200_500_1000/flop_buckets_v1.bin": "66f2ae4ddc61c31acf2d65fc4af402542e2cc049a44547c9b6d646a0f708f902",
+          "out/preflop_blueprint_buckets_200_500_1000/turn_buckets_v1.bin": "fa2b75694f7b9ef362f0bcfd8ba3f939dc517838cb4a0e52b3b1f799e5b31749",
+          "out/preflop_blueprint_buckets_200_500_1000/river_buckets_v1.bin": "52105241becbb28edaa1de5371c07a9684f0eac016b15088add528064ef2d577",
+          "out/phase3/history_f200_cap16.bin": "0c95f7eafc1fb337646efc056f6eb976e469c3e8cc7c26f64491ee84e2a995f9"
+        }
+      },
+      "train_arguments": [
+        "--table-storage",
+        "float32"
+      ]
+    },
     "ref-h-32k": {
       "description": "Run di riferimento (deviazione dal protocollo: 32.000 iterazioni) con gli eseguibili di H: curva di convergenza dell'astrazione history7 su HU30/HU40 per le fasi 3 e 4. Non entra nei confronti a lavoro fisso.",
       "train_arguments": [

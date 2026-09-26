@@ -544,10 +544,14 @@ def cmd_run(arguments: argparse.Namespace) -> int:
         print(f"output directory exists: {out_dir} (use --overwrite)")
         return 2
     out_dir.mkdir(parents=True, exist_ok=True)
-    abstraction = common["abstraction"]
+    version_spec = suite.get("versions", {}).get(arguments.version, {})
+    # A version may replace parts of the shared abstraction (research versions of phase 3):
+    # the override is recorded in the manifest and marks the run as deviating from the
+    # common protocol, so it never enters a fixed-work comparison.
+    abstraction_override = version_spec.get("abstraction", {})
+    abstraction = {**common["abstraction"], **abstraction_override}
     iterations = arguments.iterations or common["trainer"]["iterations"]
     train_args = list(common["trainer"]["arguments"])
-    version_spec = suite.get("versions", {}).get(arguments.version, {})
     version_args = list(version_spec.get("train_arguments", []))
     train_args += version_args
     if arguments.iterations:
@@ -572,9 +576,10 @@ def cmd_run(arguments: argparse.Namespace) -> int:
                                                           "postflop_sizes")},
         "repetition": arguments.rep,
         "protocol_iterations": iterations,
-        "protocol_deviation": bool(arguments.iterations or extra),
+        "protocol_deviation": bool(arguments.iterations or extra or abstraction_override),
         "version_train_arguments": version_args,
         "version_description": version_spec.get("description", ""),
+        "abstraction_override": abstraction_override,
         "fixture": {"path": str(fixture_path.relative_to(ROOT)).replace("\\", "/"),
                     "sha256": sha256_file(fixture_path)},
         "executables": {"train": {"path": str(train_exe), "sha256": sha256_file(train_exe),

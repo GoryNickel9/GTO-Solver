@@ -538,6 +538,34 @@ certificatore piu' veloce del 3,4 % (877 contro 908 s, 7,2 contro 6,9 core). End
 circa 43-44 stimati a 6,4 core. HU40, HU30 e HU10 appaiati nella notte del 26 settembre
 (00:00-06:30, macchina libera): da aggiungere qui.
 
+### 5.4.9 Fase 3: censimento delle astrazioni candidate (2026-09-26)
+
+Tre mappe di righe di storia ricostruite in coda (37 s l'una, strumento `history_rows`, formato
+history-v1) e memoria stimata con la formula calibrata su H (16, 12 o 8 byte per cella secondo lo
+storage, 2 byte per riga di timestamp, 0,21 GiB fissi; certificatore 8 byte per cella piu' 0,2):
+
+| Mappa | Righe flop / turn / river per nodo | Scenario | Celle | double | mixed | float32 | Certificatore | Tetto |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| history7 (flop 200, cap 7) | 7.585 / 222.865 / 1.539.270 | HU20 | 467 M | 7,56 | 5,82 | 4,08 | 3,68 | 7,94 |
+| history7 | | HU30/HU40 | 481 M | 7,78 | 5,99 | 4,19 | 3,79 | 8,18 |
+| flop 500, cap 7 | 11.801 / 267.785 / 1.845.609 | HU20 | 560 M | 9,02 | 6,93 | 4,85 | 4,38 | 7,94 |
+| flop 500, cap 7 | | HU30/HU40 | 577 M | 9,29 | 7,14 | 4,99 | 4,50 | 8,18 |
+| flop 500, cap 16 | 11.801 / 267.785 / 3.405.178 | HU20 | 997 M | 15,89 | 12,18 | 8,46 | 7,63 | 7,94 |
+| flop 500, cap 16 | | HU30/HU40 | 1.027 M | 16,36 | 12,53 | 8,71 | 7,85 | 8,18 |
+| flop 200, cap 16 | 7.585 / 222.865 / 2.884.576 | HU20 | 844 M | 13,48 | 10,34 | 7,19 | 6,49 | 7,94 |
+| flop 200, cap 16 | | HU30/HU40 | 869 M | 13,87 | 10,64 | 7,40 | 6,67 | 8,18 |
+
+Correzioni alla roadmap della sezione 5.4: il flop a 500 bucket non ha costo nullo (le chiavi di
+turn e river includono il bucket flop: +20 % di righe river, +20 % di celle) e sta nel tetto solo
+con storage mixed o float32; il river a cap 23 non sta nel tetto neppure in float32 (stima
+8,63 GiB su HU30/HU40 a flop 200, sezione 5.4.7 e memoria del 26 settembre); l'allocazione sparsa
+e' esclusa (99 % delle righe river toccate a 16.000 iterazioni). La prima candidata della fase
+3 e' quindi K = flop 200, river cap 16, storage float32 (`cand-k-river16-float32`: HU20 7,19,
+HU30/HU40 7,40 GiB stimati), con la mappa `out/phase3/history_f200_cap16.bin`
+(fingerprint bbb89834017b028e) dichiarata come override di astrazione della versione nella
+suite (il run e' marcato come deviazione dal protocollo comune e non entra nei confronti a
+lavoro fisso). Il flop a 500 con cap 7 in mixed (6,93 / 7,14 GiB) e' la seconda opzione.
+
 ## 6. Procedura di riproduzione
 
 Vedi la sezione 8 del protocollo. Le build delle versioni: baseline dall'HEAD pulito
