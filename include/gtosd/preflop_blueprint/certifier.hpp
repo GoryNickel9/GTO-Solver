@@ -53,6 +53,14 @@ struct CertifierOptions {
   // River path of the flop evaluations; the certificate is the same bit for
   // bit with either engine.
   RiverEngine river_engine{RiverEngine::Joint};
+  // First street on which the best responder may deviate (street-restricted
+  // diagnostic, best_response.hpp); Preflop is the full best response. The
+  // exact, partial and sampled passes all support it, and the certificate
+  // then reports the restricted response in its best-response fields with a
+  // "deviation_from" entry. The state file of a restricted pass carries the
+  // restriction in its header and the restricted values in its records, so a
+  // pass resumes only from a state of the same restriction.
+  DeviationStreet deviation_from{DeviationStreet::Preflop};
 };
 
 struct Certificate {

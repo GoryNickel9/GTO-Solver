@@ -857,6 +857,53 @@ void test_lazy_discount_epoch(const Resources &resources) {
           "lazy-epoch rejects an epoch above 65535");
 }
 
+// Street-restricted physical best response (deviation_from) against the same
+// lossless game: the responder's information sets on streets before the first
+// deviating one pass to the other player with their lifted strategy (they stay
+// decisions, so exact zeros need no chance-node rewrite), and the exact best
+// response over the remaining ones is the restricted response.
+void check_street_restrictions(const pb::CompiledGame &game, const pb::BucketPolicy &average,
+                               const gtosd::FiniteGame &physical,
+                               const gtosd::StrategyProfile &profile,
+                               const pb::BestResponseResources &response_resources,
+                               const std::vector<pb::FlopGroup> &groups,
+                               const pb::BestResponseOptions &base_options) {
+  const auto street_of = [&](const std::string &key) {
+    const auto begin = key.find("|n") + 2;
+    const auto end = key.find('|', begin);
+    const auto compiled_node =
+        static_cast<std::uint32_t>(std::stoul(key.substr(begin, end - begin)));
+    return game.nodes()[compiled_node].street;
+  };
+  for (const auto deviation_from :
+       {pb::DeviationStreet::Preflop, pb::DeviationStreet::Flop, pb::DeviationStreet::Turn,
+        pb::DeviationStreet::River, pb::DeviationStreet::None}) {
+    auto options = base_options;
+    options.deviation_from = deviation_from;
+    const auto report =
+        pb::evaluate_best_response(game, average, response_resources, groups, options);
+    require(report.has_value(), "street-restricted physical best response evaluates");
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      const auto other = static_cast<std::uint8_t>(1U - player);
+      auto restricted_game = physical;
+      auto restricted_profile = profile;
+      for (auto &node : restricted_game.nodes) {
+        if (node.kind == gtosd::GameNodeKind::Decision && node.player == player &&
+            static_cast<unsigned>(street_of(node.information_set)) <
+                static_cast<unsigned>(deviation_from)) {
+          node.player = other;
+          restricted_profile.at(node.information_set).player = other;
+        }
+      }
+      const auto oracle = gtosd::exact_best_response(restricted_game, restricted_profile, player);
+      require(oracle.has_value(), "street-restricted lossless best response computes");
+      require(close(report.value().best_response[player], oracle.value().value, 1e-9),
+              "street-restricted physical best response equals the lossless FiniteGame within "
+              "1e-9");
+    }
+  }
+}
+
 // The physical best response of the lifted strategy: the responder decides
 // per hand and per public prefix, never per full board. On the reduced game
 // the exact value is the best response of the lossless FiniteGame (information
@@ -957,6 +1004,10 @@ void test_physical_best_response(const Resources &resources, const int stack = 0
   }
   require(close(report.value().nashconv, oracle.value().nash_conv, 1e-9),
           "nashconv equals the lossless FiniteGame");
+  if (stack == 0 && !overlapping_ranges) {
+    check_street_restrictions(game.value(), average, physical, lossless.profile(),
+                              response_resources, pb::group_by_flop(weighted), options);
+  }
 
   // The trainer reports the same exact evaluation on its board list.
   const auto estimate = trainer.value()->estimate_exploitability(0U);

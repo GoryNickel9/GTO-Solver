@@ -2,6 +2,9 @@
 // response of the physical game against a bucket policy over all canonical
 // flops with their runouts, resumable by chunks; or the sampled estimator of
 // P6 as a separate command (--sample-flops). Writes the certificate JSON.
+// --deviation-from preflop|flop|turn|river|none restricts the best responder
+// to the streets from the given one on (a diagnostic; preflop is the default
+// full best response, none never deviates and gains exactly zero).
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/bucket_tables.hpp"
 #include "gtosd/card_abstraction/canonical_boards.hpp"
@@ -120,6 +123,12 @@ int main(const int argc, char **argv) {
         } else {
           throw std::runtime_error("--river-engine must be joint or reference");
         }
+      } else if (name == "--deviation-from") {
+        const auto street = pb::parse_deviation_street(value);
+        if (!street) {
+          throw std::runtime_error("--deviation-from must be preflop, flop, turn, river or none");
+        }
+        options.deviation_from = *street;
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -253,6 +262,8 @@ int main(const int argc, char **argv) {
               << "\", \"canonical_flops\": " << catalog.flops().size()
               << ", \"threads\": " << options.threads << ", \"chunk\": " << options.chunk_flops
               << ", \"river_engine\": \"" << pb::river_engine_name(options.river_engine) << "\""
+              << ", \"deviation_from\": \"" << pb::deviation_street_name(options.deviation_from)
+              << "\""
               << ", \"flop_limit\": " << options.flop_limit
               << ", \"sample_flops\": " << options.sample_flops << ", \"preparation_seconds\": "
               << preparation_seconds << ", \"process_after_load\": {\"working_set_bytes\": "
@@ -281,7 +292,10 @@ int main(const int argc, char **argv) {
         0.01 * target_pot_percent * certificate.value().initial_pot_antes;
     json["target_pot_percent"] = target_pot_percent;
     json["target_antes"] = target_antes;
+    // A street-restricted gain bounds the exploitability from below only, so a
+    // restricted certificate never passes the target.
     json["passes_target"] = certificate.value().exact && !certificate.value().partial &&
+                            options.deviation_from == pb::DeviationStreet::Preflop &&
                             certificate.value().report.max_gain <= target_antes;
     {
       const auto peaks = pb::process_memory_peaks();
@@ -305,7 +319,11 @@ int main(const int argc, char **argv) {
     std::cout << json.dump(2) << '\n';
     const auto &result = certificate.value();
     std::cout << "PREFLOP_BLUEPRINT_CERTIFY="
-              << (result.sampled ? "SAMPLED" : result.partial ? "PARTIAL" : "EXACT") << '\n';
+              << (result.sampled ? "SAMPLED" : result.partial ? "PARTIAL" : "EXACT");
+    if (result.report.deviation_from != pb::DeviationStreet::Preflop) {
+      std::cout << " deviation_from=" << pb::deviation_street_name(result.report.deviation_from);
+    }
+    std::cout << '\n';
     return 0;
   } catch (const std::exception &error) {
     std::cerr << "PREFLOP_BLUEPRINT_CERTIFY=FAIL " << error.what() << '\n';

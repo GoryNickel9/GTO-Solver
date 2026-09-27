@@ -39,6 +39,22 @@ std::array<std::uint8_t, 2> cards_of(const std::uint16_t combo) {
   return ca::combo_table().cards[combo];
 }
 
+static_assert(
+    static_cast<unsigned>(DeviationStreet::Preflop) == static_cast<unsigned>(Street::Preflop) &&
+        static_cast<unsigned>(DeviationStreet::Flop) == static_cast<unsigned>(Street::Flop) &&
+        static_cast<unsigned>(DeviationStreet::Turn) == static_cast<unsigned>(Street::Turn) &&
+        static_cast<unsigned>(DeviationStreet::River) == static_cast<unsigned>(Street::River) &&
+        static_cast<unsigned>(DeviationStreet::None) > static_cast<unsigned>(Street::River),
+    "deviation streets follow the street order, None after the river");
+
+// Rule of the street-restricted responder at its own decisions on `street`:
+// the maximum (response_mode) from its first deviating street on, the average
+// strategy (average_mode) before it.
+std::size_t street_rule(const DeviationStreet deviation_from, const Street street) noexcept {
+  return static_cast<unsigned>(street) >= static_cast<unsigned>(deviation_from) ? response_mode
+                                                                                 : average_mode;
+}
+
 // Live combos for a board prefix with their policy rows at one street.
 struct Universe {
   std::vector<std::uint16_t> combos;
@@ -657,7 +673,8 @@ private:
 };
 
 FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const FlopGroup &group,
-                               const RiverEngine river_engine, bool &ok,
+                               const RiverEngine river_engine,
+                               const DeviationStreet deviation_from, bool &ok,
                                NodeProbe *probe = nullptr) {
   const auto &game = *context.game;
   const auto &resources = context.resources;
@@ -750,6 +767,29 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
             opponent_count[hand] > 0.0 ? payoff * disjoint_mass[hand] / opponent_count[hand] : 0.0;
         for (auto mode : {response_mode, average_mode}) {
           flop_leaf_values[hero][mode][node][hand] = value;
+        }
+      }
+    }
+  }
+
+  // Street-restricted response: a third set of values built from the leaves
+  // of the two modes, never changing them. The river values it needs are the
+  // response ones (the average ones for None), which both river engines
+  // already compute; fold and all-in leaves are equal in both modes. Its flop
+  // chance leaves accumulate the restricted turn values below, with the same
+  // expression and order as the two modes, so a restriction whose rules
+  // coincide with a mode (Flop, None) reproduces that mode bit for bit.
+  const bool street_restricted = deviation_from != DeviationStreet::Preflop;
+  const auto river_rule = street_rule(deviation_from, Street::River);
+  const auto turn_rule = street_rule(deviation_from, Street::Turn);
+  const auto flop_rule = street_rule(deviation_from, Street::Flop);
+  std::array<NodeVectors, 2> flop_restricted_leaves{};
+  if (street_restricted) {
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      flop_restricted_leaves[hero].assign(node_count, {});
+      for (std::size_t node = 0; node < node_count; ++node) {
+        if (!flop_leaf_reach[hero][node].empty() && game.nodes()[node].kind == NodeKind::Chance) {
+          flop_restricted_leaves[hero][node].assign(flop_universe.size(), 0.0);
         }
       }
     }
@@ -965,6 +1005,28 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
         }
       }
     }
+    // Restricted turn values: the river leaves of the river rule, the turn
+    // rule at the hero's turn decisions.
+    if (street_restricted) {
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        for (std::size_t node = 0; node < node_count; ++node) {
+          if (flop_leaf_reach[hero][node].empty() || game.nodes()[node].kind != NodeKind::Chance) {
+            continue;
+          }
+          evaluator.value(game.edges_of(static_cast<std::uint32_t>(node))[0].child, turn_universe,
+                          hero, turn_rule, turn_leaf_values[hero][river_rule], turn_values,
+                          nullptr);
+          auto &target = flop_restricted_leaves[hero][node];
+          for (std::size_t hand = 0; hand < turn_universe.size(); ++hand) {
+            const auto index = flop_universe.index[turn_universe.combos[hand]];
+            if (index == no_hand || flop_weight[index] <= 0.0) {
+              continue;
+            }
+            target[index] += turn_values[hand] * turn_weight[hand] / flop_weight[index];
+          }
+        }
+      }
+    }
   }
 
   // Flop street values per entry.
@@ -976,6 +1038,29 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
       for (std::size_t entry = 0; entry < context.entries.size(); ++entry) {
         evaluator.value(game.edges_of(context.entries[entry])[0].child, flop_universe, hero, mode,
                         flop_leaf_values[hero][mode], flop_values, nullptr);
+        auto &target = per_entry[entry];
+        target.assign(combo_total, 0.0);
+        for (std::size_t hand = 0; hand < flop_universe.size(); ++hand) {
+          target[flop_universe.combos[hand]] = flop_values[hand];
+        }
+      }
+    }
+  }
+  // Restricted entry values: the flop fold and all-in leaves of the response
+  // set (equal in both modes), the flop rule at the hero's flop decisions.
+  if (street_restricted) {
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (std::size_t node = 0; node < node_count; ++node) {
+        if (game.nodes()[node].kind != NodeKind::Chance &&
+            !flop_leaf_values[hero][response_mode][node].empty()) {
+          flop_restricted_leaves[hero][node] = flop_leaf_values[hero][response_mode][node];
+        }
+      }
+      auto &per_entry = result.entry_values[hero][restricted_mode];
+      per_entry.resize(context.entries.size());
+      for (std::size_t entry = 0; entry < context.entries.size(); ++entry) {
+        evaluator.value(game.edges_of(context.entries[entry])[0].child, flop_universe, hero,
+                        flop_rule, flop_restricted_leaves[hero], flop_values, nullptr);
         auto &target = per_entry[entry];
         target.assign(combo_total, 0.0);
         for (std::size_t hand = 0; hand < flop_universe.size(); ++hand) {
@@ -997,6 +1082,32 @@ const char *river_engine_name(const RiverEngine engine) noexcept {
     return "reference";
   }
   return "unknown";
+}
+
+const char *deviation_street_name(const DeviationStreet street) noexcept {
+  switch (street) {
+  case DeviationStreet::Preflop:
+    return "preflop";
+  case DeviationStreet::Flop:
+    return "flop";
+  case DeviationStreet::Turn:
+    return "turn";
+  case DeviationStreet::River:
+    return "river";
+  case DeviationStreet::None:
+    return "none";
+  }
+  return "unknown";
+}
+
+std::optional<DeviationStreet> parse_deviation_street(const std::string_view text) noexcept {
+  for (const auto street : {DeviationStreet::Preflop, DeviationStreet::Flop, DeviationStreet::Turn,
+                            DeviationStreet::River, DeviationStreet::None}) {
+    if (text == deviation_street_name(street)) {
+      return street;
+    }
+  }
+  return std::nullopt;
 }
 
 FlopGroup full_runouts(const std::array<CardId, 3> &flop, const double weight) {
@@ -1150,7 +1261,7 @@ Result<FlopValues, KernelError> BestResponseEvaluator::evaluate_flop(const FlopG
     return Outcome::failure(KernelError::MissingTable);
   }
   bool ok = true;
-  auto values = evaluate_flop_group(*impl_, group, river_engine_, ok);
+  auto values = evaluate_flop_group(*impl_, group, river_engine_, deviation_from_, ok);
   if (!ok) {
     return Outcome::failure(KernelError::InvalidInput);
   }
@@ -1509,7 +1620,10 @@ Result<NodeProbe, KernelError> BestResponseEvaluator::probe_node(const FlopGroup
   probe.node = node;
   probe.hero = hero;
   bool ok = true;
-  static_cast<void>(evaluate_flop_group(*impl_, group, river_engine_, ok, &probe));
+  // The probe records average-mode action values only: the restricted set is
+  // neither needed nor allowed to overwrite them.
+  static_cast<void>(
+      evaluate_flop_group(*impl_, group, river_engine_, DeviationStreet::Preflop, ok, &probe));
   if (!ok) {
     return Outcome::failure(KernelError::InvalidInput);
   }
@@ -1529,6 +1643,13 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
   const auto node_count = game.nodes().size();
   const auto entry_count = context.entries.size();
   const auto group_count = flops.size();
+  // Best responder under the street restriction: its entry values are the
+  // restricted set and its preflop rule the average strategy, since it never
+  // deviates at the preflop. Without a restriction both are the full
+  // response's and every expression below is the unrestricted one.
+  const bool street_restricted = deviation_from_ != DeviationStreet::Preflop;
+  const std::size_t responder_values = street_restricted ? restricted_mode : response_mode;
+  const std::size_t preflop_rule = street_rule(deviation_from_, Street::Preflop);
 
   // Per group: combo preimages of every image; total compatible weight per combo.
   std::vector<std::vector<std::array<std::uint16_t, combo_total>>> sources(group_count);
@@ -1544,6 +1665,19 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
           return Outcome::failure(KernelError::InvalidInput);
         }
         for (const auto &entry : values.entry_values[hero][mode]) {
+          if (entry.size() != combo_total) {
+            return Outcome::failure(KernelError::InvalidInput);
+          }
+        }
+      }
+    }
+    // Flop values evaluated without the restriction lack the restricted set.
+    if (street_restricted) {
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        if (values.entry_values[hero][restricted_mode].size() != entry_count) {
+          return Outcome::failure(KernelError::InvalidInput);
+        }
+        for (const auto &entry : values.entry_values[hero][restricted_mode]) {
           if (entry.size() != combo_total) {
             return Outcome::failure(KernelError::InvalidInput);
           }
@@ -1582,6 +1716,7 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
 
   BestResponseReport report;
   report.flops = static_cast<std::uint32_t>(group_count);
+  report.deviation_from = deviation_from_;
   for (const auto *values : flops) {
     report.boards += values->boards;
   }
@@ -1688,11 +1823,15 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
 
     std::vector<std::vector<std::uint8_t>> choice(node_count);
     for (auto mode : {response_mode, average_mode}) {
+      // The responder's pass reads its own entry values and preflop rule; a
+      // restricted responder records no preflop choice.
+      const auto value_set = mode == response_mode ? responder_values : mode;
+      const auto rule = mode == response_mode ? preflop_rule : mode;
       NodeVectors leaf_values = terminals;
-      entry_leaves(hero, mode, all_groups, leaf_values);
+      entry_leaves(hero, value_set, all_groups, leaf_values);
       std::vector<double> root_values;
-      evaluator.value(game.root(), preflop, hero, mode, leaf_values, root_values,
-                      mode == response_mode ? &choice : nullptr);
+      evaluator.value(game.root(), preflop, hero, rule, leaf_values, root_values,
+                      rule == response_mode ? &choice : nullptr);
       double total = 0.0;
       for (std::size_t combo = 0; combo < combo_total; ++combo) {
         total += context.allowed[hero][combo] * root_values[combo];
@@ -1708,7 +1847,7 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
       // hero policy fixed by the evaluation above.
       if (equal_weights && group_count > 1U) {
         NodeVectors hero_reach;
-        hero_reach_under(hero, mode == response_mode ? &choice : nullptr, hero_reach);
+        hero_reach_under(hero, rule == response_mode ? &choice : nullptr, hero_reach);
         const double groups_count = static_cast<double>(group_count);
         std::vector<double> per_group(group_count, 0.0);
         for (std::size_t index = 0; index < group_count; ++index) {
@@ -1716,7 +1855,7 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
           double sum = 0.0;
           for (std::size_t entry = 0; entry < entry_count; ++entry) {
             const auto node = context.entries[entry];
-            const auto &entry_values = values.entry_values[hero][mode][entry];
+            const auto &entry_values = values.entry_values[hero][value_set][entry];
             for (const auto &source : sources[index]) {
               for (std::size_t combo = 0; combo < combo_total; ++combo) {
                 const auto preimage = source[combo];
@@ -1750,8 +1889,11 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
     }
 
     // Lower bound without selection: the hero follows the average strategy
-    // at the preflop and best-responds from the flop on.
-    {
+    // at the preflop and best-responds from the flop on. A restricted
+    // responder makes no preflop selection: its bound is its own value.
+    if (street_restricted) {
+      report.best_response_lower[hero] = report.best_response[hero];
+    } else {
       NodeVectors leaf_values = terminals;
       entry_leaves(hero, response_mode, all_groups, leaf_values);
       NodeVectors hero_reach;
@@ -1760,12 +1902,14 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
     }
     // Preflop-only deviation: the entries are valued with the average strategy,
     // so the maximisation at the preflop sees what the blueprint will really do
-    // after the flop instead of what a best responder could do there.
+    // after the flop instead of what a best responder could do there. The
+    // restricted responder's preflop rule is the average strategy, so it has
+    // no preflop-only deviation: the pass repeats the ev pass and gives ev.
     {
       NodeVectors leaf_values = terminals;
       entry_leaves(hero, average_mode, all_groups, leaf_values);
       std::vector<double> root_values;
-      evaluator.value(game.root(), preflop, hero, response_mode, leaf_values, root_values,
+      evaluator.value(game.root(), preflop, hero, preflop_rule, leaf_values, root_values,
                       nullptr);
       double total = 0.0;
       for (std::size_t combo = 0; combo < combo_total; ++combo) {
@@ -1817,18 +1961,61 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
         }
         report.best_response_preflop_mix.push_back(mix);
       }
+      // A restricted responder follows the average strategy at the preflop and
+      // left `choice` empty: its mix is the policy's, every class present
+      // adding its row, and one row per class leaves no class to split.
+      if (street_restricted) {
+        for (std::uint32_t node = 0; node < node_count; ++node) {
+          const auto &entry = game.nodes()[node];
+          if (entry.kind != NodeKind::Decision || entry.street != Street::Preflop ||
+              entry.actor != hero) {
+            continue;
+          }
+          std::vector<std::uint8_t> present(class_count, 0U);
+          for (std::size_t hand = 0; hand < preflop.size(); ++hand) {
+            if (context.allowed[hero][preflop.combos[hand]] != 0.0) {
+              present[static_cast<std::size_t>(preflop.rows[hand])] = 1U;
+            }
+          }
+          BestResponseReport::PreflopChoiceMix mix;
+          mix.node = node;
+          mix.hero = hero;
+          mix.action_count = entry.action_count;
+          std::size_t seen = 0;
+          for (std::size_t index = 0; index < class_count; ++index) {
+            if (present[index] == 0U) {
+              continue;
+            }
+            ++seen;
+            const auto probabilities =
+                context.policies.row(node, static_cast<std::uint32_t>(index));
+            const auto actions = std::min(probabilities.size(), mix.frequency.size());
+            for (std::size_t action = 0; action < actions; ++action) {
+              mix.frequency[action] += probabilities[action];
+            }
+          }
+          if (seen > 0) {
+            for (auto &value : mix.frequency) {
+              value /= static_cast<double>(seen);
+            }
+          }
+          report.best_response_preflop_mix.push_back(mix);
+        }
+      }
     }
     // Follow the FULL response's preflop choices, not the preflop-only BR.
     // This preserves joint deviations that deliberately enter a branch only
-    // because the responder will also change its postflop continuation.
+    // because the responder will also change its postflop continuation. A
+    // restricted responder's preflop policy is the average strategy, so its
+    // route is the average one.
     {
       NodeVectors average_leaves = terminals;
       entry_leaves(hero, average_mode, all_groups, average_leaves);
       NodeVectors response_leaves = terminals;
-      entry_leaves(hero, response_mode, all_groups, response_leaves);
+      entry_leaves(hero, responder_values, all_groups, response_leaves);
       NodeVectors average_reach, response_reach;
       hero_reach_under(hero, nullptr, average_reach);
-      hero_reach_under(hero, &choice, response_reach);
+      hero_reach_under(hero, preflop_rule == response_mode ? &choice : nullptr, response_reach);
       report.best_response_route_average_value[hero] = value_under(response_reach, average_leaves);
       for (const auto node : context.entries) {
         std::vector<double> entry_mass;
@@ -1856,7 +2043,7 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
       NodeVectors average_leaves = terminals;
       entry_leaves(hero, average_mode, all_groups, average_leaves);
       NodeVectors response_leaves = terminals;
-      entry_leaves(hero, response_mode, all_groups, response_leaves);
+      entry_leaves(hero, responder_values, all_groups, response_leaves);
       for (const auto node : game.postflop_entries()) {
         if (average_leaves[node].empty() || response_leaves[node].empty()) {
           continue;
@@ -1957,6 +2144,7 @@ evaluate_best_response(const CompiledGame &game, const BucketPolicy &average,
     return Outcome::failure(evaluator.error());
   }
   evaluator.value().set_river_engine(options.river_engine);
+  evaluator.value().set_deviation_from(options.deviation_from);
   auto values = evaluate_flops(evaluator.value(), groups, options.threads);
   if (!values) {
     return Outcome::failure(values.error());

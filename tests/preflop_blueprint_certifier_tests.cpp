@@ -612,7 +612,8 @@ bool same_flop_values(const pb::FlopValues &left, const pb::FlopValues &right) {
     return false;
   }
   for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-    for (const auto mode : {pb::response_mode, pb::average_mode}) {
+    // The restricted set is empty on both sides without a street restriction.
+    for (const auto mode : {pb::response_mode, pb::average_mode, pb::restricted_mode}) {
       const auto &left_entries = left.entry_values[hero][mode];
       const auto &right_entries = right.entry_values[hero][mode];
       if (left_entries.size() != right_entries.size()) {
@@ -1113,6 +1114,348 @@ void test_joint_engine_matches_reference(const Resources &resources, const Histo
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+// Allowance between gains or values computed along different summations.
+constexpr double summation_tolerance = 1e-12;
+
+// The certificate JSON without the fields that differ between any two runs
+// of the same pass (timings, memory, resumed flops).
+std::string canonical_certificate(pb::Certificate certificate) {
+  certificate.seconds = 0.0;
+  certificate.evaluation_seconds = 0.0;
+  certificate.aggregation_seconds = 0.0;
+  certificate.report.seconds = 0.0;
+  certificate.process_bytes = 0U;
+  certificate.resumed_flops = 0U;
+  return pb::certificate_json(certificate);
+}
+
+// Bit-for-bit equality of two sets of entry values ([entry][combo]).
+bool same_entry_values(const std::vector<std::vector<double>> &left,
+                       const std::vector<std::vector<double>> &right) {
+  if (left.size() != right.size()) {
+    return false;
+  }
+  for (std::size_t entry = 0; entry < left.size(); ++entry) {
+    if (left[entry].size() != right[entry].size()) {
+      return false;
+    }
+    for (std::size_t combo = 0; combo < left[entry].size(); ++combo) {
+      if (!same_bits(left[entry][combo], right[entry][combo])) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// Street-restricted best response (deviation_from). On one flop the Flop and
+// None restrictions repeat the response and the average entry values bit for
+// bit, and no restriction changes the two modes. On partial certificates of
+// HU10 reduced: Preflop is the default certificate byte for byte, None gains
+// exactly zero, the gain never grows as the first deviating street moves
+// later, both river engines give the same certificate under every
+// restriction (exact and sampled), the report fields follow their restricted
+// definitions, and a restricted state resumes bit for bit under its own
+// restriction only. On one flop of HU10 full (three turns with all their
+// rivers, since the order holds on any board set): the entry values and the
+// gains follow the same order.
+void test_street_restricted_response(const Resources &resources,
+                                     const std::filesystem::path &scratch) {
+  const auto started = Clock::now();
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "HU10 reduced compiles");
+  const auto policy = random_policy(game.value(), resources, 31U);
+  const auto view = response_resources(resources);
+  // Each restriction lets the responder deviate on fewer streets than the
+  // previous one.
+  const std::array<pb::DeviationStreet, 5> streets{
+      pb::DeviationStreet::Preflop, pb::DeviationStreet::Flop, pb::DeviationStreet::Turn,
+      pb::DeviationStreet::River, pb::DeviationStreet::None};
+  for (const auto street : streets) {
+    const auto parsed = pb::parse_deviation_street(pb::deviation_street_name(street));
+    require(parsed.has_value() && *parsed == street, "deviation street names parse back");
+  }
+  require(!pb::parse_deviation_street("showdown").has_value(),
+          "unknown deviation streets are rejected");
+
+  // One flop: the two modes never change, Flop and None repeat a mode.
+  {
+    const auto evaluator = pb::BestResponseEvaluator::create(game.value(), policy, view);
+    require(evaluator.has_value(), "evaluator creates");
+    require(evaluator.value().deviation_from() == pb::DeviationStreet::Preflop,
+            "the full best response is the default");
+    auto flop = resources.catalog->flops()[resources.catalog->flops().size() / 4U].cards;
+    std::sort(flop.begin(), flop.end());
+    const auto group = pb::full_runouts(flop);
+    const auto plain = evaluator.value().evaluate_flop(group);
+    require(plain.has_value(), "unrestricted flop evaluates");
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      require(plain.value().entry_values[hero][pb::restricted_mode].empty(),
+              "an unrestricted evaluation has no restricted values");
+    }
+    for (const auto street : {pb::DeviationStreet::Flop, pb::DeviationStreet::None}) {
+      auto restricted = evaluator.value();
+      restricted.set_deviation_from(street);
+      const auto values = restricted.evaluate_flop(group);
+      require(values.has_value(), "restricted flop evaluates");
+      const auto repeated =
+          street == pb::DeviationStreet::Flop ? pb::response_mode : pb::average_mode;
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        for (const auto mode : {pb::response_mode, pb::average_mode}) {
+          require(same_entry_values(values.value().entry_values[hero][mode],
+                                    plain.value().entry_values[hero][mode]),
+                  "a street restriction leaves both modes bit for bit");
+        }
+        require(same_entry_values(values.value().entry_values[hero][pb::restricted_mode],
+                                  plain.value().entry_values[hero][repeated]),
+                "Flop repeats the response values and None the average ones bit for bit");
+      }
+    }
+  }
+
+  // Partial certificates, every restriction with both river engines.
+  pb::CertifierOptions options;
+  options.threads = 2U;
+  options.flop_limit = 2U;
+  const auto baseline = pb::certify(game.value(), policy, view, options);
+  require(baseline.has_value(), "default partial pass succeeds");
+  const auto baseline_json = canonical_certificate(baseline.value());
+  require(baseline_json.find("deviation_from") == std::string::npos,
+          "the default certificate has no deviation_from entry");
+  std::vector<pb::Certificate> certificates;
+  for (const auto street : streets) {
+    options.deviation_from = street;
+    options.river_engine = pb::RiverEngine::Joint;
+    const auto joint = pb::certify(game.value(), policy, view, options);
+    options.river_engine = pb::RiverEngine::Reference;
+    const auto reference = pb::certify(game.value(), policy, view, options);
+    require(joint.has_value() && reference.has_value(), "restricted partial passes succeed");
+    const auto joint_json = canonical_certificate(joint.value());
+    require(joint_json == canonical_certificate(reference.value()),
+            std::string("both river engines give the same certificate under deviation_from ") +
+                pb::deviation_street_name(street));
+    require((street == pb::DeviationStreet::Preflop) ==
+                (joint_json.find("deviation_from") == std::string::npos),
+            "only a restricted certificate names its restriction");
+    certificates.push_back(joint.value());
+  }
+  require(canonical_certificate(certificates.front()) == baseline_json,
+          "deviation_from preflop is the default certificate byte for byte");
+
+  const auto &full_report = baseline.value().report;
+  for (std::size_t index = 1; index < certificates.size(); ++index) {
+    const auto &report = certificates[index].report;
+    require(report.deviation_from == streets[index], "the report names its restriction");
+    std::array<double, 2> route_gain{};
+    for (const auto &route : report.postflop_entry_route) {
+      require(same_bits(route.response_probability, route.average_probability),
+              "a restricted responder follows the average preflop route");
+      route_gain[route.hero] += route.postflop_gain_on_response_route;
+    }
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      require(same_bits(report.ev[player], full_report.ev[player]),
+              "a street restriction leaves ev bit for bit");
+      require(same_bits(report.best_response_preflop[player], report.ev[player]) &&
+                  report.gain_preflop[player] == 0.0,
+              "a restricted responder has no preflop-only deviation");
+      require(same_bits(report.best_response_lower[player], report.best_response[player]) &&
+                  same_bits(report.gain_lower[player], report.gain[player]),
+              "a restricted responder's lower bound is its own value");
+      require(close(route_gain[player],
+                    report.best_response[player] -
+                        report.best_response_route_average_value[player],
+                    1e-9),
+              "restricted entry gains add up to the restricted continuation gain");
+      require(report.gain[player] <=
+                  certificates[index - 1].report.gain[player] + summation_tolerance,
+              "a later first deviating street never gains more");
+    }
+    require(report.best_response_preflop_mix.size() ==
+                full_report.best_response_preflop_mix.size(),
+            "a restricted mix covers the preflop nodes of the full one");
+    for (std::size_t slot = 0; slot < report.best_response_preflop_mix.size(); ++slot) {
+      const auto &mix = report.best_response_preflop_mix[slot];
+      const auto &full_mix = full_report.best_response_preflop_mix[slot];
+      require(mix.node == full_mix.node && mix.hero == full_mix.hero && mix.split_classes == 0U,
+              "a restricted mix has the nodes of the full one and no split classes");
+      for (std::size_t action = 0; action < mix.action_count; ++action) {
+        double expected = 0.0;
+        for (std::uint32_t hand_class = 0; hand_class < ca::preflop_hand_classes; ++hand_class) {
+          expected += policy.row(mix.node, hand_class)[action];
+        }
+        expected /= static_cast<double>(ca::preflop_hand_classes);
+        require(close(mix.frequency[action], expected, summation_tolerance),
+                "a restricted preflop mix is the policy's");
+      }
+    }
+  }
+  // From the flop on the responder uses the full response's entry values with
+  // the average preflop: the full lower bound, along another summation.
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    require(close(certificates[1].report.best_response[player],
+                  full_report.best_response_lower[player], summation_tolerance),
+            "deviation_from flop is the full response's lower bound");
+  }
+  const auto &never = certificates.back().report;
+  for (std::uint8_t player = 0; player < 2U; ++player) {
+    require(same_bits(never.best_response[player], never.ev[player]) &&
+                never.gain[player] == 0.0,
+            "deviation_from none gains exactly zero");
+  }
+  require(never.max_gain == 0.0 && never.max_gain_lower == 0.0 && never.nashconv == 0.0,
+          "deviation_from none has zero max gains and nashconv");
+
+  // The sampled pass under a restriction, with either river engine.
+  {
+    pb::CertifierOptions sampled;
+    sampled.threads = 2U;
+    sampled.sample_flops = 2U;
+    const auto unrestricted = pb::certify(game.value(), policy, view, sampled);
+    sampled.deviation_from = pb::DeviationStreet::Turn;
+    const auto joint = pb::certify(game.value(), policy, view, sampled);
+    sampled.river_engine = pb::RiverEngine::Reference;
+    const auto reference = pb::certify(game.value(), policy, view, sampled);
+    require(unrestricted.has_value() && joint.has_value() && reference.has_value() &&
+                joint.value().sampled,
+            "restricted sampled passes succeed");
+    require(canonical_certificate(joint.value()) == canonical_certificate(reference.value()),
+            "both river engines give the same restricted sampled certificate");
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      require(same_bits(joint.value().report.ev[player], unrestricted.value().report.ev[player]) &&
+                  joint.value().report.gain[player] <=
+                      unrestricted.value().report.gain[player] + summation_tolerance,
+              "a restricted sampled pass keeps ev and never gains more");
+    }
+  }
+
+  // A restricted state resumes bit for bit under its own restriction only,
+  // and a restricted pass refuses an unrestricted state.
+  {
+    pb::CertifierOptions stored;
+    stored.threads = 2U;
+    stored.chunk_flops = 1U;
+    stored.flop_limit = 1U;
+    stored.deviation_from = pb::DeviationStreet::River;
+    stored.state_path = scratch / "certifier_state_river.bin";
+    std::filesystem::remove(stored.state_path);
+    const auto first = pb::certify(game.value(), policy, view, stored);
+    require(first.has_value() && first.value().flops == 1U, "restricted pass stores one flop");
+    stored.flop_limit = 2U;
+    const auto resumed = pb::certify(game.value(), policy, view, stored);
+    require(resumed.has_value() && resumed.value().resumed_flops == 1U,
+            "restricted pass resumes the stored flop");
+    require(canonical_certificate(resumed.value()) == canonical_certificate(certificates[3]),
+            "a resumed restricted pass equals the continuous one bit for bit");
+    for (const auto street : {pb::DeviationStreet::Preflop, pb::DeviationStreet::Turn}) {
+      auto other = stored;
+      other.deviation_from = street;
+      const auto rejected = pb::certify(game.value(), policy, view, other);
+      require(!rejected.has_value() && rejected.error() == pb::CertifierError::IntegrityFailure,
+              "a state of another restriction is rejected");
+    }
+    pb::CertifierOptions unrestricted;
+    unrestricted.threads = 2U;
+    unrestricted.flop_limit = 1U;
+    unrestricted.state_path = scratch / "certifier_state_unrestricted.bin";
+    std::filesystem::remove(unrestricted.state_path);
+    require(pb::certify(game.value(), policy, view, unrestricted).has_value(),
+            "unrestricted pass stores one flop");
+    unrestricted.deviation_from = pb::DeviationStreet::Flop;
+    const auto refused = pb::certify(game.value(), policy, view, unrestricted);
+    require(!refused.has_value() && refused.error() == pb::CertifierError::IntegrityFailure,
+            "a restricted pass rejects an unrestricted state");
+  }
+
+  // HU10 full, one flop with three turns and all their rivers.
+  {
+    const auto full =
+        pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_full_v1.json"));
+    require(full.has_value(), "HU10 full compiles");
+    const auto full_policy = random_policy(full.value(), resources, 37U);
+    const auto evaluator = pb::BestResponseEvaluator::create(full.value(), full_policy, view);
+    require(evaluator.has_value(), "HU10 full evaluator creates");
+    auto flop = resources.catalog->flops()[resources.catalog->flops().size() / 3U].cards;
+    std::sort(flop.begin(), flop.end());
+    auto group = pb::full_runouts(flop);
+    constexpr std::size_t kept_turns = 3U;
+    std::vector<std::uint8_t> turns;
+    for (const auto &board : group.boards) {
+      const auto turn = board.history.turn.value();
+      if (turns.size() < kept_turns && std::find(turns.begin(), turns.end(), turn) == turns.end()) {
+        turns.push_back(turn);
+      }
+    }
+    group.boards.erase(std::remove_if(group.boards.begin(), group.boards.end(),
+                                      [&](const pb::WeightedBoard &kept) {
+                                        return std::find(turns.begin(), turns.end(),
+                                                         kept.history.turn.value()) ==
+                                               turns.end();
+                                      }),
+                       group.boards.end());
+    const std::array<pb::DeviationStreet, 3> deviating{
+        pb::DeviationStreet::Flop, pb::DeviationStreet::Turn, pb::DeviationStreet::River};
+    std::vector<pb::FlopValues> restricted_values;
+    for (const auto street : deviating) {
+      auto street_evaluator = evaluator.value();
+      street_evaluator.set_deviation_from(street);
+      auto values = street_evaluator.evaluate_flop(group);
+      require(values.has_value(), "HU10 full restricted flop evaluates");
+      restricted_values.push_back(std::move(values.value()));
+    }
+    const auto at_most = [](const double lower, const double upper) {
+      return lower <= upper + summation_tolerance * std::max(1.0, std::abs(upper));
+    };
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      const auto &average = restricted_values[0].entry_values[hero][pb::average_mode];
+      const auto &response = restricted_values[0].entry_values[hero][pb::response_mode];
+      const auto &from_turn = restricted_values[1].entry_values[hero][pb::restricted_mode];
+      const auto &from_river = restricted_values[2].entry_values[hero][pb::restricted_mode];
+      require(same_entry_values(restricted_values[0].entry_values[hero][pb::restricted_mode],
+                                response),
+              "HU10 full: Flop repeats the response values bit for bit");
+      for (std::size_t entry = 0; entry < average.size(); ++entry) {
+        for (std::size_t combo = 0; combo < average[entry].size(); ++combo) {
+          require(at_most(average[entry][combo], from_river[entry][combo]) &&
+                      at_most(from_river[entry][combo], from_turn[entry][combo]) &&
+                      at_most(from_turn[entry][combo], response[entry][combo]),
+                  "HU10 full: entry values grow as the first deviating street moves earlier");
+        }
+      }
+    }
+    // The two modes do not depend on the restriction: the default evaluator
+    // aggregates the full response from any of the three evaluations.
+    const auto unrestricted = evaluator.value().aggregate({&restricted_values[0]}, false);
+    require(unrestricted.has_value(), "HU10 full aggregation succeeds");
+    std::array<double, 2> bound = unrestricted.value().gain;
+    for (std::size_t index = 0; index < deviating.size(); ++index) {
+      auto street_evaluator = evaluator.value();
+      street_evaluator.set_deviation_from(deviating[index]);
+      const auto report = street_evaluator.aggregate({&restricted_values[index]}, false);
+      require(report.has_value(), "HU10 full restricted aggregation succeeds");
+      for (std::uint8_t player = 0; player < 2U; ++player) {
+        require(report.value().gain[player] <= bound[player] + summation_tolerance,
+                "HU10 full: a later first deviating street never gains more");
+        bound[player] = report.value().gain[player];
+      }
+    }
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      require(bound[player] >= -summation_tolerance,
+              "HU10 full: the river-restricted gain is not negative");
+    }
+  }
+
+  std::cout << "street-restricted response: HU10 reduced gains";
+  for (std::size_t index = 0; index < certificates.size(); ++index) {
+    std::cout << ' ' << pb::deviation_street_name(streets[index]) << " ["
+              << certificates[index].report.gain[0] << ", "
+              << certificates[index].report.gain[1] << "] ("
+              << certificates[index].evaluation_seconds << " s)";
+  }
+  std::cout << ", engines, sampled pass, resume and HU10 full order PASS, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -1149,6 +1492,7 @@ int main(const int argc, char **argv) {
     test_river_board_rows(resources, history_maps, support);
     test_joint_traversal(resources);
     test_joint_engine_matches_reference(resources, history_maps, support);
+    test_street_restricted_response(resources, scratch_dir);
     std::cout << "PREFLOP_BLUEPRINT_CERTIFIER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

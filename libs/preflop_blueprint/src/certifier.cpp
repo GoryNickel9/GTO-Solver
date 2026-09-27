@@ -73,8 +73,10 @@ std::string state_header(const std::string &tree_fingerprint, const std::string 
 }
 
 // Record: length, body (index, flop, weight, boards, images, compatible,
-// values), checksum of the body.
-void append_record(std::string &out, const std::uint32_t index, const FlopValues &values) {
+// values), checksum of the body. A street-restricted pass, whose header says
+// so, appends the restricted values of both heroes after the two modes.
+void append_record(std::string &out, const std::uint32_t index, const FlopValues &values,
+                   const bool street_restricted) {
   std::string body;
   binary_io::append_little32(body, index);
   for (const auto card : values.flop) {
@@ -98,13 +100,20 @@ void append_record(std::string &out, const std::uint32_t index, const FlopValues
       }
     }
   }
+  if (street_restricted) {
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (const auto &entry : values.entry_values[hero][restricted_mode]) {
+        binary_io::append_doubles(body, entry);
+      }
+    }
+  }
   binary_io::append_little32(out, static_cast<std::uint32_t>(body.size()));
   out += body;
   binary_io::append_little(out, detail::fnv1a_text(body));
 }
 
-bool read_record(const std::string &body, const std::size_t entries, std::uint32_t &index,
-                 FlopValues &values) {
+bool read_record(const std::string &body, const std::size_t entries, const bool street_restricted,
+                 std::uint32_t &index, FlopValues &values) {
   binary_io::Reader reader(body);
   if (!reader.read_little32(index)) {
     return false;
@@ -158,6 +167,16 @@ bool read_record(const std::string &body, const std::size_t entries, std::uint32
       }
     }
   }
+  if (street_restricted) {
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      values.entry_values[hero][restricted_mode].resize(entries);
+      for (auto &entry : values.entry_values[hero][restricted_mode]) {
+        if (!reader.read_doubles(entry, combo_total)) {
+          return false;
+        }
+      }
+    }
+  }
   return reader.at_end();
 }
 
@@ -201,6 +220,8 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
     return Outcome::failure(CertifierError::EvaluationFailure);
   }
   evaluator.value().set_river_engine(options.river_engine);
+  evaluator.value().set_deviation_from(options.deviation_from);
+  const bool street_restricted = options.deviation_from != DeviationStreet::Preflop;
 
   Certificate certificate;
   const auto &config = game.config();
@@ -242,6 +263,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
     BestResponseOptions evaluation;
     evaluation.threads = options.threads;
     evaluation.river_engine = options.river_engine;
+    evaluation.deviation_from = options.deviation_from;
     const auto report = evaluate_best_response(game, policy, resources, groups, evaluation);
     if (!report) {
       return Outcome::failure(CertifierError::EvaluationFailure);
@@ -267,7 +289,15 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
       certificate.policy_fingerprint + (certificate.history_map_fingerprint.empty()
                                             ? ""
                                             : "|history=" + certificate.history_map_fingerprint);
-  const auto header = state_header(certificate.tree_fingerprint, evaluation_identity,
+  // A restricted pass stores other records under the same policy: its header
+  // names the restriction, so no pass resumes from a state of another one,
+  // and the header of an unrestricted pass stays as it was.
+  std::string state_identity = evaluation_identity;
+  if (street_restricted) {
+    state_identity += "|deviation_from=";
+    state_identity += deviation_street_name(options.deviation_from);
+  }
+  const auto header = state_header(certificate.tree_fingerprint, state_identity,
                                    certificate.catalog_fingerprint, entries,
                                    static_cast<std::uint32_t>(canonical.size()));
   if (!options.state_path.empty()) {
@@ -301,7 +331,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
         }
         std::uint32_t index = 0U;
         FlopValues values;
-        if (!read_record(body, entries, index, values)) {
+        if (!read_record(body, entries, street_restricted, index, values)) {
           break;
         }
         if (index < total && !done[index].has_value()) {
@@ -382,7 +412,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
     }
     std::lock_guard<std::mutex> lock(completion_mutex);
     if (!options.state_path.empty()) {
-      append_record(pending_records, index, values.value());
+      append_record(pending_records, index, values.value(), street_restricted);
       ++records_pending;
     }
     boards_done += values.value().boards;
@@ -449,6 +479,12 @@ std::string certificate_json(const Certificate &certificate) {
   out += "  \"physical_flops\": " + std::to_string(certificate.physical_flops) + ",\n";
   out += "  \"boards\": " + std::to_string(certificate.boards) + ",\n";
   out += "  \"resumed_flops\": " + std::to_string(certificate.resumed_flops) + ",\n";
+  // Only a street-restricted certificate names its restriction: the fields
+  // below then describe the restricted response (BestResponseReport), and the
+  // certificate of the full response keeps its exact former text.
+  if (report.deviation_from != DeviationStreet::Preflop)
+    out += "  \"deviation_from\": " + json_string(deviation_street_name(report.deviation_from)) +
+           ",\n";
   out += "  \"ev\": [" + json_number(report.ev[0]) + ", " + json_number(report.ev[1]) + "],\n";
   out += "  \"best_response\": [" + json_number(report.best_response[0]) + ", " +
          json_number(report.best_response[1]) + "],\n";

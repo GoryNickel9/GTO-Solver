@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 // Best response of the physical game against the lifted (bucket) average
@@ -67,15 +68,33 @@ struct BestResponseResources {
 enum class RiverEngine : std::uint8_t { Joint, Reference };
 [[nodiscard]] const char *river_engine_name(RiverEngine engine) noexcept;
 
+// First street on which the best responder may deviate from the average
+// strategy (street-restricted best response, a diagnostic that locates the
+// exploitability by street): at its own decisions on earlier streets it
+// follows the average strategy, on that street and later ones it takes the
+// best action; the opponent always follows the average strategy. Preflop is
+// the full physical best response. None never deviates, so its value is the
+// average strategy's bit for bit and its gain exactly zero (a check of the
+// plumbing). Moving the first deviating street later never raises the gain,
+// on any set of flops and boards.
+enum class DeviationStreet : std::uint8_t { Preflop, Flop, Turn, River, None };
+[[nodiscard]] const char *deviation_street_name(DeviationStreet street) noexcept;
+// Inverse of deviation_street_name; empty for any other text.
+[[nodiscard]] std::optional<DeviationStreet> parse_deviation_street(std::string_view text) noexcept;
+
 struct BestResponseOptions {
   unsigned threads{1U};
   // Optional uniform hand subsets per player (combo ids); empty = all hands.
   std::array<std::vector<std::uint16_t>, 2> hand_subsets{};
   RiverEngine river_engine{RiverEngine::Joint};
+  DeviationStreet deviation_from{DeviationStreet::Preflop};
 };
 
 inline constexpr std::size_t response_mode = 0U;
 inline constexpr std::size_t average_mode = 1U;
+// Entry values of the street-restricted best response: a third set next to
+// the two modes, filled only by an evaluator with a street restriction.
+inline constexpr std::size_t restricted_mode = 2U;
 
 // Values of every combo at the postflop entries for one flop group.
 struct FlopValues {
@@ -87,13 +106,32 @@ struct FlopValues {
   std::vector<card_abstraction::SuitPermutation> images{card_abstraction::identity_permutation};
   // 630 entries: 1 when the combo is disjoint from the flop.
   std::vector<std::uint8_t> compatible;
-  // [hero][mode][entry] -> 630 values (0 for combos not compatible).
-  std::array<std::array<std::vector<std::vector<double>>, 2>, 2> entry_values{};
+  // [hero][mode][entry] -> 630 values (0 for combos not compatible). The
+  // restricted_mode set is empty unless the evaluator has a street restriction.
+  std::array<std::array<std::vector<std::vector<double>>, 3>, 2> entry_values{};
 };
 
 struct BestResponseReport {
   std::uint32_t flops{0U};
   std::uint32_t boards{0U};
+  // Street restriction of the best responder. After the preflop, every field
+  // below that describes the best response describes the restricted one,
+  // which follows the average strategy at the preflop:
+  //   best_response, gain, max_gain, nashconv, best_response_standard_error:
+  //     the restricted response;
+  //   best_response_lower, gain_lower, max_gain_lower: equal to
+  //     best_response, gain and max_gain, since the restricted responder
+  //     makes no preflop selection for the bound to remove;
+  //   best_response_preflop: the responder's own preflop rule (the average
+  //     strategy) on the average entries, so ev bit for bit and gain_preflop
+  //     exactly zero: the restricted responder has no preflop-only deviation;
+  //   best_response_preflop_mix: the average strategy's mix per class, with
+  //     no split classes (one policy row per class);
+  //   postflop_entry_loss, best_response_route_average_value,
+  //     postflop_entry_route: the restricted continuation against the
+  //     average one, on the average preflop route (the two route
+  //     probabilities are equal).
+  DeviationStreet deviation_from{DeviationStreet::Preflop};
   // Values in antes per hand under the average strategy (ev) and under the
   // best response of that player against the average strategy of the other.
   std::array<double, 2> ev{};
@@ -261,12 +299,20 @@ public:
   // (copies made afterwards inherit it); Joint by default.
   void set_river_engine(RiverEngine engine) noexcept { river_engine_ = engine; }
   [[nodiscard]] RiverEngine river_engine() const noexcept { return river_engine_; }
+  // Street restriction of the best responder in evaluate_flop and aggregate
+  // for this evaluator object (copies made afterwards inherit it); Preflop,
+  // the full best response, by default. With a restriction evaluate_flop also
+  // fills the restricted_mode entry values, which aggregate then requires,
+  // and probe_node is unaffected.
+  void set_deviation_from(DeviationStreet street) noexcept { deviation_from_ = street; }
+  [[nodiscard]] DeviationStreet deviation_from() const noexcept { return deviation_from_; }
 
   struct Impl;
 
 private:
   std::shared_ptr<const Impl> impl_;
   RiverEngine river_engine_{RiverEngine::Joint};
+  DeviationStreet deviation_from_{DeviationStreet::Preflop};
 };
 
 // Stage one in parallel over the groups.

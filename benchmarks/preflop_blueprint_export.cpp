@@ -89,6 +89,11 @@ pb::Certificate load_certificate(const std::filesystem::path &path) {
   if (json.value("schema", "") != "gtosd.preflop_blueprint_certificate.v1") {
     throw std::runtime_error("certificate schema mismatch");
   }
+  // A street-restricted certificate measures part of the exploitability only (a lower
+  // bound), so it must never badge a policy as certified.
+  if (json.contains("deviation_from")) {
+    throw std::runtime_error("a street-restricted certificate does not certify a policy");
+  }
   pb::Certificate certificate;
   certificate.exact = json.value("exact", false);
   certificate.partial = json.value("partial", false);
