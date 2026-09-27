@@ -180,6 +180,13 @@ una pausa giornaliera facoltativa (`SUITE_PAUSE=HH:MM-HH:MM`: un run parte solo 
 attesa termina prima della pausa o se la pausa e' finita) e `SUITE_NOT_BEFORE="YYYY-MM-DD HH:MM"`,
 che rinvia il primo avvio a una data e ora (regole che entrano in vigore un giorno successivo).
 
+**Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
+sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si
+misura il tempo (ripetizioni di confronto dei tempi, run sui 35 minuti). Durante i run di sola
+qualita' (max gain certificato, deterministico: per esempio la convergenza di HU30/HU40) una build
+in parallelo rallenta il run ma non cambia il risultato, e resta ammessa. Dopo le 21:00 nessun
+processo del milestone gira.
+
 **Obiettivo di tempo (decisione dell'utente del 2026-09-25).** Ogni benchmark della suite
 (HU10, HU20, HU30, HU40) deve chiudere in meno di 35 minuti end-to-end (training, scrittura e
 certificazione fisica esatta con max gain <= 1 % del piatto) sotto il tetto di memoria di A. Lo
