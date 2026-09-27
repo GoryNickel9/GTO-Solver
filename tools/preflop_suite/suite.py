@@ -654,7 +654,9 @@ def cmd_run(arguments: argparse.Namespace) -> int:
     if not arguments.keep_checkpoint and checkpoint_path.exists():
         checkpoint_path.unlink()
         artifacts["checkpoint"]["deleted"] = True
-    if not arguments.keep_policy and policy_path.exists():
+    # A version may keep its policy (diagnostic versions certified again afterwards).
+    keep_policy = arguments.keep_policy or bool(version_spec.get("keep_policy", False))
+    if not keep_policy and policy_path.exists():
         policy_path.unlink()
         artifacts["policy"]["deleted"] = True
     manifest["machine"]["available_after_bytes"] = psutil.virtual_memory().available if psutil else None

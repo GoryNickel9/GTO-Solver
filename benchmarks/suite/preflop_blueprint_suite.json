@@ -392,6 +392,14 @@
         "64"
       ]
     },
+    "diag-h-32k": {
+      "description": "Diagnosi per street: astrazione history7, eseguibili di J, 32.000 iterazioni (deviazione) con la policy conservata, certificata poi con la best response ristretta per street (solo river, da turn, da flop).",
+      "keep_policy": true,
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
     "ref-h-32k": {
       "description": "Run di riferimento (deviazione dal protocollo: 32.000 iterazioni) con gli eseguibili di H: curva di convergenza dell'astrazione history7 su HU30/HU40 per le fasi 3 e 4. Non entra nei confronti a lavoro fisso.",
       "train_arguments": [
