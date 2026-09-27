@@ -400,6 +400,20 @@
         "double"
       ]
     },
+    "ref-j-15k": {
+      "description": "Linea A: eseguibili di J, astrazione history7, 15.000 iterazioni (deviazione): HU20 passa 0,0280 a 16.000 e fallisce 0,0335 a 12.000; 15.000 cerca il primo passaggio sotto i 35 minuti.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
+    "ref-j-14k": {
+      "description": "Linea A: eseguibili di J, astrazione history7, 14.000 iterazioni (deviazione): punto intermedio della curva di HU20 fra 12.000 e 16.000.",
+      "train_arguments": [
+        "--table-storage",
+        "double"
+      ]
+    },
     "ref-h-32k": {
       "description": "Run di riferimento (deviazione dal protocollo: 32.000 iterazioni) con gli eseguibili di H: curva di convergenza dell'astrazione history7 su HU30/HU40 per le fasi 3 e 4. Non entra nei confronti a lavoro fisso.",
       "train_arguments": [
