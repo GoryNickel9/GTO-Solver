@@ -94,7 +94,9 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
       tables.river == nullptr) {
     return Outcome::failure(KernelError::MissingTable);
   }
-  if (tables.history_rows != nullptr && tables.class_rows != nullptr) {
+  if ((tables.history_rows != nullptr ? 1 : 0) + (tables.class_rows != nullptr ? 1 : 0) +
+          (tables.board_class_rows != nullptr ? 1 : 0) >
+      1) {
     return Outcome::failure(KernelError::InvalidInput);
   }
   // The board-independent checks of BoardContext::build.
@@ -103,7 +105,8 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
     const auto &table = *streets[index];
     if (table.street() != static_cast<ca::BucketStreet>(index) ||
         (tables.class_rows != nullptr && !tables.class_rows->matches(table)) ||
-        (tables.history_rows != nullptr && !tables.history_rows->matches(table))) {
+        (tables.history_rows != nullptr && !tables.history_rows->matches(table)) ||
+        (tables.board_class_rows != nullptr && !tables.board_class_rows->matches(table))) {
       return Outcome::failure(KernelError::MissingTable);
     }
   }
@@ -112,6 +115,9 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
   if (!flop_lookup || !turn_lookup) {
     return Outcome::failure(KernelError::MissingTable);
   }
+  // Board class rows: every river of the turn uses the class of the turn,
+  // its canonical flop+turn index (BoardContext::build).
+  turn_class_ = turn_lookup.value().index;
   const auto prefix_mask = flop[0].mask() | flop[1].mask() | flop[2].mask() | turn.mask();
   const auto &combos = ca::combo_table();
   for (std::uint16_t combo = 0; combo < ca::combo_count; ++combo) {
@@ -235,6 +241,9 @@ Result<bool, KernelError> RiverBoard::assign(const ca::BoardHistory &history,
       if (row == no_history_row) {
         return Outcome::failure(KernelError::InvalidInput);
       }
+    } else if (tables.board_class_rows != nullptr) {
+      // The river shares the class of its turn.
+      row = tables.board_class_rows->row(ca::BucketStreet::River, prefix->turn_class(), bucket);
     }
     rows_[hand] = row;
     maximum = std::max(maximum, row);

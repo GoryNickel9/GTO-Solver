@@ -4,6 +4,7 @@
 #include "gtosd/card_abstraction/bucket_tables.hpp"
 #include "gtosd/card_abstraction/canonical_boards.hpp"
 #include "gtosd/card_abstraction/rank_table.hpp"
+#include "gtosd/preflop_blueprint/board_class_rows.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/traversal.hpp"
 
@@ -59,6 +60,11 @@ struct BestResponseResources {
   const card_abstraction::BucketTable *river{nullptr};
   const ClassBucketRows *class_rows{nullptr};
   const HistoryBucketRows *history_rows{nullptr};
+  // MonkerSolver-style rows (board class, per-board bucket) of a policy
+  // trained with them: the rows BoardContext::build gives the trainer, the
+  // river sharing the class of its turn. Exclusive with class_rows and
+  // history_rows; last, so positional initializers stay valid.
+  const BoardClassRows *board_class_rows{nullptr};
 };
 
 // River evaluation path of stage one. Joint (river_engine.hpp) evaluates every
@@ -248,6 +254,10 @@ struct PreflopActionValues {
   std::vector<std::vector<std::vector<double>>> class_se;
   // [node][class]: total opponent-reach weight of the class.
   std::vector<std::vector<double>> class_weight;
+  // [combo]: value of the hero at the root of the game under the average
+  // strategy, with the opponent reach inside like combo_values; its mean over
+  // the allowed combos is the ev of aggregate() on the same flop values.
+  std::vector<double> root_values;
 };
 
 // Probe of one postflop node during the evaluation of a flop group (query

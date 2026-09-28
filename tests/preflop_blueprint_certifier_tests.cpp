@@ -31,10 +31,8 @@ using namespace pb_test;
 // Deterministic pseudo-random bucket policy: every row a strictly positive
 // distribution. Symmetric under suit permutations by construction (rows are
 // hand classes and canonical buckets).
-pb::BucketPolicy random_policy(const pb::CompiledGame &game, const Resources &resources,
+pb::BucketPolicy random_policy(const pb::CompiledGame &game, const pb::StateLayout &layout,
                                const std::uint64_t seed) {
-  const auto layout = pb::layout_state(game, resources.flop->capacity(),
-                                       resources.turn->capacity(), resources.river->capacity());
   pb::BucketPolicy policy(game, layout);
   ca::DeterministicRandom random(seed);
   for (const auto &node : game.nodes()) {
@@ -56,6 +54,14 @@ pb::BucketPolicy random_policy(const pb::CompiledGame &game, const Resources &re
     }
   }
   return policy;
+}
+
+pb::BucketPolicy random_policy(const pb::CompiledGame &game, const Resources &resources,
+                               const std::uint64_t seed) {
+  return random_policy(game,
+                       pb::layout_state(game, resources.flop->capacity(),
+                                        resources.turn->capacity(), resources.river->capacity()),
+                       seed);
 }
 
 std::uint16_t preimage_combo(const std::uint16_t combo, const ca::SuitPermutation &permutation) {
@@ -792,21 +798,26 @@ void test_history_river_cursor(const Resources &resources, const HistoryMaps &ma
 
 // RiverBoard with a RiverPrefix against BoardContext::build with the same
 // tables: the same boards accepted, the same hands, ranks, rank order and
-// river rows, with plain buckets, class rows and both history formats, on
-// boards of the history support and on arbitrary boards.
+// river rows, with plain buckets, class rows, both history formats and board
+// class rows, on boards of the history support and on arbitrary boards.
 void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
                            const std::vector<std::array<gtosd::CardId, 3>> &support) {
   const auto class_rows =
       pb::ClassBucketRows::build(*resources.flop, *resources.turn, *resources.river);
   require(class_rows.has_value(), "class rows build");
+  const pb::BoardClassRows board_class_rows(resources.flop->capacity(),
+                                            resources.turn->capacity(),
+                                            resources.river->capacity());
   struct RowSource {
     const pb::ClassBucketRows *class_rows;
     const pb::HistoryBucketRows *history_rows;
+    const pb::BoardClassRows *board_class_rows;
   };
-  const std::array<RowSource, 4> sources{{{nullptr, nullptr},
-                                          {&class_rows.value(), nullptr},
-                                          {nullptr, &*maps.flat},
-                                          {nullptr, &*maps.hierarchy}}};
+  const std::array<RowSource, 5> sources{{{nullptr, nullptr, nullptr},
+                                          {&class_rows.value(), nullptr, nullptr},
+                                          {nullptr, &*maps.flat, nullptr},
+                                          {nullptr, &*maps.hierarchy, nullptr},
+                                          {nullptr, nullptr, &board_class_rows}}};
   ca::DeterministicRandom random(0x5031'0102ULL);
   pb::RiverPrefix prefix;
   pb::RiverBoard river;
@@ -816,7 +827,8 @@ void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
   for (const auto &source : sources) {
     const pb::AbstractionTables tables{&*resources.catalog, &*resources.flop,
                                        &*resources.turn,    &*resources.river,
-                                       source.class_rows,   source.history_rows};
+                                       source.class_rows,   source.history_rows,
+                                       source.board_class_rows};
     for (int draw = 0; draw < boards_per_source; ++draw) {
       auto history = resources.catalog->sample_physical_history(random);
       const bool on_support = draw % 2 == 0;
@@ -1111,6 +1123,332 @@ void test_joint_engine_matches_reference(const Resources &resources, const Histo
             << " flops bit-identical to the reference engine (evaluate_flop " << joint_seconds
             << " s joint, " << reference_seconds
             << " s reference), certificates identical, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
+// Per-board bucket table with the buckets of `source` taken modulo
+// `capacity`: a function of the canonical combo like the source (so it keeps
+// its suit symmetry), small enough for a board-class layout of HU10.
+ca::BucketTable folded_table(const Resources &resources, const ca::BucketTable &source,
+                             const std::uint16_t capacity) {
+  std::vector<std::uint16_t> buckets = source.buckets();
+  for (auto &bucket : buckets) {
+    if (bucket != ca::no_bucket) {
+      bucket = static_cast<std::uint16_t>(bucket % capacity);
+    }
+  }
+  ca::ClusteringParameters parameters;
+  parameters.capacity = capacity;
+  std::vector<std::uint16_t> centroids(
+      static_cast<std::size_t>(capacity) * source.centroid_width(), std::uint16_t{0});
+  auto table = ca::BucketTable::from_assignment(
+      source.street(), *resources.catalog, parameters, std::move(buckets), std::move(centroids),
+      "certifier-test-folded-" + std::to_string(capacity));
+  require(table.has_value(), "folded bucket table builds");
+  return std::move(table.value());
+}
+
+// Opponent reach at a postflop entry for every opponent combo: the product of
+// its preflop rows (hand classes) along the public path from the root.
+std::vector<double> entry_opponent_reach(const pb::CompiledGame &game,
+                                         const pb::BucketPolicy &policy,
+                                         const std::uint32_t entry, const std::uint8_t hero) {
+  std::vector<std::pair<std::uint32_t, std::size_t>> path;
+  std::uint32_t cursor = entry;
+  while (cursor != game.root()) {
+    bool found = false;
+    for (const auto &node : game.nodes()) {
+      const auto edges = game.edges_of(node.id);
+      for (std::size_t action = 0; action < edges.size() && !found; ++action) {
+        if (edges[action].child == cursor) {
+          path.emplace_back(node.id, action);
+          cursor = node.id;
+          found = true;
+        }
+      }
+      if (found) {
+        break;
+      }
+    }
+    require(found, "entry has a public path from the root");
+  }
+  const auto &table = ca::combo_table();
+  std::vector<double> reach(ca::combo_count, 1.0);
+  for (std::uint16_t combo = 0; combo < ca::combo_count; ++combo) {
+    for (const auto &[node_id, action] : path) {
+      const auto &node = game.nodes()[node_id];
+      if (node.kind == pb::NodeKind::Decision && node.actor != hero) {
+        reach[combo] *= policy.row(node_id, table.hand_class[combo])[action];
+      }
+    }
+  }
+  return reach;
+}
+
+// Average-strategy value of every combo at every postflop entry of one flop
+// with all its runouts, computed without the evaluator: ValueTraversal on the
+// BoardContext the trainer builds for each board (so with the trainer's
+// rows), the counterfactual value divided by the opponent hands disjoint
+// from the hand and the board, then the mean over the boards disjoint from
+// the hand. With both ranges full, (opponent, runout) given the hand is
+// uniform, so this is the evaluator's normalization (P7). [hero][entry][combo].
+// `largest_row` receives the largest turn or river row of the contexts.
+std::array<std::vector<std::vector<double>>, 2>
+traversal_entry_values(const pb::CompiledGame &game, const pb::BucketPolicy &policy,
+                       const Resources &resources, const pb::AbstractionTables &tables,
+                       const std::array<gtosd::CardId, 3> &flop, std::uint32_t &largest_row) {
+  largest_row = 0U;
+  const auto entries = game.postflop_entries();
+  const pb::HeadsUpShowdownKernel kernel;
+  std::array<std::vector<std::vector<double>>, 2> values;
+  std::array<std::vector<std::vector<double>>, 2> reach;
+  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+    for (const auto entry : entries) {
+      reach[hero].push_back(entry_opponent_reach(game, policy, entry, hero));
+      values[hero].emplace_back(ca::combo_count, 0.0);
+    }
+  }
+  std::vector<double> boards_of(ca::combo_count, 0.0);
+  std::optional<pb::ValueTraversal> traversal;
+  std::array<double, pb::live_hand_count> board_reach{};
+  std::array<double, pb::live_hand_count> board_values{};
+  for (const auto &board : pb::full_runouts(flop).boards) {
+    const auto context = pb::BoardContext::build(board.history, *resources.ranks, &tables);
+    require(context.has_value(), "board context with board class rows builds");
+    if (!traversal) {
+      traversal.emplace(game, context.value(), kernel, nullptr);
+    } else {
+      traversal->rebind(context.value(), nullptr);
+    }
+    const auto combos = context.value().combo_ids();
+    const auto cards = context.value().cards();
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (std::size_t entry = 0; entry < entries.size(); ++entry) {
+        for (std::size_t hand = 0; hand < pb::live_hand_count; ++hand) {
+          board_reach[hand] = reach[hero][entry][combos[hand]];
+        }
+        require(traversal->evaluate_from(entries[entry], policy, hero, board_reach, board_values)
+                    .has_value(),
+                "traversal from the entry succeeds");
+        for (std::size_t hand = 0; hand < pb::live_hand_count; ++hand) {
+          // Live hands disjoint from the hand: all minus those holding one of
+          // its cards, the hand itself counted twice.
+          const double opponents =
+              static_cast<double>(pb::live_hand_count) -
+              static_cast<double>(context.value().hands_with_card(cards[hand][0]).size()) -
+              static_cast<double>(context.value().hands_with_card(cards[hand][1]).size()) + 1.0;
+          values[hero][entry][combos[hand]] += board_values[hand] / opponents;
+        }
+      }
+    }
+    for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
+      boards_of[combos[hand]] += 1.0;
+      largest_row = std::max({largest_row, context.value().row(gtosd::Street::Turn, hand),
+                              context.value().row(gtosd::Street::River, hand)});
+    }
+  }
+  for (auto &per_hero : values) {
+    for (auto &per_entry : per_hero) {
+      for (std::size_t combo = 0; combo < ca::combo_count; ++combo) {
+        per_entry[combo] = boards_of[combo] > 0.0 ? per_entry[combo] / boards_of[combo] : 0.0;
+      }
+    }
+  }
+  return values;
+}
+
+// Board class rows (MonkerSolver step 2, the rows BoardContext::build gives
+// the trainer) in the physical best response, on HU10 reduced with small
+// per-board tables folded from the test tables (4/5/6 groups, so the three
+// streets differ and the turn and river rows of late turn classes pass
+// 65,535, the no_bucket value of a 16-bit row):
+//  - create() accepts a board-class policy only with its rows, alone;
+//  - a plain policy lifted into every board class gives the plain values bit
+//    for bit, with both river engines;
+//  - with a random policy whose rows differ in every class, the average-mode
+//    entry values equal the independent ValueTraversal computation on the
+//    trainer's BoardContexts, the joint river engine equals the reference bit
+//    for bit, and the never-deviating responder gains exactly zero;
+//  - the trainer's own estimate with board class rows equals the certifier's
+//    sampled pass on the trainer's average policy.
+void test_board_class_rows(const Resources &resources) {
+  const auto started = Clock::now();
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "HU10 reduced compiles");
+  const auto flop_table = folded_table(resources, *resources.flop, 4U);
+  const auto turn_table = folded_table(resources, *resources.turn, 5U);
+  const auto river_table = folded_table(resources, *resources.river, 6U);
+  const pb::BoardClassRows rows(4U, 5U, 6U);
+  auto plain_view = response_resources(resources);
+  plain_view.flop = &flop_table;
+  plain_view.turn = &turn_table;
+  plain_view.river = &river_table;
+  auto class_view = plain_view;
+  class_view.board_class_rows = &rows;
+  const auto plain_layout = pb::layout_state(game.value(), 4U, 5U, 6U);
+  const auto layout = pb::layout_state(game.value(), rows.count(ca::BucketStreet::Flop),
+                                       rows.count(ca::BucketStreet::Turn),
+                                       rows.count(ca::BucketStreet::River));
+
+  // A plain policy lifted into every board class.
+  const auto base = random_policy(game.value(), plain_layout, 0x5031'0201ULL);
+  {
+    pb::BucketPolicy lifted(game.value(), layout);
+    for (const auto &node : game.value().nodes()) {
+      if (node.kind != pb::NodeKind::Decision) {
+        continue;
+      }
+      if (node.street == gtosd::Street::Preflop) {
+        for (std::uint32_t row = 0; row < ca::preflop_hand_classes; ++row) {
+          const auto source = base.row(node.id, row);
+          std::copy(source.begin(), source.end(), lifted.row(node.id, row).begin());
+        }
+        continue;
+      }
+      const auto street = static_cast<ca::BucketStreet>(static_cast<unsigned>(node.street) - 1U);
+      for (std::uint32_t board_class = 0; board_class < pb::BoardClassRows::classes(street);
+           ++board_class) {
+        for (std::uint16_t bucket = 0; bucket < rows.groups(street); ++bucket) {
+          const auto source = base.row(node.id, bucket);
+          std::copy(source.begin(), source.end(),
+                    lifted.row(node.id, rows.row(street, board_class, bucket)).begin());
+        }
+      }
+    }
+    const auto plain = pb::BestResponseEvaluator::create(game.value(), base, plain_view);
+    const auto mapped = pb::BestResponseEvaluator::create(game.value(), lifted, class_view);
+    require(plain.has_value() && mapped.has_value(), "plain and board-class evaluators create");
+    require(!pb::BestResponseEvaluator::create(game.value(), lifted, plain_view),
+            "board-class policy without its rows is rejected");
+    require(!pb::BestResponseEvaluator::create(game.value(), base, class_view),
+            "plain policy with board class rows is rejected");
+    const pb::BoardClassRows other(4U, 5U, 7U);
+    auto other_view = class_view;
+    other_view.board_class_rows = &other;
+    require(!pb::BestResponseEvaluator::create(game.value(), lifted, other_view),
+            "board class rows of other group counts are rejected");
+    const auto class_rows = pb::ClassBucketRows::build(flop_table, turn_table, river_table);
+    require(class_rows.has_value(), "class rows of the folded tables build");
+    auto both_view = class_view;
+    both_view.class_rows = &class_rows.value();
+    require(!pb::BestResponseEvaluator::create(game.value(), lifted, both_view),
+            "board class rows exclude class rows");
+    auto flop = resources.catalog->flops()[1].cards;
+    std::sort(flop.begin(), flop.end());
+    const auto group = pb::full_runouts(flop);
+    for (const auto engine : {pb::RiverEngine::Joint, pb::RiverEngine::Reference}) {
+      auto plain_engine = plain.value();
+      auto mapped_engine = mapped.value();
+      plain_engine.set_river_engine(engine);
+      mapped_engine.set_river_engine(engine);
+      const auto expected = plain_engine.evaluate_flop(group);
+      const auto actual = mapped_engine.evaluate_flop(group);
+      require(expected.has_value() && actual.has_value(), "lifted evaluations succeed");
+      require(same_flop_values(actual.value(), expected.value()),
+              std::string("a plain policy lifted into every board class keeps its values bit for "
+                          "bit: ") +
+                  pb::river_engine_name(engine));
+    }
+  }
+
+  // A policy whose rows differ in every board class, on the last canonical
+  // flop, whose turn classes are the last ones.
+  std::uint64_t compared = 0U;
+  double largest_difference = 0.0;
+  std::uint32_t largest_row = 0U;
+  {
+    const auto policy = random_policy(game.value(), layout, 0x5031'0202ULL);
+    const auto evaluator = pb::BestResponseEvaluator::create(game.value(), policy, class_view);
+    require(evaluator.has_value(), "board-class evaluator creates");
+    auto flop = resources.catalog->flops().back().cards;
+    std::sort(flop.begin(), flop.end());
+    const auto group = pb::full_runouts(flop);
+    const auto joint = evaluator.value().evaluate_flop(group);
+    auto reference = evaluator.value();
+    reference.set_river_engine(pb::RiverEngine::Reference);
+    const auto reference_values = reference.evaluate_flop(group);
+    require(joint.has_value() && reference_values.has_value(),
+            "board-class evaluations succeed with both engines");
+    require(same_flop_values(joint.value(), reference_values.value()),
+            "joint river engine equals the reference bit for bit with board class rows");
+    const pb::AbstractionTables tables{&*resources.catalog, &flop_table, &turn_table,
+                                       &river_table,        nullptr,     nullptr,
+                                       &rows};
+    const auto expected =
+        traversal_entry_values(game.value(), policy, resources, tables, flop, largest_row);
+    require(largest_row > 0xFFFFU, "the turn and river rows pass 65,535");
+    bool nonzero = false;
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (std::size_t entry = 0; entry < expected[hero].size(); ++entry) {
+        for (std::size_t combo = 0; combo < ca::combo_count; ++combo) {
+          const double actual = joint.value().entry_values[hero][pb::average_mode][entry][combo];
+          const double wanted = expected[hero][entry][combo];
+          largest_difference = std::max(largest_difference, std::abs(actual - wanted));
+          require(close(actual, wanted, 1e-10),
+                  "board-class entry values equal ValueTraversal on the trainer's contexts");
+          nonzero = nonzero || wanted != 0.0;
+          ++compared;
+        }
+      }
+    }
+    require(nonzero, "the independent entry values are not all zero");
+    auto never = evaluator.value();
+    never.set_deviation_from(pb::DeviationStreet::None);
+    const auto restricted = never.evaluate_flop(group);
+    require(restricted.has_value(), "never-deviating evaluation succeeds");
+    const auto report = never.aggregate({&restricted.value()}, false);
+    const auto average = evaluator.value().aggregate({&joint.value()}, false);
+    require(report.has_value() && average.has_value(), "board-class aggregation succeeds");
+    require(report.value().gain[0] == 0.0 && report.value().gain[1] == 0.0 &&
+                report.value().ev == average.value().ev,
+            "the never-deviating responder gains exactly zero with board class rows");
+  }
+
+  // The trainer's own estimate on its board-class average policy.
+  double trainer_gain = 0.0;
+  {
+    auto config = resources.config();
+    config.flop_capacity = rows.count(ca::BucketStreet::Flop);
+    config.turn_capacity = rows.count(ca::BucketStreet::Turn);
+    config.river_capacity = rows.count(ca::BucketStreet::River);
+    config.batch_boards = 4U;
+    config.threads = 4U;
+    auto view = resources.view();
+    view.flop = &flop_table;
+    view.turn = &turn_table;
+    view.river = &river_table;
+    view.board_class_rows = &rows;
+    auto trainer = pb::Trainer::create(game.value(), view, config);
+    require(trainer.has_value(), "board-class trainer creates");
+    for (int iteration = 0; iteration < 4; ++iteration) {
+      require(trainer.value()->iterate().has_value(), "board-class iteration succeeds");
+    }
+    const auto estimate = trainer.value()->estimate_exploitability(2U);
+    require(estimate.has_value(), "trainer estimate with board class rows succeeds");
+    const auto average = trainer.value()->average_policy();
+    pb::CertifierOptions options;
+    options.threads = 4U;
+    options.sample_flops = 2U;
+    options.sample_seed = config.evaluation_seed;
+    const auto certificate = pb::certify(game.value(), average, class_view, options);
+    require(certificate.has_value(), "sampled certification with board class rows succeeds");
+    const auto &report = certificate.value().report;
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      require(close(report.ev[player], estimate.value().ev[player], 1e-12),
+              "board-class EV equals the trainer's estimate");
+      require(close(report.best_response[player], estimate.value().best_response[player], 1e-12),
+              "board-class best response equals the trainer's estimate");
+    }
+    trainer_gain = report.max_gain;
+  }
+  std::cout << "board class rows: " << layout.flop_capacity << "/" << layout.turn_capacity << "/"
+            << layout.river_capacity << " rows (" << layout.entries
+            << " entries), lifted policy bit-identical, " << compared
+            << " entry values equal ValueTraversal (largest difference " << largest_difference
+            << ", rows up to " << largest_row
+            << "), engines identical, None gain 0, trainer estimate reproduced (max gain "
+            << trainer_gain << "), "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
@@ -1492,6 +1830,7 @@ int main(const int argc, char **argv) {
     test_river_board_rows(resources, history_maps, support);
     test_joint_traversal(resources);
     test_joint_engine_matches_reference(resources, history_maps, support);
+    test_board_class_rows(resources);
     test_street_restricted_response(resources, scratch_dir);
     std::cout << "PREFLOP_BLUEPRINT_CERTIFIER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

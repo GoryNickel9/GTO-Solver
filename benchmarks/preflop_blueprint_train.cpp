@@ -422,7 +422,10 @@ int main(const int argc, char **argv) {
     if (use_board_class_rows) {
       if (use_class_rows || history_rows)
         throw std::runtime_error("choose one of class rows, history rows, board class rows");
-      // The best response and the certifier do not read board class rows yet.
+      // The best response reads board class rows, but the certificate does
+      // not record them and the in-training evaluation of this CLI has not
+      // been validated with them: evaluate the saved policy separately
+      // (preflop_blueprint_monker_values).
       if (evaluate_every > 0U || !certificate_path.empty())
         throw std::runtime_error("--board-class-rows requires --eval-every 0 and no certificate");
       board_class_rows.emplace(flop.value().capacity(), turn.value().capacity(),

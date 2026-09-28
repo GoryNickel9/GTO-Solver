@@ -379,6 +379,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_monker_buckets preflop_blueprint_monker_buckets.cpp)
   target_link_libraries(gtosd_preflop_blueprint_monker_buckets PRIVATE gtosd::preflop_blueprint)
   gtosd_set_warnings(gtosd_preflop_blueprint_monker_buckets)
+  add_executable(gtosd_preflop_blueprint_monker_values preflop_blueprint_monker_values.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_values
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_values)
   add_test(NAME gtosd_preflop_blueprint_game_report
     COMMAND gtosd_preflop_blueprint_game
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
@@ -518,8 +522,46 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   set_tests_properties(gtosd_preflop_blueprint_compare_smoke
     PROPERTIES LABELS "preflop_blueprint;p8;comparator"
                FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
+  # MonkerSolver-format charts of the smoke policy, then that chart set played
+  # inside the game (its loss is the three-decimal rounding of the charts):
+  # two sampled flops, then a partial canonical pass with suit orbits.
+  add_test(NAME gtosd_preflop_blueprint_monker_charts_smoke
+    COMMAND gtosd_preflop_blueprint_monker_charts
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_smoke)
+  set_tests_properties(gtosd_preflop_blueprint_monker_charts_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED preflop_blueprint_smoke_policy
+               FIXTURES_SETUP preflop_blueprint_smoke_monker_charts)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_smoke
+      --flops 2 --threads 2
+      --out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_values_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED "preflop_blueprint_smoke_policy;preflop_blueprint_smoke_monker_charts"
+               FIXTURES_SETUP preflop_blueprint_smoke_monker_values)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_orbit_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_smoke
+      --all-flops --flop-limit 2 --threads 2 --no-combo-values)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_orbit_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED "preflop_blueprint_smoke_policy;preflop_blueprint_smoke_monker_charts")
   foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
-                gtosd_preflop_blueprint_compare_smoke gtosd_preflop_blueprint_postflop_tree_smoke)
+                gtosd_preflop_blueprint_compare_smoke gtosd_preflop_blueprint_postflop_tree_smoke
+                gtosd_preflop_blueprint_monker_charts_smoke gtosd_preflop_blueprint_monker_values_smoke
+                gtosd_preflop_blueprint_monker_values_orbit_smoke)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       set_tests_properties(${smoke} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")

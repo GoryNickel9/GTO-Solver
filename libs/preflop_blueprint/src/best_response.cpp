@@ -118,6 +118,41 @@ bool assign_bucket_rows(Universe &universe, const ca::BucketTable &table,
   return true;
 }
 
+// MonkerSolver-style rows, as BoardContext::build assigns them: the class of
+// the board is its canonical index (the row of the bucket table) and the row
+// class * groups + bucket. The rows are 32-bit and every value is a real row
+// (no_bucket among them), so validity is checked on the bucket instead.
+bool assign_board_class_rows(Universe &universe, const ca::BucketTable &table,
+                             const Result<ca::CanonicalLookup, CardError> &lookup,
+                             const BoardClassRows &board_class_rows) {
+  if (!lookup) {
+    return false;
+  }
+  const auto board_class = lookup.value().index;
+  const auto &permutation = lookup.value().permutation;
+  for (std::size_t hand = 0; hand < universe.size(); ++hand) {
+    const auto first = ca::permute_card(CardId::from_index(universe.cards[hand][0]).value(), permutation);
+    const auto second =
+        ca::permute_card(CardId::from_index(universe.cards[hand][1]).value(), permutation);
+    const auto bucket = table.bucket(board_class, ca::combo_index(first, second));
+    if (bucket == ca::no_bucket || bucket >= table.capacity()) {
+      return false;
+    }
+    universe.rows[hand] = board_class_rows.row(table.street(), board_class, bucket);
+  }
+  return true;
+}
+
+// Rows of a flop or turn universe with the street abstraction of the
+// resources (history rows are assigned by assign_history_prefix).
+bool assign_street_rows(Universe &universe, const BestResponseResources &resources,
+                        const ca::BucketTable &table,
+                        const Result<ca::CanonicalLookup, CardError> &lookup) {
+  return resources.board_class_rows != nullptr
+             ? assign_board_class_rows(universe, table, lookup, *resources.board_class_rows)
+             : assign_bucket_rows(universe, table, lookup, resources.class_rows);
+}
+
 bool assign_history_prefix(Universe &universe, const BestResponseResources &resources,
                            const std::array<CardId, 3> &flop,
                            const std::optional<CardId> turn = std::nullopt) {
@@ -426,6 +461,7 @@ public:
     tables_.river = context.resources.river;
     tables_.class_rows = context.resources.class_rows;
     tables_.history_rows = context.resources.history_rows;
+    tables_.board_class_rows = context.resources.board_class_rows;
     const auto &nodes = context.game->nodes();
     for (std::uint32_t node = 0; node < nodes.size(); ++node) {
       const auto lanes = present_lanes(flop_leaf_reach, node);
@@ -696,9 +732,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
   }
   auto flop_universe = make_universe(flop_mask);
   if (!(resources.history_rows ? assign_history_prefix(flop_universe, resources, group.flop)
-                               : assign_bucket_rows(flop_universe, *resources.flop,
-                                                    resources.catalog->lookup_flop(group.flop),
-                                                    resources.class_rows))) {
+                               : assign_street_rows(flop_universe, resources, *resources.flop,
+                                                    resources.catalog->lookup_flop(group.flop)))) {
     ok = false;
     return result;
   }
@@ -816,9 +851,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     auto turn_universe = make_universe(flop_mask | turn.mask());
     if (!(resources.history_rows
               ? assign_history_prefix(turn_universe, resources, group.flop, turn)
-              : assign_bucket_rows(turn_universe, *resources.turn,
-                                   resources.catalog->lookup_flop_turn(group.flop, turn),
-                                   resources.class_rows))) {
+              : assign_street_rows(turn_universe, resources, *resources.turn,
+                                   resources.catalog->lookup_flop_turn(group.flop, turn)))) {
       ok = false;
       return result;
     }
@@ -895,6 +929,7 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     tables.river = resources.river;
     tables.class_rows = resources.class_rows;
     tables.history_rows = resources.history_rows;
+    tables.board_class_rows = resources.board_class_rows;
     for (const auto *board : reference_boards) {
       const auto built = BoardContext::build(board->history, *resources.ranks, &tables);
       if (!built) {
@@ -1208,7 +1243,12 @@ BestResponseEvaluator::create(const CompiledGame &game, const BucketPolicy &aver
     }
     if (resources.history_rows && (resources.class_rows || !resources.history_rows->matches(table)))
       return Outcome::failure(KernelError::InvalidInput);
-    const auto count = resources.history_rows ? resources.history_rows->count(table.street())
+    if (resources.board_class_rows &&
+        (resources.class_rows || resources.history_rows ||
+         !resources.board_class_rows->matches(table)))
+      return Outcome::failure(KernelError::InvalidInput);
+    const auto count = resources.board_class_rows ? resources.board_class_rows->count(table.street())
+                       : resources.history_rows   ? resources.history_rows->count(table.street())
                        : resources.class_rows == nullptr
                            ? table.capacity()
                            : resources.class_rows->count(table.street());
@@ -1505,8 +1545,7 @@ BestResponseEvaluator::preflop_action_values(const std::vector<const FlopValues 
   {
     NodeVectors leaves = terminals;
     entry_leaves_for(context, flops, sources, all_groups, hero, average_mode, leaves);
-    std::vector<double> unused;
-    value(game.root(), leaves, unused);
+    value(game.root(), leaves, result.root_values);
   }
   result.combo_values = recorded;
   result.class_ev.resize(hero_nodes);

@@ -110,14 +110,23 @@ inline int column_rank(const std::string &token) {
 using ClassStrategy = std::function<std::optional<std::vector<double>>(
     std::uint32_t node, const std::string &label)>;
 
-// Writes one chart per preflop decision node under `directory` and returns
-// the relative paths written.
-inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGame &game,
-                                             const std::vector<std::string> &labels,
-                                             const ClassStrategy &strategy,
-                                             const std::filesystem::path &directory) {
+// The chart of one preflop decision node: its file (`position`/`name`,
+// `relative` = both joined with '/'), the token of every edge in edge order
+// and the edges in the column order of the file.
+struct ChartNode {
+  std::uint32_t node{0U};
+  std::string position;
+  std::string name;
+  std::string relative;
+  std::vector<std::string> tokens;
+  std::vector<std::size_t> columns;
+};
+
+// Every preflop decision node with its chart, in the order write_charts
+// writes them (depth first, last edge first).
+inline std::vector<ChartNode> chart_nodes(const preflop_blueprint::CompiledGame &game) {
   const auto &config = game.config();
-  std::vector<std::string> written;
+  std::vector<ChartNode> charts;
   std::vector<std::pair<std::uint32_t, std::string>> stack{{game.root(), std::string{}}};
   while (!stack.empty()) {
     const auto [node_id, prefix] = stack.back();
@@ -126,14 +135,17 @@ inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGa
     if (node.kind != preflop_blueprint::NodeKind::Decision || node.street != Street::Preflop) {
       continue;
     }
-    const auto &position = config.positions.at(node.actor);
+    ChartNode chart;
+    chart.node = node_id;
+    chart.position = config.positions.at(node.actor);
     const auto edges = game.edges_of(node_id);
-    std::vector<std::string> tokens;
+    auto &tokens = chart.tokens;
     for (const auto &edge : edges) {
       tokens.push_back(action_token(game, node.actor, edge));
-      stack.emplace_back(edge.child, prefix + position + "_" + tokens.back() + "_");
+      stack.emplace_back(edge.child, prefix + chart.position + "_" + tokens.back() + "_");
     }
-    std::vector<std::size_t> order(tokens.size());
+    auto &order = chart.columns;
+    order.resize(tokens.size());
     for (std::size_t index = 0; index < order.size(); ++index) {
       order[index] = index;
     }
@@ -150,23 +162,37 @@ inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGa
                                                  .committed_this_street[node.actor]
                                                  .units();
                      });
-    const auto folder = directory / position;
+    chart.name = prefix + chart.position + "_strategy.txt";
+    chart.relative = (std::filesystem::path(chart.position) / chart.name).generic_string();
+    charts.push_back(std::move(chart));
+  }
+  return charts;
+}
+
+// Writes one chart per preflop decision node under `directory` and returns
+// the relative paths written.
+inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGame &game,
+                                             const std::vector<std::string> &labels,
+                                             const ClassStrategy &strategy,
+                                             const std::filesystem::path &directory) {
+  std::vector<std::string> written;
+  for (const auto &chart : chart_nodes(game)) {
+    const auto folder = directory / chart.position;
     std::filesystem::create_directories(folder);
-    const auto name = prefix + position + "_strategy.txt";
-    std::ofstream output(folder / name, std::ios::binary);
+    std::ofstream output(folder / chart.name, std::ios::binary);
     if (!output) {
-      throw std::runtime_error("cannot write " + (folder / name).string());
+      throw std::runtime_error("cannot write " + (folder / chart.name).string());
     }
     output << "Combination";
-    for (const auto index : order) {
-      output << '\t' << tokens[index];
+    for (const auto index : chart.columns) {
+      output << '\t' << chart.tokens[index];
     }
     output << "\tTotal\n" << std::fixed << std::setprecision(3);
     for (const auto &label : labels) {
-      const auto frequencies = strategy(node_id, label);
+      const auto frequencies = strategy(chart.node, label);
       double total = 0.0;
       output << label;
-      for (const auto index : order) {
+      for (const auto index : chart.columns) {
         const double value = frequencies ? (*frequencies)[index] : 0.0;
         output << '\t' << value;
         total += value;
@@ -174,11 +200,129 @@ inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGa
       output << '\t' << total << '\n';
     }
     if (!output) {
-      throw std::runtime_error("cannot write " + (folder / name).string());
+      throw std::runtime_error("cannot write " + (folder / chart.name).string());
     }
-    written.push_back((std::filesystem::path(position) / name).generic_string());
+    written.push_back(chart.relative);
   }
   return written;
+}
+
+// A chart file read back: the action tokens of its columns and, per hand
+// class label, the frequencies in column order (the Total column dropped).
+struct ChartFile {
+  std::vector<std::string> columns;
+  std::map<std::string, std::vector<double>> rows;
+};
+
+// Reads a chart in the MonkerSolver text format (tab separated, LF or CRLF
+// line ends, first column the hand class, optional last column Total).
+inline ChartFile read_chart(const std::filesystem::path &path) {
+  std::ifstream input(path, std::ios::binary);
+  if (!input) {
+    throw std::runtime_error("cannot open " + path.string());
+  }
+  const auto split = [](const std::string &line) {
+    std::vector<std::string> fields;
+    std::size_t start = 0U;
+    while (true) {
+      const auto tab = line.find('\t', start);
+      fields.push_back(line.substr(start, tab == std::string::npos ? std::string::npos
+                                                                   : tab - start));
+      if (tab == std::string::npos) {
+        return fields;
+      }
+      start = tab + 1U;
+    }
+  };
+  ChartFile chart;
+  bool header = true;
+  bool with_total = false;
+  std::string line;
+  while (std::getline(input, line)) {
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+    if (line.empty()) {
+      continue;
+    }
+    const auto fields = split(line);
+    if (header) {
+      if (fields.size() < 2U) {
+        throw std::runtime_error("chart header without actions: " + path.string());
+      }
+      with_total = fields.back() == "Total";
+      chart.columns.assign(fields.begin() + 1, fields.end() - (with_total ? 1 : 0));
+      header = false;
+      continue;
+    }
+    if (fields.size() != chart.columns.size() + 1U + (with_total ? 1U : 0U)) {
+      throw std::runtime_error("chart row with " + std::to_string(fields.size()) +
+                               " fields in " + path.string());
+    }
+    std::vector<double> values;
+    for (std::size_t column = 0; column < chart.columns.size(); ++column) {
+      const auto &text = fields[column + 1U];
+      std::size_t consumed = 0U;
+      const double value = std::stod(text, &consumed);
+      if (consumed != text.size() || !(value >= 0.0)) {
+        throw std::runtime_error("invalid frequency '" + text + "' in " + path.string());
+      }
+      values.push_back(value);
+    }
+    if (!chart.rows.emplace(fields[0], std::move(values)).second) {
+      throw std::runtime_error("hand class " + fields[0] + " twice in " + path.string());
+    }
+  }
+  if (header) {
+    throw std::runtime_error("empty chart " + path.string());
+  }
+  return chart;
+}
+
+// Row of a class at a chart node in edge order, normalized by its total, or
+// nullopt for a row outside the acting range (total below one half: an
+// all-zero row). The columns are matched to the edges by token, never by
+// position.
+inline std::optional<std::vector<double>> chart_row(const ChartNode &node, const ChartFile &chart,
+                                                    const std::string &label,
+                                                    const std::filesystem::path &path) {
+  std::vector<std::size_t> column_of(node.tokens.size(), chart.columns.size());
+  bool same = chart.columns.size() == node.tokens.size();
+  for (std::size_t edge = 0; same && edge < node.tokens.size(); ++edge) {
+    const auto found = std::find(chart.columns.begin(), chart.columns.end(), node.tokens[edge]);
+    same = found != chart.columns.end();
+    if (same) {
+      column_of[edge] = static_cast<std::size_t>(found - chart.columns.begin());
+    }
+  }
+  if (!same) {
+    std::string ours;
+    std::string theirs;
+    for (const auto &token : node.tokens) {
+      ours += (ours.empty() ? "" : ",") + token;
+    }
+    for (const auto &token : chart.columns) {
+      theirs += (theirs.empty() ? "" : ",") + token;
+    }
+    throw std::runtime_error("actions of " + path.string() + " (" + theirs +
+                             ") differ from the game (" + ours + ")");
+  }
+  const auto row = chart.rows.find(label);
+  if (row == chart.rows.end()) {
+    throw std::runtime_error("hand class " + label + " missing in " + path.string());
+  }
+  double total = 0.0;
+  for (const auto value : row->second) {
+    total += value;
+  }
+  if (total < 0.5) {
+    return std::nullopt;
+  }
+  std::vector<double> frequencies(node.tokens.size(), 0.0);
+  for (std::size_t edge = 0; edge < node.tokens.size(); ++edge) {
+    frequencies[edge] = row->second[column_of[edge]] / total;
+  }
+  return frequencies;
 }
 
 // Normalized strategy of a preflop node for a hand class (the preflop rows of

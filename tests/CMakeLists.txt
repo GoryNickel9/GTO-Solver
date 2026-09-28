@@ -653,6 +653,39 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_export_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  add_executable(gtosd_preflop_blueprint_monker_values_tests
+    preflop_blueprint_monker_values_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_values_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_monker_values_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_values_tests)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_tests
+    COMMAND gtosd_preflop_blueprint_monker_values_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_values_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_tests
+    PROPERTIES LABELS "preflop_blueprint;research;monker")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_monker_values_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  if(Python3_Interpreter_FOUND AND GTOSD_BUILD_BENCHMARKS)
+    # The Python recursion over the smoke JSON: our own rows reproduce the
+    # tool's EV, the chart set of the smoke policy its loss.
+    add_test(NAME gtosd_preflop_blueprint_monker_in_our_game_smoke
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/monker_compare/monker_in_our_game.py
+        ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_values_smoke.json
+        --monker ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_charts_smoke
+        --ours ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_charts_smoke
+        --check)
+    set_tests_properties(gtosd_preflop_blueprint_monker_in_our_game_smoke
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_smoke_monker_values)
+  endif()
   if(Python3_Interpreter_FOUND)
     add_test(NAME gtosd_preflop_blueprint_chart_schema
       COMMAND ${Python3_EXECUTABLE}

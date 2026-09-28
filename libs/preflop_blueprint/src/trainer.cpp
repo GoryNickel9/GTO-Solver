@@ -1991,6 +1991,7 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
   resources.river = resources_.river;
   resources.class_rows = resources_.class_rows;
   resources.history_rows = resources_.history_rows;
+  resources.board_class_rows = resources_.board_class_rows;
   BestResponseOptions options;
   options.threads = config_.evaluation_threads == 0U ? config_.threads
                                                      : config_.evaluation_threads;

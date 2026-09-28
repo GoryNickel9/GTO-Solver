@@ -45,8 +45,9 @@ public:
   // Checks the tables as BoardContext::build does and reads, for every combo
   // disjoint from the prefix, whether its flop and turn buckets (and class
   // or history rows) exist and, with history rows, the cursor of its turn
-  // history. The tables must outlive the prefix and every board assigned
-  // from it; all three bucket tables and the catalog are required.
+  // history; with board class rows, the class of the turn, which its rivers
+  // share. The tables must outlive the prefix and every board assigned from
+  // it; all three bucket tables and the catalog are required.
   [[nodiscard]] Result<bool, KernelError> assign(const std::array<CardId, 3> &flop, CardId turn,
                                                  const AbstractionTables &tables);
 
@@ -63,12 +64,16 @@ public:
   [[nodiscard]] const RiverRowCursor &cursor(const std::uint16_t combo) const noexcept {
     return cursors_[combo];
   }
+  // Canonical flop+turn index of the prefix: the board class of its rivers
+  // with board class rows.
+  [[nodiscard]] std::uint32_t turn_class() const noexcept { return turn_class_; }
 
 private:
   std::array<CardId, 3> flop_{};
   CardId turn_{};
   AbstractionTables tables_{};
   bool assigned_{false};
+  std::uint32_t turn_class_{0U};
   std::array<RiverRowCursor, card_abstraction::combo_count> cursors_{};
   std::array<std::uint8_t, card_abstraction::combo_count> covered_{};
 };
