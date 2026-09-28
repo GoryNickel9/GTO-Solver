@@ -201,6 +201,14 @@ su HU30/HU40 il 75-80 % dell'exploitability fisica e' errore di rappresentazione
 fattore dipende dal benchmark e dal seed (taratura del 2026-09-28, sezione 5.4.14 di
 [MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md)).
 
+**Decisione dell'utente del 2026-09-28, 12:40 (sostituisce il limite del 5 %).** Il limite superiore
+di 0,15 a sul certificato fisico e' tolto: un benchmark e' accettato con la sola best response
+esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale). Il certificato fisico resta una
+misura di qualita' dell'astrazione, usata per sceglierla, non per accettare un solve. Nota tecnica:
+lo strumento della best response astratta richiede un'astrazione a memoria perfetta (righe di
+storia); per astrazioni a memoria imperfetta (solo bucket, classe preflop + bucket corrente) il
+valore esatto non e' calcolabile con lo stesso metodo e servira' un limite superiore.
+
 **Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
 sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si
 misura il tempo (ripetizioni di confronto dei tempi, run sui 35 minuti). Durante i run di sola
