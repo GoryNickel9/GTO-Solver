@@ -8,7 +8,8 @@ For every chart present on both sides the script reports, over the hand classes
 weighted by their number of combos (pairs 6, suited 4, offsuit 12):
 - the mean total-variation distance of the action frequencies (half the L1
   distance: 0 means identical strategies, 1 means no action in common);
-- the share of combos whose most frequent action is the same on both sides;
+- the share of combos whose most frequent action is the same on both sides (JSON
+  only: it hides mixed strategies, so the text output leaves it out);
 - the hand classes with the largest distances.
 An action that exists on one side only counts as frequency 0 on the other.
 
@@ -18,7 +19,11 @@ reach of a class is the product of the frequencies of the earlier actions of the
 same player on the path (read from the parent charts, when present), the range
 size is the sum of combos times reach, and the range difference is one minus the
 ratio between the common part and the union of the two weighted ranges (0 = the
-same hands with the same frequencies, 1 = no hand in common).
+same hands with the same frequencies, 1 = no hand in common). The overall range
+difference pools effective combos instead of averaging the charts: the common part
+and the union are summed over the distinct restricted ranges (two charts reached by
+the same earlier actions of the same player share one range and count once), then
+one minus their ratio.
 """
 from __future__ import annotations
 
@@ -95,7 +100,8 @@ def range_report(ours: pathlib.Path, theirs: pathlib.Path, relative: str,
     ours_reach = reach(ours, relative, caches[0])
     theirs_reach = reach(theirs, relative, caches[1])
     if ours_reach is None or theirs_reach is None:
-        return {"range_combos_ours": None, "range_combos_theirs": None, "range_difference": None}
+        return {"range_combos_ours": None, "range_combos_theirs": None, "range_difference": None,
+                "restricted_range": bool(parent_decisions(relative))}
     labels = set(ours_reach) | set(theirs_reach)
     size_ours = sum(combos(l) * ours_reach.get(l, 0.0) for l in labels)
     size_theirs = sum(combos(l) * theirs_reach.get(l, 0.0) for l in labels)
@@ -103,7 +109,8 @@ def range_report(ours: pathlib.Path, theirs: pathlib.Path, relative: str,
     union = sum(combos(l) * max(ours_reach.get(l, 0.0), theirs_reach.get(l, 0.0)) for l in labels)
     return {"range_combos_ours": round(size_ours, 2), "range_combos_theirs": round(size_theirs, 2),
             "range_difference": round(1.0 - common / union, 4) if union > 0 else None,
-            "restricted_range": bool(parent_decisions(relative))}
+            "restricted_range": bool(parent_decisions(relative)),
+            "range_common_combos": common, "range_union_combos": union}
 
 
 def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
@@ -166,11 +173,25 @@ def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
               if c["same_main_action_share"] is not None]
     report["overall_mean_distance"] = round(sum(distances) / len(distances), 4) if distances else None
     report["overall_same_main_action_share"] = round(sum(shares) / len(shares), 4) if shares else None
-    # Mean over the charts whose player acted before on the line (elsewhere every
+    # Pooled on effective combos over the distinct restricted ranges (elsewhere every
     # class reaches the node on both sides and the difference is 0).
-    ranges = [c["range_difference"] for c in report["charts"]
-              if c.get("restricted_range") and c["range_difference"] is not None]
-    report["overall_range_difference"] = round(sum(ranges) / len(ranges), 4) if ranges else None
+    seen = set()
+    common = union = size_ours = size_theirs = 0.0
+    for c in report["charts"]:
+        if not c.get("restricted_range") or c["range_difference"] is None:
+            continue
+        key = (c["chart"].split("/")[0], tuple(parent_decisions(c["chart"])))
+        if key in seen:
+            continue
+        seen.add(key)
+        common += c["range_common_combos"]
+        union += c["range_union_combos"]
+        size_ours += c["range_combos_ours"]
+        size_theirs += c["range_combos_theirs"]
+    report["overall_range_difference"] = round(1.0 - common / union, 4) if union > 0 else None
+    report["overall_range_combos_ours"] = round(size_ours, 2) if seen else None
+    report["overall_range_combos_theirs"] = round(size_theirs, 2) if seen else None
+    report["distinct_restricted_ranges"] = len(seen)
     return report
 
 
@@ -197,8 +218,7 @@ def main() -> int:
                   f"{len(chart['in_range_only_ours'])}, only theirs "
                   f"{len(chart['in_range_only_theirs'])}{flag}")
         else:
-            print(f"{chart['chart']}: distance {chart['mean_distance']:.3f}, "
-                  f"same main action {100 * chart['same_main_action_share']:.1f} % "
+            print(f"{chart['chart']}: distance {chart['mean_distance']:.3f} "
                   f"on {chart['classes']} classes in both ranges; in range only ours "
                   f"{len(chart['in_range_only_ours'])}, only theirs "
                   f"{len(chart['in_range_only_theirs'])}{flag}")
@@ -218,9 +238,11 @@ def main() -> int:
     if report["only_theirs"]:
         print("only theirs:", ", ".join(report["only_theirs"]))
     if report["overall_mean_distance"] is not None:
-        print(f"overall: distance {report['overall_mean_distance']:.3f}, same main action "
-              f"{100 * report['overall_same_main_action_share']:.1f} %"
-              + (f", range difference {report['overall_range_difference']:.3f}"
+        print(f"overall: distance {report['overall_mean_distance']:.3f}"
+              + (f", range difference {report['overall_range_difference']:.3f} (effective combos "
+                 f"ours {report['overall_range_combos_ours']:.1f}, theirs "
+                 f"{report['overall_range_combos_theirs']:.1f}, "
+                 f"{report['distinct_restricted_ranges']} distinct restricted ranges)"
                  if report["overall_range_difference"] is not None else ""))
     if args.json:
         args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")

@@ -11,7 +11,8 @@
 # Usage: tools/monker_compare/run_step2_continuous.sh <config.json> <bucket dir> <monker chart dir> <output dir>
 # (relative paths are relative to the repository root)
 # Environment: STEP (4000), MAX (160000), THRESHOLD (0.01), CHECKPOINT_EVERY (20000),
-#              THREADS (8), STORAGE (double), BIN, RES.
+#              THREADS (8), STORAGE (double), BIN, RES, TRAIN_ARGS (extra trainer
+#              arguments, for example "--seed 2").
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -27,6 +28,7 @@ THREADS="${THREADS:-8}"
 STORAGE="${STORAGE:-double}"
 BIN="${BIN:-out/build/windows-release-suite/benchmarks}"
 RES="${RES:-out/preflop_blueprint_resources}"
+TRAIN_ARGS="${TRAIN_ARGS:-}"
 mkdir -p "$OUT/charts"
 rm -f "$OUT/STOP"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$OUT/run.log"; }
@@ -34,13 +36,13 @@ field() { python -c "import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]
 
 resume=""
 [ -f "$OUT/state.ckpt" ] && resume="--resume"
-log "step 2 continuous start: config $CFG buckets $BUCKETS step $STEP max $MAX threshold $THRESHOLD $resume"
+log "step 2 continuous start: config $CFG buckets $BUCKETS step $STEP max $MAX threshold $THRESHOLD $TRAIN_ARGS $resume"
 "$BIN/gtosd_preflop_blueprint_train.exe" --config "$CFG" --resources-dir "$RES" --buckets-dir "$BUCKETS" \
   --board-class-rows --threads "$THREADS" --table-storage "$STORAGE" --eval-every 0 \
   --batch 32 --partition-target 64 --scheme dcfr --update alternating --batch-policy-refresh \
   --lazy-discount --progress-every 500 --iterations "$MAX" \
   --checkpoint "$OUT/state.ckpt" --checkpoint-every "$CHECKPOINT_EVERY" --policy-out "$OUT/policy.bin" \
-  --chart-every "$STEP" --chart-dir "$OUT/charts" --stop-file "$OUT/STOP" $resume \
+  --chart-every "$STEP" --chart-dir "$OUT/charts" --stop-file "$OUT/STOP" $TRAIN_ARGS $resume \
   >> "$OUT/train.jsonl" 2>> "$OUT/train.stderr.log" &
 trainer=$!
 
