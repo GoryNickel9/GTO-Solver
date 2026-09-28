@@ -85,6 +85,10 @@ ActionConfig all_in_config(const GameConfig &config) {
   if (config.include_all_in) {
     result.all_in_mode = AllInMode::Add;
     result.all_in_threshold = always_add_all_in();
+    // The all-in is available at every decision (user decision of 2026-09-28,
+    // MonkerSolver trees): the strict 1000 % cap of the threshold dropped the
+    // open-shove and the shove over a limp from 42 antes up.
+    result.all_in_unconditional = true;
   }
   return result;
 }
@@ -221,6 +225,7 @@ Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
     if (config.include_all_in) {
       result.all_in_mode = AllInMode::Add;
       result.all_in_threshold = always_add_all_in();
+      result.all_in_unconditional = true;
     }
     return ConfigResult::success(std::move(result));
   }

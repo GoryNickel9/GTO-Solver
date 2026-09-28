@@ -484,8 +484,10 @@ Result<std::vector<Action>, GameError> legal_actions(const PublicState &state,
     }
   }
 
-  const bool explicit_all_in = threshold_triggered && (config.all_in_mode == AllInMode::Add ||
-                                                       config.all_in_mode == AllInMode::Go);
+  const bool explicit_all_in =
+      (threshold_triggered &&
+       (config.all_in_mode == AllInMode::Add || config.all_in_mode == AllInMode::Go)) ||
+      (config.all_in_unconditional && config.all_in_mode == AllInMode::Add);
   if (push_increment.units() > 0 && explicit_all_in) {
     add_unique_aggressive(actions, {ActionType::AllIn, stack, AllInKind::Raise, 0});
   }

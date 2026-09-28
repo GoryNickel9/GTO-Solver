@@ -103,6 +103,13 @@ struct CompileOptions {
   // Stop at the postflop entries; used to inspect multiway preflop trees
   // before the multiway postflop is sized (roadmap P10).
   bool preflop_only{false};
+  // Settle every postflop entry as a showdown over the full five-card runout
+  // (MonkerSolver's empty postflop, the checkdown model): the flop chance node
+  // becomes a preflop TerminalShowdown with five board cards to come. The
+  // statistics count these leaves as preflop all-in runouts, and the stored
+  // public state stays StreetComplete (the payoffs settle it as a showdown).
+  // Rake is not modelled: a checkdown leaf would settle as no-flop-no-drop.
+  bool checkdown_at_flop{false};
   std::uint64_t maximum_nodes{50'000'000ULL};
 };
 

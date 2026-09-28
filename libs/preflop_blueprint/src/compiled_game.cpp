@@ -109,6 +109,11 @@ private:
       node.actor = state.player_to_act;
       break;
     }
+    if (options_.checkdown_at_flop && node.kind == NodeKind::Chance &&
+        state.street == Street::Preflop) {
+      node.kind = NodeKind::TerminalShowdown;
+      node.remaining_board_cards = 5U;
+    }
     if (node.kind == NodeKind::Chance && state.street == Street::Preflop) {
       if (game_.entries_.size() >= no_entry) {
         return NodeResult::failure(GameModelError::NodeOverflow);
@@ -125,7 +130,13 @@ private:
     switch (node.kind) {
     case NodeKind::TerminalFold:
     case NodeKind::TerminalShowdown: {
-      const auto settled = settle(id, state);
+      // A checkdown leaf keeps its StreetComplete state; it settles as a
+      // showdown of the players still in the hand.
+      auto settled_state = state;
+      if (settled_state.status == HandStatus::StreetComplete) {
+        settled_state.status = HandStatus::Showdown;
+      }
+      const auto settled = settle(id, settled_state);
       if (!settled) {
         return NodeResult::failure(settled.error());
       }
@@ -277,9 +288,10 @@ private:
   std::string fingerprint() const {
     auto hash = detail::fnv1a_text("gtosd.preflop_blueprint_game_tree.v1|");
     hash = detail::fnv1a_text(game_config_fingerprint(config_), hash);
-    hash = detail::fnv1a_text(subgame_ ? "|subgame|"
-                              : options_.preflop_only ? "|preflop_only|"
-                                                      : "|full|",
+    hash = detail::fnv1a_text(subgame_                     ? "|subgame|"
+                              : options_.checkdown_at_flop ? "|checkdown|"
+                              : options_.preflop_only      ? "|preflop_only|"
+                                                           : "|full|",
                               hash);
     for (const auto &node : game_.nodes_) {
       hash = detail::fnv1a_text(std::to_string(static_cast<unsigned>(node.kind)) + ":" +
