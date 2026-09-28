@@ -192,7 +192,14 @@ piatto iniziale (0,15 a). Condizioni di accettazione: best response astratta <= 
 fisico <= 0,15 a. Stato a 32.000 iterazioni: HU30 0,0349 / 0,1676, HU40 0,0640 / 0,2526. Motivo: i solver preflop di riferimento
 dichiarano la convergenza dentro la propria astrazione; le diagnosi del 2026-09-27/28 mostrano che
 su HU30/HU40 il 75-80 % dell'exploitability fisica e' errore di rappresentazione. Valori di partenza a
-32.000 iterazioni: HU30 0,0349 (policy del 2026-09-21), HU40 0,0640.
+32.000 iterazioni: HU30 0,0349 (policy del 2026-09-21; sulla policy `diag-h-32k` del 2026-09-27 0,034880), HU40 0,0640.
+
+**Aggiornamento del 2026-09-28 (fase 0).** HU30 a 48.000 iterazioni: best response astratta 0,0269 a
+(sotto 0,03) e certificato fisico 0,1609 a (7 % oltre il limite di 0,15 a): non ancora accettato. HU40 a
+64.000 iterazioni: 0,0417 / 0,2383. La best response astratta su un campione di flop
+(`--sample-flops`) non e' ammessa per l'accettazione: sovrastima il valore esatto di 2-7 volte e il
+fattore dipende dal benchmark e dal seed (taratura del 2026-09-28, sezione 5.4.14 di
+[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md)).
 
 **Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
 sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si

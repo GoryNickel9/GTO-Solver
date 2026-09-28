@@ -11,17 +11,17 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | P9: diagnosi e correzione generale della convergenza; CO40 non qualificato |
+| Fase in corso | Milestone tempi e convergenza (suite HU10-HU40): fase 0 conclusa il 2026-09-28, scelta fra fase 1 (arresto automatico) e fase 2 (convergenza per iterazione) in attesa dell'utente |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `codex/fix-preflop-deep-stack-convergence` |
+| Branch di fase | `feat/preflop-phase1-time` (dal 2026-09-24); in precedenza `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
 | Build | `out/build/windows-release-suite` (HEAD `ba93c75` pulito per la baseline, poi le candidate), Release, MSVC, /W4 /WX |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
-| Gate di accettazione | **1 % del piatto iniziale**, quindi 0,03 a per HU10/HU20/HU30/HU40. Qualificati con BR fisica esatta: **HU10** a 0,003981 a; **HU20 history7** a 0,0279995887 a. HU30 history7 a 32.000: 0,167619129 a, FAIL. |
+| Gate di accettazione | **Dal 2026-09-28: best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale) e certificato fisico <= 0,15 a (5 %).** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco per il solver di prodotto. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Fase 1 (tempo a memoria invariata) conclusa il 2026-09-25: F e' la versione di riferimento (-19/-20/-14/-19 % end-to-end rispetto ad A, memoria invariata). Fase 2 in corso: H (timestamp a 16 bit, copertura delle righe) in coda per il 26/09 dopo la ripetizione 4 appaiata D/E/F; allocazione sparsa a pagine esclusa (pagine tutte toccate gia' a 100 iterazioni), margine dallo storage narrow. Obiettivo dell'utente (25/09): ogni benchmark sotto i 35 minuti end-to-end con certificato all'1 %. Due linee: A tempo per certificare su HU20 (certificatore vettorizzato, meno iterazioni), B convergenza su HU30/HU40 (riferimento a 32k, fase 3 flop 500 / river 23 nel tetto, accelerazione) |
+| Prossimo passo | Decisione dell'utente fra fase 1 e fase 2 (raccomandata la 2). In entrambe il primo lavoro e' la best response astratta esatta veloce (obiettivo circa 10 minuti, oggi 47): con il nuovo criterio i 35 minuti end-to-end la comprendono. Estrapolazioni: HU30 passa l'astratta a circa 40.500 iterazioni (88 minuti di training), HU40 a circa 109.000 (4,1 ore); il fisico di HU40 richiede la fase 3 (rappresentazione). Poi fase 4: 35 minuti su tutti i benchmark (HU20 sospeso dal 27/09) e HU100. |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,65 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-28 — nuovo criterio di accettazione, diagnosi per street, fase 0: HU30 passa la best response astratta a 48.000 iterazioni
+
+Fatto nella notte (eccezione dell'utente solo per il 28: nessuno stop alle 21:00, la finestra
+normale torna il 29 alle 00:05 con lo switch automatico): diagnosi per street con la candidata N
+sulle policy a 32.000 iterazioni (history7 e L, sezione 5.4.12 di
+[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md)): nessuna street
+dominante (quote postflop 33 / 29 / 38 % su HU30, 29 / 29 / 42 % su HU40), limp-check 79-84 % del guadagno dal flop,
+guadagno amplificato dal preflop (la risposta del CO arriva al limp-check con probabilita' 0,51-0,57 contro
+0,12-0,20 della policy); L riduce tutte le street del 4-5 %. Workflow sul postflop esatto per flop con
+`libs/postflop`: fattibile ma 19-29 ore per passata su HU30/HU40 e 56-88 su HU100, scartato come
+strada principale e tenuto come oracolo. Workflow sui bucket: le feature di flop e turn sono gia'
+istogrammi di equity confrontati con EMD, il river usa 9 valori; il 95,3 % dei genitori river e' al
+tetto di 7 righe. HU100 definito dall'utente (open 150 %, isolation 150 %, 3-bet 100 %,
+limp/raise 100 %, stack 100 a, all-in sempre disponibile): bozza, stime di memoria (12-23 GiB) e
+buco dell'all-in nel motore oltre il 1000 % del piatto (sezione 5.4.13).
+
+Decisioni dell'utente: nella notte (commit delle 02:03) l'accettazione passa alla best response esatta dentro
+l'astrazione (<= 0,03 a, 1 % del piatto); poi (commit delle 02:38) il certificato fisico resta un limite
+superiore di 0,15 a (5 %), non piu' un obiettivo. Protocollo aggiornato (`0980dec`, `ae13445`).
+Alle 03:00 roadmap in fasi: 0 curve di convergenza, 1 arresto automatico e best response astratta
+veloce, 2 convergenza per iterazione (algoritmo), 3 rappresentazione per il fisico <= 0,15, 4 tempo
+di 35 minuti su tutti i benchmark e HU100; scelta fra fase 1 e 2 con regola pre-registrata sul
+valore di HU40 a 64.000 iterazioni, e domanda all'utente se il valore cade nella fascia incerta.
+
+Fase 0 (coda continua 03:03-09:40, sezione 5.4.14): HU40 a 64.000 iterazioni best response
+astratta 0,0417 a (32.000: 0,0640), fisico 0,2383; HU30 a 48.000 iterazioni **0,0269 a, sotto la
+soglia**, fisico 0,1609 (7 % oltre il limite di 0,15 a: non ancora accettato). La best response astratta
+scende come T^-0,62/-0,64: HU30 passerebbe a circa 40.500 iterazioni (circa 88 minuti di training),
+HU40 a circa 109.000 (circa 4,1 ore). La differenza fisico - astratta resta ferma (HU30 0,133 ->
+0,134) o cresce (HU40 0,189 -> 0,197): HU40 non arriva a 0,15 con le sole iterazioni. Taratura
+della best response campionata (16/32/64 flop, due seed): sovrastima di 2-7 volte, con un fattore
+che dipende da benchmark e seed, quindi non utilizzabile ne' come stima ne' come filtro. HU40 cade
+nella fascia incerta (0,040-0,048): decisione chiesta all'utente alle 06:24, raccomandata la fase 2.
+
+Prossimo passo: scelta dell'utente fra fase 1 e fase 2. In entrambe il primo lavoro e' la best
+response astratta esatta veloce (tecniche di J piu' simmetria di seme su turn e river, obiettivo
+circa 10 minuti, bit-identica ai quattro valori di riferimento): con il nuovo criterio i 35 minuti
+comprendono anche questa misura, che oggi da sola dura 47 minuti.
+
+### 2026-09-26/27 — H su tre ripetizioni, candidata J (certificatore 2,6 volte piu' veloce), astrazioni K e L, riferimenti a 32.000 iterazioni, candidata N
+
+26 settembre: ripetizione 4 appaiata di D, E, F (sezione 5.4.8); H su tre ripetizioni,
+bit-identica a F, picchi 2,01 / 7,56 / 7,78 / 7,78 GiB contro 2,11 / 7,94 / 8,18 / 8,18 di A
+(sezione 5.4.7); censimento delle astrazioni della fase 3 e prima candidata K (sezione 5.4.9);
+build di J alle 20:06, sonda HU10 bit-identica e 2,6 volte piu' veloce (sezione 5.4.10); primi
+riferimenti a 32.000 iterazioni: HU30 0,1676 a, HU40 0,2526 a (fisico). Decisioni dell'utente:
+finestra estesa alle 21:00 e obiettivo di 35 minuti per ogni benchmark.
+
+27 settembre (sezione 5.4.11): J sui quattro benchmark, certificati bit-identici a H e
+certificazione 2,3-2,9 volte piu' veloce (HU30 325 s contro 856); K (river cap 16) nessun guadagno a
+32.000 iterazioni; L (flop 500, river cap 12) -5 % a 32.000 iterazioni, peggiore a 16.000; HU20 con
+meno iterazioni: 8.000 0,0438 a in 23,8 minuti, 12.000 0,0335 in 29,0, batch 64 a 8.000 0,0303 in
+38,3. Decisioni dell'utente: priorita' a HU30 e HU40, il tempo di HU20 e' sospeso (coda parcheggiata
+in `out/suite/queue_parked_hu20.txt`); build e test ammessi 00:00-21:00 tranne durante i run di
+tempo; mai riordinare la roadmap concordata senza dirlo (errore mio corretto in giornata sulle
+ripetizioni di J). Run a 32.000 iterazioni con policy conservata (`diag-h-32k`, `diag-l-32k`):
+best response astratta HU40 0,0640 a (la misura di HU30, 0,0349 a, e' delle 02:10 del 28). Candidata N (best response ristretta per
+street, commit `943c7b4`) costruita e testata la sera del 27 per la diagnosi della notte.
 
 ### 2026-09-25 — fase 1 conclusa (D, E, F su tre ripetizioni), finestra e decisioni dell'utente, fase 2 avviata (candidata H)
 

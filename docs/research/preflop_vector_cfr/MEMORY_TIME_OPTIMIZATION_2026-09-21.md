@@ -595,6 +595,124 @@ candidata L (flop 500, river cap 12, float32) su HU30 a 16.000: max gain 0,2062 
 dell'astrazione attuale allo stesso numero di iterazioni), picco 7,48 GiB (stima 7,46), training
 2.229 s come H; il confronto utile e' a 32.000 iterazioni (27 settembre).
 
+### 5.4.11 Misure del 26-27 settembre: J sui quattro benchmark, astrazioni K e L, riferimenti a 32.000 iterazioni
+
+**J sui quattro benchmark** (ripetizione 1 nella notte del 27, ripetizione 2 su HU30/HU40 la sera
+del 27): certificati bit-identici a H (max gain 0,0020456 / 0,0280003 / 0,1917755 / 0,2895718 a
+su HU10/HU20/HU30/HU40), certificazione 96 / 318 / 325 / 297 s contro 220 / 821 / 856 / 856 s di H,
+cioe' 2,3 / 2,6 / 2,6 / 2,9 volte piu' veloce (ripetizione 2: 326 e 328 s). Il trainer e' quello di
+H (stesse policy): le differenze di training fra le serie sono carico della macchina.
+
+**Astrazioni della fase 3** (max gain fisico in a; K e L in float32, history7 in double):
+
+| Versione | Astrazione | HU30 16k | HU30 32k | HU40 16k | HU40 32k | Picco trainer |
+|---|---|---:|---:|---:|---:|---:|
+| H / J | history7 (flop 200, river cap 7) | 0,1918 | 0,1676 | 0,2896 | 0,2526 | 7,78 GiB |
+| K | flop 200, river cap 16 | 0,2124 | 0,1690 | 0,3179 | 0,2525 | 7,41 GiB |
+| L | flop 500, river cap 12 | 0,2062 | 0,1586 | 0,3109 | 0,2399 | 7,48 GiB |
+
+K non migliora a 32.000 iterazioni (+0,8 % su HU30, invariato su HU40) pur dimezzando l'errore
+interno del river (RMS 0,067 -> 0,033); L migliora del 5,4 % e del 5,0 % a 32.000 iterazioni ed e'
+peggiore a 16.000 (piu' righe da riempire). I run a 32.000 iterazioni sono deterministici: il
+riferimento history7 del 26 (`ref-h-32k`) e quello del 27 con policy conservata (`diag-h-32k`)
+danno lo stesso max gain al bit.
+
+**HU20** (certificato fisico, prima del nuovo criterio): 8.000 iterazioni 0,0438 a in 23,8 minuti
+end-to-end, 12.000 0,0335 in 29,0, 16.000 0,0280 in 39,7; batch 64 a 8.000 iterazioni 0,0303 in
+38,3 minuti (a parita' di tempo di training circa il 5 % peggiore del batch 32, interpolato a 0,0287). Il tempo di HU20 e' sospeso per decisione
+dell'utente del 27 settembre (priorita' a HU30 e HU40, HU20 ripreso dopo).
+
+### 5.4.12 Candidata N: best response fisica ristretta per street (27-28 settembre)
+
+Commit `943c7b4`: opzione `--deviation-from preflop|flop|turn|river|none` del certificatore; il
+giocatore che devia segue la policy fino alla street indicata e risponde al meglio da li' in poi. I
+certificati ristretti sono marcati `restricted`, non superano mai il target e l'export li rifiuta.
+Test: oracolo su gioco finito nel trainer (`check_street_restrictions`) e
+`test_street_restricted_response`. Guadagno del CO (a) con le policy a 32.000 iterazioni:
+
+| Astrazione | Benchmark | Completa | Dal flop | Dal turn | Solo river | Quote postflop flop / turn / river | Limp-check (quota del guadagno dal flop) |
+|---|---|---:|---:|---:|---:|---|---:|
+| history7 | HU30 | 0,1676 | 0,0558 | 0,0374 | 0,0210 | 33 / 29 / 38 % | 84 % |
+| history7 | HU40 | 0,2526 | 0,1163 | 0,0825 | 0,0486 | 29 / 29 / 42 % | 79 % |
+| L | HU30 | 0,1586 | 0,0531 | 0,0358 | 0,0202 | come history7 | |
+| L | HU40 | 0,2399 | 0,1106 | 0,0790 | 0,0462 | come history7 | |
+
+Nessuna street supera il 50 % della quota postflop: non esiste una correzione su una sola street. Il
+piatto limpato domina (limp-check 79-84 % del guadagno dal flop, circa 99 % con il limp/iso/call). Il guadagno completo e' amplificato dal preflop: tenendo la policy fino al
+flop il CO sfrutta solo il 33 % (HU30) e il 46 % (HU40) del guadagno completo; la risposta
+completa arriva al limp-check con probabilita' 0,51-0,57 contro 0,12-0,20 della policy, per portare nel
+piatto limpato le mani rappresentate male. L riduce tutte le street del 4-5 % in modo uniforme.
+
+### 5.4.13 Nuovo criterio di accettazione e best response astratta (28 settembre)
+
+Decisioni dell'utente nella notte del 28 (protocollo, commit `0980dec` delle 02:03 e `ae13445` delle 02:38): un benchmark
+e' accettato con best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale) e
+certificato fisico <= 0,15 a (5 %, limite superiore e non piu' obiettivo). La best response astratta
+(`gtosd_preflop_blueprint_abstract_br`) restringe il giocatore che devia alle righe
+dell'astrazione e somma i valori su tutte le 605.088 sequenze di board (573 flop canonici x 33
+turn x 32 river); oggi costa 47-54 minuti a misura, perche' riusa il trainer un board alla volta.
+
+Valutazione del postflop esatto per flop (workflow del 28, solver `libs/postflop`): fattibile
+tecnicamente, memoria entro 8 GiB un flop alla volta, ma 19-29 ore per passata su HU30/HU40
+(32-50 volte oltre i 35 minuti) e 56-88 ore su HU100, con il problema dell'accoppiamento
+preflop-postflop. Scartato come strada principale, resta un oracolo per i controlli puntuali.
+
+HU100 (definito dall'utente il 28: open CO 150 % del piatto, isolation del BTN sul limp 150 %,
+3-bet del BTN 100 %, limp/raise non all-in del CO 100 %, stack 100 a, all-in sempre disponibile):
+bozza `out/hu100/HU100_draft.json`, 1.543 nodi, decisioni postflop 54 / 166 / 374, 1.443 milioni di
+celle (3 volte HU40), trainer stimato 22,9 GiB double / 17,5 mixed / 12,1 float32: non entra in
+8 GiB con l'astrazione attuale. Il motore aggiunge l'all-in solo se non supera il 1000 % del piatto
+(`game_model.cpp`): a 100 a mancano l'open-shove del CO, lo shove di isolamento del BTN e gli
+all-in dei primi livelli del piatto limpato (correzione in attesa dell'ok dell'utente).
+
+### 5.4.14 Fase 0: curve di convergenza e taratura della best response campionata (28 settembre)
+
+Run con policy conservata (`diag-h-48k`, `diag-h-64k`, astrazione history7, eseguibili di J) e best
+response astratta esatta sulle policy:
+
+| Benchmark | Iterazioni | Training | BR astratta | Certificato fisico | Fisico - astratta | Tempo BR astratta |
+|---|---:|---:|---:|---:|---:|---:|
+| HU30 | 32.000 | 4.473 s | 0,034880 | 0,167639 | 0,1328 | 3.230 s |
+| HU30 | 48.000 | 6.239 s | **0,026921** | 0,160893 | 0,1340 | 2.820 s |
+| HU40 | 32.000 | 4.234 s | 0,064020 | 0,252620 | 0,1886 | 3.052 s |
+| HU40 | 64.000 | 8.625 s | 0,041717 | 0,238264 | 0,1965 | 2.820 s |
+
+- **HU30 a 48.000 iterazioni passa il criterio principale** (0,0269 <= 0,03) e supera del 7 % il
+  limite fisico di 0,15 a (0,1609): non e' ancora accettato.
+- **La best response astratta scende come T^-0,64 (HU30) e T^-0,62 (HU40)**: nessun plateau, ma
+  lontano dal ritmo T^-1 di DCFR senza campionamento. Estrapolazione: HU30 sotto 0,03 a circa
+  40.500 iterazioni (circa 88 minuti di training), HU40 a circa 109.000 (circa 4,1 ore).
+- **Il certificato fisico scende come T^-0,10 e T^-0,08** e la differenza fisico - astratta resta
+  ferma o cresce (HU30 0,133 -> 0,134, HU40 0,189 -> 0,197): su HU40 le iterazioni non bastano per
+  lo 0,15 (serve la rappresentazione, fase 3); su HU30 servirebbe una best response astratta
+  intorno a 0,016-0,017, cioe' circa 100.000 iterazioni (estrapolazione).
+- **Bilancio dei 35 minuti:** con il nuovo criterio il tempo end-to-end comprende training,
+  certificato fisico (circa 5 minuti) e best response astratta (47 minuti oggi, da sola oltre il
+  limite). Con una best response astratta da 10 minuti restano circa 20 minuti di training, cioe'
+  circa 9.000 iterazioni al costo attuale: servirebbe convergere 4,5 volte piu' in fretta su HU30
+  e 12 volte su HU40.
+
+Regola pre-registrata (28 settembre, 03:00): HU40 a 64.000 iterazioni <= 0,040 -> fase 1 (arresto
+automatico e best response astratta veloce); >= 0,048 -> fase 2 (convergenza per iterazione);
+fascia intermedia -> decisione dell'utente. Esito 0,0417: fascia intermedia, decisione chiesta
+all'utente alle 06:24 con raccomandazione per la fase 2.
+
+**Taratura della best response astratta campionata** (`--sample-flops`, policy a 32.000 iterazioni,
+due seed per dimensione del campione):
+
+| Benchmark (esatta) | 16 flop | 32 flop | 64 flop |
+|---|---|---|---|
+| HU30 (0,034880) | 0,2318 / 0,2175 (6,6x / 6,2x) | 0,1387 / 0,1376 (4,0x / 3,9x) | 0,0984 / 0,1038 (2,8x / 3,0x) |
+| HU40 (0,064020) | 0,2732 / 0,2437 (4,3x / 3,8x) | 0,1883 / 0,1554 (2,9x / 2,4x) | 0,1512 / 0,1343 (2,4x / 2,1x) |
+| Tempo | 94-110 s | 170 s | 322-327 s |
+
+Il campione sovrastima sempre, di 2-7 volte: con pochi flop ogni riga compare su pochi board e il
+giocatore che devia si adatta a quei board, avvicinandosi a una best response fisica sul campione.
+Il fattore dipende dal benchmark e dal seed, quindi non esiste una correzione fissa: la best
+response campionata non serve come stima ne' come filtro per la soglia di 0,03 a. L'arresto
+automatico e ogni esperimento sulla convergenza richiedono la best response astratta esatta resa
+veloce (tecniche di J piu' simmetria di seme su turn e river; obiettivo circa 10 minuti).
+
 ## 6. Procedura di riproduzione
 
 Vedi la sezione 8 del protocollo. Le build delle versioni: baseline dall'HEAD pulito
