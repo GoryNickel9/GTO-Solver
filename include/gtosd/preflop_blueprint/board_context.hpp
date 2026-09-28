@@ -6,6 +6,7 @@
 #include "gtosd/core/cards.hpp"
 #include "gtosd/core/game.hpp"
 #include "gtosd/core/result.hpp"
+#include "gtosd/preflop_blueprint/board_class_rows.hpp"
 
 #include <array>
 #include <cstdint>
@@ -64,6 +65,8 @@ struct AbstractionTables {
   // Must outlive contexts built from these tables. Null retains plain buckets.
   const ClassBucketRows *class_rows{nullptr};
   const HistoryBucketRows *history_rows{nullptr};
+  // MonkerSolver-style rows keyed by (board class, per-board bucket).
+  const BoardClassRows *board_class_rows{nullptr};
 };
 
 class BoardContext {

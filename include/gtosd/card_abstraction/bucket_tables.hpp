@@ -69,6 +69,17 @@ public:
   build_river(const BoardCatalog &catalog, const RiverFeatureTable &features,
               const ClusteringParameters &parameters,
               ClusteringDiagnostics *diagnostics = nullptr);
+  // Wraps an assignment computed outside the clustering (e.g. rule-based
+  // per-board buckets) in the same format. `buckets` holds rows * 630 ids in
+  // the canonical frame (no_bucket for overlapping combos), `centroids` holds
+  // capacity rows of the street's width (16 cumulative counts on flop and
+  // turn, 9 fixed-point equities on the river), exactly what load() accepts.
+  // `recipe_fingerprint` is stored as the feature fingerprint and must
+  // identify how the assignment was produced.
+  [[nodiscard]] static Result<BucketTable, ResourceError>
+  from_assignment(BucketStreet street, const BoardCatalog &catalog,
+                  const ClusteringParameters &parameters, std::vector<std::uint16_t> buckets,
+                  std::vector<std::uint16_t> centroids, const std::string &recipe_fingerprint);
 
   [[nodiscard]] static Result<BucketTable, ResourceError> load(const std::filesystem::path &path);
   [[nodiscard]] Result<bool, ResourceError> save(const std::filesystem::path &path) const;

@@ -3,6 +3,7 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/game_model.hpp"
 
+#include <array>
 #include <bit>
 #include <cstdint>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -34,12 +36,21 @@ std::string read_file(const std::filesystem::path &path) {
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
 }
 
-pb::GameConfig load_fixture(const std::string_view name) {
-  const auto path =
-      std::filesystem::path(GTOSD_SOURCE_DIR) / "benchmarks" / "fixtures" / std::string(name);
+pb::GameConfig load_config(const std::filesystem::path &relative_path) {
+  const auto path = std::filesystem::path(GTOSD_SOURCE_DIR) / relative_path;
   const auto parsed = pb::parse_game_config_json(read_file(path));
-  require(parsed.has_value(), std::string("fixture parses: ") + std::string(name));
+  require(parsed.has_value(), "configuration parses: " + relative_path.generic_string());
   return parsed.value();
+}
+
+pb::GameConfig load_fixture(const std::string_view name) {
+  return load_config(std::filesystem::path("benchmarks") / "fixtures" / std::string(name));
+}
+
+// Tree of the MonkerSolver HU 50a charts: open 5a, then fold, call or all-in;
+// postflop one pot-sized bet or raise plus the all-in. CO acts first postflop.
+pb::GameConfig load_hu50() {
+  return load_config(std::filesystem::path("benchmarks") / "monker" / "HU50.json");
 }
 
 gtosd::Money antes(const std::int64_t value) {
@@ -113,6 +124,34 @@ bool has_edge(const pb::CompiledGame &game, const std::uint32_t node, const gtos
     }
   }
   return false;
+}
+
+// Seat of the last player who bet, raised or went all-in on the street before
+// the node's street, read off the path from the root instead of the compiler's
+// own bookkeeping; pb::no_aggressor on the preflop street, after a street
+// without aggression and when that betting precedes the root of a subgame.
+std::uint8_t previous_round_aggressor(const pb::CompiledGame &game, const std::uint32_t node) {
+  const auto &nodes = game.nodes();
+  if (nodes[node].street == gtosd::Street::Preflop) {
+    return pb::no_aggressor;
+  }
+  const auto previous =
+      static_cast<gtosd::Street>(static_cast<std::uint8_t>(nodes[node].street) - 1U);
+  // Walking up, the first aggressive edge met on the previous street is the
+  // last one taken on it.
+  for (std::uint32_t child = node; nodes[child].parent != pb::no_node;
+       child = nodes[child].parent) {
+    const auto &parent = nodes[nodes[child].parent];
+    if (parent.kind != pb::NodeKind::Decision || parent.street != previous) {
+      continue;
+    }
+    for (const auto &edge : game.edges_of(parent.id)) {
+      if (edge.child == child && pb::is_aggressive(edge.action)) {
+        return parent.actor;
+      }
+    }
+  }
+  return pb::no_aggressor;
 }
 
 void test_root_state_matches_core() {
@@ -300,8 +339,8 @@ void test_structure_and_transitions(const pb::CompiledGame &game, const bool pre
     require(expected_next == node.subtree_end, "subtree ends after the last child subtree");
 
     if (node.kind == pb::NodeKind::Decision) {
-      const auto action_config =
-          pb::action_config_at(config, state, node.level, node.limped_pot);
+      const auto action_config = pb::action_config_at(config, state, node.level, node.limped_pot,
+                                                      previous_round_aggressor(game, node.id));
       require(action_config.has_value(), "action configuration resolves");
       const auto legal = gtosd::legal_actions(state, action_config.value());
       require(legal.has_value() && legal.value().size() == edges.size(),
@@ -619,6 +658,238 @@ void test_three_way_readiness() {
             << " fingerprint=" << game.fingerprint() << '\n';
 }
 
+struct Step {
+  gtosd::ActionType type{gtosd::ActionType::Check};
+  std::int64_t amount_units{0};
+};
+
+// Follows a line of actions from the root, dealing the street transitions on
+// the way, and returns the node reached.
+std::uint32_t walk(const pb::CompiledGame &game, const std::vector<Step> &line) {
+  auto node = game.root();
+  for (const auto &step : line) {
+    node = follow(game, node, step.type, step.amount_units);
+    if (game.nodes()[node].kind == pb::NodeKind::Chance) {
+      node = game.edges_of(node)[0].child;
+    }
+  }
+  return node;
+}
+
+bool check_only(const pb::CompiledGame &game, const std::uint32_t node) {
+  const auto edges = game.edges_of(node);
+  return game.nodes()[node].kind == pb::NodeKind::Decision && edges.size() == 1U &&
+         edges[0].action.type == gtosd::ActionType::Check;
+}
+
+std::uint64_t check_only_decisions(const pb::CompiledGame &game) {
+  std::uint64_t count = 0U;
+  for (const auto &node : game.nodes()) {
+    count += check_only(game, node.id) ? 1U : 0U;
+  }
+  return count;
+}
+
+// postflop_donk_bets: optional boolean, serialized only when false.
+void test_donk_bet_config_key() {
+  const auto allowed = load_hu50();
+  require(allowed.postflop_donk_bets, "a configuration without the key allows donk bets");
+  require(pb::serialize_game_config_json(allowed).find("postflop_donk_bets") == std::string::npos,
+          "allowed donk bets are not serialized, so existing fingerprints do not move");
+
+  auto forbidden = allowed;
+  forbidden.postflop_donk_bets = false;
+  require(forbidden != allowed, "configuration equality sees the flag");
+  require(pb::game_config_fingerprint(forbidden) != pb::game_config_fingerprint(allowed),
+          "the flag enters the configuration fingerprint");
+  const auto forbidden_json = pb::serialize_game_config_json(forbidden);
+  constexpr std::string_view serialized_key = "\"postflop_donk_bets\": false";
+  const auto key_position = forbidden_json.find(serialized_key);
+  require(key_position != std::string::npos, "forbidden donk bets are serialized");
+  const auto reparsed = pb::parse_game_config_json(forbidden_json);
+  require(reparsed.has_value() && reparsed.value() == forbidden,
+          "the flag survives a serialization round trip");
+
+  const auto parse_with_value = [&](const std::string_view value) {
+    auto text = forbidden_json;
+    text.replace(key_position, serialized_key.size(),
+                 std::string("\"postflop_donk_bets\": ") + std::string(value));
+    return pb::parse_game_config_json(text);
+  };
+  const auto explicit_true = parse_with_value("true");
+  require(explicit_true.has_value() && explicit_true.value() == allowed &&
+              pb::game_config_fingerprint(explicit_true.value()) ==
+                  pb::game_config_fingerprint(allowed),
+          "an explicit true is the default and keeps the fingerprint");
+  for (const std::string_view invalid : {"0", "\"false\"", "null", "[]"}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidValue,
+            "a non-boolean postflop_donk_bets is rejected as an invalid value");
+  }
+}
+
+// Without the key every tree keeps its fingerprint. CO40 and HU10 carry the
+// values gtosd_preflop_blueprint_game recorded for the suite on 2026-09-22
+// (benchmarks/suite/actions, BENCHMARK_SUITE_INVENTORY_2026-09-21); HU50 was
+// first frozen together with the flag.
+void test_tree_fingerprints_without_the_flag(const pb::CompiledGame &co40) {
+  require(co40.fingerprint() == "fnv1a64:d6c10723d35b9503",
+          "CO40 keeps its tree fingerprint, got " + co40.fingerprint());
+  const auto hu10_full = compile(load_fixture("preflop_blueprint_hu10_full_v1.json"));
+  require(hu10_full.fingerprint() == "fnv1a64:bc9e7b35ad8c021d",
+          "HU10 full keeps its tree fingerprint, got " + hu10_full.fingerprint());
+  const auto hu10_reduced = compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(hu10_reduced.fingerprint() == "fnv1a64:cc5c2f8eea9aac57",
+          "HU10 reduced keeps its tree fingerprint, got " + hu10_reduced.fingerprint());
+  const auto hu50 = compile(load_hu50());
+  require(hu50.fingerprint() == "fnv1a64:d535abd7f76a586f",
+          "HU50 keeps its tree fingerprint, got " + hu50.fingerprint());
+}
+
+// Donk bets forbidden (postflop_donk_bets false) on the HU50 tree, CO first
+// and BTN last postflop. Amounts are the chips the actor adds, in units
+// (1a = 10,000).
+void test_no_donk_bets() {
+  using gtosd::ActionType;
+  const auto allowed_config = load_hu50();
+  auto forbidden_config = allowed_config;
+  forbidden_config.postflop_donk_bets = false;
+  const auto allowed = compile(allowed_config);
+  const auto forbidden = compile(forbidden_config);
+  test_structure_and_transitions(forbidden, false);
+  test_payoffs(forbidden);
+  require(legacy_preflop_fingerprint(forbidden) == legacy_preflop_fingerprint(allowed) &&
+              forbidden.stats().postflop_entries == allowed.stats().postflop_entries,
+          "the preflop part does not depend on the flag");
+
+  const std::vector<Step> limp_isolated_called{
+      {ActionType::Call, 10'000}, {ActionType::Bet, 40'000}, {ActionType::Call, 40'000}};
+  const std::vector<Step> open_called{{ActionType::Raise, 50'000}, {ActionType::Call, 40'000}};
+  const std::vector<Step> limp_checked{{ActionType::Call, 10'000}, {ActionType::Check, 0}};
+
+  // (1) CO limps, BTN isolates to 5a, CO calls: the BTN raised last preflop
+  // and acts after the CO, so the CO may only check the flop (pot 12a, 44a
+  // behind) where donk bets would add the pot bet and the all-in.
+  const auto isolated_flop = walk(forbidden, limp_isolated_called);
+  require(forbidden.nodes()[isolated_flop].street == gtosd::Street::Flop &&
+              forbidden.nodes()[isolated_flop].actor == 0U && check_only(forbidden, isolated_flop),
+          "(1) limp, isolation, call: the CO may only check the flop");
+  const auto isolated_flop_allowed = walk(allowed, limp_isolated_called);
+  require(allowed.nodes()[isolated_flop_allowed].action_count == 3U &&
+              has_edge(allowed, isolated_flop_allowed, ActionType::Bet, 120'000) &&
+              has_edge(allowed, isolated_flop_allowed, ActionType::AllIn, 440'000),
+          "with donk bets the same CO may check, bet the pot or shove");
+  const auto isolated_flop_btn = follow(forbidden, isolated_flop, ActionType::Check, 0);
+  require(has_edge(forbidden, isolated_flop_btn, ActionType::Bet, 120'000) &&
+              has_edge(forbidden, isolated_flop_btn, ActionType::AllIn, 440'000),
+          "the aggressor may still bet after the check");
+
+  // (2) CO opens, BTN calls: the aggressor is the CO itself.
+  const auto opened_flop = walk(forbidden, open_called);
+  require(forbidden.nodes()[opened_flop].actor == 0U &&
+              forbidden.nodes()[opened_flop].action_count == 3U &&
+              has_edge(forbidden, opened_flop, ActionType::Bet, 120'000) &&
+              has_edge(forbidden, opened_flop, ActionType::AllIn, 440'000),
+          "(2) open, call: the preflop raiser may bet the flop");
+
+  // (3) CO limps, BTN checks: no preflop aggressor, the blind is not a bet.
+  const auto limped_flop = walk(forbidden, limp_checked);
+  require(forbidden.nodes()[limped_flop].actor == 0U &&
+              has_edge(forbidden, limped_flop, ActionType::Bet, 40'000) &&
+              has_edge(forbidden, limped_flop, ActionType::AllIn, 480'000),
+          "(3) limp, check: the CO may bet the flop (pot 4a, 48a behind)");
+
+  // (4) BTN bets the flop, CO calls: the CO may only check the turn (pot 36a,
+  // 32a behind, so the pot bet is the all-in).
+  auto flop_bet_called = open_called;
+  flop_bet_called.insert(flop_bet_called.end(), {{ActionType::Check, 0},
+                                                 {ActionType::Bet, 120'000},
+                                                 {ActionType::Call, 120'000}});
+  const auto called_turn = walk(forbidden, flop_bet_called);
+  require(forbidden.nodes()[called_turn].street == gtosd::Street::Turn &&
+              forbidden.nodes()[called_turn].actor == 0U && check_only(forbidden, called_turn),
+          "(4) BTN bets the flop, CO calls: the CO may only check the turn");
+  require(has_edge(allowed, walk(allowed, flop_bet_called), ActionType::AllIn, 320'000),
+          "with donk bets the same CO may shove the turn");
+  require(has_edge(forbidden, follow(forbidden, called_turn, ActionType::Check, 0),
+                   ActionType::AllIn, 320'000),
+          "the BTN may still shove the turn after the check");
+
+  // (5) Flop checked through after the isolation: the flop had no aggressor,
+  // so the preflop raise no longer restricts the CO on the turn.
+  auto flop_checked = limp_isolated_called;
+  flop_checked.insert(flop_checked.end(), {{ActionType::Check, 0}, {ActionType::Check, 0}});
+  const auto checked_turn = walk(forbidden, flop_checked);
+  require(forbidden.nodes()[checked_turn].street == gtosd::Street::Turn &&
+              forbidden.nodes()[checked_turn].actor == 0U &&
+              has_edge(forbidden, checked_turn, ActionType::Bet, 120'000) &&
+              has_edge(forbidden, checked_turn, ActionType::AllIn, 440'000),
+          "(5) flop checked through: the CO may bet the turn");
+  // The same rule on the river: BTN bets that turn, CO calls.
+  auto turn_bet_called = flop_checked;
+  turn_bet_called.insert(turn_bet_called.end(), {{ActionType::Check, 0},
+                                                 {ActionType::Bet, 120'000},
+                                                 {ActionType::Call, 120'000}});
+  const auto called_river = walk(forbidden, turn_bet_called);
+  require(forbidden.nodes()[called_river].street == gtosd::Street::River &&
+              check_only(forbidden, called_river),
+          "BTN bets the turn, CO calls: the CO may only check the river");
+
+  // Every single-action decision is a lead blocked by a later aggressor.
+  for (const auto &node : forbidden.nodes()) {
+    if (!check_only(forbidden, node.id)) {
+      continue;
+    }
+    const auto aggressor = previous_round_aggressor(forbidden, node.id);
+    require(node.street != gtosd::Street::Preflop && aggressor != pb::no_aggressor &&
+                aggressor > node.actor && forbidden.states()[node.id].current_bet.units() == 0,
+            "a check-only decision faces no bet and a previous aggressor acting later");
+  }
+  const auto &allowed_stats = allowed.stats();
+  const auto &forbidden_stats = forbidden.stats();
+  require(allowed_stats.node_count == 571U && allowed_stats.decision_nodes == 228U &&
+              check_only_decisions(allowed) == 0U,
+          "HU50 with donk bets: 571 nodes, 228 decisions, none check-only");
+  require(forbidden_stats.node_count == 493U && forbidden_stats.decision_nodes == 199U &&
+              forbidden_stats.postflop_decisions_by_street ==
+                  std::array<std::uint64_t, 3>{25U, 58U, 108U} &&
+              check_only_decisions(forbidden) == 11U,
+          "HU50 without donk bets: 493 nodes, 199 decisions (25/58/108), 11 check-only");
+  require(forbidden.fingerprint() == "fnv1a64:91cdf82d8496ae89",
+          "HU50 without donk bets: frozen tree fingerprint, got " + forbidden.fingerprint());
+
+  // compile_subgame does not know the betting before its root: the flop of
+  // (1) compiled on its own lets the CO bet, while a BTN bet called after the
+  // root restricts the turn as in the full tree.
+  const auto subgame =
+      pb::CompiledGame::compile_subgame(forbidden_config, forbidden.states()[isolated_flop]);
+  require(subgame.has_value(), "the flop subgame compiles");
+  const auto &flop_subgame = subgame.value();
+  require(has_edge(flop_subgame, flop_subgame.root(), ActionType::Bet, 120'000),
+          "an unknown preflop aggressor restricts nothing at the subgame root");
+  const auto subgame_turn = walk(flop_subgame, {{ActionType::Check, 0},
+                                                {ActionType::Bet, 120'000},
+                                                {ActionType::Call, 120'000}});
+  require(check_only(flop_subgame, subgame_turn),
+          "a flop bet made after the subgame root restricts the turn");
+
+  // The CO40 tree (three sizes, up to four raises a street) under the flag.
+  auto co40_config = load_fixture("preflop_blueprint_co40_v1.json");
+  co40_config.postflop_donk_bets = false;
+  const auto co40 = compile(co40_config);
+  test_structure_and_transitions(co40, false);
+  test_payoffs(co40);
+  require(co40.stats().node_count == 19'510U && co40.stats().decision_nodes == 7'312U,
+          "CO40 without donk bets: 19,510 nodes, 7,312 decisions");
+  std::cout << "HU50 donk bets: nodes=" << allowed_stats.node_count
+            << " decisions=" << allowed_stats.decision_nodes
+            << "; no donk bets: nodes=" << forbidden_stats.node_count
+            << " decisions=" << forbidden_stats.decision_nodes
+            << " check_only=" << check_only_decisions(forbidden)
+            << " fingerprint=" << forbidden.fingerprint()
+            << "; CO40 no donk bets: nodes=" << co40.stats().node_count << '\n';
+}
+
 } // namespace
 
 int main() {
@@ -632,6 +903,9 @@ int main() {
     test_layout(co40);
     test_hu10_trees(co40);
     test_three_way_readiness();
+    test_donk_bet_config_key();
+    test_tree_fingerprints_without_the_flag(co40);
+    test_no_donk_bets();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
     std::cout << "PREFLOP_BLUEPRINT_GAME_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

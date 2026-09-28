@@ -107,6 +107,21 @@ ConfigResult target_config(const GameConfig &config, const PublicState &state,
   return ConfigResult::success(std::move(result));
 }
 
+// Donk-bet rule of a configuration with postflop_donk_bets false. Postflop
+// streets are played in seat order (decision D10), so before the first bet of
+// the street the aggressor acts later than the actor exactly when its seat is
+// higher.
+bool donk_bet_forbidden(const GameConfig &config, const PublicState &state,
+                        const std::uint8_t previous_round_aggressor) noexcept {
+  if (config.postflop_donk_bets || state.street == Street::Preflop ||
+      state.current_bet.units() != 0 || previous_round_aggressor == no_aggressor) {
+    return false;
+  }
+  return is_active(state, previous_round_aggressor) &&
+         !is_all_in(state, previous_round_aggressor) &&
+         previous_round_aggressor > state.player_to_act;
+}
+
 // Generalized fold: removes the actor; with one player left the hand ends and
 // the uncalled excess of that player's street commitment returns to them.
 StateResult fold_multiway(const PublicState &state) {
@@ -210,18 +225,24 @@ bool facing_all_in(const PublicState &state) noexcept {
   return false;
 }
 
-Result<ActionConfig, GameModelError> action_config_at(const GameConfig &config,
-                                                      const PublicState &state,
-                                                      const AggressionLevel level,
-                                                      const bool limped_pot) {
+Result<ActionConfig, GameModelError>
+action_config_at(const GameConfig &config, const PublicState &state, const AggressionLevel level,
+                 const bool limped_pot, const std::uint8_t previous_round_aggressor) {
   if (state.status != HandStatus::InProgress) {
     return ConfigResult::failure(GameModelError::GameFailure);
   }
+  if (previous_round_aggressor != no_aggressor && previous_round_aggressor >= state.player_count) {
+    return ConfigResult::failure(GameModelError::InvalidConfiguration);
+  }
   if (state.street != Street::Preflop) {
     ActionConfig result;
+    result.minimum_bet = config.postflop_minimum_bet;
+    if (donk_bet_forbidden(config, state, previous_round_aggressor)) {
+      // No size and no all-in: the check is the only legal action.
+      return ConfigResult::success(std::move(result));
+    }
     result.aggressive_sizes.assign(config.postflop_sizes.begin(), config.postflop_sizes.end());
     result.raise_depth = maximum_core_raise_depth;
-    result.minimum_bet = config.postflop_minimum_bet;
     if (config.include_all_in) {
       result.all_in_mode = AllInMode::Add;
       result.all_in_threshold = always_add_all_in();

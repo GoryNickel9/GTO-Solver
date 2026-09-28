@@ -451,6 +451,8 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
       return Outcome::failure(TrainerError::MissingResource);
     }
     const auto capacity = [&](const card_abstraction::BucketTable &table) {
+      if (resources_.board_class_rows)
+        return resources_.board_class_rows->count(table.street());
       if (resources_.history_rows)
         return resources_.history_rows->count(table.street());
       return resources_.class_rows ? resources_.class_rows->count(table.street())
@@ -464,6 +466,13 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     if (resources_.class_rows && (!resources_.class_rows->matches(*resources_.flop) ||
                                   !resources_.class_rows->matches(*resources_.turn) ||
                                   !resources_.class_rows->matches(*resources_.river))) {
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    }
+    if (resources_.board_class_rows &&
+        (resources_.class_rows || resources_.history_rows ||
+         !resources_.board_class_rows->matches(*resources_.flop) ||
+         !resources_.board_class_rows->matches(*resources_.turn) ||
+         !resources_.board_class_rows->matches(*resources_.river))) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
     }
     if (capacity(*resources_.flop) != config_.flop_capacity ||
@@ -655,6 +664,8 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   }
   if (resources_.history_rows)
     identity += "|history-rows=" + resources_.history_rows->fingerprint();
+  if (resources_.board_class_rows)
+    identity += "|" + resources_.board_class_rows->fingerprint();
   // Double storage keeps the historical identity; a narrower storage cannot
   // silently resume a double checkpoint.
   if (config_.storage != TableStorage::Double)
@@ -677,6 +688,7 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
   tables.river = resources_.river;
   tables.class_rows = resources_.class_rows;
   tables.history_rows = resources_.history_rows;
+  tables.board_class_rows = resources_.board_class_rows;
   const bool with_tables = resources_.catalog != nullptr && resources_.flop != nullptr &&
                            resources_.turn != nullptr && resources_.river != nullptr;
   auto context = BoardContext::build(history, *resources_.ranks, with_tables ? &tables : nullptr);

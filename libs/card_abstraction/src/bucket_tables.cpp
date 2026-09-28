@@ -645,6 +645,38 @@ Result<BucketTable, ResourceError> BucketTable::build_river(const BoardCatalog &
                       features.fingerprint(), diagnostics);
 }
 
+Result<BucketTable, ResourceError>
+BucketTable::from_assignment(const BucketStreet street, const BoardCatalog &catalog,
+                             const ClusteringParameters &parameters,
+                             std::vector<std::uint16_t> buckets,
+                             std::vector<std::uint16_t> centroids,
+                             const std::string &recipe_fingerprint) {
+  using Built = Result<BucketTable, ResourceError>;
+  const auto catalog_rows = street == BucketStreet::Flop   ? catalog.flops().size()
+                            : street == BucketStreet::Turn ? catalog.flop_turns().size()
+                                                           : catalog.river_boards().size();
+  const auto expected_rows = street == BucketStreet::Flop    ? canonical_flop_count
+                             : street == BucketStreet::Turn ? canonical_flop_turn_count
+                                                            : canonical_river_board_count;
+  const auto width = street == BucketStreet::River ? river_feature_count : equity_histogram_bins;
+  if (catalog_rows != expected_rows || parameters.capacity == 0U ||
+      parameters.capacity > maximum_bucket_capacity ||
+      buckets.size() != static_cast<std::size_t>(expected_rows) * combo_count ||
+      centroids.size() != static_cast<std::size_t>(parameters.capacity) * width) {
+    return Built::failure(ResourceError::InvalidInput);
+  }
+  for (const auto bucket : buckets) {
+    if (bucket != no_bucket && bucket >= parameters.capacity) {
+      return Built::failure(ResourceError::InvalidInput);
+    }
+  }
+  BucketTable table;
+  BucketTableBuilderAccess::fill(table, street, expected_rows, width, parameters,
+                                 std::move(buckets), std::move(centroids), catalog.fingerprint(),
+                                 recipe_fingerprint);
+  return Built::success(std::move(table));
+}
+
 Result<bool, ResourceError> BucketTable::save(const std::filesystem::path &path) const {
   std::vector<std::uint8_t> payload;
   payload.reserve(payload_bytes() + 256U);

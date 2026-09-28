@@ -96,9 +96,12 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
     street.fill(card_abstraction::no_bucket);
   }
   if (tables != nullptr && tables->catalog != nullptr) {
-    if (tables->history_rows && tables->class_rows)
+    if ((tables->history_rows != nullptr ? 1 : 0) + (tables->class_rows != nullptr ? 1 : 0) +
+            (tables->board_class_rows != nullptr ? 1 : 0) >
+        1)
       return ContextResult::failure(KernelError::InvalidInput);
     context.class_rows_ = tables->class_rows;
+    std::array<std::uint32_t, 3> board_classes{};
     struct StreetTable {
       const card_abstraction::BucketTable *table;
       card_abstraction::BucketStreet street;
@@ -118,10 +121,13 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
       }
       if (entry.table->street() != entry.street || !entry.lookup ||
           (tables->class_rows != nullptr && !tables->class_rows->matches(*entry.table)) ||
-          (tables->history_rows != nullptr && !tables->history_rows->matches(*entry.table))) {
+          (tables->history_rows != nullptr && !tables->history_rows->matches(*entry.table)) ||
+          (tables->board_class_rows != nullptr &&
+           !tables->board_class_rows->matches(*entry.table))) {
         return ContextResult::failure(KernelError::MissingTable);
       }
       const auto row = entry.lookup.value().index;
+      board_classes[index] = row;
       const auto &permutation = entry.lookup.value().permutation;
       for (std::uint16_t hand = 0; hand < live_hand_count; ++hand) {
         const auto bucket =
@@ -151,6 +157,19 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
             return ContextResult::failure(KernelError::InvalidInput);
           context.history_rows_[street][hand] = mapped;
         }
+      context.has_history_rows_ = true;
+    }
+    if (tables->board_class_rows) {
+      for (const auto present : context.has_buckets_)
+        if (!present)
+          return ContextResult::failure(KernelError::MissingTable);
+      // The river shares the class of its turn (canonical flop+turn board).
+      board_classes[2] = board_classes[1];
+      for (std::size_t street = 0; street < 3; ++street)
+        for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
+          context.history_rows_[street][hand] = tables->board_class_rows->row(
+              static_cast<card_abstraction::BucketStreet>(street), board_classes[street],
+              context.buckets_[street][hand]);
       context.has_history_rows_ = true;
     }
   } else if (tables != nullptr &&

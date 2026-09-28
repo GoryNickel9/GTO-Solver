@@ -33,6 +33,13 @@ enum class GameModelError : std::uint8_t {
 // raise_count_this_street, so the compiler carries this counter itself.
 using AggressionLevel = std::uint8_t;
 
+// Seat of the last player who bet, raised or went all-in in the previous
+// betting round (preflop for the flop, flop for the turn, turn for the river).
+// Like the aggression level it is not part of the public state: the compiler
+// carries it along the path. no_aggressor when that round had no aggression
+// or when it is unknown (betting before the root of compile_subgame).
+inline constexpr std::uint8_t no_aggressor = 0xFFU;
+
 // Every player posts the dead ante into initial_pot; the last seat (BTN) posts
 // the live button blind; seat 0 acts first. For two players with a button
 // blind equal to the ante it reproduces the two-player constructor of the core.
@@ -46,8 +53,12 @@ using AggressionLevel = std::uint8_t;
 // `limped_pot` marks the preflop branch in which a player called the button
 // blind before the first raise; it only affects the level 1 response and only
 // when the configuration carries limp_response_targets.
+// `previous_round_aggressor` only matters postflop when the configuration
+// forbids donk bets: while nobody has bet on the street the actor may only
+// check if that player is still in the hand, is not all-in and acts later.
+// The default no_aggressor never restricts; any other value must be a seat.
 action_config_at(const GameConfig &config, const PublicState &state, AggressionLevel level,
-                 bool limped_pot = false);
+                 bool limped_pot = false, std::uint8_t previous_round_aggressor = no_aggressor);
 
 [[nodiscard]] constexpr bool is_aggressive(const Action &action) noexcept {
   return action.type == ActionType::Bet || action.type == ActionType::Raise ||

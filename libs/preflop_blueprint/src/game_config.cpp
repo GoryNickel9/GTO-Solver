@@ -156,6 +156,11 @@ OrderedJson to_ordered_json(const GameConfig &config) {
   root["postflop_sizes_basis_points"] = std::move(sizes);
   root["postflop_minimum_bet_units"] = config.postflop_minimum_bet.units();
   root["include_all_in"] = config.include_all_in;
+  // Emitted only when false, for the same reason: every configuration that
+  // allows donk bets keeps the fingerprint it had before this field existed.
+  if (!config.postflop_donk_bets) {
+    root["postflop_donk_bets"] = false;
+  }
   root["raise_termination"] = "natural_stack";
   root["rake_mode"] = config.rake.enabled ? "enabled" : "disabled";
   return root;
@@ -174,6 +179,7 @@ bool operator==(const GameConfig &left, const GameConfig &right) {
          left.postflop_sizes == right.postflop_sizes &&
          left.postflop_minimum_bet == right.postflop_minimum_bet &&
          left.include_all_in == right.include_all_in &&
+         left.postflop_donk_bets == right.postflop_donk_bets &&
          left.rake.enabled == right.rake.enabled &&
          left.rake.percentage == right.rake.percentage && left.rake.cap == right.rake.cap &&
          left.rake.no_flop_no_drop == right.rake.no_flop_no_drop &&
@@ -371,6 +377,15 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
     }
     config.allow_configured_incomplete_raise = allow_incomplete.value();
     config.include_all_in = include_all_in.value();
+    // Optional boolean: a missing key allows donk bets, the behaviour of every
+    // configuration written before this field existed.
+    if (root.contains("postflop_donk_bets")) {
+      const auto donk_bets = bool_field(root, "postflop_donk_bets");
+      if (!donk_bets) {
+        return Parsed::failure(donk_bets.error());
+      }
+      config.postflop_donk_bets = donk_bets.value();
+    }
 
     const auto sizes = field(root, "postflop_sizes_basis_points");
     if (!sizes) {

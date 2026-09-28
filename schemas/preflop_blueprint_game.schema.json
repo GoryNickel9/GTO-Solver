@@ -70,6 +70,7 @@
     },
     "postflop_minimum_bet_units": {"type": "integer", "minimum": 1},
     "include_all_in": {"const": true},
+    "postflop_donk_bets": {"type": "boolean", "description": "Optional. false removes donk bets: before any bet on a postflop street a player cannot bet into the last aggressor of the previous round who acts later. Absent means true."},
     "raise_termination": {"const": "natural_stack"},
     "rake_mode": {"const": "disabled"}
   }

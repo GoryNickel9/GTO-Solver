@@ -129,6 +129,8 @@ struct TrainerResources {
   // Optional immutable (preflop class, street bucket) map. Must outlive trainer.
   const ClassBucketRows *class_rows{nullptr};
   const HistoryBucketRows *history_rows{nullptr};
+  // MonkerSolver-style (board class, per-board bucket) rows. Must outlive trainer.
+  const BoardClassRows *board_class_rows{nullptr};
 };
 
 // Exact-mode hook: explicit boards with weights. With sample = false every

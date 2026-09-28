@@ -152,6 +152,9 @@ int main(const int argc, char **argv) {
     std::filesystem::path certificate_path;
     std::filesystem::path coverage_path;
     bool use_class_rows = false;
+    // MonkerSolver-style rows: (board class, per-board bucket); the bucket
+    // tables must be per-board tables (preflop_blueprint_monker_buckets).
+    bool use_board_class_rows = false;
     std::filesystem::path history_rows_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
@@ -204,6 +207,10 @@ int main(const int argc, char **argv) {
       }
       if (name == "--class-rows") {
         use_class_rows = true;
+        continue;
+      }
+      if (name == "--board-class-rows") {
+        use_board_class_rows = true;
         continue;
       }
       if (name == "--resume") {
@@ -384,6 +391,20 @@ int main(const int argc, char **argv) {
       config.flop_capacity = class_rows->count(ca::BucketStreet::Flop);
       config.turn_capacity = class_rows->count(ca::BucketStreet::Turn);
       config.river_capacity = class_rows->count(ca::BucketStreet::River);
+    }
+    std::optional<pb::BoardClassRows> board_class_rows;
+    if (use_board_class_rows) {
+      if (use_class_rows || history_rows)
+        throw std::runtime_error("choose one of class rows, history rows, board class rows");
+      // The best response and the certifier do not read board class rows yet.
+      if (evaluate_every > 0U || !certificate_path.empty())
+        throw std::runtime_error("--board-class-rows requires --eval-every 0 and no certificate");
+      board_class_rows.emplace(flop.value().capacity(), turn.value().capacity(),
+                               river.value().capacity());
+      resources.board_class_rows = &*board_class_rows;
+      config.flop_capacity = board_class_rows->count(ca::BucketStreet::Flop);
+      config.turn_capacity = board_class_rows->count(ca::BucketStreet::Turn);
+      config.river_capacity = board_class_rows->count(ca::BucketStreet::River);
     }
     std::optional<pb::TrainingBoards> boards;
     if (fixed_boards > 0U) {
@@ -781,6 +802,10 @@ int main(const int argc, char **argv) {
         : use_class_rows
             ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
                   "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
+        : board_class_rows
+            ? "|abstraction=" + board_class_rows->fingerprint() + "|flop=" +
+                  flop.value().fingerprint() + "|turn=" + turn.value().fingerprint() +
+                  "|river=" + river.value().fingerprint()
             : "";
     // Save final state even when periodic evaluation was explicitly disabled. The
     // pending discounts are materialized once here, after which every save is a

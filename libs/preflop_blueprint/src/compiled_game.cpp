@@ -58,7 +58,9 @@ public:
       }
       root_state = root.value();
     }
-    const auto root_id = expand(root_state, 0U, 0U, no_node, no_entry);
+    // A subgame root knows nothing of the betting before it: both aggressors
+    // start unknown, which the donk-bet rule reads as no restriction.
+    const auto root_id = expand(root_state, 0U, 0U, no_node, no_entry, false, Aggressors{});
     if (!root_id) {
       return Outcome::failure(root_id.error());
     }
@@ -72,11 +74,21 @@ public:
   }
 
 private:
+  // Aggressors read by the donk-bet rule. The public state does not record
+  // who bet, so the compiler carries them along the path like the aggression
+  // level; no_aggressor stands both for "none" and for "unknown".
+  struct Aggressors {
+    // Last player who bet, raised or went all-in on the current street.
+    std::uint8_t street{no_aggressor};
+    // The same player for the previous betting round.
+    std::uint8_t previous_round{no_aggressor};
+  };
+
   using NodeResult = Result<std::uint32_t, GameModelError>;
 
   NodeResult expand(const PublicState &state, const AggressionLevel level,
-                    const std::uint16_t depth, const std::uint32_t parent,
-                    std::uint16_t entry, const bool limped_pot = false) {
+                    const std::uint16_t depth, const std::uint32_t parent, std::uint16_t entry,
+                    const bool limped_pot, const Aggressors aggressors) {
     if (game_.nodes_.size() >= options_.maximum_nodes || game_.nodes_.size() >= no_node) {
       return NodeResult::failure(GameModelError::NodeOverflow);
     }
@@ -150,7 +162,10 @@ private:
       if (!next) {
         return NodeResult::failure(next.error());
       }
-      const auto child = expand(next.value(), 0U, static_cast<std::uint16_t>(depth + 1U), id, entry);
+      // A new betting round: the aggressor of the street just closed becomes
+      // the previous-round aggressor.
+      const auto child = expand(next.value(), 0U, static_cast<std::uint16_t>(depth + 1U), id, entry,
+                                false, Aggressors{no_aggressor, aggressors.street});
       if (!child) {
         return NodeResult::failure(child.error());
       }
@@ -158,7 +173,8 @@ private:
       break;
     }
     case NodeKind::Decision: {
-      const auto action_config = action_config_at(config_, state, level, limped_pot);
+      const auto action_config =
+          action_config_at(config_, state, level, limped_pot, aggressors.previous_round);
       if (!action_config) {
         return NodeResult::failure(action_config.error());
       }
@@ -180,9 +196,12 @@ private:
         const auto child_limped =
             (state.street == Street::Preflop) &&
             (limped_pot || (level == 0U && action.type == ActionType::Call));
-        const auto child = expand(child_state.value(), child_level,
-                                  static_cast<std::uint16_t>(depth + 1U), id, entry,
-                                  child_limped);
+        const auto child_aggressors =
+            is_aggressive(action) ? Aggressors{state.player_to_act, aggressors.previous_round}
+                                  : aggressors;
+        const auto child =
+            expand(child_state.value(), child_level, static_cast<std::uint16_t>(depth + 1U), id,
+                   entry, child_limped, child_aggressors);
         if (!child) {
           return NodeResult::failure(child.error());
         }

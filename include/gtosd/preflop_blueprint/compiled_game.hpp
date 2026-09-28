@@ -149,6 +149,9 @@ public:
   compile(const GameConfig &config, const CompileOptions &options = {});
   // Compiles the subgame rooted at an arbitrary in-progress public state with
   // the postflop action abstraction of the configuration (tests and oracles).
+  // The betting before the root is unknown and counts as no aggression: with
+  // postflop_donk_bets false the root's street is never restricted, and the
+  // next street only when a bet or raise is made after the root.
   [[nodiscard]] static Result<CompiledGame, GameModelError>
   compile_subgame(const GameConfig &config, const PublicState &root,
                   const CompileOptions &options = {});

@@ -373,6 +373,12 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_checkdown preflop_blueprint_checkdown.cpp)
   target_link_libraries(gtosd_preflop_blueprint_checkdown PRIVATE gtosd::preflop_blueprint)
   gtosd_set_warnings(gtosd_preflop_blueprint_checkdown)
+  add_executable(gtosd_preflop_blueprint_monker_charts preflop_blueprint_monker_charts.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_charts PRIVATE gtosd::preflop_blueprint)
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_charts)
+  add_executable(gtosd_preflop_blueprint_monker_buckets preflop_blueprint_monker_buckets.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_buckets PRIVATE gtosd::preflop_blueprint)
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_buckets)
   add_test(NAME gtosd_preflop_blueprint_game_report
     COMMAND gtosd_preflop_blueprint_game
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)

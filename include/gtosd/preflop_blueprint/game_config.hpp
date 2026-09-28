@@ -64,6 +64,13 @@ struct GameConfig {
   std::vector<PotPercentage> postflop_sizes;
   Money postflop_minimum_bet{};
   bool include_all_in{true};
+  // False removes the donk bet (MonkerSolver trees): on a postflop street,
+  // while nobody has bet on it, a player may only check when the last
+  // aggressor of the previous betting round (bet, raise or all-in) is still in
+  // the hand, is not all-in and acts later on this street. A previous round
+  // without aggression restricts nothing. Serialized, and therefore part of
+  // the fingerprint, only when false.
+  bool postflop_donk_bets{true};
   // Version 1 accepts only a disabled rake.
   RakeConfig rake{};
 };
