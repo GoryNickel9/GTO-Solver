@@ -713,6 +713,14 @@ response campionata non serve come stima ne' come filtro per la soglia di 0,03 a
 automatico e ogni esperimento sulla convergenza richiedono la best response astratta esatta resa
 veloce (tecniche di J piu' simmetria di seme su turn e river; obiettivo circa 10 minuti).
 
+### 5.4.15 Pausa della linea HU (28 settembre, pomeriggio)
+
+Dopo la fase 0 l'utente ha chiarito che il prodotto e' un preflop multiway fino al 6-way su un server
+da 52 core e 256 GB, e che 8 GiB e 35 minuti valgono solo per la suite HU10-HU40. Le fasi 1 e 2 sui
+35 minuti di HU40 sono in pausa (la best response astratta veloce resta progettata: 330-425 s stimati,
+bit-identica, circa 30 ore di codice). Il lavoro continua sulla riproduzione della ricetta
+MonkerSolver: [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+
 ## 6. Procedura di riproduzione
 
 Vedi la sezione 8 del protocollo. Le build delle versioni: baseline dall'HEAD pulito

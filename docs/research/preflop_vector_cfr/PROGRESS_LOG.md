@@ -11,17 +11,17 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | Milestone tempi e convergenza (suite HU10-HU40): fase 0 conclusa il 2026-09-28, scelta fra fase 1 (arresto automatico) e fase 2 (convergenza per iterazione) in attesa dell'utente |
+| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28): passo 1 fatto su HU50, passo 2 (postflop sparso, bucket per board) in corso su HU50; ottimizzazione dei 35 minuti di HU40 in pausa |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
-| Branch di fase | `feat/preflop-phase1-time` (dal 2026-09-24); in precedenza `codex/fix-preflop-deep-stack-convergence` |
+| Branch di fase | `feat/monker-step1-checkdown` (dal 2026-09-28, da `feat/preflop-phase1-time`); in precedenza `feat/preflop-phase1-time` e `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
 | Build | `out/build/windows-release-suite` (HEAD `ba93c75` pulito per la baseline, poi le candidate), Release, MSVC, /W4 /WX |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
-| Limite RAM corrente | **8 GiB** di picco per il solver di prodotto. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Decisione dell'utente fra fase 1 e fase 2 (raccomandata la 2). In entrambe il primo lavoro e' la best response astratta esatta veloce (obiettivo circa 10 minuti, oggi 47): con il nuovo criterio i 35 minuti end-to-end la comprendono. Estrapolazioni: HU30 passa l'astratta a circa 40.500 iterazioni (88 minuti di training), HU40 a circa 109.000 (4,1 ore); il fisico di HU40 richiede la fase 3 (rappresentazione). Poi fase 4: 35 minuti su tutti i benchmark (HU20 sospeso dal 27/09) e HU100. |
+| Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
+| Prossimo passo | Risultati del passo 2 su HU50 e confronto nodo per nodo con le chart MonkerSolver (a 12.000 iterazioni 94,5 % di azione principale uguale e distanza 0,084, contro 72,2 % e 0,262 del passo 1); varianti se non basta; poi il 3-way (raise al 100 % del piatto, regole sparse, equity a tre giocatori, motore multiway). Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md). |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,45 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-28 (pomeriggio) — obiettivo multiway, ricetta MonkerSolver: passo 1 fatto, passo 2 in corso
+
+Decisioni dell'utente: l'obiettivo del prodotto è un preflop short deck multiway fino al 6-way, su un
+server da 52 core e 256 GB (test su macchine a noleggio); i limiti di 8 GiB e 35 minuti valgono solo per
+la suite HU10-HU40; accettazione sulla sola best response astratta esatta <= 0,03 a (limite del 5 % sul
+fisico tolto, commit `a0331d6`); direzione: riprodurre la ricetta di MonkerSolver e confrontarla con le
+chart MonkerSolver short deck dell'utente (HU e 3-way a 50a), cercando chart simili; niente stile HRC e
+niente history7 per ora; albero identico a quello delle chart, postflop con bet e raise al 100 %,
+all-in sempre disponibile, niente donk bet. Le fasi 1 e 2 sui 35 minuti di HU40 sono in pausa (la best
+response astratta veloce resta progettata, non implementata).
+
+Ricerche (agenti Opus con verifica avversaria): panorama dei solver preflop e costo di una riscrittura
+(3-4 settimane, nessun guadagno dimostrato), definizione dei bucket di MonkerSolver, HRC e Simple
+Preflop Holdem (i "15-30" di Monker sono livelli di forza per board, con strategie separate per flop:
+più righe dei nostri bucket globali), server economici a noleggio, repository dell'equity dell'utente
+(stessa classifica, utile solo come controllo). Misure delle dimensioni multiway da 3 a 6 giocatori con
+diverse astrazioni. Tutto nel documento
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+
+Passo 1 (preflop con postflop vuoto), commit `e576396`: all-in sempre disponibile nel modello di gioco
+(alberi HU10-HU40 invariati), opzione di compilazione che chiude il flop con uno showdown sull'intero
+runout, solver esatto `gtosd_preflop_blueprint_checkdown` (HU50: 5.000 iterazioni in 75 s, 3e-5 % del
+piatto), export nel formato MonkerSolver e script di confronto. Revisione Opus senza errori di calcolo;
+sei suite di test PASS. Confronto con le chart MonkerSolver HU50: 72,2 % di azione principale uguale,
+distanza media 0,262 (media sui 7 nodi confrontabili); 87,5-98 % sulle decisioni contro un all-in
+(stesse regole e stessa equity), 44-69 % dove conta il postflop. Viewer web con le tre griglie per nodo pubblicato come artifact dell'utente.
+
+Passo 2 (postflop sparso con bucket per board), commit `7ff711b`: opzione "niente donk bet" nel
+costruttore (agente Opus, revisione, test), costruttore dei bucket per board 30 x 4 / 30 (agente Opus,
+revisione; tabelle costruite in 13 s), righe (classe di board, gruppo) nel trainer, export delle chart
+dalla policy, run a blocchi da 4.000 iterazioni con arresto sotto 0,01. Sette suite di test PASS.
+Albero HU50 senza donk: 493 nodi, 325 milioni di celle, 4,84 GiB in double. Costo 0,067 s per
+iterazione nella prova breve e 0,070-0,079 s nel run, con lo sconto lazy (0,75 s senza: errore del primo
+script corretto nella prova breve). Run lanciato alle 17:10
+in `out/monker/step2/HU50`.
+
+Prossimo passo: risultati del passo 2 e confronto con MonkerSolver; varianti se le chart non si
+avvicinano; poi il 3-way.
 
 ### 2026-09-28 — nuovo criterio di accettazione, diagnosi per street, fase 0: HU30 passa la best response astratta a 48.000 iterazioni
 

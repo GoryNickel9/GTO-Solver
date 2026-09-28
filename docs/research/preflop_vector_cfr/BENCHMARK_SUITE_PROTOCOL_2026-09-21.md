@@ -209,6 +209,11 @@ lo strumento della best response astratta richiede un'astrazione a memoria perfe
 storia); per astrazioni a memoria imperfetta (solo bucket, classe preflop + bucket corrente) il
 valore esatto non e' calcolabile con lo stesso metodo e servira' un limite superiore.
 
+**Precisazione dell'utente del 2026-09-28.** Il limite di memoria (8 GiB) e l'obiettivo di 35 minuti
+valgono solo per la suite di benchmark HU10-HU40 sul PC di sviluppo; non sono regole del prodotto,
+che girera' su un server da 52 core e 256 GB e dovra' arrivare al 6-way (vedi
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md)).
+
 **Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
 sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si
 misura il tempo (ripetizioni di confronto dei tempi, run sui 35 minuti). Durante i run di sola
