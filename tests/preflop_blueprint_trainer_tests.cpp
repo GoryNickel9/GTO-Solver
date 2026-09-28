@@ -6,6 +6,7 @@
 #include <map>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -733,6 +734,84 @@ void test_lazy_dcfr_discount(const Resources &resources) {
   std::cout << "lazy DCFR: max regret difference " << maximum_regret_difference
             << ", sum difference " << maximum_sum_difference << ", policy difference "
             << maximum_policy_difference << '\n';
+}
+
+// Chart snapshots read average rows from the live tables with pending lazy discounts:
+// the read must not perturb the training (bit-identical state) and must equal the
+// rows of the exported average policy, which materializes every discount first.
+void test_average_strategy_row_snapshot(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "snapshot fixture compiles");
+  auto config = resources.config();
+  config.threads = 2U;
+  config.batch_boards = 8U;
+  config.batch_policy_refresh = true;
+  config.scheme = pb::WeightingScheme::Dcfr;
+  config.update_mode = pb::UpdateMode::Alternating;
+  config.lazy_discount = true;
+  auto reference = pb::Trainer::create(game.value(), resources.view(), config);
+  auto snapshot = pb::Trainer::create(game.value(), resources.view(), config);
+  require(reference.has_value() && snapshot.has_value(), "snapshot trainers create");
+  const auto &layout = snapshot.value()->layout();
+  const auto read_all = [&](const pb::Trainer &trainer) {
+    std::vector<double> rows;
+    std::array<double, pb::maximum_actions> values{};
+    for (const auto &node : game.value().nodes()) {
+      if (node.kind != pb::NodeKind::Decision)
+        continue;
+      const auto count = pb::StateLayout::rows_for(node.street, layout.flop_capacity,
+                                                    layout.turn_capacity, layout.river_capacity);
+      for (std::uint32_t row = 0; row < count; ++row) {
+        trainer.average_strategy_row(node.id, row, values.data());
+        rows.insert(rows.end(), values.begin(), values.begin() + node.action_count);
+      }
+    }
+    return rows;
+  };
+  for (int iteration = 0; iteration < 12; ++iteration) {
+    require(reference.value()->iterate().has_value() && snapshot.value()->iterate().has_value(),
+            "snapshot iterations succeed");
+    if (iteration == 5)
+      (void)read_all(*snapshot.value());
+  }
+  // Read before anything materializes the discounts: state_fingerprint() and
+  // average_policy() both apply every pending discount first.
+  const auto live = read_all(*snapshot.value());
+  std::uint64_t pending = 0U;
+  for (const auto &node : game.value().nodes()) {
+    if (node.kind != pb::NodeKind::Decision)
+      continue;
+    const auto count = pb::StateLayout::rows_for(node.street, layout.flop_capacity,
+                                                  layout.turn_capacity, layout.river_capacity);
+    for (std::uint32_t row = 0; row < count; ++row) {
+      const auto last = snapshot.value()->discount_last_iteration(node.id, row);
+      if (last > 0U && last + 1U < snapshot.value()->iteration())
+        ++pending;
+    }
+  }
+  require(pending > 0U, "the snapshot test reads rows with pending discounts");
+  const auto policy = snapshot.value()->average_policy();
+  std::size_t index = 0;
+  double largest = 0.0;
+  for (const auto &node : game.value().nodes()) {
+    if (node.kind != pb::NodeKind::Decision)
+      continue;
+    const auto count = pb::StateLayout::rows_for(node.street, layout.flop_capacity,
+                                                  layout.turn_capacity, layout.river_capacity);
+    for (std::uint32_t row = 0; row < count; ++row) {
+      const auto exported = policy.row(node.id, row);
+      for (std::uint8_t action = 0; action < node.action_count; ++action) {
+        largest = std::max(largest, std::abs(live[index++] - exported[action]));
+      }
+    }
+  }
+  require(index == live.size(), "snapshot reads every row of the layout");
+  require(largest <= 1e-12, "live average rows equal the exported average policy");
+  require(snapshot.value()->state_fingerprint() == reference.value()->state_fingerprint(),
+          "reading average rows does not perturb the training");
+  std::cout << "average-row snapshot: rows read " << index << ", pending " << pending
+            << ", largest difference " << largest
+            << '\n';
 }
 
 // The 16-bit lazy-discount timestamps live in epochs. A run shorter than the epoch never
@@ -1474,6 +1553,7 @@ int main(const int argc, char **argv) {
     if (lazy_only) {
       test_lazy_dcfr_discount(resources);
       test_lazy_discount_epoch(resources);
+      test_average_strategy_row_snapshot(resources);
       return 0;
     }
     test_configurable_stop_rule();
@@ -1502,6 +1582,7 @@ int main(const int argc, char **argv) {
     test_resume(resources);
     test_lazy_dcfr_discount(resources);
     test_lazy_discount_epoch(resources);
+    test_average_strategy_row_snapshot(resources);
     test_physical_best_response(resources);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';

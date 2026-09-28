@@ -14,6 +14,7 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
+#include "monker_chart_format.hpp"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -169,6 +170,14 @@ int main(const int argc, char **argv) {
     std::uint64_t evaluate_every = 10U;
     std::uint64_t progress_every = 0U;
     std::uint64_t checkpoint_every = 0U;
+    // MonkerSolver-format preflop charts every N iterations under chart_dir/it_<N>
+    // (written to a .tmp directory and renamed when complete), read from the live
+    // tables without stopping or perturbing the training.
+    std::uint64_t chart_every = 0U;
+    std::filesystem::path chart_dir;
+    // When this file appears the training stops after the current iteration and
+    // saves as at the normal end (used by the step-2 stability watcher).
+    std::filesystem::path stop_file;
     // Diagnostic exact mode: the first N boards drawn with the training seed
     // form a fixed, equally weighted board list processed in full every
     // iteration and evaluated exactly.
@@ -275,6 +284,12 @@ int main(const int argc, char **argv) {
         progress_every = parse_unsigned(value);
       } else if (name == "--checkpoint-every") {
         checkpoint_every = parse_unsigned(value);
+      } else if (name == "--chart-every") {
+        chart_every = parse_unsigned(value);
+      } else if (name == "--chart-dir") {
+        chart_dir = std::filesystem::path(value);
+      } else if (name == "--stop-file") {
+        stop_file = std::filesystem::path(value);
       } else if (name == "--scheme") {
         if (value == "linear") {
           config.scheme = pb::WeightingScheme::Linear;
@@ -322,6 +337,14 @@ int main(const int argc, char **argv) {
     if (checkpoint_every > 0U && checkpoint_path.empty()) {
       throw std::runtime_error("--checkpoint-every requires --checkpoint");
     }
+    if ((chart_every > 0U) != !chart_dir.empty()) {
+      throw std::runtime_error("--chart-every and --chart-dir go together");
+    }
+    if (!stop_file.empty() && std::filesystem::exists(stop_file)) {
+      // A stop file left by an earlier run would end this one after one iteration.
+      std::filesystem::remove(stop_file);
+      std::cerr << "removed the stale stop file " << stop_file.string() << '\n';
+    }
     if (!(target_pot_percent > 0.0 && target_pot_percent <= 100.0))
       throw std::runtime_error("--target-pot-percent must be in (0, 100]");
     if (automatic_target) {
@@ -347,6 +370,9 @@ int main(const int argc, char **argv) {
     const auto compiled = pb::CompiledGame::compile(game_config.value());
     if (!compiled) {
       throw std::runtime_error("compile failed");
+    }
+    if (chart_every > 0U && compiled.value().config().player_count != 2U) {
+      throw std::runtime_error("--chart-every writes heads-up charts only");
     }
     auto ranks = ca::RankTable::load(resources_dir / "rank_table_v1.bin");
     auto all_in = ca::AllInTable::load(resources_dir / "preflop_all_in_v1.bin");
@@ -607,6 +633,7 @@ int main(const int argc, char **argv) {
       iterations = trainer.iteration();
     }
     bool breakdown_after_first_iteration = false;
+    bool stopped_by_file = false;
     while ((automatic_target || trainer.iteration() < iterations) && !converged && !plateau) {
       const auto telemetry = trainer.iterate();
       if (!telemetry) {
@@ -690,6 +717,56 @@ int main(const int argc, char **argv) {
       }
       if (checkpoint_every > 0U && trainer.iteration() % checkpoint_every == 0U) {
         save_checkpoint_once("periodic checkpoint write failed");
+      }
+      if (chart_every > 0U && trainer.iteration() % chart_every == 0U) {
+        // A failed snapshot must not end hours of training: report it and go on.
+        const auto &game = compiled.value();
+        const auto name = "it_" + std::to_string(trainer.iteration());
+        const auto temporary = chart_dir / (name + ".tmp");
+        std::string failure;
+        try {
+          std::error_code error;
+          std::filesystem::remove_all(temporary, error);
+          gtosd::monker_charts::write_row_charts(
+              game,
+              [&](const std::uint32_t node, const std::uint8_t hand_class) {
+                std::vector<double> row(game.nodes()[node].action_count);
+                trainer.average_strategy_row(node, hand_class, row.data());
+                return row;
+              },
+              temporary);
+          // A fresh directory can be briefly held by an indexer or antivirus.
+          for (int attempt = 0; attempt < 5; ++attempt) {
+            error.clear();
+            std::filesystem::remove_all(chart_dir / name, error);
+            error.clear();
+            std::filesystem::rename(temporary, chart_dir / name, error);
+            if (!error)
+              break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+          }
+          if (error)
+            failure = "rename failed: " + error.message();
+        } catch (const std::exception &exception) {
+          failure = exception.what();
+        }
+        if (failure.empty()) {
+          std::cout << "{\"event\":\"charts\",\"iteration\":" << trainer.iteration()
+                    << ",\"training_seconds\":" << training_seconds << "}\n"
+                    << std::flush;
+        } else {
+          std::cout << "{\"event\":\"charts_failed\",\"iteration\":" << trainer.iteration()
+                    << ",\"error\":" << nlohmann::json(failure).dump() << "}\n"
+                    << std::flush;
+        }
+      }
+      std::error_code stop_error;
+      if (!stop_file.empty() && std::filesystem::exists(stop_file, stop_error)) {
+        stopped_by_file = true;
+        std::cout << "{\"event\":\"stop_file\",\"iteration\":" << trainer.iteration()
+                  << "}\n"
+                  << std::flush;
+        break;
       }
       const bool evaluate = automatic_target
                                 ? trainer.iteration() == next_automatic_checkpoint
@@ -954,7 +1031,10 @@ int main(const int argc, char **argv) {
               << ", \"total_seconds\": "
               << std::chrono::duration<double>(Clock::now() - started).count() << "}\n";
     std::cout << "PREFLOP_BLUEPRINT_TRAIN="
-              << (converged ? "CONVERGED" : plateau ? "PLATEAU" : "ITERATION_LIMIT")
+              << (converged           ? "CONVERGED"
+                  : plateau           ? "PLATEAU"
+                  : stopped_by_file   ? "STOPPED"
+                                      : "ITERATION_LIMIT")
               << '\n';
     return 0;
   } catch (const std::exception &error) {

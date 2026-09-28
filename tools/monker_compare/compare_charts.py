@@ -11,11 +11,20 @@ weighted by their number of combos (pairs 6, suited 4, offsuit 12):
 - the share of combos whose most frequent action is the same on both sides;
 - the hand classes with the largest distances.
 An action that exists on one side only counts as frequency 0 on the other.
+
+These two measures say what each hand does if it reaches the node, not which
+hands reach it. For that, every chart also reports its range on both sides: the
+reach of a class is the product of the frequencies of the earlier actions of the
+same player on the path (read from the parent charts, when present), the range
+size is the sum of combos times reach, and the range difference is one minus the
+ratio between the common part and the union of the two weighted ranges (0 = the
+same hands with the same frequencies, 1 = no hand in common).
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import sys
 
@@ -41,11 +50,68 @@ def main_action(frequencies: dict[str, float]) -> str:
     return max(sorted(frequencies), key=lambda action: frequencies[action])
 
 
+def parent_decisions(relative: str) -> list[tuple[str, str]]:
+    """Earlier decisions of the acting player on the path to a chart.
+
+    "BTN/CO_Call_BTN_5.0ante_CO_AllIn_BTN_strategy.txt" is the line CO Call, BTN
+    5.0ante, CO AllIn with BTN to act: the reach of BTN is its 5.0ante frequency
+    in BTN/CO_Call_BTN_strategy.txt.
+    """
+    actor, name = relative.split("/")
+    tokens = name[: -len("_strategy.txt")].split("_")
+    pairs = list(zip(tokens[0:-1:2], tokens[1:-1:2]))
+    parents = []
+    for index, (player, action) in enumerate(pairs):
+        if player == actor:
+            prefix = [token for pair in pairs[:index] for token in pair]
+            parents.append((f"{player}/{'_'.join(prefix + [player])}_strategy.txt", action))
+    return parents
+
+
+def reach(directory: pathlib.Path, relative: str, cache: dict) -> dict[str, float] | None:
+    """Reach of every class at a chart, or None when a parent chart is missing."""
+    def rows(chart: str):
+        if chart not in cache:
+            path = directory / chart
+            cache[chart] = read_chart(path)[1] if path.exists() else None
+        return cache[chart]
+    node_rows = rows(relative)
+    if node_rows is None:
+        return None
+    result = {label: (1.0 if sum(f.values()) >= 0.5 else 0.0) for label, f in node_rows.items()}
+    for parent, action in parent_decisions(relative):
+        parent_rows = rows(parent)
+        if parent_rows is None:
+            return None
+        for label in result:
+            f = parent_rows.get(label, {})
+            total = sum(f.values())
+            result[label] *= f.get(action, 0.0) / total if total >= 0.5 else 0.0
+    return result
+
+
+def range_report(ours: pathlib.Path, theirs: pathlib.Path, relative: str,
+                 caches: tuple[dict, dict]) -> dict:
+    ours_reach = reach(ours, relative, caches[0])
+    theirs_reach = reach(theirs, relative, caches[1])
+    if ours_reach is None or theirs_reach is None:
+        return {"range_combos_ours": None, "range_combos_theirs": None, "range_difference": None}
+    labels = set(ours_reach) | set(theirs_reach)
+    size_ours = sum(combos(l) * ours_reach.get(l, 0.0) for l in labels)
+    size_theirs = sum(combos(l) * theirs_reach.get(l, 0.0) for l in labels)
+    common = sum(combos(l) * min(ours_reach.get(l, 0.0), theirs_reach.get(l, 0.0)) for l in labels)
+    union = sum(combos(l) * max(ours_reach.get(l, 0.0), theirs_reach.get(l, 0.0)) for l in labels)
+    return {"range_combos_ours": round(size_ours, 2), "range_combos_theirs": round(size_theirs, 2),
+            "range_difference": round(1.0 - common / union, 4) if union > 0 else None,
+            "restricted_range": bool(parent_decisions(relative))}
+
+
 def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
     ours_files = {p.relative_to(ours).as_posix() for p in ours.rglob("*_strategy.txt")}
     theirs_files = {p.relative_to(theirs).as_posix() for p in theirs.rglob("*_strategy.txt")}
     report = {"charts": [], "only_ours": sorted(ours_files - theirs_files),
               "only_theirs": sorted(theirs_files - ours_files)}
+    caches: tuple[dict, dict] = ({}, {})
     for relative in sorted(ours_files & theirs_files):
         our_actions, our_rows = read_chart(ours / relative)
         their_actions, their_rows = read_chart(theirs / relative)
@@ -93,21 +159,35 @@ def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
             "mean_distance": round(distance_sum / weight_sum, 4) if weight_sum else None,
             "same_main_action_share": round(same_sum / weight_sum, 4) if weight_sum else None,
             "largest": per_class[:top],
+            **range_report(ours, theirs, relative, caches),
         })
     distances = [c["mean_distance"] for c in report["charts"] if c["mean_distance"] is not None]
     shares = [c["same_main_action_share"] for c in report["charts"]
               if c["same_main_action_share"] is not None]
     report["overall_mean_distance"] = round(sum(distances) / len(distances), 4) if distances else None
     report["overall_same_main_action_share"] = round(sum(shares) / len(shares), 4) if shares else None
+    # Mean over the charts whose player acted before on the line (elsewhere every
+    # class reaches the node on both sides and the difference is 0).
+    ranges = [c["range_difference"] for c in report["charts"]
+              if c.get("restricted_range") and c["range_difference"] is not None]
+    report["overall_range_difference"] = round(sum(ranges) / len(ranges), 4) if ranges else None
     return report
+
+
+def native_path(text: str) -> pathlib.Path:
+    # Git Bash paths such as /c/Users/... reach a Windows Python unconverted
+    # when the script runs from a detached login shell.
+    if os.name == "nt" and len(text) > 2 and text[0] == "/" and text[2] == "/" and text[1].isalpha():
+        text = text[1].upper() + ":" + text[2:]
+    return pathlib.Path(text)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("ours", type=pathlib.Path)
-    parser.add_argument("theirs", type=pathlib.Path)
+    parser.add_argument("ours", type=native_path)
+    parser.add_argument("theirs", type=native_path)
     parser.add_argument("--top", type=int, default=5)
-    parser.add_argument("--json", type=pathlib.Path)
+    parser.add_argument("--json", type=native_path)
     args = parser.parse_args()
     report = compare(args.ours, args.theirs, args.top)
     for chart in report["charts"]:
@@ -116,12 +196,17 @@ def main() -> int:
             print(f"{chart['chart']}: no class in both ranges; in range only ours "
                   f"{len(chart['in_range_only_ours'])}, only theirs "
                   f"{len(chart['in_range_only_theirs'])}{flag}")
+        else:
+            print(f"{chart['chart']}: distance {chart['mean_distance']:.3f}, "
+                  f"same main action {100 * chart['same_main_action_share']:.1f} % "
+                  f"on {chart['classes']} classes in both ranges; in range only ours "
+                  f"{len(chart['in_range_only_ours'])}, only theirs "
+                  f"{len(chart['in_range_only_theirs'])}{flag}")
+        if chart.get("restricted_range") and chart["range_difference"] is not None:
+            print(f"    reach-weighted range: ours {chart['range_combos_ours']:.1f} combos, theirs "
+                  f"{chart['range_combos_theirs']:.1f}, range difference {chart['range_difference']:.3f}")
+        if chart["mean_distance"] is None:
             continue
-        print(f"{chart['chart']}: distance {chart['mean_distance']:.3f}, "
-              f"same main action {100 * chart['same_main_action_share']:.1f} % "
-              f"on {chart['classes']} classes in both ranges; in range only ours "
-              f"{len(chart['in_range_only_ours'])}, only theirs "
-              f"{len(chart['in_range_only_theirs'])}{flag}")
         if chart["in_range_only_ours"] or chart["in_range_only_theirs"]:
             print(f"    range: only ours {' '.join(chart['in_range_only_ours'])} | only theirs "
                   f"{' '.join(chart['in_range_only_theirs'])}")
@@ -134,7 +219,9 @@ def main() -> int:
         print("only theirs:", ", ".join(report["only_theirs"]))
     if report["overall_mean_distance"] is not None:
         print(f"overall: distance {report['overall_mean_distance']:.3f}, same main action "
-              f"{100 * report['overall_same_main_action_share']:.1f} %")
+              f"{100 * report['overall_same_main_action_share']:.1f} %"
+              + (f", range difference {report['overall_range_difference']:.3f}"
+                 if report["overall_range_difference"] is not None else ""))
     if args.json:
         args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")
     return 0

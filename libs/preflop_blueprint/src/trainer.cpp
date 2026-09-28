@@ -1720,6 +1720,12 @@ void Trainer::average_row(const std::uint64_t offset, const std::uint8_t actions
                   });
 }
 
+void Trainer::average_strategy_row(const std::uint32_t node, const std::uint32_t row,
+                                   double *out) const noexcept {
+  const auto actions = game_->nodes()[node].action_count;
+  average_row(layout_.offsets[node] + static_cast<std::uint64_t>(row) * actions, actions, out);
+}
+
 void Trainer::current_row(const std::uint64_t offset, const std::uint8_t actions,
                           double *out) const noexcept {
   dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,

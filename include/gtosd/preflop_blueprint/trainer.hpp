@@ -324,6 +324,13 @@ public:
   save_average_policy(const std::filesystem::path &path, const std::string &source);
   [[nodiscard]] Result<std::string, TrainerError>
   save_current_policy(const std::filesystem::path &path, const std::string &source);
+  // Average strategy of one row, read without touching the state (training then
+  // continues bit-identically). A pending lazy discount multiplies every strategy
+  // sum of a row by one factor and every positive regret by another, so the
+  // normalized row equals the exported one up to storage rounding (exactly up to
+  // double rounding with double storage). Used for chart snapshots. Preconditions:
+  // a usable trainer, a decision node, row < its row count; call between iterations.
+  void average_strategy_row(std::uint32_t node, std::uint32_t row, double *out) const noexcept;
 
   // Cell accessors of the two persistent tables (any storage format).
   [[nodiscard]] double regret(std::uint64_t cell) const noexcept;

@@ -181,4 +181,64 @@ inline std::vector<std::string> write_charts(const preflop_blueprint::CompiledGa
   return written;
 }
 
+// Normalized strategy of a preflop node for a hand class (the preflop rows of
+// a policy or of a trainer), in edge order.
+using RowStrategy =
+    std::function<std::vector<double>(std::uint32_t node, std::uint8_t hand_class)>;
+
+// Heads-up charts from preflop rows: the own reach of each seat per node and
+// hand class follows the rows, and a class whose reach at the node is below
+// out_of_range_reach is written as an all-zero row (outside the range).
+inline std::vector<std::string> write_row_charts(const preflop_blueprint::CompiledGame &game,
+                                                 const RowStrategy &row,
+                                                 const std::filesystem::path &directory,
+                                                 const double out_of_range_reach = 5e-4) {
+  if (game.config().player_count != 2U) {
+    throw std::runtime_error("the chart export is heads-up only");
+  }
+  const auto classes = hand_classes();
+  std::map<std::string, std::uint8_t> class_of_label;
+  for (const auto &[hand_class, label] : classes.label_by_class) {
+    class_of_label[label] = hand_class;
+  }
+  std::vector<std::string> labels;
+  for (const auto &entry : classes.combos_by_label) {
+    labels.push_back(entry.first);
+  }
+  const auto class_count = classes.label_by_class.size();
+  std::map<std::uint32_t, std::array<std::vector<double>, 2>> reach;
+  std::function<void(std::uint32_t, const std::array<std::vector<double>, 2> &)> forward =
+      [&](const std::uint32_t node_id, const std::array<std::vector<double>, 2> &node_reach) {
+        const auto &node = game.nodes()[node_id];
+        if (node.kind != preflop_blueprint::NodeKind::Decision || node.street != Street::Preflop) {
+          return;
+        }
+        reach[node_id] = node_reach;
+        std::vector<std::vector<double>> strategies(class_count);
+        for (std::size_t hand_class = 0; hand_class < class_count; ++hand_class) {
+          strategies[hand_class] = row(node_id, static_cast<std::uint8_t>(hand_class));
+        }
+        const auto edges = game.edges_of(node_id);
+        for (std::size_t action = 0; action < edges.size(); ++action) {
+          auto next = node_reach;
+          for (std::size_t hand_class = 0; hand_class < class_count; ++hand_class) {
+            next[node.actor][hand_class] *= strategies[hand_class][action];
+          }
+          forward(edges[action].child, next);
+        }
+      };
+  forward(game.root(), {std::vector<double>(class_count, 1.0),
+                        std::vector<double>(class_count, 1.0)});
+  const ClassStrategy strategy =
+      [&](const std::uint32_t node, const std::string &label) -> std::optional<std::vector<double>> {
+    const auto hand_class = class_of_label.at(label);
+    const auto actor = game.nodes()[node].actor;
+    if (reach.at(node)[actor][hand_class] < out_of_range_reach) {
+      return std::nullopt;
+    }
+    return row(node, hand_class);
+  };
+  return write_charts(game, labels, strategy, directory);
+}
+
 } // namespace gtosd::monker_charts
