@@ -130,9 +130,9 @@ ancora con queste righe (il trainer li rifiuta).
 **Training** (`tools/monker_compare/run_step2.sh`): trainer attuale con le opzioni della suite (DCFR
 1,5/0/2 alternato, batch 32, sconto lazy), blocchi da 4.000 iterazioni con ripresa dal checkpoint, chart
 esportate a ogni blocco (`gtosd_preflop_blueprint_monker_charts`), confronto con il blocco precedente e
-con MonkerSolver, arresto sotto 0,01. Costo misurato nel run: 0,070-0,079 s per iterazione (0,067 nella
+con MonkerSolver, arresto sotto 0,01. Costo misurato nel run: 0,065-0,079 s per iterazione (0,067 nella
 prova breve, di cui 0,061 di attraversamento), salvataggio 24-30 s e ripresa circa 26 s per blocco:
-blocchi da 5,4-6,5 minuti. Senza lo sconto lazy il costo era 0,75 s per iterazione (0,66 di sconto
+blocchi da 5,4-7,0 minuti. Senza lo sconto lazy il costo era 0,75 s per iterazione (0,66 di sconto
 dell'intera tabella). Prova breve a 500 iterazioni:
 distanza da MonkerSolver 0,237, stessa azione principale 78 %.
 
@@ -153,8 +153,10 @@ iterazioni** (17:45, cambiamento 0,0095 < 0,01). Distanza da MonkerSolver per sa
 | BTN contro lo shove del CO sull'isolation | 0,014 | 0,327 | 152,6 / 156,1 |
 
 Frequenze alla radice del CO (combo effettive su 630): MonkerSolver all-in 33,1 %, open 0,5 %, limp 29,0 %,
-fold 37,4 %; passo 2 all-in 26,8 %, open 9,3 %, limp 28,9 %, fold 35,0 %. Il nostro CO apre a 5a mani
-forti (AA 83,5 %, KK, KQs, KJs) che MonkerSolver limpa (AA 93 %) o shova (KQs 99 %, KK 75 %).
+fold 37,4 %; passo 2 all-in 26,8 %, open 9,3 %, limp 28,9 %, fold 35,0 %. Il nostro CO usa l'open a 5a
+soprattutto con AA (83,5 %) e JJ (43,8 %), in parte con KK (46,5 %), KJs (41 %) e KQs (27 %), e con mani
+non premium (JTs 34,6 %, QJo 33,9 %, J9o 32,3 %, A7o 27 %); MonkerSolver limpa AA (93 %) e shova KQs
+(99 %) e KK (75 %).
 
 ### 5.1 Misure di confronto (decisioni dell'utente del 28 settembre sera)
 
@@ -168,20 +170,23 @@ forti (AA 83,5 %, KK, KQs, KJs) che MonkerSolver limpa (AA 93 %) o shova (KQs 99
   giocatore, lette dalle chart dei nodi padre). Su tutto l'albero: 1 − Σ parte comune / Σ unione, in
   combo effettive, sui **range ristretti distinti** (il range del CO dopo il limp compare in due nodi e
   conta una volta). La prima versione era una media per nodo e contava due volte quel range (0,456 invece
-  di 0,383): corretta su richiesta dell'utente ("non la media, ma le combo effettive").
+  di 0,383): corretta su richiesta dell'utente ("Non deve calcolare la media, ma le combo effettive, sia
+  per monker che per il nostro").
 - **Stessa azione principale: abbandonata** (decisione dell'utente): nasconde le strategie miste (51/49
   contro 49/51 conta come diverso, 100/0 contro 51/49 come uguale) e con range diversi dà 100 % anche dove
   i range non si somigliano (CO contro lo shove dopo l'open: 3,1 contro 58,9 combo effettive).
 - **Preferenza suited alla radice** (diagnostica): media sulle 36 coppie di ranghi diversi di (limp + open
   della suited) − (limp + open della offsuit). MonkerSolver 0,224, passo 2 0,399.
 - **Soglia di rumore**: due run identici con seed diverso (5.2) danno chart distanti 0,007 / 0,034 e
-  valori contro MonkerSolver che differiscono di 0,0005 / 0,006. Una variante conta se sposta la distanza
+  valori contro MonkerSolver che differiscono di 0,0004 / 0,006. Una variante conta se sposta la distanza
   da MonkerSolver di almeno circa 0,005 o la differenza di range di almeno circa 0,02.
 
 ### 5.2 Varianti del passo 2 (una modifica alla volta, 28 settembre sera)
 
-Tutte con lo stesso runner (`tools/monker_compare/run_step2_continuous.sh`, chart dal trainer vivo ogni
-4.000 iterazioni, arresto sotto 0,01), tutte stabili a 24.000 iterazioni. Valori a 24.000 iterazioni.
+Varianti con il runner continuo (`tools/monker_compare/run_step2_continuous.sh`, chart dal trainer vivo
+ogni 4.000 iterazioni, arresto sotto 0,01), tutte stabili a 24.000 iterazioni. Il passo 2 è stato
+calcolato con il runner a blocchi (`run_step2.sh`, salvataggio e ripresa a ogni blocco): i suoi 36
+minuti non sono confrontabili (la stessa configurazione con il runner continuo, seed 2, ne ha presi 31).
 
 | Run | Cosa cambia | Distanza da MonkerSolver | Differenza di range | Preferenza suited | Distanza / range dalle chart del passo 2 | Picco di memoria | Durata |
 |---|---|---:|---:|---:|---:|---:|---:|
@@ -190,29 +195,45 @@ Tutte con lo stesso runner (`tools/monker_compare/run_step2_continuous.sh`, char
 | 15 livelli di forza | bucket 15 × 4 (livelli a 30 uniti a coppie) | 0,0723 | 0,378 | 0,364 | 0,009 / 0,055 | 2,86 GB | 28 min |
 | Potenziale a 1 livello | bucket 30 × 1 | 0,0755 | 0,391 | 0,349 | 0,018 / 0,105 | 2,75 GB | 27 min |
 | **Donk bet ammessi** | `HU50_step2_donk.json`, 571 nodi | **0,0667** | 0,376 | 0,372 | 0,018 / 0,136 | 6,62 GB | 33 min |
-| Size 75 % | tolta dall'utente prima del run (1.036 nodi, 11,7 GB) | — | — | — | — | — | — |
+| Size 75 % | tolta dall'utente prima del run (1.036 nodi, circa 11,7 GB stimati) | — | — | — | — | — | — |
 
-- **15 livelli**: chart entro il rumore, metà memoria, blocchi del 15 % più rapidi: risparmio gratuito.
-- **Potenziale a 1 livello**: sposta le chart più del rumore (0,018) ma non verso MonkerSolver; riduce la
-  preferenza suited, non abbastanza. Non è un risparmio gratuito.
+- **15 livelli**: chart vicine a quelle del passo 2 (0,009 / 0,055: sulla distanza entro il rumore, sul
+  range un po' sopra), preferenza suited 0,399 -> 0,364; valori contro MonkerSolver ed EV (5.5) invariati;
+  metà memoria; blocchi circa il 10 % più rapidi del seed 2 sullo stesso runner, dentro la variabilità dei
+  tempi. Risparmio di memoria senza perdita misurabile.
+- **Potenziale a 1 livello**: sposta le chart più del rumore (0,018 / 0,105) ma non verso MonkerSolver;
+  riduce la preferenza suited, non abbastanza. Non è neutro sulle chart (in EV sì, 5.5).
 - **Donk bet**: l'unica variante che avvicina le chart a MonkerSolver oltre il rumore (−0,0058), nei nodi
   del piatto limp-isolation-call dove senza donk il CO può solo fare check: CO contro l'isolation 0,174 ->
-  0,141, BTN contro il limp 0,124 -> 0,111. L'analisi preventiva (5.3) prevedeva il contrario. Indizio che
-  le chart dell'utente siano state calcolate con i donk bet, contro la ricetta ufficiale.
+  0,141, BTN contro il limp 0,124 -> 0,111. L'analisi preventiva con tre analisti (5.3) prevedeva uno
+  spostamento lontano da MonkerSolver. Indizio che le chart dell'utente siano state calcolate con i donk
+  bet, contro la ricetta ufficiale.
 
 ### 5.3 Dove stanno le differenze (analisi con tre analisti indipendenti e un arbitro)
 
-- Le mani **offsuit coincidono** con MonkerSolver entro 0,03 nei nodi principali; le differenze sono nelle
-  **suited e nelle coppie** del CO (radice: suited limp/open/all-in 42/0/36 % in MonkerSolver contro
-  55/8/20 % nostro; coppie open 2 % contro 27 %, all-in 22 % contro 9 %). Il nostro postflop dà più valore
-  ai progetti di chi è fuori posizione nei piatti da 12a.
-- **Esclusi dai dati**: "tris batte scala" (MonkerSolver chiamerebbe 99, che folda), button blind da 2a
-  (chiamerebbe KJo, JTo, 99), rake (sposterebbe anche le offsuit, che coincidono).
-- **Più iterazioni non chiudono lo scarto**: estrapolando la convergenza le chart si muovono ancora di
-  circa 0,027 e la distanza sale leggermente (0,079): la radice migliora, gli altri nodi peggiorano.
-- **Leve residue**: le varianti di astrazione (livelli, potenziale, texture) cambiano poco le chart;
-  quelle dell'albero (donk bet, seconda size più piccola) molto di più. Una seconda size (50 % + 100 %)
-  porta l'albero a 2.429 decisioni postflop (circa 16 volte memoria e tempo): solo su un server affittato.
+- Le mani **offsuit coincidono** con MonkerSolver entro 0,03 dopo il limp (CO contro l'isolation
+  fold/call/all-in 0,54/0,42/0,04 contro 0,54/0,44/0,03; BTN contro il limp) ma non del tutto alla radice
+  (fold/limp/open/all-in 0,47/0,19/0,00/0,33 contro 0,46/0,16/0,08/0,31: il nostro CO apre anche offsuit).
+  Le differenze maggiori sono nelle **suited e nelle coppie** del CO (radice: suited limp/open/all-in
+  42/0/36 % in MonkerSolver contro 55/8/20 % nostro; coppie open 2 % contro 27 %, all-in 22 % contro 9 %).
+  Ipotesi dell'analisi, non misurata: il nostro postflop dà più valore alle suited di chi è fuori
+  posizione nei piatti da 12a.
+- **Esclusi dai dati**: "tris batte scala" (MonkerSolver chiamerebbe 99, che folda) e button blind da 2a
+  (chiamerebbe KJo, JTo, 99). **Rake: sfavorita, non esclusa** (le soglie degli all-in di MonkerSolver
+  ammettono da 0 a circa 1-2 a di rake su 100 a di piatto).
+- **Più iterazioni, stima**: estrapolando la convergenza da due salvataggi (a + b/t su 12.000 e 24.000)
+  le chart si muovono ancora di circa 0,027 e la distanza sale leggermente (0,079): peggiorano CO contro
+  l'isolation (0,174 -> 0,202), BTN contro il limp (0,124 -> 0,150) e BTN contro l'open (0,079 -> 0,092),
+  migliorano di poco i nodi contro gli all-in.
+- **Leve residue, misurate dopo**: la variante dell'albero provata (donk bet, 0,018 / 0,136) ha spostato
+  le chart quanto quelle dell'astrazione (potenziale a 1 livello 0,018 / 0,105, texture TX2 0,020 /
+  0,115); solo i 15 livelli restano vicini al rumore. La seconda size (50 % + 100 %, 2.429 decisioni
+  postflop, circa 16 volte memoria e tempo) è secondo l'analisi la leva probabilmente più grande, ma non
+  è misurata e la direzione è incerta; richiede una macchina con circa 80 GB (server affittato o la
+  macchina di produzione).
+- **Affidabilità dell'analisi**: le due previsioni poi verificate sono risultate sbagliate (donk bet:
+  prevista lontano da MonkerSolver, misurata verso; potenziale a 1 livello: indicata come la più mirata
+  verso MonkerSolver, misurata lontano). Le altre valutazioni di questa sezione vanno lette come ipotesi.
 
 ### 5.4 Le chart di MonkerSolver giocate nel nostro gioco
 
@@ -234,10 +255,13 @@ valori controfattuali di ogni azione preflop per combo, ricorsione esatta sui no
 | 15 livelli + TX2 (5.5) | CO | −0,20814 | −0,20980 | 0,00166 a (0,055 %) | 0,0035 a (0,12 %) |
 | 15 livelli + TX2 (5.5) | BTN | +0,20814 | +0,20745 | 0,00069 a (0,023 %) | 0,0015 a (0,05 %) |
 
-**Conclusione.** Nel nostro gioco le chart di MonkerSolver valgono quanto le nostre: perdono da 30 a 140
-volte meno della soglia dell'1 % del piatto (0,03 a), e meno del nostro stesso scarto dalla migliore
-risposta preflop. Le differenze fra le chart (distanza 0,07) stanno fra azioni quasi equivalenti: in EV
-il passo 2 riproduce MonkerSolver. La policy del passo 2, cancellata dal vecchio runner, è stata
+**Conclusione.** Nel nostro gioco le chart di MonkerSolver valgono quanto le nostre: nel gioco del passo 2
+perdono da 33 a 138 volte meno della soglia dell'1 % del piatto (0,03 a), in tutti i giochi della tabella
+almeno 18 volte meno, e meno del nostro stesso scarto dalla migliore risposta preflop. La perdita netta
+somma guadagni e perdite per classe (CO: +0,0035 e −0,0033 a); anche la sola parte positiva resta piccola
+(0,12 % del piatto). Nel nostro gioco le chart di MonkerSolver sono quindi quasi una migliore risposta
+quanto le nostre: le differenze fra le chart (distanza 0,07) stanno fra azioni di valore quasi uguale. La
+misura va in un solo verso: non prova le nostre chart nel gioco di MonkerSolver, che non abbiamo. La policy del passo 2, cancellata dal vecchio runner, è stata
 riesportata da una copia del checkpoint con l'impronta originale (`fnv1a64:ff9741d496d73bc5`).
 
 ### 5.5 Turn fusi in classi di texture (notte del 28-29 settembre)
@@ -259,21 +283,27 @@ Risultati su HU50 (stesso runner, arresto sotto 0,01; valori finali):
 | TX2 | 4.482 | 20.000 | 0,0710 | 0,360 | 0,386 | 0,020 / 0,115 | 1,96 GB |
 | **15 livelli + TX2** (astrazione compatta) | 4.482 | 20.000 | **0,0706** | 0,3625 | 0,353 | 0,023 / 0,125 (dal TX2: 0,008 / 0,048) | **1,03 GB** |
 
-- **TX1 e TX2 danno le stesse chart** (distanti fra loro 0,007 / 0,047, come due seed): lo spostamento
-  dal passo 2 viene dalla fusione dei turn in sé, non dall'aggressività della regola. A parità di effetto
-  TX2 risparmia di più.
-- **Sulle chart non è neutra**: rispetto al passo 2 TX2 supera la soglia del piano (0,018 / 0,105), TX1 è
-  nella zona grigia; gli asintoti stimati (a + b/t su due salvataggi) confermano uno spostamento reale
-  (0,025 / 0,14 contro 0,0125 / 0,060 fra i seed). Lo spostamento va leggermente **verso MonkerSolver**
-  (asintoti 0,0714 contro 0,0788), che fonde anch'esso turn e river.
+- **TX1 e TX2 danno chart vicine** (distanti fra loro 0,007 / 0,047: sulla distanza come due seed, sul
+  range un po' sopra il rumore). Il TX1, meno aggressivo, si sposta un po' meno dal passo 2 (0,015 / 0,083
+  contro 0,020 / 0,115; asintoti 0,019 / 0,10 contro 0,025 / 0,14): lo spostamento viene in gran parte
+  dalla fusione dei turn in sé, in parte dall'aggressività. A effetto simile TX2 risparmia di più.
+- **Sulle chart non è neutra**: confronto finale contro finale (20.000 contro 24.000 iterazioni, come
+  prescritto dal piano), TX2 supera la soglia (0,018 / 0,105) e TX1 è nella zona grigia; a iterazioni
+  uguali (20.000) anche il TX1 la supera (0,0215 / 0,121, seed 0,0064 / 0,035). Gli asintoti stimati (a +
+  b/t su due salvataggi) confermano uno spostamento reale (TX2 0,025 / 0,14 contro 0,0125 / 0,060 fra i
+  seed). Lo spostamento va leggermente **verso MonkerSolver** (asintoti 0,0714 contro 0,0788), che fonde
+  anch'esso turn e river.
 - **In EV è neutra**: le chart TX2 giocate nel gioco del passo 2 perdono −0,00065 a (CO) e −0,00017 a (BTN),
-  cioè fanno appena meglio delle chart del passo 2 (più convergenti); le chart di MonkerSolver nel gioco
-  TX2 perdono 0,0016 a (0,052 % del piatto) e 0,0006 a.
-- **Tempo**: la convergenza delle chart è più rapida (distanza da MonkerSolver 0,073 già a 8.000
-  iterazioni) ma il tempo per iterazione non scende (0,087 s contro 0,080): il guadagno è di memoria.
+  cioè fanno appena meglio delle chart del passo 2 (probabilmente perché più convergenti: nei loro giochi lo
+  scarto dalla migliore risposta preflop è minore, 0,0038 / 0,0016 a contro 0,0058 / 0,0038); le chart di
+  MonkerSolver nel gioco TX2 perdono 0,0016 a (0,052 % del piatto) e 0,0006 a.
+- **Tempo**: le chart convergono prima (distanza da MonkerSolver 0,073 già a 8.000 iterazioni) ma il tempo
+  per iterazione resta quello del passo 2 (0,071 s sull'intero run, uguale al passo 2; il compatto 0,064):
+  il guadagno è di memoria.
 
-- **Astrazione compatta (15 livelli + TX2)**: aggiungere i 15 livelli al TX2 è neutro (dal TX2 0,008 /
-  0,048, come due seed); memoria 5,4 volte più piccola del passo 2 (1,03 GB); distanza da MonkerSolver
+- **Astrazione compatta (15 livelli + TX2)**: aggiungere i 15 livelli al TX2 sposta poco le chart (dal
+  TX2 0,008 / 0,048: distanza al livello del rumore, range un po' sopra, come i 15 livelli da soli);
+  memoria 5,4 volte più piccola del passo 2 (1,03 GB); distanza da MonkerSolver
   0,0706; le sue chart nel gioco del passo 2 perdono −0,00082 / −0,00028 a (appena meglio); le chart di
   MonkerSolver nel gioco compatto perdono 0,0017 a (0,055 % del piatto, CO) e 0,0007 a (BTN).
 
@@ -281,8 +311,8 @@ Chart di tutte le varianti giocate nel gioco del passo 2 (esatto, 573 flop; CO /
 delle chart del passo 2): seed 2 −0,00002 / −0,00000 a, 15 livelli −0,00037 / −0,00015, potenziale a 1
 livello +0,00014 / −0,00001, TX1 −0,00046 / −0,00017, TX2 −0,00065 / −0,00017, 15 livelli + TX2 −0,00082 /
 −0,00028, donk bet (chart di un gioco diverso) +0,00036 / +0,00044: tutte equivalenti in EV entro lo
-0,03 % del piatto. Con questa misura il passo 2 e tutte le sue varianti danno chart intercambiabili; la
-distanza fra chart resta utile per vedere dove si spostano, non per giudicarle.
+0,03 % del piatto. Con questa misura, nel gioco del passo 2, le chart del passo 2 e di tutte le varianti
+sono intercambiabili; la distanza fra chart resta utile per vedere dove si spostano, meno per giudicarle.
 
 ## 6. Strumenti e riproduzione
 
@@ -332,14 +362,16 @@ differenza di range), c9260ba (differenza di range sulle combo effettive, argome
 Fatti il 28 settembre: risultati del passo 2 (5), varianti (5.2), export senza fermare il training,
 MonkerSolver nel nostro gioco (5.4), turn in texture (5.5). Da decidere con l'utente:
 
-1. **Configurazione HU di riferimento**: donk bet sì o no (unica variante che avvicina a MonkerSolver);
+1. **Configurazione HU di riferimento**: donk bet sì o no (unica variante che avvicina a MonkerSolver
+   oltre il rumore);
    astrazione compatta 15 livelli + TX2 (1 GB invece di 5,6, equivalente in EV, sposta le chart di
    0,02 fra azioni equivalenti e un po' verso MonkerSolver). Da provare: donk bet + astrazione compatta
    insieme.
 2. **Criterio di somiglianza**: la perdita di MonkerSolver nel nostro gioco (0,03 % del piatto) dice
    che le chart sono equivalenti in EV; la distanza 0,07 resta come misura descrittiva.
-3. **Seconda size postflop** (50 % + 100 %): solo su un server affittato (circa 80 GB), con l'ok
-   dell'utente; è la leva più grande rimasta sulle chart.
+3. **Seconda size postflop** (50 % + 100 %): su una macchina con circa 80 GB (server affittato o la
+   macchina di produzione), con l'ok dell'utente; secondo l'analisi probabilmente la leva più grande
+   rimasta sulle chart, non misurata e con direzione incerta.
 4. 3-way 50a: raise al 100 % del piatto nel costruttore, regole sparse (cold call), tabella di equity a
    tre giocatori, motore multiway, astrazione compatta; confronto con le chart 3-way dell'utente con gli
    stessi strumenti (distanza, differenza di range, MonkerSolver nel nostro gioco).
