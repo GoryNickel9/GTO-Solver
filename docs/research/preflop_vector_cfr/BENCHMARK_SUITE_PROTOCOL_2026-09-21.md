@@ -180,6 +180,17 @@ una pausa giornaliera facoltativa (`SUITE_PAUSE=HH:MM-HH:MM`: un run parte solo 
 attesa termina prima della pausa o se la pausa e' finita) e `SUITE_NOT_BEFORE="YYYY-MM-DD HH:MM"`,
 che rinvia il primo avvio a una data e ora (regole che entrano in vigore un giorno successivo).
 
+**Criterio di accettazione (decisione dell'utente del 2026-09-28, sostituisce la decisione (3) del
+2026-09-24).** Un benchmark e' accettato quando la best response esatta dentro l'astrazione (tutti i
+573 flop canonici, il giocatore che devia vede solo le righe dell'astrazione) e' al massimo l'1 % del
+piatto iniziale, cioe' 0,03 a, per entrambi i giocatori. Il certificato fisico esatto (best response
+sul gioco vero, strumento `certify`) e i controlli puntuali con il solver postflop esatto restano
+metriche di qualita' riportate a ogni versione, non soglie: la loro differenza con la best response
+astratta e' l'errore di rappresentazione dell'astrazione. Motivo: i solver preflop di riferimento
+dichiarano la convergenza dentro la propria astrazione; le diagnosi del 2026-09-27/28 mostrano che
+su HU30/HU40 il 75-80 % dell'exploitability fisica e' errore di rappresentazione. Valori di partenza a
+32.000 iterazioni: HU30 0,0349 (policy del 2026-09-21), HU40 0,0640.
+
 **Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
 sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si
 misura il tempo (ripetizioni di confronto dei tempi, run sui 35 minuti). Durante i run di sola
