@@ -118,23 +118,26 @@ bool assign_bucket_rows(Universe &universe, const ca::BucketTable &table,
   return true;
 }
 
-// MonkerSolver-style rows, as BoardContext::build assigns them: the class of
-// the board is its canonical index (the row of the bucket table) and the row
-// class * groups + bucket. The rows are 32-bit and every value is a real row
-// (no_bucket among them), so validity is checked on the bucket instead.
+// MonkerSolver-style rows, as BoardContext::build assigns them: the bucket is
+// read at the canonical index of the board (the row of the bucket table), the
+// class of the board is the texture class of that index (the index itself
+// without a texture) and the row class * groups + bucket. The rows are
+// 32-bit and every value is a real row (no_bucket among them), so validity
+// is checked on the bucket instead.
 bool assign_board_class_rows(Universe &universe, const ca::BucketTable &table,
                              const Result<ca::CanonicalLookup, CardError> &lookup,
                              const BoardClassRows &board_class_rows) {
   if (!lookup) {
     return false;
   }
-  const auto board_class = lookup.value().index;
+  const auto canonical_index = lookup.value().index;
+  const auto board_class = board_class_rows.board_class(table.street(), canonical_index);
   const auto &permutation = lookup.value().permutation;
   for (std::size_t hand = 0; hand < universe.size(); ++hand) {
     const auto first = ca::permute_card(CardId::from_index(universe.cards[hand][0]).value(), permutation);
     const auto second =
         ca::permute_card(CardId::from_index(universe.cards[hand][1]).value(), permutation);
-    const auto bucket = table.bucket(board_class, ca::combo_index(first, second));
+    const auto bucket = table.bucket(canonical_index, ca::combo_index(first, second));
     if (bucket == ca::no_bucket || bucket >= table.capacity()) {
       return false;
     }

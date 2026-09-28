@@ -9,6 +9,7 @@
 #include "gtosd/card_abstraction/canonical_boards.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/card_abstraction/rank_table.hpp"
+#include "gtosd/preflop_blueprint/board_texture.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
@@ -156,6 +157,9 @@ int main(const int argc, char **argv) {
     // MonkerSolver-style rows: (board class, per-board bucket); the bucket
     // tables must be per-board tables (preflop_blueprint_monker_buckets).
     bool use_board_class_rows = false;
+    // Texture of the board classes (board_texture.hpp): merged turn classes
+    // sharing their rows. Without it every canonical board is its own class.
+    std::filesystem::path board_texture_path;
     std::filesystem::path history_rows_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
@@ -246,6 +250,10 @@ int main(const int argc, char **argv) {
         buckets_dir = value;
       } else if (name == "--history-rows") {
         history_rows_path = value;
+      } else if (name == "--board-texture-map") {
+        if (value.empty())
+          throw std::runtime_error("--board-texture-map needs a file");
+        board_texture_path = value;
       } else if (name == "--policy-out") {
         policy_path = std::filesystem::path(value);
       } else if (name == "--current-policy-out") {
@@ -330,6 +338,9 @@ int main(const int argc, char **argv) {
     }
     if (config_path.empty() || resources_dir.empty() || buckets_dir.empty()) {
       throw std::runtime_error("--config, --resources-dir and --buckets-dir are required");
+    }
+    if (!board_texture_path.empty() && !use_board_class_rows) {
+      throw std::runtime_error("--board-texture-map requires --board-class-rows");
     }
     if (resume && (checkpoint_path.empty() || !std::filesystem::exists(checkpoint_path))) {
       throw std::runtime_error("--resume requires an existing checkpoint");
@@ -428,8 +439,18 @@ int main(const int argc, char **argv) {
       // (preflop_blueprint_monker_values).
       if (evaluate_every > 0U || !certificate_path.empty())
         throw std::runtime_error("--board-class-rows requires --eval-every 0 and no certificate");
+      auto texture = pb::BoardTextureMap::identity();
+      if (!board_texture_path.empty()) {
+        auto loaded_texture = pb::BoardTextureMap::load(board_texture_path, catalog);
+        if (!loaded_texture) {
+          throw std::runtime_error("board texture map " + board_texture_path.string() +
+                                   " rejected: " +
+                                   pb::texture_error_name(loaded_texture.error()));
+        }
+        texture = std::move(loaded_texture.value());
+      }
       board_class_rows.emplace(flop.value().capacity(), turn.value().capacity(),
-                               river.value().capacity());
+                               river.value().capacity(), std::move(texture));
       resources.board_class_rows = &*board_class_rows;
       config.flop_capacity = board_class_rows->count(ca::BucketStreet::Flop);
       config.turn_capacity = board_class_rows->count(ca::BucketStreet::Turn);
@@ -478,6 +499,18 @@ int main(const int argc, char **argv) {
       trainer.reseed_evaluation(*evaluation_seed);
     }
     const auto &stats = compiled.value().stats();
+    // Board texture of the board class rows (null without them); the
+    // identity has an empty fingerprint.
+    nlohmann::json board_texture_json = nullptr;
+    if (board_class_rows) {
+      const auto &texture = board_class_rows->texture();
+      board_texture_json = nlohmann::json{
+          {"name", texture.name()},
+          {"fingerprint", texture.fingerprint()},
+          {"classes", nlohmann::json::array({texture.classes(ca::BucketStreet::Flop),
+                                             texture.classes(ca::BucketStreet::Turn),
+                                             texture.classes(ca::BucketStreet::River)})}};
+    }
     const double preparation_seconds =
         std::chrono::duration<double>(Clock::now() - started).count();
     std::cout << "{\"event\": \"start\", \"config_id\": \"" << game_config.value().id
@@ -485,7 +518,8 @@ int main(const int argc, char **argv) {
               << "\", \"trainer_identity\": \"" << trainer.identity()
               << "\", \"nodes\": " << stats.node_count << ", \"decisions\": " << stats.decision_nodes
               << ", \"capacities\": [" << config.flop_capacity << ", " << config.turn_capacity
-              << ", " << config.river_capacity << "], \"state_bytes\": " << trainer.state_bytes()
+              << ", " << config.river_capacity << "], \"board_texture\": "
+              << board_texture_json.dump() << ", \"state_bytes\": " << trainer.state_bytes()
               << ", \"history_map_resident_bytes\": "
               << (history_rows ? history_rows->resident_byte_size() : 0U)
               << ", \"units\": " << trainer.partition().unit_roots.size()

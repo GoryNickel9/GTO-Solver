@@ -2,7 +2,8 @@
 // when its preflop decisions follow a chart set (MonkerSolver text format, one
 // row per hand class) while everything else stays our average strategy, in
 // the physical game with the lifted policy (--board-class-rows for a step-2
-// policy trained with them). One stage-one pass of the physical best response
+// policy trained with them, plus --board-texture-map with the texture map it
+// was trained with). One stage-one pass of the physical best response
 // gives the action values of both players at their preflop nodes
 // (BestResponseEvaluator::preflop_action_values); every chart set is then
 // valued exactly on them (monker_chart_values.hpp), with the loss split by
@@ -25,6 +26,7 @@
 #include "gtosd/preflop_blueprint/action_labels.hpp"
 #include "gtosd/preflop_blueprint/best_response.hpp"
 #include "gtosd/preflop_blueprint/board_class_rows.hpp"
+#include "gtosd/preflop_blueprint/board_texture.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/game_model.hpp"
@@ -131,6 +133,8 @@ struct Options {
   std::filesystem::path policy_path;
   std::filesystem::path output_path;
   bool board_class_rows{false};
+  // Texture map of the board class rows (the identity when empty).
+  std::filesystem::path board_texture_path;
   bool all_flops{false};
   std::uint32_t flops{64U};
   std::uint32_t flop_limit{0U};
@@ -171,6 +175,10 @@ Options parse_options(const int argc, char **argv) {
       options.buckets_dir = value;
     } else if (name == "--policy") {
       options.policy_path = value;
+    } else if (name == "--board-texture-map") {
+      if (value.empty())
+        throw std::runtime_error("--board-texture-map needs a file");
+      options.board_texture_path = value;
     } else if (name == "--out") {
       options.output_path = value;
     } else if (name == "--flops") {
@@ -208,6 +216,9 @@ Options parse_options(const int argc, char **argv) {
   }
   if (options.charts.empty()) {
     throw std::runtime_error("at least one --charts NAME=DIRECTORY is required");
+  }
+  if (!options.board_texture_path.empty() && !options.board_class_rows) {
+    throw std::runtime_error("--board-texture-map requires --board-class-rows");
   }
   if (!options.all_flops && options.flops == 0U) {
     throw std::runtime_error("--flops must be positive");
@@ -266,8 +277,17 @@ int run(const int argc, char **argv) {
   std::optional<pb::BoardClassRows> board_class_rows;
   std::string abstraction = "buckets";
   if (options.board_class_rows) {
+    auto texture = pb::BoardTextureMap::identity();
+    if (!options.board_texture_path.empty()) {
+      auto loaded_texture = pb::BoardTextureMap::load(options.board_texture_path, catalog);
+      if (!loaded_texture) {
+        throw std::runtime_error("board texture map " + options.board_texture_path.string() +
+                                 " rejected: " + pb::texture_error_name(loaded_texture.error()));
+      }
+      texture = std::move(loaded_texture.value());
+    }
     board_class_rows.emplace(flop.value().capacity(), turn.value().capacity(),
-                             river.value().capacity());
+                             river.value().capacity(), std::move(texture));
     resources.board_class_rows = &*board_class_rows;
     abstraction = board_class_rows->fingerprint();
   }
@@ -292,9 +312,10 @@ int run(const int argc, char **argv) {
           layout.flop_capacity != board_class_rows->count(ca::BucketStreet::Flop) ||
           layout.turn_capacity != board_class_rows->count(ca::BucketStreet::Turn) ||
           layout.river_capacity != board_class_rows->count(ca::BucketStreet::River)) {
-        throw std::runtime_error("the policy was not trained with these board class rows and "
-                                 "bucket tables (source " +
-                                 info.source + ")");
+        throw std::runtime_error("the policy was not trained with these board class rows, board "
+                                 "texture and bucket tables (source " +
+                                 info.source + "); a policy trained with a texture needs "
+                                 "--board-texture-map with the same map");
       }
     } else if (info.source.find("|abstraction=") != std::string::npos) {
       throw std::runtime_error("the policy was trained with another abstraction (source " +
@@ -441,6 +462,16 @@ int run(const int argc, char **argv) {
   json["policy_fingerprint"] = info.policy_fingerprint;
   json["policy_source"] = info.source;
   json["abstraction"] = abstraction;
+  if (board_class_rows) {
+    const auto &texture = board_class_rows->texture();
+    json["board_texture"] = {{"name", texture.name()},
+                             {"fingerprint", texture.fingerprint()},
+                             {"classes", Json::array({texture.classes(ca::BucketStreet::Flop),
+                                                      texture.classes(ca::BucketStreet::Turn),
+                                                      texture.classes(ca::BucketStreet::River)})}};
+  } else {
+    json["board_texture"] = nullptr;
+  }
   json["fingerprints"] = {{"catalog", catalog.fingerprint()},
                           {"flop_table", flop.value().fingerprint()},
                           {"turn_table", turn.value().fingerprint()},

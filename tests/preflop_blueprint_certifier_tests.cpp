@@ -4,6 +4,7 @@
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
+#include "gtosd/preflop_blueprint/board_texture.hpp"
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -1307,7 +1309,7 @@ void test_board_class_rows(const Resources &resources) {
         continue;
       }
       const auto street = static_cast<ca::BucketStreet>(static_cast<unsigned>(node.street) - 1U);
-      for (std::uint32_t board_class = 0; board_class < pb::BoardClassRows::classes(street);
+      for (std::uint32_t board_class = 0; board_class < rows.classes(street);
            ++board_class) {
         for (std::uint16_t bucket = 0; bucket < rows.groups(street); ++bucket) {
           const auto source = base.row(node.id, bucket);
@@ -1449,6 +1451,153 @@ void test_board_class_rows(const Resources &resources) {
             << ", rows up to " << largest_row
             << "), engines identical, None gain 0, trainer estimate reproduced (max gain "
             << trainer_gain << "), "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
+// Board class rows with a texture map (board_texture.hpp) in the physical
+// best response, on the tables of test_board_class_rows. The texture puts
+// every turn of a flop in one class (turn-as-flop, 573 turn classes), so the
+// evaluator must read the texture class of the canonical board, as
+// BoardContext::build does, in its flop and turn universes and in the joint
+// river engine; the bucket stays the one of the canonical board:
+//  - a plain policy lifted into every texture class gives the plain values
+//    bit for bit, with both river engines;
+//  - with a random policy whose rows differ in every texture class, the
+//    joint river engine equals the reference bit for bit and the
+//    average-mode entry values equal ValueTraversal on the trainer's
+//    BoardContexts;
+//  - the texture policy is refused with the rows of another partition.
+void test_board_texture_rows(const Resources &resources) {
+  const auto started = Clock::now();
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "HU10 reduced compiles");
+  const auto flop_table = folded_table(resources, *resources.flop, 4U);
+  const auto turn_table = folded_table(resources, *resources.turn, 5U);
+  const auto river_table = folded_table(resources, *resources.river, 6U);
+  std::vector<std::uint32_t> flop_classes(ca::canonical_flop_count);
+  std::iota(flop_classes.begin(), flop_classes.end(), 0U);
+  std::vector<std::uint32_t> turn_classes;
+  for (const auto &entry : resources.catalog->flop_turns()) {
+    turn_classes.push_back(entry.flop_index);
+  }
+  auto texture = pb::BoardTextureMap::from_partition(flop_classes, turn_classes, "turn_as_flop");
+  require(texture.has_value(), "turn-as-flop texture builds");
+  const pb::BoardClassRows rows(4U, 5U, 6U, texture.value());
+  require(rows.count(ca::BucketStreet::Flop) == ca::canonical_flop_count * 4U &&
+              rows.count(ca::BucketStreet::Turn) == ca::canonical_flop_count * 5U &&
+              rows.count(ca::BucketStreet::River) == ca::canonical_flop_count * 6U,
+          "texture capacities");
+  auto plain_view = response_resources(resources);
+  plain_view.flop = &flop_table;
+  plain_view.turn = &turn_table;
+  plain_view.river = &river_table;
+  auto texture_view = plain_view;
+  texture_view.board_class_rows = &rows;
+  const auto plain_layout = pb::layout_state(game.value(), 4U, 5U, 6U);
+  const auto layout = pb::layout_state(game.value(), rows.count(ca::BucketStreet::Flop),
+                                       rows.count(ca::BucketStreet::Turn),
+                                       rows.count(ca::BucketStreet::River));
+
+  // A plain policy lifted into every texture class.
+  const auto base = random_policy(game.value(), plain_layout, 0x5031'0301ULL);
+  {
+    pb::BucketPolicy lifted(game.value(), layout);
+    for (const auto &node : game.value().nodes()) {
+      if (node.kind != pb::NodeKind::Decision) {
+        continue;
+      }
+      if (node.street == gtosd::Street::Preflop) {
+        for (std::uint32_t row = 0; row < ca::preflop_hand_classes; ++row) {
+          const auto source = base.row(node.id, row);
+          std::copy(source.begin(), source.end(), lifted.row(node.id, row).begin());
+        }
+        continue;
+      }
+      const auto street = static_cast<ca::BucketStreet>(static_cast<unsigned>(node.street) - 1U);
+      for (std::uint32_t board_class = 0; board_class < rows.classes(street); ++board_class) {
+        for (std::uint16_t bucket = 0; bucket < rows.groups(street); ++bucket) {
+          const auto source = base.row(node.id, bucket);
+          std::copy(source.begin(), source.end(),
+                    lifted.row(node.id, rows.row(street, board_class, bucket)).begin());
+        }
+      }
+    }
+    const auto plain = pb::BestResponseEvaluator::create(game.value(), base, plain_view);
+    const auto mapped = pb::BestResponseEvaluator::create(game.value(), lifted, texture_view);
+    require(plain.has_value() && mapped.has_value(), "plain and texture evaluators create");
+    const pb::BoardClassRows identity_rows(4U, 5U, 6U);
+    auto identity_view = texture_view;
+    identity_view.board_class_rows = &identity_rows;
+    require(!pb::BestResponseEvaluator::create(game.value(), lifted, identity_view),
+            "a texture policy with the rows without a texture is rejected");
+    for (const auto flop_index : {1U, 300U}) {
+      auto flop = resources.catalog->flops()[flop_index].cards;
+      std::sort(flop.begin(), flop.end());
+      const auto group = pb::full_runouts(flop);
+      for (const auto engine : {pb::RiverEngine::Joint, pb::RiverEngine::Reference}) {
+        auto plain_engine = plain.value();
+        auto mapped_engine = mapped.value();
+        plain_engine.set_river_engine(engine);
+        mapped_engine.set_river_engine(engine);
+        const auto expected = plain_engine.evaluate_flop(group);
+        const auto actual = mapped_engine.evaluate_flop(group);
+        require(expected.has_value() && actual.has_value(), "lifted evaluations succeed");
+        require(same_flop_values(actual.value(), expected.value()),
+                std::string("a plain policy lifted into every texture class keeps its values "
+                            "bit for bit: ") +
+                    pb::river_engine_name(engine));
+      }
+    }
+  }
+
+  // A policy whose rows differ in every texture class.
+  std::uint64_t compared = 0U;
+  double largest_difference = 0.0;
+  std::uint32_t largest_row = 0U;
+  {
+    const auto policy = random_policy(game.value(), layout, 0x5031'0302ULL);
+    const auto evaluator = pb::BestResponseEvaluator::create(game.value(), policy, texture_view);
+    require(evaluator.has_value(), "texture evaluator creates");
+    auto flop = resources.catalog->flops()[300].cards;
+    std::sort(flop.begin(), flop.end());
+    const auto group = pb::full_runouts(flop);
+    const auto joint = evaluator.value().evaluate_flop(group);
+    auto reference = evaluator.value();
+    reference.set_river_engine(pb::RiverEngine::Reference);
+    const auto reference_values = reference.evaluate_flop(group);
+    require(joint.has_value() && reference_values.has_value(),
+            "texture evaluations succeed with both engines");
+    require(same_flop_values(joint.value(), reference_values.value()),
+            "joint river engine equals the reference bit for bit with a texture");
+    const pb::AbstractionTables tables{&*resources.catalog, &flop_table, &turn_table,
+                                       &river_table,        nullptr,     nullptr,
+                                       &rows};
+    const auto expected =
+        traversal_entry_values(game.value(), policy, resources, tables, flop, largest_row);
+    require(largest_row < rows.count(ca::BucketStreet::River),
+            "the texture rows stay below the texture capacity");
+    bool nonzero = false;
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      for (std::size_t entry = 0; entry < expected[hero].size(); ++entry) {
+        for (std::size_t combo = 0; combo < ca::combo_count; ++combo) {
+          const double actual = joint.value().entry_values[hero][pb::average_mode][entry][combo];
+          const double wanted = expected[hero][entry][combo];
+          largest_difference = std::max(largest_difference, std::abs(actual - wanted));
+          require(close(actual, wanted, 1e-10),
+                  "texture entry values equal ValueTraversal on the trainer's contexts");
+          nonzero = nonzero || wanted != 0.0;
+          ++compared;
+        }
+      }
+    }
+    require(nonzero, "the independent entry values are not all zero");
+  }
+  std::cout << "board texture rows: turn-as-flop " << layout.flop_capacity << "/"
+            << layout.turn_capacity << "/" << layout.river_capacity
+            << " rows, lifted policy bit-identical on 2 flops with both engines, " << compared
+            << " entry values equal ValueTraversal (largest difference " << largest_difference
+            << ", rows up to " << largest_row << "), engines identical, "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
@@ -1831,6 +1980,7 @@ int main(const int argc, char **argv) {
     test_joint_traversal(resources);
     test_joint_engine_matches_reference(resources, history_maps, support);
     test_board_class_rows(resources);
+    test_board_texture_rows(resources);
     test_street_restricted_response(resources, scratch_dir);
     std::cout << "PREFLOP_BLUEPRINT_CERTIFIER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

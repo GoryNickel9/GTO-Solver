@@ -5,6 +5,7 @@ add_library(gtosd_preflop_blueprint
   src/game_config.cpp
   src/game_model.cpp
   src/board_context.cpp
+  src/board_texture.cpp
   src/class_bucket_rows.cpp
   src/history_bucket_rows.cpp
   src/decision_gap.cpp

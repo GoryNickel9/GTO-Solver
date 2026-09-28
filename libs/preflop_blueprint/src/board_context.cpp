@@ -163,13 +163,18 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
       for (const auto present : context.has_buckets_)
         if (!present)
           return ContextResult::failure(KernelError::MissingTable);
-      // The river shares the class of its turn (canonical flop+turn board).
-      board_classes[2] = board_classes[1];
+      // Classes of the texture map (the identity: the canonical flop and
+      // flop+turn indices); the river shares the class of its turn. The
+      // buckets stay those of the canonical boards.
+      const auto &rows = *tables->board_class_rows;
+      const std::array<std::uint32_t, 3> classes{rows.flop_class(board_classes[0]),
+                                                 rows.turn_class(board_classes[1]),
+                                                 rows.river_class(board_classes[1])};
       for (std::size_t street = 0; street < 3; ++street)
         for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
-          context.history_rows_[street][hand] = tables->board_class_rows->row(
-              static_cast<card_abstraction::BucketStreet>(street), board_classes[street],
-              context.buckets_[street][hand]);
+          context.history_rows_[street][hand] =
+              rows.row(static_cast<card_abstraction::BucketStreet>(street), classes[street],
+                       context.buckets_[street][hand]);
       context.has_history_rows_ = true;
     }
   } else if (tables != nullptr &&

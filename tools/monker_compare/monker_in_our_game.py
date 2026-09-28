@@ -346,11 +346,13 @@ def main() -> int:
             rounded, rounded_source, rounded_fallback = chart_strategy(hero, ours_dir)
             ev_rounded, _, _ = hero.evaluate(rounded)
             # Rounding only if the files were exported from the same policy: every
-            # in-range row within half a unit of the third decimal of the policy row.
+            # in-range row within the three-decimal rounding of the export plus the
+            # renormalisation of the rounded row (observed up to 1.1e-3 on HU50 step 2;
+            # another policy differs by far more, 0.27 on the smoke run).
             row_gap = max((abs(a - b) for chart, per in rounded.items() for label, row in per.items()
                            if rounded_source[chart][label] == "chart"
                            for a, b in zip(row, hero.ours[chart][label])), default=0.0)
-            same_policy = row_gap <= 6e-4
+            same_policy = row_gap <= 2.5e-3
             key = "ours_charts_rounding_antes" if same_policy else "ours_charts_difference_antes"
             player["ev_ours_charts_antes"] = ev_rounded
             player[key] = ev_rounded - ev_rows

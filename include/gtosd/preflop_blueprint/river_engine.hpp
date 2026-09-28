@@ -64,8 +64,9 @@ public:
   [[nodiscard]] const RiverRowCursor &cursor(const std::uint16_t combo) const noexcept {
     return cursors_[combo];
   }
-  // Canonical flop+turn index of the prefix: the board class of its rivers
-  // with board class rows.
+  // Board class of the prefix's rivers with board class rows: the texture's
+  // river class of the canonical flop+turn index (the index itself without a
+  // texture, and without board class rows).
   [[nodiscard]] std::uint32_t turn_class() const noexcept { return turn_class_; }
 
 private:

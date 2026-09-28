@@ -116,8 +116,11 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
     return Outcome::failure(KernelError::MissingTable);
   }
   // Board class rows: every river of the turn uses the class of the turn,
-  // its canonical flop+turn index (BoardContext::build).
-  turn_class_ = turn_lookup.value().index;
+  // the texture's river class of its canonical flop+turn index
+  // (BoardContext::build).
+  turn_class_ = tables.board_class_rows != nullptr
+                    ? tables.board_class_rows->river_class(turn_lookup.value().index)
+                    : turn_lookup.value().index;
   const auto prefix_mask = flop[0].mask() | flop[1].mask() | flop[2].mask() | turn.mask();
   const auto &combos = ca::combo_table();
   for (std::uint16_t combo = 0; combo < ca::combo_count; ++combo) {

@@ -1,0 +1,2 @@
+# The maps are hashed (sha256 in README.md) and parsed line by line: keep LF.
+*.txt text eol=lf
