@@ -11,7 +11,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28): passo 1 fatto su HU50, passo 2 (postflop sparso, bucket per board) in corso su HU50; ottimizzazione dei 35 minuti di HU40 in pausa |
+| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28): passo 1 e passo 2 fatti su HU50 (distanza 0,0725, chart di MonkerSolver equivalenti in EV nel nostro gioco: perdita 0,03 % del piatto); varianti e turn in texture in valutazione; ottimizzazione dei 35 minuti di HU40 in pausa |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
 | Branch di fase | `feat/monker-step1-checkdown` (dal 2026-09-28, da `feat/preflop-phase1-time`); in precedenza `feat/preflop-phase1-time` e `codex/fix-preflop-deep-stack-convergence` |
@@ -21,7 +21,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Risultati del passo 2 su HU50 e confronto nodo per nodo con le chart MonkerSolver (a 12.000 iterazioni 94,5 % di azione principale uguale e distanza 0,084, contro 72,2 % e 0,262 del passo 1); varianti se non basta; poi il 3-way (raise al 100 % del piatto, regole sparse, equity a tre giocatori, motore multiway). Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md). |
+| Prossimo passo | Decisioni con l'utente: configurazione HU di riferimento (donk bet, astrazione compatta 15 livelli + texture dei turn se neutra), criterio di somiglianza (perdita di MonkerSolver nel nostro gioco), seconda size postflop su server affittato; poi il 3-way (raise al 100 % del piatto, regole sparse, equity a tre giocatori, motore multiway). Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezione 8. |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,53 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-28 (sera e notte) — passo 2 stabile, varianti, MonkerSolver nel nostro gioco, turn in texture
+
+Passo 2 su HU50 stabile a 24.000 iterazioni (17:45): distanza da MonkerSolver 0,0725 (passo 1: 0,262),
+differenza di range sulle combo effettive 0,383 (passo 1: 0,729). Dettagli per nodo in
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezione 5.
+
+Decisioni e correzioni dell'utente: la "stessa azione principale" è fuorviante e non si usa più; si
+riportano la distanza media e la differenza di range; le combinazioni si contano come combo effettive
+(combinazioni × frequenza con cui la mano arriva al nodo), non come medie. Una prima versione della
+differenza di range era una media per nodo che contava due volte il range del CO dopo il limp (0,456):
+corretta in un calcolo sulle combo effettive dei range distinti (0,383), nel viewer e in
+`compare_charts.py` (commit `c9260ba`). Errore mio del pomeriggio trovato in serata: il campo aggiunto a
+`ActionConfig` in mezzo alla struttura rompeva l'inizializzazione per posizione di `tests/core_tests.cpp`
+(la build completa non era stata fatta); spostato in fondo, build completa e test di base PASS (`e9b5c93`).
+
+Modalità continua (`7a34a0a`): le chart ogni 4.000 iterazioni lette dal trainer vivo (lettura delle righe
+medie senza toccare lo stato, test con 23.216 righe con sconti in sospeso, differenza 3e-16), file di
+stop, ripresa dal checkpoint; blocchi da 4,6-5,5 minuti invece di 5,4-7.
+
+Varianti, una alla volta (tutte stabili a 24.000 iterazioni): seed 2 (rumore: chart distanti 0,007 /
+0,034 dal passo 2), 15 livelli di forza (neutra, memoria dimezzata), potenziale a 1 livello (sposta le
+chart di 0,018, non verso MonkerSolver), donk bet ammessi (distanza 0,0667, unica che avvicina oltre il
+rumore, nei nodi del piatto limp-isolation-call); la size al 75 % è stata tolta dall'utente prima del run
+(albero da 1.036 nodi, 11,7 GB). Un'analisi con tre analisti indipendenti e un arbitro ha localizzato lo
+scarto nelle suited e nelle coppie del CO (le offsuit coincidono) e aveva previsto che i donk bet
+allontanassero da MonkerSolver: il run ha detto il contrario.
+
+MonkerSolver nel nostro gioco (`364fd5e`, workflow con due revisori): il valutatore della best response
+legge le righe per classe di board; nuovo strumento `gtosd_preflop_blueprint_monker_values` e script
+`monker_in_our_game.py`. Valutazione esatta su 573 flop (4 minuti): le chart di MonkerSolver giocate al
+posto delle nostre perdono 0,00022 a (CO) e 0,00090 a (BTN), lo 0,007 % e lo 0,030 % del piatto, meno
+del nostro stesso scarto dalla migliore risposta preflop (0,0058 e 0,0038 a); nel gioco con i donk bet
+−0,00045 e 0,00063 a. Le chart sono equivalenti in EV: le differenze stanno fra azioni quasi
+indifferenti.
+
+Turn in classi di texture (`6de08ae`, progetto e implementazione con workflow, due revisori): mappa dei
+13.761 flop+turn in texture, opzione `--board-texture-map`, identità bit per bit con la mappa identità,
+regola TX2 a 4.482 classi (memoria 1/3). Run HU50 (sezione 5.5 del documento): TX2 stabile a 20.000
+iterazioni, 1,96 GB, distanza da MonkerSolver 0,0710; sposta le chart del passo 2 di 0,020 / 0,115, oltre
+la soglia del piano (gli asintoti stimati confermano uno spostamento reale, leggermente verso
+MonkerSolver). La regola di riserva TX1 (6.768 classi, 2,86 GB) dà le stesse chart del TX2 (0,007 /
+0,047): lo spostamento viene dalla fusione in sé. La combinazione 15 livelli + TX2 è neutra rispetto al
+TX2 e scende a 1,03 GB (5,4 volte meno del passo 2), distanza 0,0706. In EV tutte le chart (varianti,
+texture, combinazione) giocate nel gioco del passo 2 perdono meno di 0,001 a (le texture un po' meno di
+zero: sono più convergenti), e MonkerSolver nel gioco compatto perde lo 0,055 % del piatto. Decisione
+sull'astrazione compatta e sui donk bet lasciata all'utente.
 
 ### 2026-09-28 (pomeriggio) — obiettivo multiway, ricetta MonkerSolver: passo 1 fatto, passo 2 in corso
 
