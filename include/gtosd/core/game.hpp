@@ -81,10 +81,6 @@ struct ActionConfig {
   AllInMode all_in_mode{AllInMode::Disabled};
   PotPercentage all_in_threshold{PotPercentage::from_basis_points(0).value()};
   bool all_in_strict_boundary{true};
-  // Add mode only: offer the all-in at every decision with chips behind,
-  // whatever its size relative to the pot (the threshold then only matters
-  // for Go mode).
-  bool all_in_unconditional{false};
   Money minimum_bet{};
   // Optional per-depth schedule for decisions facing a bet. Entry zero is the
   // first raise, entry one the 3-bet, and so on. An empty schedule preserves
@@ -107,6 +103,10 @@ struct ActionConfig {
   // Dead money in initial_pot_contributions is deliberately excluded. This
   // mode is mutually exclusive with percentage sizes and per-depth schedules.
   std::vector<Money> aggressive_targets;
+  // Add mode only: offer the all-in at every decision with chips behind,
+  // whatever its size relative to the pot (the threshold then only matters
+  // for Go mode). Last member so positional initializers stay valid.
+  bool all_in_unconditional{false};
 };
 
 struct RakeConfig {
