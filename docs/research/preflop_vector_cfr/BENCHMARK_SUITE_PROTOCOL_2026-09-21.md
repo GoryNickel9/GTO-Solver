@@ -185,8 +185,11 @@ che rinvia il primo avvio a una data e ora (regole che entrano in vigore un gior
 573 flop canonici, il giocatore che devia vede solo le righe dell'astrazione) e' al massimo l'1 % del
 piatto iniziale, cioe' 0,03 a, per entrambi i giocatori. Il certificato fisico esatto (best response
 sul gioco vero, strumento `certify`) e i controlli puntuali con il solver postflop esatto restano
-metriche di qualita' riportate a ogni versione, non soglie: la loro differenza con la best response
-astratta e' l'errore di rappresentazione dell'astrazione. Motivo: i solver preflop di riferimento
+metriche di qualita' riportate a ogni versione: la loro differenza con la best response astratta e'
+l'errore di rappresentazione dell'astrazione. Precisazione dell'utente dello stesso giorno: il
+certificato fisico non e' piu' un obiettivo, ma resta un limite superiore di accettazione al 5 % del
+piatto iniziale (0,15 a). Condizioni di accettazione: best response astratta <= 0,03 a e certificato
+fisico <= 0,15 a. Stato a 32.000 iterazioni: HU30 0,0349 / 0,1676, HU40 0,0640 / 0,2526. Motivo: i solver preflop di riferimento
 dichiarano la convergenza dentro la propria astrazione; le diagnosi del 2026-09-27/28 mostrano che
 su HU30/HU40 il 75-80 % dell'exploitability fisica e' errore di rappresentazione. Valori di partenza a
 32.000 iterazioni: HU30 0,0349 (policy del 2026-09-21), HU40 0,0640.
