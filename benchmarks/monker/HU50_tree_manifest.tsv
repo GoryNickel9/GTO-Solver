@@ -1,0 +1,9 @@
+# MonkerSolver preflop tree (HU/50a): chart path <TAB> action columns in file order (header without Combination/Total)
+BTN/CO_5.0ante_BTN_strategy.txt	AllIn,Call,Fold
+BTN/CO_AllIn_BTN_strategy.txt	Call,Fold
+BTN/CO_Call_BTN_5.0ante_CO_AllIn_BTN_strategy.txt	Call,Fold
+BTN/CO_Call_BTN_strategy.txt	AllIn,5.0ante,Check
+CO/CO_5.0ante_BTN_AllIn_CO_strategy.txt	Call,Fold
+CO/CO_Call_BTN_5.0ante_CO_strategy.txt	AllIn,Call,Fold
+CO/CO_Call_BTN_AllIn_CO_strategy.txt	Call,Fold
+CO/CO_strategy.txt	AllIn,5.0ante,Call,Fold
