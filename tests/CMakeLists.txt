@@ -510,6 +510,23 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
 endif()
 
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_card_abstraction_three_way_tests card_abstraction_three_way_tests.cpp)
+  target_link_libraries(gtosd_card_abstraction_three_way_tests PRIVATE gtosd::card_abstraction)
+  gtosd_set_warnings(gtosd_card_abstraction_three_way_tests)
+  # The rank table is rebuilt when the P2 resources are absent; the heads-up
+  # consistency check (V6) runs only with preflop_all_in_v1.bin present.
+  add_test(NAME gtosd_card_abstraction_three_way_tests
+    COMMAND gtosd_card_abstraction_three_way_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_card_abstraction_three_way_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;card_abstraction")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_card_abstraction_three_way_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_game_tests preflop_blueprint_game_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_game_tests
     PRIVATE gtosd::preflop_blueprint gtosd::core)
