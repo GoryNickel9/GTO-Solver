@@ -143,10 +143,13 @@ private:
     case NodeKind::TerminalFold:
     case NodeKind::TerminalShowdown: {
       // A checkdown leaf keeps its StreetComplete state; it settles as a
-      // showdown of the players still in the hand.
+      // showdown of the players still in the hand. The checkdown runs to the
+      // river, so the flop is dealt and no-flop-no-drop does not exempt it
+      // from the rake: it settles as a river showdown.
       auto settled_state = state;
       if (settled_state.status == HandStatus::StreetComplete) {
         settled_state.status = HandStatus::Showdown;
+        settled_state.street = Street::River;
       }
       const auto settled = settle(id, settled_state);
       if (!settled) {
@@ -363,6 +366,22 @@ std::uint32_t CompiledGame::showdown_row(const std::uint8_t active_mask,
     ++row;
   }
   return no_node;
+}
+
+CompiledGame CompiledGame::rake_view() const {
+  CompiledGame view = *this;
+  // Every settlement pushed one row of player_count payoffs.
+  const std::size_t players = config_.player_count;
+  for (std::size_t row = 0; row + players <= payoffs_.size(); row += players) {
+    std::int64_t sum = 0;
+    for (std::size_t player = 0; player < players; ++player) {
+      sum += payoffs_[row + player];
+    }
+    for (std::size_t player = 0; player < players; ++player) {
+      view.payoffs_[row + player] = sum;
+    }
+  }
+  return view;
 }
 
 Result<CompiledGame, GameModelError> CompiledGame::compile(const GameConfig &config,

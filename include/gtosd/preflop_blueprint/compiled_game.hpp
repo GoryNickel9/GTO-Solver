@@ -17,8 +17,10 @@
 // array of nodes in depth-first preorder: the subtree of node i occupies the
 // contiguous id range [i, subtree_end(i)). Children follow the order of
 // gtosd::legal_actions. Terminal payoffs are settled once with
-// settle_terminal for every player and, at showdowns, for every non-empty
-// subset of the active players that may win; the trainer only reads them.
+// settle_terminal and the rake of the configuration, for every player and, at
+// showdowns, for every non-empty subset of the active players that may win;
+// the trainer and the evaluators only read them. With rake the payoffs of a
+// terminal sum to minus its rake, so no consumer may assume a zero-sum game.
 // Nothing here depends on private cards or on the board: chance nodes are
 // street transitions whose card is supplied by the board sampler of the
 // trainer (public chance sampling).
@@ -107,8 +109,8 @@ struct CompileOptions {
   // (MonkerSolver's empty postflop, the checkdown model): the flop chance node
   // becomes a preflop TerminalShowdown with five board cards to come. The
   // statistics count these leaves as preflop all-in runouts, and the stored
-  // public state stays StreetComplete (the payoffs settle it as a showdown).
-  // Rake is not modelled: a checkdown leaf would settle as no-flop-no-drop.
+  // public state stays StreetComplete (the payoffs settle it as a river
+  // showdown: the flop is dealt, so the leaf is raked under no-flop-no-drop).
   bool checkdown_at_flop{false};
   std::uint64_t maximum_nodes{50'000'000ULL};
 };
@@ -144,6 +146,13 @@ public:
   // increasing numeric order.
   [[nodiscard]] static std::uint32_t showdown_row(std::uint8_t active_mask,
                                                   std::uint8_t winner_mask) noexcept;
+  // Diagnostic copy for the expected rake: the same nodes, states and
+  // fingerprint (a policy of this game binds to it), but every payoff of every
+  // seat, at every terminal and winner subset, is the sum over the seats of
+  // the original row, i.e. minus the rake of that terminal (zero without
+  // rake). A hero's EV in the copy is minus the expected rake per hand,
+  // weighted exactly like that hero's EV in this game. Not a game to solve.
+  [[nodiscard]] CompiledGame rake_view() const;
 
   [[nodiscard]] static Result<CompiledGame, GameModelError>
   compile(const GameConfig &config, const CompileOptions &options = {});

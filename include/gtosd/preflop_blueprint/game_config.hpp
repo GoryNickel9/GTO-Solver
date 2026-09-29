@@ -80,7 +80,14 @@ struct GameConfig {
   // affected. Absent means an all-in at every postflop decision; serialized,
   // and therefore part of the fingerprint, only when set.
   std::optional<PotPercentage> postflop_all_in_max_pot;
-  // Version 1 accepts only a disabled rake.
+  // Rake settled by core settle_terminal at every terminal. Disabled means
+  // exactly the RakeConfig defaults; serialized as "rake_mode" plus, only when
+  // enabled, the percentage (basis points), cap, no-flop-no-drop flag and
+  // minimum pot, so every configuration without rake keeps its fingerprint.
+  // An enabled rake needs a positive percentage and a positive cap. A flop is
+  // dealt, hence the hand raked under no-flop-no-drop, at every terminal
+  // except a preflop fold (a called preflop all-in and a checkdown leaf are
+  // raked).
   RakeConfig rake{};
 };
 

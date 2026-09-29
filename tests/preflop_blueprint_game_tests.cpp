@@ -11,6 +11,8 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -405,7 +407,8 @@ void test_payoffs(const pb::CompiledGame &game) {
         require(winner ? payoffs[player] > 0 : payoffs[player] < 0,
                 "the remaining player wins, every other player loses at least the ante");
       }
-      require(total == 0, "fold payoffs are zero-sum without rake");
+      require(total == -settlement.value().rake.units() && (config.rake.enabled || total == 0),
+              "fold payoffs sum to minus the rake (zero-sum without rake)");
     } else if (node.kind == pb::NodeKind::TerminalShowdown) {
       ++terminals;
       require(pb::CompiledGame::showdown_rows(node.active_mask) ==
@@ -435,7 +438,8 @@ void test_payoffs(const pb::CompiledGame &game) {
             require(payoffs[player] < 0, "an active loser pays");
           }
         }
-        require(total == 0, "showdown payoffs are zero-sum without rake");
+        require(total == -settlement.value().rake.units() && (config.rake.enabled || total == 0),
+                "showdown payoffs sum to minus the rake (zero-sum without rake)");
       }
       require(rows_seen == pb::CompiledGame::showdown_rows(node.active_mask), "all rows settled");
     }
@@ -1000,6 +1004,13 @@ void test_fingerprints_without_the_cap() {
     const auto config = load_config(std::filesystem::path(frozen.path));
     require(!config.postflop_all_in_max_pot.has_value(),
             std::string(frozen.path) + " carries no all-in cap");
+    // The rake keys (2026-09-29) must not move these fingerprints either.
+    const auto serialized = pb::serialize_game_config_json(config);
+    const auto mode = serialized.find("\"rake_mode\": \"disabled\"");
+    require(!config.rake.enabled && mode != std::string::npos &&
+                serialized.find("\"rake_") == mode &&
+                serialized.find("\"rake_", mode + 1U) == std::string::npos,
+            std::string(frozen.path) + " carries no rake and serializes only the rake mode");
     require(pb::game_config_fingerprint(config) == frozen.config,
             std::string(frozen.path) + " keeps its configuration fingerprint, got " +
                 pb::game_config_fingerprint(config));
@@ -1203,6 +1214,301 @@ void test_postflop_all_in_cap() {
             << " decisions=" << donk.stats().decision_nodes << ")\n";
 }
 
+// Rake of the MonkerSolver charts (user, 2026-09-29): 5 %, cap 3 antes, no
+// flop no drop.
+gtosd::RakeConfig monker_rake() {
+  gtosd::RakeConfig rake;
+  rake.enabled = true;
+  rake.percentage = gtosd::RangeWeight::from_basis_points(500).value();
+  rake.cap = antes(3);
+  rake.no_flop_no_drop = true;
+  rake.minimum_pot = units(0);
+  return rake;
+}
+
+// rake_mode "enabled" plus four parameters, serialized only when enabled. The
+// two MonkerSolver variants are their base trees plus the rake, with their
+// own ids.
+void test_rake_config_key() {
+  for (const auto [base, variant, id] :
+       {std::array<std::string_view, 3>{"HU50.json", "HU50_rake.json",
+                                        "MONKER-HU50-SYMMETRICAL-RAKE-001"},
+        std::array<std::string_view, 3>{"HU50_step2_donk.json", "HU50_step2_donk_rake.json",
+                                        "MONKER-HU50-STEP2-DONK-RAKE-001"}}) {
+    const auto without = load_monker(base);
+    require(!without.rake.enabled &&
+                pb::serialize_game_config_json(without).find("rake_basis_points") ==
+                    std::string::npos,
+            std::string(base) + " has no rake and serializes no rake parameter");
+    auto expected = without;
+    expected.id = std::string(id);
+    expected.rake = monker_rake();
+    const auto raked = load_monker(variant);
+    require(raked == expected, std::string(variant) + " is " + std::string(base) +
+                                   " with 5 %, cap 3 antes, no flop no drop");
+    auto renamed = without;
+    renamed.id = std::string(id);
+    require(raked != renamed &&
+                pb::game_config_fingerprint(raked) != pb::game_config_fingerprint(renamed),
+            "the rake enters operator== and the configuration fingerprint");
+    const auto reparsed = pb::parse_game_config_json(pb::serialize_game_config_json(raked));
+    require(reparsed.has_value() && reparsed.value() == raked &&
+                pb::game_config_fingerprint(reparsed.value()) == pb::game_config_fingerprint(raked),
+            "the rake survives a serialization round trip");
+  }
+}
+
+// Rake of a terminal recomputed with plain integer arithmetic, independently
+// of calculate_rake: the percentage of the called pot rounded half up, at most
+// the cap; nothing below the minimum pot or, under no flop no drop, when the
+// hand ended before the flop.
+std::int64_t expected_rake(const gtosd::RakeConfig &rake, const std::int64_t pot,
+                           const bool flop_dealt) {
+  if (!rake.enabled || pot < rake.minimum_pot.units() || (rake.no_flop_no_drop && !flop_dealt)) {
+    return 0;
+  }
+  return std::min<std::int64_t>(
+      (pot * static_cast<std::int64_t>(rake.percentage.basis_points()) + 5'000) / 10'000,
+      rake.cap.units());
+}
+
+struct RakeCensus {
+  std::uint64_t preflop_folds{0U};
+  std::uint64_t preflop_showdowns{0U};
+  std::uint64_t postflop_folds{0U};
+  std::uint64_t postflop_showdowns{0U};
+  std::uint64_t postflop_all_ins{0U};
+  // Terminals by rake: 0 with the flop dealt (minimum pot), raked below the
+  // cap, raked at a binding cap.
+  std::uint64_t flop_unraked{0U};
+  std::uint64_t below_cap{0U};
+  std::uint64_t cap_binding{0U};
+  std::int64_t preflop_fold_rake{0};
+  std::int64_t postflop_fold_minimum_rake{0};
+  std::uint64_t odd_ties{0U};
+};
+
+// Every terminal of a heads-up game with equal stacks: its payoffs (every
+// winner subset) sum to minus the recomputed rake, and a tie gives both seats
+// half of the raked pot, the odd unit to seat 0 (split_pot).
+RakeCensus check_raked_payoffs(const pb::CompiledGame &game) {
+  const auto &rake = game.config().rake;
+  RakeCensus census;
+  census.postflop_fold_minimum_rake = std::numeric_limits<std::int64_t>::max();
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::TerminalFold && node.kind != pb::NodeKind::TerminalShowdown) {
+      continue;
+    }
+    const auto pot = game.states()[node.id].pot.units();
+    const bool preflop = node.street == gtosd::Street::Preflop;
+    // A preflop showdown is a called all-in (or a checkdown leaf): the board
+    // is dealt, so only a preflop fold ends the hand before the flop.
+    const bool flop_dealt = !preflop || node.kind == pb::NodeKind::TerminalShowdown;
+    const auto raked = expected_rake(rake, pot, flop_dealt);
+    const auto uncapped =
+        (pot * static_cast<std::int64_t>(rake.percentage.basis_points()) + 5'000) / 10'000;
+    if (flop_dealt && raked == 0) {
+      ++census.flop_unraked;
+    } else if (raked > 0 && uncapped > rake.cap.units()) {
+      ++census.cap_binding;
+    } else if (raked > 0) {
+      ++census.below_cap;
+    }
+    if (node.kind == pb::NodeKind::TerminalFold) {
+      const auto payoffs = game.fold_payoffs(node.id);
+      require(payoffs[0] + payoffs[1] == -raked, "a fold pays the recomputed rake");
+      if (preflop) {
+        ++census.preflop_folds;
+        census.preflop_fold_rake = std::max(census.preflop_fold_rake, raked);
+      } else {
+        ++census.postflop_folds;
+        census.postflop_fold_minimum_rake = std::min(census.postflop_fold_minimum_rake, raked);
+      }
+      continue;
+    }
+    if (preflop) {
+      ++census.preflop_showdowns;
+    } else if (node.remaining_board_cards == 0U) {
+      ++census.postflop_showdowns;
+    } else {
+      ++census.postflop_all_ins;
+    }
+    for (const std::uint8_t winners : {std::uint8_t{1}, std::uint8_t{2}, std::uint8_t{3}}) {
+      const auto payoffs = game.showdown_payoffs(node.id, winners);
+      require(payoffs[0] + payoffs[1] == -raked, "a showdown pays the recomputed rake");
+    }
+    const auto tie = game.showdown_payoffs(node.id, std::uint8_t{3});
+    const auto odd = (pot - raked) % 2;
+    require(tie[0] - tie[1] == odd, "a tie splits the raked pot, the odd unit to seat 0");
+    census.odd_ties += static_cast<std::uint64_t>(odd);
+  }
+  return census;
+}
+
+// Raked payoffs of every terminal kind against core settle_terminal
+// (test_payoffs) and against the rake recomputed above.
+void test_raked_payoffs() {
+  // HU50 step 2: pots from 4a (limp, check) to 100a (all-in: the antes come
+  // out of the 50a stacks); 5 % reaches the 3a cap at 60a.
+  const auto hu50 = compile(load_monker("HU50_step2_donk_rake.json"));
+  test_payoffs(hu50);
+  const auto census = check_raked_payoffs(hu50);
+  require(census.preflop_folds > 0U && census.preflop_fold_rake == 0,
+          "HU50: a preflop fold is not raked (no flop, no drop)");
+  require(census.preflop_showdowns > 0U, "HU50: preflop all-ins exist");
+  require(census.postflop_folds > 0U && census.postflop_fold_minimum_rake > 0,
+          "HU50: every postflop fold is raked");
+  require(census.postflop_showdowns > 0U && census.postflop_all_ins > 0U,
+          "HU50: river showdowns and postflop all-in runouts exist");
+  require(census.cap_binding > 0U && census.below_cap > 0U && census.flop_unraked == 0U,
+          "HU50: the cap binds on large pots only, and every pot after the flop is raked");
+  // The preflop all-in: 100a, 5 % = 5a capped at 3a; the winner nets
+  // 100 - 3 - 50 = 47 antes, a tie 48.5 - 50 = -1.5 antes each.
+  bool all_in_seen = false;
+  for (const auto &node : hu50.nodes()) {
+    if (node.kind == pb::NodeKind::TerminalShowdown && node.street == gtosd::Street::Preflop) {
+      require(hu50.states()[node.id].pot == antes(100), "HU50: the preflop all-in pot is 100a");
+      require(hu50.showdown_payoffs(node.id, std::uint8_t{1})[0] == 470'000 &&
+                  hu50.showdown_payoffs(node.id, std::uint8_t{1})[1] == -500'000 &&
+                  hu50.showdown_payoffs(node.id, std::uint8_t{3})[0] == -15'000 &&
+                  hu50.showdown_payoffs(node.id, std::uint8_t{3})[1] == -15'000,
+              "HU50: the raked all-in pays 47a to the winner, -1.5a each on a tie");
+      all_in_seen = true;
+    }
+  }
+  require(all_in_seen, "HU50: the preflop all-in was checked");
+
+  // HU10 reduced with a 0.5 ante cap: binding at 12a (open, call) and 20a
+  // (all-in), not at 4a (limp, check) or 9.28a (a 66 % bet called in it).
+  const auto hu10_config = load_fixture("preflop_blueprint_hu10_reduced_rake_v1.json");
+  const auto hu10 = compile(hu10_config);
+  test_payoffs(hu10);
+  const auto hu10_census = check_raked_payoffs(hu10);
+  require(hu10_census.preflop_fold_rake == 0 && hu10_census.postflop_fold_minimum_rake > 0 &&
+              hu10_census.cap_binding > 0U && hu10_census.below_cap > 0U &&
+              hu10_census.postflop_all_ins > 0U && hu10_census.preflop_showdowns > 0U,
+          "HU10 rake: every terminal kind, the cap binding and not");
+  // Without no flop no drop the preflop folds pay too: the root fold of CO
+  // leaves a called pot of 2a (the dead antes; the uncalled button blind goes
+  // back to the BTN), 5 % = 0.1a.
+  auto dropped = hu10_config;
+  dropped.rake.no_flop_no_drop = false;
+  const auto dropped_game = compile(dropped);
+  test_payoffs(dropped_game);
+  const auto dropped_census = check_raked_payoffs(dropped_game);
+  require(dropped_census.preflop_fold_rake > 0, "without no flop no drop a preflop fold is raked");
+  const auto root_fold = follow(dropped_game, dropped_game.root(), gtosd::ActionType::Fold, 0);
+  const auto root_payoffs = dropped_game.fold_payoffs(root_fold);
+  require(dropped_game.states()[root_fold].pot == antes(2) &&
+              root_payoffs[0] + root_payoffs[1] == -1'000 && root_payoffs[0] == -10'000 &&
+              root_payoffs[1] == 9'000,
+          "the root fold pays 5 % of the 2a called pot when no flop no drop is off, pot " +
+              std::to_string(dropped_game.states()[root_fold].pot.units()));
+  // A 10a minimum pot: the limped pots (4a, 9.28a) are not raked, 12a is.
+  auto minimum = hu10_config;
+  minimum.rake.minimum_pot = antes(10);
+  const auto minimum_game = compile(minimum);
+  test_payoffs(minimum_game);
+  const auto minimum_census = check_raked_payoffs(minimum_game);
+  require(minimum_census.flop_unraked > 0U && minimum_census.cap_binding > 0U,
+          "a minimum pot leaves the small pots unraked and rakes the others");
+  std::cout << "raked payoffs: HU50 step 2 donk rake " << census.preflop_folds << " preflop folds, "
+            << census.preflop_showdowns << " preflop all-ins, " << census.postflop_folds
+            << " postflop folds, " << census.postflop_showdowns << " river showdowns, "
+            << census.postflop_all_ins << " postflop all-ins, cap binding " << census.cap_binding
+            << ", below the cap " << census.below_cap << ", odd ties " << census.odd_ties
+            << "; HU10 rake cap binding " << hu10_census.cap_binding << ", below the cap "
+            << hu10_census.below_cap << ", odd ties " << hu10_census.odd_ties
+            << "; minimum pot 10a unraked " << minimum_census.flop_unraked << '\n';
+}
+
+// Checkdown leaves (CompileOptions::checkdown_at_flop): the stored state stays
+// StreetComplete on the preflop street, but the leaf settles as a river
+// showdown, so it is raked under no flop no drop. HU50: limp, check 4a
+// -> 0.2a; open, call 12a -> 0.6a; the all-in 100a -> 3a (cap).
+void test_checkdown_rake() {
+  pb::CompileOptions options;
+  options.checkdown_at_flop = true;
+  const auto plain = compile(load_hu50(), options);
+  const auto raked = compile(load_monker("HU50_rake.json"), options);
+  // Frozen by the step-1 checkdown runs (out/monker/step1, 2026-09-28).
+  require(plain.fingerprint() == "fnv1a64:5d3506ee3b821433",
+          "the HU50 checkdown tree keeps its fingerprint, got " + plain.fingerprint());
+  require(plain.nodes().size() == raked.nodes().size() &&
+              raked.fingerprint() == "fnv1a64:10ff774cde702ed9",
+          "the rake does not change the tree; its fingerprint (config included) is frozen");
+  std::map<std::int64_t, std::uint64_t> leaf_rakes;
+  std::map<std::int64_t, std::uint64_t> all_in_rakes;
+  for (const auto &node : raked.nodes()) {
+    const auto &state = raked.states()[node.id];
+    if (node.kind == pb::NodeKind::TerminalFold) {
+      const auto settlement = gtosd::settle_terminal(state, raked.config().rake);
+      const auto payoffs = raked.fold_payoffs(node.id);
+      require(settlement.has_value() && payoffs[0] == settlement.value().payoff_units[0] &&
+                  payoffs[1] == settlement.value().payoff_units[1] &&
+                  payoffs[0] + payoffs[1] == 0,
+              "a preflop fold of the checkdown tree is not raked (no flop, no drop)");
+      continue;
+    }
+    if (node.kind != pb::NodeKind::TerminalShowdown) {
+      continue;
+    }
+    require(node.street == gtosd::Street::Preflop && node.remaining_board_cards == 5U,
+            "every showdown of the checkdown tree is preflop with five cards to come");
+    const bool leaf = state.status == gtosd::HandStatus::StreetComplete;
+    auto settled = state;
+    if (leaf) {
+      settled.status = gtosd::HandStatus::Showdown;
+      settled.street = gtosd::Street::River;
+    }
+    for (const std::uint8_t winners : {std::uint8_t{1}, std::uint8_t{2}, std::uint8_t{3}}) {
+      const auto settlement = gtosd::settle_terminal(settled, raked.config().rake, winners);
+      require(settlement.has_value(), "a checkdown showdown settles");
+      const auto payoffs = raked.showdown_payoffs(node.id, winners);
+      require(payoffs[0] == settlement.value().payoff_units[0] &&
+                  payoffs[1] == settlement.value().payoff_units[1] &&
+                  payoffs[0] + payoffs[1] == -settlement.value().rake.units(),
+              "a checkdown showdown pays settle_terminal as a river showdown");
+      const auto unraked = plain.showdown_payoffs(node.id, winners);
+      require(unraked[0] + unraked[1] == 0, "without rake the checkdown game is zero-sum");
+    }
+    const auto rake = -(raked.showdown_payoffs(node.id, std::uint8_t{1})[0] +
+                        raked.showdown_payoffs(node.id, std::uint8_t{1})[1]);
+    ++(leaf ? leaf_rakes : all_in_rakes)[rake];
+  }
+  require(leaf_rakes.size() == 2U && leaf_rakes.contains(2'000) && leaf_rakes.contains(6'000),
+          "checkdown leaves pay 0.2a (limped pot) and 0.6a (open called)");
+  require(all_in_rakes.size() == 1U && all_in_rakes.contains(30'000),
+          "the preflop all-in pays the 3a cap");
+  std::cout << "checkdown rake: " << leaf_rakes.at(2'000) << " leaves at 0.2a, "
+            << leaf_rakes.at(6'000) << " at 0.6a, " << all_in_rakes.at(30'000)
+            << " all-ins at 3a, tree " << raked.fingerprint() << '\n';
+}
+
+// The rake fixtures, frozen when they were written (2026-09-29).
+void test_rake_fingerprints() {
+  struct Frozen {
+    std::string_view path;
+    std::string_view config;
+    std::string_view tree;
+  };
+  for (const auto &frozen :
+       {Frozen{"benchmarks/monker/HU50_rake.json", "fnv1a64:0c39632446522b06",
+               "fnv1a64:701e82eadbce13d5"},
+        Frozen{"benchmarks/monker/HU50_step2_donk_rake.json", "fnv1a64:fa9fa010c59f1589",
+               "fnv1a64:b7be1d863a69cf84"},
+        Frozen{"benchmarks/fixtures/preflop_blueprint_hu10_reduced_rake_v1.json",
+               "fnv1a64:7074b0ccaf262fc3", "fnv1a64:7c80027ef6f00600"}}) {
+    const auto config = load_config(std::filesystem::path(frozen.path));
+    const auto game = compile(config);
+    require(pb::game_config_fingerprint(config) == frozen.config,
+            std::string(frozen.path) + " keeps its configuration fingerprint, got " +
+                pb::game_config_fingerprint(config));
+    require(game.fingerprint() == frozen.tree,
+            std::string(frozen.path) + " keeps its tree fingerprint, got " + game.fingerprint());
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1222,6 +1528,10 @@ int main() {
     test_all_in_cap_config_key();
     test_fingerprints_without_the_cap();
     test_postflop_all_in_cap();
+    test_rake_config_key();
+    test_raked_payoffs();
+    test_checkdown_rake();
+    test_rake_fingerprints();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
     std::cout << "PREFLOP_BLUEPRINT_GAME_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

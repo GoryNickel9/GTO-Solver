@@ -5,7 +5,11 @@
 // Heads-up only. Vector DCFR over the 630 combos with full traversals and
 // alternating updates, exact best response of the average profile, and charts
 // in the MonkerSolver text format: one file per decision node, one row per
-// hand class, the frequency of every action.
+// hand class, the frequency of every action. A configuration with rake
+// settles the checkdown leaves and the preflop all-ins with the rake (the
+// flop is dealt), and the preflop folds without it under no flop, no drop;
+// the summary then reports both EVs and the expected rake, -(EV0 + EV1),
+// checked against the rake of every terminal weighted by its reach.
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
@@ -516,18 +520,30 @@ int run(const int argc, char **argv) {
   if (!game.postflop_entries().empty()) {
     throw std::runtime_error("the checkdown tree still has postflop entries");
   }
-  // Zero-sum check of every terminal (rake is not modelled here).
+  // The payoffs of every terminal sum to minus its rake (zero without rake).
+  // Every node of this tree is preflop: a fold ends the hand before the flop,
+  // while an all-in runout and a checkdown leaf see the flop.
+  const auto &rake = config.value().rake;
   for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::TerminalFold && node.kind != pb::NodeKind::TerminalShowdown) {
+      continue;
+    }
+    const auto expected = gtosd::calculate_rake(rake, game.states()[node.id].pot,
+                                                node.kind == pb::NodeKind::TerminalShowdown);
+    if (!expected) {
+      throw std::runtime_error("rake computation failed");
+    }
+    const auto sum = -expected.value().units();
     if (node.kind == pb::NodeKind::TerminalFold) {
       const auto payoffs = game.fold_payoffs(node.id);
-      if (payoffs[0] + payoffs[1] != 0) {
-        throw std::runtime_error("fold payoffs are not zero-sum (rake?)");
+      if (payoffs[0] + payoffs[1] != sum) {
+        throw std::runtime_error("fold payoffs do not sum to minus the rake");
       }
-    } else if (node.kind == pb::NodeKind::TerminalShowdown) {
+    } else {
       for (const std::uint8_t mask : {std::uint8_t{1}, std::uint8_t{2}, std::uint8_t{3}}) {
         const auto payoffs = game.showdown_payoffs(node.id, mask);
-        if (payoffs[0] + payoffs[1] != 0) {
-          throw std::runtime_error("showdown payoffs are not zero-sum (rake?)");
+        if (payoffs[0] + payoffs[1] != sum) {
+          throw std::runtime_error("showdown payoffs do not sum to minus the rake");
         }
       }
     }
@@ -546,6 +562,7 @@ int run(const int argc, char **argv) {
   double last_gain_0 = 0.0;
   double last_gain_1 = 0.0;
   double last_ev_0 = 0.0;
+  double last_ev_1 = 0.0;
   for (std::uint64_t iteration = 1; iteration <= iterations; ++iteration) {
     solver.iterate(iteration);
     if (iteration % report_every == 0U || iteration == iterations) {
@@ -565,6 +582,41 @@ int run(const int argc, char **argv) {
       last_gain_0 = gain_0;
       last_gain_1 = gain_1;
       last_ev_0 = ev_0;
+      last_ev_1 = ev_1;
+    }
+  }
+  // With rake, the expected rake computed directly: the rake of every terminal
+  // times the probability that the average profile reaches it (both seats'
+  // reach over disjoint hands), independent of the payoffs and of the value
+  // traversal. The traversal is exact, so it must equal -(EV0 + EV1).
+  double direct_rake = 0.0;
+  if (rake.enabled) {
+    const auto reach = solver.own_reach();
+    const auto &masks = ca::combo_table().masks;
+    for (const auto &node : game.nodes()) {
+      if (node.kind != pb::NodeKind::TerminalFold && node.kind != pb::NodeKind::TerminalShowdown) {
+        continue;
+      }
+      const auto amount = gtosd::calculate_rake(rake, game.states()[node.id].pot,
+                                                node.kind == pb::NodeKind::TerminalShowdown);
+      if (!amount || amount.value().units() == 0) {
+        continue;
+      }
+      double mass = 0.0;
+      for (std::size_t hand = 0; hand < hands; ++hand) {
+        double opponents = 0.0;
+        for (std::size_t other = 0; other < hands; ++other) {
+          if (hand != other && (masks[hand] & masks[other]) == 0U) {
+            opponents += reach[node.id][1][other];
+          }
+        }
+        mass += reach[node.id][0][hand] * opponents;
+      }
+      direct_rake += static_cast<double>(amount.value().units()) / units_per_ante * mass /
+                     (static_cast<double>(hands) * opponents_per_hand);
+    }
+    if (std::abs(direct_rake + last_ev_0 + last_ev_1) > 1e-9) {
+      throw std::runtime_error("the expected rake by reach differs from -(EV0 + EV1)");
     }
   }
   std::vector<ChartSummary> written;
@@ -580,15 +632,33 @@ int run(const int argc, char **argv) {
           << "  \"nodes\": " << game.nodes().size() << ",\n"
           << "  \"iterations\": " << iterations << ",\n"
           << "  \"dcfr\": [" << alpha << ", " << beta << ", " << gamma << "],\n"
-          << "  \"initial_pot_antes\": " << initial_pot << ",\n"
-          << "  \"ev_antes\": [" << last_ev_0 << ", " << -last_ev_0 << "],\n"
-          << "  \"gain_antes\": [" << last_gain_0 << ", " << last_gain_1 << "],\n"
+          << "  \"initial_pot_antes\": " << initial_pot << ",\n";
+  // Without rake the game is zero-sum and the second EV is written as the
+  // negated first, as before. With rake both are computed, and since the
+  // traversal is exact, -(EV0 + EV1) is the expected rake per hand.
+  if (!rake.enabled) {
+    summary << "  \"ev_antes\": [" << last_ev_0 << ", " << -last_ev_0 << "],\n";
+  } else {
+    summary << "  \"ev_antes\": [" << last_ev_0 << ", " << last_ev_1 << "],\n"
+            << "  \"rake\": {\"basis_points\": " << rake.percentage.basis_points()
+            << ", \"cap_antes\": " << static_cast<double>(rake.cap.units()) / units_per_ante
+            << ", \"no_flop_no_drop\": " << (rake.no_flop_no_drop ? "true" : "false")
+            << ", \"minimum_pot_antes\": "
+            << static_cast<double>(rake.minimum_pot.units()) / units_per_ante << "},\n"
+            << "  \"expected_rake_antes\": " << -(last_ev_0 + last_ev_1) << ",\n"
+            << "  \"expected_rake_by_reach_antes\": " << direct_rake << ",\n";
+  }
+  summary << "  \"gain_antes\": [" << last_gain_0 << ", " << last_gain_1 << "],\n"
           << "  \"max_gain_pot_percent\": "
           << 100.0 * std::max(last_gain_0, last_gain_1) / initial_pot << ",\n"
           << "  \"seconds\": " << seconds << ",\n"
           << "  \"charts\": " << written.size() << ",\n"
           << "  \"trajectory\": [\n"
           << trajectory.str() << "\n  ]\n}\n";
+  if (rake.enabled) {
+    std::cout << "rake: EV [" << last_ev_0 << ", " << last_ev_1 << "], expected rake -(EV0 + EV1) "
+              << -(last_ev_0 + last_ev_1) << ", by reach " << direct_rake << " antes\n";
+  }
   std::cout << "PREFLOP_BLUEPRINT_CHECKDOWN=PASS charts=" << written.size()
             << " max_gain_pot_percent=" << 100.0 * std::max(last_gain_0, last_gain_1) / initial_pot
             << '\n';

@@ -29,6 +29,17 @@
 // policies. The report goes into the --out JSON under "exploitation", to
 // --exploit-out (schema gtosd.preflop_blueprint_chart_exploitation.v1) and,
 // as text, to stdout and --exploit-summary. Every pass costs one stage one.
+//
+// Rake: with a configuration that has rake the game is not zero-sum, and
+// every value above stays per player (a gain is a best response minus the
+// EV of the same player). The JSON then carries the rake parameters and the
+// sum of the two EVs; an exact pass adds the expected rake per hand,
+// -(EV0 + EV1), which only an exact pass may read that way (on a subset of
+// flops each player's EV is weighted by its own compatible flops).
+// --expected-rake adds one stage one over the same flops in the rake view of
+// the game (CompiledGame::rake_view): the expected rake weighted like the EV
+// of each player, meaningful in every mode and checked against -(EV0 + EV1)
+// in an exact pass.
 #include "monker_chart_exploitation.hpp"
 #include "monker_chart_values.hpp"
 
@@ -212,6 +223,8 @@ struct Options {
   std::vector<pb::DeviationStreet> exploit_streets;
   std::filesystem::path exploit_output_path;
   std::filesystem::path exploit_summary_path;
+  // --expected-rake: one more stage one in the rake view of the game.
+  bool expected_rake{false};
 };
 
 std::vector<std::string> split_list(const std::string_view text) {
@@ -246,6 +259,10 @@ Options parse_options(const int argc, char **argv) {
     }
     if (name == "--no-combo-values") {
       options.combo_values = false;
+      continue;
+    }
+    if (name == "--expected-rake") {
+      options.expected_rake = true;
       continue;
     }
     if (index + 1 >= argc) {
@@ -637,6 +654,10 @@ int run(const int argc, char **argv) {
   if (game.config().player_count != 2U) {
     throw std::runtime_error("the chart values are heads-up only");
   }
+  const auto &rake = game.config().rake;
+  if (options.expected_rake && !rake.enabled) {
+    throw std::runtime_error("--expected-rake needs a configuration with rake");
+  }
   // Chart players of --exploit (both by default).
   std::array<bool, 2> exploit_hero{false, false};
   if (!options.exploit_sets.empty()) {
@@ -824,6 +845,19 @@ int run(const int argc, char **argv) {
   const double aggregate_seconds =
       std::chrono::duration<double>(Clock::now() - aggregate_started).count();
 
+  // --expected-rake: the same flops in the rake view of the game, where both
+  // seats' payoffs are minus the rake of the terminal, so each player's EV
+  // there is minus the expected rake weighted like that player's EV here.
+  std::optional<mc::PolicyEvaluation> rake_pass;
+  if (options.expected_rake) {
+    std::cerr << "{\"event\": \"expected_rake_pass\", \"flops\": " << groups.size() << "}\n"
+              << std::flush;
+    const auto rake_game = game.rake_view();
+    rake_pass = mc::evaluate_policy(rake_game, policy, resources, groups, options.all_flops,
+                                    mode == "exact", options.threads, options.river_engine,
+                                    pb::DeviationStreet::Preflop);
+  }
+
   const auto values_started = Clock::now();
   const auto &game_config = game.config();
   const double initial_pot =
@@ -856,6 +890,14 @@ int run(const int argc, char **argv) {
   Json json;
   json["schema"] = "gtosd.preflop_blueprint_monker_values.v1";
   json["config_id"] = game_config.id;
+  // Written only with rake: every report without rake keeps its bytes.
+  if (rake.enabled) {
+    json["rake"] = {
+        {"basis_points", rake.percentage.basis_points()},
+        {"cap_antes", static_cast<double>(rake.cap.units()) * ante_scale},
+        {"no_flop_no_drop", rake.no_flop_no_drop},
+        {"minimum_pot_antes", static_cast<double>(rake.minimum_pot.units()) * ante_scale}};
+  }
   json["tree_fingerprint"] = game.fingerprint();
   json["policy_fingerprint"] = info.policy_fingerprint;
   json["policy_source"] = info.source;
@@ -901,6 +943,34 @@ int run(const int argc, char **argv) {
       {"gain_preflop_antes", {report.gain_preflop[0], report.gain_preflop[1]}},
       {"max_gain_antes", report.max_gain},
       {"nashconv_antes", report.nashconv}};
+  if (rake.enabled) {
+    // Not zero-sum: EV0 + EV1 is minus the expected rake in an exact pass
+    // only; on a subset of flops each EV has its own weights.
+    const double cap_antes = static_cast<double>(rake.cap.units()) * ante_scale;
+    const double ev_sum = report.ev[0] + report.ev[1];
+    json["estimate"]["ev_sum_antes"] = ev_sum;
+    if (mode == "exact") {
+      json["estimate"]["expected_rake_antes"] = -ev_sum;
+      check(-ev_sum >= -check_tolerance && -ev_sum <= cap_antes + check_tolerance,
+            "the expected rake -(EV0 + EV1) lies between zero and the cap");
+    }
+    if (rake_pass) {
+      const auto &view = rake_pass->report;
+      json["estimate"]["expected_rake_by_hero_antes"] = {-view.ev[0], -view.ev[1]};
+      check(rake_pass->boards == boards && rake_pass->physical_flops == physical_flops,
+            "the rake view pass covers the boards of our pass");
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        check(-view.ev[hero] >= -check_tolerance && -view.ev[hero] <= cap_antes + check_tolerance,
+              "the expected rake of hero " + std::to_string(hero) +
+                  " lies between zero and the cap");
+        if (mode == "exact") {
+          check(std::abs(-view.ev[hero] + ev_sum) <= check_tolerance,
+                "the expected rake of hero " + std::to_string(hero) +
+                    " equals -(EV0 + EV1) in an exact pass");
+        }
+      }
+    }
+  }
   {
     Json labels = Json::array();
     Json class_ids = Json::array();
@@ -1207,6 +1277,10 @@ int run(const int argc, char **argv) {
                                    {"stage_one", stage_seconds},
                                    {"aggregate", aggregate_seconds},
                                    {"values", values_seconds}};
+  if (rake_pass) {
+    json["evaluation"]["seconds"]["expected_rake"] =
+        rake_pass->stage_seconds + rake_pass->aggregate_seconds;
+  }
   json["evaluation"]["process_after_load"] = load_peaks;
 
   // Best response against the chart sets (--exploit): for every chart set and
@@ -1501,6 +1575,17 @@ int run(const int argc, char **argv) {
   std::cout << "evaluation: " << mode << ", " << groups.size() << " flops (" << physical_flops
             << " physical, " << boards << " boards), EV [" << report.ev[0] << ", " << report.ev[1]
             << "], stage one " << stage_seconds << " s\n";
+  if (rake.enabled) {
+    std::cout << "rake: EV0 + EV1 " << report.ev[0] + report.ev[1];
+    if (mode == "exact") {
+      std::cout << ", expected rake -(EV0 + EV1) " << -(report.ev[0] + report.ev[1]);
+    }
+    if (rake_pass) {
+      std::cout << ", expected rake by hero [" << -rake_pass->report.ev[0] << ", "
+                << -rake_pass->report.ev[1] << "]";
+    }
+    std::cout << " antes\n";
+  }
   if (!failures.empty() || !write_failures.empty()) {
     for (const auto &failure : failures) {
       std::cerr << "self-check failed: " << failure << '\n';

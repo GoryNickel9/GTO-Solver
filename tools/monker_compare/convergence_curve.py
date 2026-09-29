@@ -230,6 +230,11 @@ def main() -> int:
             "values_json": values.as_posix(),
             "evaluation_seconds": round(time.time() - started, 1) if evaluated else None,
         }
+        # With rake the game is not zero-sum: the values JSON carries the expected rake
+        # (exact pass, or --expected-rake per player); absent without rake.
+        for key in ("ev_sum_antes", "expected_rake_antes", "expected_rake_by_hero_antes"):
+            if key in estimate:
+                row[key] = estimate[key]
         rows.append(row)
         print(f"it_{iteration}: gain {fmt(row['gain_antes'][0])} / {fmt(row['gain_antes'][1])} a, "
               f"nashconv {fmt(nashconv)} a ({fmt(row['nashconv_pot_percent'], 3)} % pot), distance "

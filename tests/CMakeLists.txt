@@ -459,7 +459,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_allin5x.json
-        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_allin5x.json)
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_allin5x.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_rake_v1.json)
     set_tests_properties(gtosd_preflop_blueprint_fixture_schema
       PROPERTIES LABELS "preflop_blueprint;p0;schema" SKIP_RETURN_CODE 77)
   else()
@@ -782,6 +785,18 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_monker_in_our_game_smoke
       PROPERTIES LABELS "preflop_blueprint;research;monker"
                  FIXTURES_REQUIRED preflop_blueprint_smoke_monker_values)
+    # The same recursion on the game with rake (not zero-sum): every check is
+    # per player.
+    add_test(NAME gtosd_preflop_blueprint_monker_in_our_game_rake_smoke
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/monker_compare/monker_in_our_game.py
+        ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_values_rake_smoke.json
+        --monker ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_charts_rake_smoke
+        --ours ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_charts_rake_smoke
+        --check)
+    set_tests_properties(gtosd_preflop_blueprint_monker_in_our_game_rake_smoke
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_rake_smoke_monker_values)
   endif()
   if(Python3_Interpreter_FOUND)
     add_test(NAME gtosd_preflop_blueprint_chart_schema

@@ -254,11 +254,16 @@ void test_alternating_conditional_expectation(const Resources &resources, const 
   require(max_sum_error < 1e-10, "conditional strategy-sum expectation equals the exact traversal");
 }
 
+// rake: the HU10 reduced fixture with rake (5 %, cap 0.5 ante, no flop no
+// drop), a general-sum game: the oracle's CFR updates each player on its own
+// payoff, so any zero-sum shortcut in the trainer would show as a mismatch.
 void test_finite_game_oracle(const Resources &resources, const int stack = 0,
-                             const bool class_mode = false, const bool history_mode = false) {
+                             const bool class_mode = false, const bool history_mode = false,
+                             const bool rake = false) {
   const auto started = Clock::now();
-  auto fixture = load_fixture(stack == 0 ? "preflop_blueprint_hu10_reduced_v1.json"
-                                         : "preflop_blueprint_co40_test_v1.json");
+  auto fixture = load_fixture(stack != 0 ? "preflop_blueprint_co40_test_v1.json"
+                              : rake     ? "preflop_blueprint_hu10_reduced_rake_v1.json"
+                                         : "preflop_blueprint_hu10_reduced_v1.json");
   if (stack != 0) {
     fixture.effective_stack =
         gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
@@ -426,6 +431,13 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
           close(exact.value().best_response[1], nash_conv.value().best_response_value[1], 1e-9) &&
           close(exact.value().nashconv, nash_conv.value().nash_conv, 1e-9),
       "both physical best responses and NashConv match the independent lossless oracle");
+  if (rake) {
+    require(nash_conv.value().expected_payoff_sum < -1e-6 &&
+                close(exact.value().ev[0] + exact.value().ev[1],
+                      nash_conv.value().expected_payoff_sum, 1e-9) &&
+                std::isnan(nash_conv.value().zero_sum_exploitability),
+            "with rake the EVs sum to minus the expected rake, not to zero");
+  }
   for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
     const auto recall = gtosd::has_perfect_recall(finite, player);
     const auto estimate = gtosd::estimate_best_response_enumeration(finite, player);
@@ -463,7 +475,8 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
               "history sequence DP gain equals independent FiniteGame best response");
     }
   }
-  std::cout << "oracle: finite game " << summary.value().nodes << " nodes, "
+  std::cout << "oracle" << (rake ? " (rake)" : "") << ": finite game " << summary.value().nodes
+            << " nodes, "
             << summary.value().information_sets << " information sets, " << compared
             << " cells compared, max regret error " << maximum_regret_error
             << ", max strategy error " << maximum_strategy_error << ", nashconv "
@@ -1105,10 +1118,11 @@ void check_street_restrictions(const pb::CompiledGame &game, const pb::BucketPol
 // the exact value is the best response of the lossless FiniteGame (information
 // sets by combo and cards dealt so far) against the lifted strategy profile.
 void test_physical_best_response(const Resources &resources, const int stack = 0,
-                                 const bool overlapping_ranges = false) {
+                                 const bool overlapping_ranges = false, const bool rake = false) {
   const auto started = Clock::now();
-  auto fixture = load_fixture(stack == 0 ? "preflop_blueprint_hu10_reduced_v1.json"
-                                         : "preflop_blueprint_co40_test_v1.json");
+  auto fixture = load_fixture(stack != 0 ? "preflop_blueprint_co40_test_v1.json"
+                              : rake     ? "preflop_blueprint_hu10_reduced_rake_v1.json"
+                                         : "preflop_blueprint_hu10_reduced_v1.json");
   if (stack != 0) {
     fixture.effective_stack =
         gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
@@ -1200,6 +1214,29 @@ void test_physical_best_response(const Resources &resources, const int stack = 0
   }
   require(close(report.value().nashconv, oracle.value().nash_conv, 1e-9),
           "nashconv equals the lossless FiniteGame");
+  if (rake) {
+    // General-sum: the oracle's EVs sum to minus the expected rake, and the
+    // rake view prices the same expectation for each hero.
+    require(oracle.value().expected_payoff_sum < -1e-6 &&
+                close(report.value().ev[0] + report.value().ev[1],
+                      oracle.value().expected_payoff_sum, 1e-9) &&
+                std::isnan(oracle.value().zero_sum_exploitability),
+            "with rake the EVs sum to minus the expected rake, not to zero");
+    const auto view = game.value().rake_view();
+    require(view.fingerprint() == game.value().fingerprint() &&
+                view.nodes().size() == game.value().nodes().size(),
+            "the rake view keeps the tree and its fingerprint");
+    const auto view_report = pb::evaluate_best_response(view, average, response_resources,
+                                                        pb::group_by_flop(weighted), options);
+    require(view_report.has_value(), "the rake view evaluates");
+    for (std::uint8_t player = 0; player < 2U; ++player) {
+      require(close(view_report.value().ev[player], oracle.value().expected_payoff_sum, 1e-9),
+              "the rake view EV of each hero is minus the expected rake");
+    }
+    std::cout << "rake: expected payoff sum " << oracle.value().expected_payoff_sum
+              << ", rake view EV [" << view_report.value().ev[0] << ", "
+              << view_report.value().ev[1] << "]\n";
+  }
   if (stack == 0 && !overlapping_ranges) {
     check_street_restrictions(game.value(), average, physical, lossless.profile(),
                               response_resources, pb::group_by_flop(weighted), options);
@@ -1237,7 +1274,8 @@ void test_physical_best_response(const Resources &resources, const int stack = 0
               close(abstract_value.value()[0], report.value().ev[0], 1e-9) &&
               close(abstract_value.value()[1], report.value().ev[1], 1e-9),
           "physical lifting preserves both bucket profile values");
-  std::cout << "physical best response (overlapping ranges=" << overlapping_ranges << "): EV ["
+  std::cout << "physical best response (overlapping ranges=" << overlapping_ranges
+            << ", rake=" << rake << "): EV ["
             << report.value().ev[0] << ", " << report.value().ev[1] << "], BR ["
             << report.value().best_response[0] << ", " << report.value().best_response[1]
             << "], nashconv " << report.value().nashconv << " (lossless oracle "
@@ -1703,6 +1741,8 @@ int main(const int argc, char **argv) {
     test_average_strategy_row_snapshot(resources);
     test_average_policy_snapshot(resources);
     test_physical_best_response(resources);
+    test_finite_game_oracle(resources, 0, false, false, true);
+    test_physical_best_response(resources, 0, false, true);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

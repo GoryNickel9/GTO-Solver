@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <exception>
 #include <initializer_list>
@@ -107,6 +108,15 @@ std::uint64_t fnv1a(const std::string_view text, std::uint64_t hash = fnv_offset
   return hash;
 }
 
+// A disabled rake has exactly one encoding, the RakeConfig defaults, so that
+// operator== agrees with the serialization (which omits the parameters).
+bool default_rake(const RakeConfig &rake) {
+  const RakeConfig defaults{};
+  return !rake.enabled && rake.percentage == defaults.percentage && rake.cap == defaults.cap &&
+         rake.no_flop_no_drop == defaults.no_flop_no_drop &&
+         rake.minimum_pot == defaults.minimum_pot;
+}
+
 std::string hex64(std::uint64_t value) {
   constexpr std::string_view digits = "0123456789abcdef";
   std::string result(16U, '0');
@@ -168,6 +178,14 @@ OrderedJson to_ordered_json(const GameConfig &config) {
   }
   root["raise_termination"] = "natural_stack";
   root["rake_mode"] = config.rake.enabled ? "enabled" : "disabled";
+  // The rake parameters follow the mode only when it is enabled: every
+  // configuration without rake keeps its serialization and fingerprint.
+  if (config.rake.enabled) {
+    root["rake_basis_points"] = config.rake.percentage.basis_points();
+    root["rake_cap_units"] = config.rake.cap.units();
+    root["rake_no_flop_no_drop"] = config.rake.no_flop_no_drop;
+    root["rake_minimum_pot_units"] = config.rake.minimum_pot.units();
+  }
   return root;
 }
 
@@ -268,7 +286,15 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
       config.postflop_all_in_max_pot.value().basis_points() == 0U) {
     return Validation::failure(ConfigError::InvalidValue);
   }
-  if (!config.include_all_in || config.rake.enabled) {
+  if (!config.include_all_in) {
+    return Validation::failure(ConfigError::InvalidValue);
+  }
+  // An enabled rake takes a positive percentage and a positive cap (a zero
+  // cap would rake nothing: calculate_rake returns min(percentage, cap)).
+  const bool valid_rake = config.rake.enabled ? config.rake.percentage.basis_points() > 0U &&
+                                                    config.rake.cap > zero
+                                              : default_rake(config.rake);
+  if (!valid_rake) {
     return Validation::failure(ConfigError::InvalidValue);
   }
   return Validation::success(true);
@@ -302,13 +328,22 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
                                                         "dead_initial_pot_contribution"},
           std::pair<std::string_view, std::string_view>{"preflop_target_basis",
                                                         "live_commitment_excluding_dead_ante"},
-          std::pair<std::string_view, std::string_view>{"raise_termination", "natural_stack"},
-          std::pair<std::string_view, std::string_view>{"rake_mode", "disabled"}}) {
+          std::pair<std::string_view, std::string_view>{"raise_termination", "natural_stack"}}) {
       const auto constant = expect_constant(root, key, expected);
       if (!constant) {
         return Parsed::failure(constant.error());
       }
     }
+    // "disabled" or "enabled"; the parameters of an enabled rake are read below.
+    const auto rake_mode = field(root, "rake_mode");
+    if (!rake_mode) {
+      return Parsed::failure(rake_mode.error());
+    }
+    if (!rake_mode.value()->is_string() || (rake_mode.value()->get<std::string>() != "disabled" &&
+                                            rake_mode.value()->get<std::string>() != "enabled")) {
+      return Parsed::failure(ConfigError::InvalidValue);
+    }
+    const bool rake_enabled = rake_mode.value()->get<std::string>() == "enabled";
 
     GameConfig config;
     const auto id = field(root, "id");
@@ -429,7 +464,45 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
       }
       config.postflop_sizes.push_back(percentage.value());
     }
+    // Rake (core RakeConfig, settled by settle_terminal): all four parameters
+    // with "enabled", none of them with "disabled".
     config.rake = RakeConfig{};
+    constexpr std::array<std::string_view, 4> rake_keys{
+        "rake_basis_points", "rake_cap_units", "rake_no_flop_no_drop", "rake_minimum_pot_units"};
+    if (!rake_enabled) {
+      for (const auto key : rake_keys) {
+        if (root.contains(std::string(key))) {
+          return Parsed::failure(ConfigError::InvalidValue);
+        }
+      }
+    } else {
+      const auto basis_points = field(root, rake_keys[0]);
+      const auto cap = money_field(root, rake_keys[1]);
+      const auto no_flop_no_drop = bool_field(root, rake_keys[2]);
+      const auto minimum_pot = money_field(root, rake_keys[3]);
+      for (const auto error :
+           {basis_points ? std::optional<ConfigError>{} : basis_points.error(),
+            cap ? std::optional<ConfigError>{} : cap.error(),
+            no_flop_no_drop ? std::optional<ConfigError>{} : no_flop_no_drop.error(),
+            minimum_pot ? std::optional<ConfigError>{} : minimum_pot.error()}) {
+        if (error.has_value()) {
+          return Parsed::failure(error.value());
+        }
+      }
+      if (!basis_points.value()->is_number_integer()) {
+        return Parsed::failure(ConfigError::InvalidValue);
+      }
+      const auto percentage =
+          RangeWeight::from_basis_points(basis_points.value()->get<std::int64_t>());
+      if (!percentage) {
+        return Parsed::failure(ConfigError::InvalidValue);
+      }
+      config.rake.enabled = true;
+      config.rake.percentage = percentage.value();
+      config.rake.cap = cap.value();
+      config.rake.no_flop_no_drop = no_flop_no_drop.value();
+      config.rake.minimum_pot = minimum_pot.value();
+    }
 
     const auto valid = validate_game_config(config);
     if (!valid) {

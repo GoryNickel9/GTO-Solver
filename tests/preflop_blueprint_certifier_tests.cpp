@@ -920,7 +920,9 @@ void test_joint_traversal(const Resources &resources) {
   std::array<double, pb::live_hand_count> expected{};
   std::uint64_t compared = 0U;
   for (const std::string_view fixture :
-       {"preflop_blueprint_hu10_reduced_v1.json", "preflop_blueprint_hu10_full_v1.json"}) {
+       {"preflop_blueprint_hu10_reduced_v1.json", "preflop_blueprint_hu10_full_v1.json",
+        "preflop_blueprint_hu10_reduced_rake_v1.json"}) {
+    // The rake fixture: raked (non-zero-sum) payoffs through the joint river.
     const auto game = pb::CompiledGame::compile(load_fixture(fixture));
     require(game.has_value(), "joint traversal fixture compiles");
     const auto layout =

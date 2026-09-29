@@ -116,11 +116,13 @@ Evaluation evaluate(const pb::BestResponseEvaluator &evaluator,
 
 // The loss of random chart sets equals the EV change of the policy whose
 // preflop rows of the hero are replaced by the charts, on sampled flops
-// (identity images) and on canonical flops standing for their orbits.
-void test_loss_identity(const Resources &resources) {
+// (identity images) and on canonical flops standing for their orbits. Also
+// run on the fixture with rake: every identity is per player, none assumes
+// a zero-sum game.
+void test_loss_identity(const Resources &resources,
+                        const std::string_view fixture = "preflop_blueprint_hu10_reduced_v1.json") {
   const auto started = Clock::now();
-  const auto game =
-      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto game = pb::CompiledGame::compile(load_fixture(fixture));
   require(game.has_value(), "HU10 reduced compiles");
   const auto view = response_resources(resources);
   const auto policy = random_policy(game.value(), resources, 0x4D56'0001ULL);
@@ -246,7 +248,8 @@ void test_loss_identity(const Resources &resources) {
     }
   }
   require(fallbacks > 0U && outside > 0U, "the random charts exercise both missing-row cases");
-  std::cout << "loss identity: sampled and orbit groups, both heroes, " << fallbacks
+  std::cout << "loss identity (" << fixture << "): sampled and orbit groups, both heroes, "
+            << fallbacks
             << " fallback rows, " << outside << " rows outside the range, largest loss "
             << largest_loss << " antes, "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
@@ -432,10 +435,10 @@ void require_class_actions(const pb::BestResponseReport &report) {
   }
 }
 
-void test_exploitation(const Resources &resources) {
+void test_exploitation(const Resources &resources,
+                       const std::string_view fixture = "preflop_blueprint_hu10_reduced_v1.json") {
   const auto started = Clock::now();
-  const auto game =
-      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto game = pb::CompiledGame::compile(load_fixture(fixture));
   require(game.has_value(), "HU10 reduced compiles");
   const auto view = response_resources(resources);
   const auto policy = random_policy(game.value(), resources, 0x4D56'0004ULL);
@@ -583,7 +586,8 @@ void test_exploitation(const Resources &resources) {
   }
   require(rejected, "rows for another number of nodes are rejected");
   require(changed_choices > 0U, "random charts change some best-response choices");
-  std::cout << "exploitation: sampled and orbit groups, both chart players, own rows change "
+  std::cout << "exploitation (" << fixture
+            << "): sampled and orbit groups, both chart players, own rows change "
             << largest_self << ", random charts move the exploiter's gain by up to "
             << largest_extra << " antes and " << changed_choices << " class choices, "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
@@ -615,6 +619,8 @@ int main(const int argc, char **argv) {
     test_chart_files(resources, scratch_dir);
     test_loss_identity(resources);
     test_exploitation(resources);
+    test_loss_identity(resources, "preflop_blueprint_hu10_reduced_rake_v1.json");
+    test_exploitation(resources, "preflop_blueprint_hu10_reduced_rake_v1.json");
     std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

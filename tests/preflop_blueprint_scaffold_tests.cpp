@@ -128,7 +128,7 @@ void test_fixtures() {
 void test_round_trip() {
   for (const std::string_view name :
        {"preflop_blueprint_hu10_full_v1.json", "preflop_blueprint_hu10_reduced_v1.json",
-        "preflop_blueprint_co40_v1.json"}) {
+        "preflop_blueprint_co40_v1.json", "preflop_blueprint_hu10_reduced_rake_v1.json"}) {
     const auto original = load_fixture(name);
     const auto serialized = pb::serialize_game_config_json(original);
     const auto reparsed = pb::parse_game_config_json(serialized);
@@ -224,14 +224,140 @@ void test_rejections() {
                    pb::ConfigError::InvalidValue, "postflop sizes not increasing");
   expect_rejection(replace_first(valid, "\"include_all_in\": true", "\"include_all_in\": false"),
                    pb::ConfigError::InvalidValue, "all-in disabled");
+  // An enabled rake needs its four parameters (test_rake_config below).
   expect_rejection(replace_first(valid, "\"rake_mode\": \"disabled\"", "\"rake_mode\": \"enabled\""),
-                   pb::ConfigError::InvalidValue, "rake enabled");
+                   pb::ConfigError::MissingField, "rake enabled without parameters");
   expect_rejection(replace_first(valid, "\"monetary_contract_revision\": 2",
                                  "\"monetary_contract_revision\": 1"),
                    pb::ConfigError::InvalidValue, "wrong monetary contract revision");
   expect_rejection(replace_first(valid, "\"effective_stack_units\": 100000",
                                  "\"effective_stack_units\": \"100000\""),
                    pb::ConfigError::InvalidValue, "stack as string");
+}
+
+// Rake, additive keys of schema v1: "enabled" takes the percentage (basis
+// points), the cap and the minimum pot (units) and the no-flop-no-drop flag;
+// "disabled" takes none of them, and a configuration without rake keeps the
+// serialization it had before the keys existed.
+void test_rake_config() {
+  const auto valid = read_file(fixture_path("preflop_blueprint_hu10_full_v1.json"));
+  const std::string disabled = "\"rake_mode\": \"disabled\"";
+  const auto enabled = [&](const std::string_view parameters) {
+    return replace_first(valid, disabled, "\"rake_mode\": \"enabled\", " + std::string(parameters));
+  };
+  const auto parameters = [](const std::string_view basis_points, const std::string_view cap,
+                             const std::string_view no_flop_no_drop,
+                             const std::string_view minimum_pot) {
+    return "\"rake_basis_points\": " + std::string(basis_points) + ", \"rake_cap_units\": " +
+           std::string(cap) + ", \"rake_no_flop_no_drop\": " + std::string(no_flop_no_drop) +
+           ", \"rake_minimum_pot_units\": " + std::string(minimum_pot);
+  };
+
+  const auto without = pb::parse_game_config_json(valid);
+  const auto with = pb::parse_game_config_json(enabled(parameters("500", "30000", "true", "0")));
+  require(without.has_value() && with.has_value(), "configurations with and without rake parse");
+  const auto &rake = with.value().rake;
+  require(rake.enabled && rake.percentage.basis_points() == 500U && rake.cap == units(30'000) &&
+              rake.no_flop_no_drop && rake.minimum_pot == units(0),
+          "rake parameters: 5 %, cap 3 antes, no flop no drop, no minimum pot");
+  auto stripped = with.value();
+  stripped.rake = gtosd::RakeConfig{};
+  require(stripped == without.value() && with.value() != without.value(),
+          "the rake is the only difference and enters operator==");
+  const auto serialized = pb::serialize_game_config_json(with.value());
+  const auto mode = serialized.find("\"rake_mode\": \"enabled\"");
+  const auto after_mode = [&](const std::string_view key) {
+    const auto position = serialized.find(key);
+    return mode != std::string::npos && position != std::string::npos && position > mode;
+  };
+  require(after_mode("\"rake_basis_points\": 500") && after_mode("\"rake_cap_units\": 30000") &&
+              after_mode("\"rake_no_flop_no_drop\": true") &&
+              after_mode("\"rake_minimum_pot_units\": 0"),
+          "the rake parameters are serialized after the mode");
+  require(pb::serialize_game_config_json(without.value()).find("rake_basis_points") ==
+                  std::string::npos &&
+              pb::serialize_game_config_json(without.value()).find("\"rake_mode\": \"disabled\"") !=
+                  std::string::npos,
+          "without rake only the mode is serialized");
+  const auto reparsed = pb::parse_game_config_json(serialized);
+  require(reparsed.has_value() && reparsed.value() == with.value() &&
+              pb::game_config_fingerprint(reparsed.value()) ==
+                  pb::game_config_fingerprint(with.value()),
+          "the rake survives the round trip");
+  require(pb::game_config_fingerprint(with.value()) !=
+              pb::game_config_fingerprint(without.value()),
+          "the rake enters the fingerprint");
+  const auto variant =
+      pb::parse_game_config_json(enabled(parameters("500", "30000", "false", "0")));
+  const auto minimum = pb::parse_game_config_json(enabled(parameters("500", "30000", "true", "1")));
+  require(variant.has_value() && minimum.has_value() &&
+              pb::game_config_fingerprint(variant.value()) !=
+                  pb::game_config_fingerprint(with.value()) &&
+              pb::game_config_fingerprint(minimum.value()) !=
+                  pb::game_config_fingerprint(with.value()) &&
+              variant.value() != with.value() && minimum.value() != with.value(),
+          "every rake parameter enters the fingerprint and operator==");
+  const auto full_percentage =
+      pb::parse_game_config_json(enabled(parameters("10000", "1", "true", "0")));
+  require(full_percentage.has_value(), "100 % with a one-unit cap is accepted");
+
+  expect_rejection(enabled(parameters("0", "30000", "true", "0")), pb::ConfigError::InvalidValue,
+                   "rake of 0 basis points");
+  expect_rejection(enabled(parameters("10001", "30000", "true", "0")),
+                   pb::ConfigError::InvalidValue, "rake above 100 %");
+  expect_rejection(enabled(parameters("-1", "30000", "true", "0")), pb::ConfigError::InvalidValue,
+                   "negative rake");
+  expect_rejection(enabled(parameters("5.5", "30000", "true", "0")), pb::ConfigError::InvalidValue,
+                   "fractional basis points");
+  expect_rejection(enabled(parameters("\"500\"", "30000", "true", "0")),
+                   pb::ConfigError::InvalidValue, "basis points as a string");
+  expect_rejection(enabled(parameters("500", "0", "true", "0")), pb::ConfigError::InvalidValue,
+                   "zero cap");
+  expect_rejection(enabled(parameters("500", "-1", "true", "0")), pb::ConfigError::InvalidValue,
+                   "negative cap");
+  expect_rejection(enabled(parameters("500", "true", "true", "0")), pb::ConfigError::InvalidValue,
+                   "cap as a boolean");
+  expect_rejection(enabled(parameters("500", "30000", "1", "0")), pb::ConfigError::InvalidValue,
+                   "no-flop-no-drop as a number");
+  expect_rejection(enabled(parameters("500", "30000", "true", "-1")),
+                   pb::ConfigError::InvalidValue, "negative minimum pot");
+  expect_rejection(enabled("\"rake_basis_points\": 500, \"rake_cap_units\": 30000, "
+                           "\"rake_no_flop_no_drop\": true"),
+                   pb::ConfigError::MissingField, "rake without a minimum pot");
+  expect_rejection(enabled("\"rake_cap_units\": 30000, \"rake_no_flop_no_drop\": true, "
+                           "\"rake_minimum_pot_units\": 0"),
+                   pb::ConfigError::MissingField, "rake without a percentage");
+  expect_rejection(replace_first(valid, disabled,
+                                 "\"rake_mode\": \"disabled\", \"rake_basis_points\": 500"),
+                   pb::ConfigError::InvalidValue, "rake parameter with a disabled rake");
+  expect_rejection(replace_first(valid, disabled,
+                                 "\"rake_mode\": \"disabled\", \"rake_minimum_pot_units\": 0"),
+                   pb::ConfigError::InvalidValue, "default rake parameter with a disabled rake");
+  expect_rejection(replace_first(valid, disabled, "\"rake_mode\": \"on\""),
+                   pb::ConfigError::InvalidValue, "unknown rake mode");
+  expect_rejection(replace_first(valid, disabled, "\"rake_mode\": true"),
+                   pb::ConfigError::InvalidValue, "rake mode as a boolean");
+  // Unknown keys are left to the JSON Schema: renaming the key removes it.
+  expect_rejection(replace_first(valid, disabled, "\"rake_mode_renamed\": \"disabled\""),
+                   pb::ConfigError::MissingField, "missing rake mode");
+
+  // One encoding per game: a disabled rake is exactly the RakeConfig defaults.
+  auto disabled_with_cap = without.value();
+  disabled_with_cap.rake.cap = units(30'000);
+  require(!pb::validate_game_config(disabled_with_cap), "a disabled rake with a cap is invalid");
+  auto enabled_without_cap = with.value();
+  enabled_without_cap.rake.cap = units(0);
+  require(!pb::validate_game_config(enabled_without_cap), "an enabled rake needs a cap");
+
+  const auto fixture = load_fixture("preflop_blueprint_hu10_reduced_rake_v1.json");
+  auto fixture_without_rake = fixture;
+  fixture_without_rake.id = load_fixture("preflop_blueprint_hu10_reduced_v1.json").id;
+  fixture_without_rake.rake = gtosd::RakeConfig{};
+  require(fixture.rake.enabled && fixture.rake.percentage.basis_points() == 500U &&
+              fixture.rake.cap == units(5'000) && fixture.rake.no_flop_no_drop &&
+              fixture.rake.minimum_pot == units(0) &&
+              fixture_without_rake == load_fixture("preflop_blueprint_hu10_reduced_v1.json"),
+          "HU10 reduced rake = HU10 reduced + 5 %, cap 0.5 ante, no flop no drop");
 }
 
 } // namespace
@@ -242,6 +368,7 @@ int main() {
     test_fixtures();
     test_round_trip();
     test_rejections();
+    test_rake_config();
   } catch (const std::exception &error) {
     std::cerr << "PREFLOP_BLUEPRINT_SCAFFOLD=FAIL " << error.what() << '\n';
     return 1;

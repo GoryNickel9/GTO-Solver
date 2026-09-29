@@ -682,6 +682,98 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
                PASS_REGULAR_EXPRESSION
                  "PREFLOP_BLUEPRINT_MONKER_VALUES=FAIL --exploit-out names a directory"
                FAIL_REGULAR_EXPRESSION "stage one|flops_done")
+  # Rake (5 %, cap 0.5 ante so that it binds at 10a, no flop no drop): the same
+  # chain on HU10 reduced with rake. The game is not zero-sum; the values run
+  # adds the rake view (--expected-rake) and its self-checks, the exact pass
+  # checks that each player's expected rake equals -(EV0 + EV1).
+  set(rake_fixture ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_rake_v1.json)
+  add_test(NAME gtosd_preflop_blueprint_train_rake_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${rake_fixture}
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 20 --batch 8 --threads 4 --eval-flops 2 --eval-every 10
+      --policy-out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_rake_smoke_policy.bin)
+  set_tests_properties(gtosd_preflop_blueprint_train_rake_smoke
+    PROPERTIES LABELS "preflop_blueprint;p6;trainer"
+               FIXTURES_SETUP preflop_blueprint_rake_smoke_policy)
+  add_test(NAME gtosd_preflop_blueprint_monker_charts_rake_smoke
+    COMMAND gtosd_preflop_blueprint_monker_charts
+      --config ${rake_fixture}
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_rake_smoke_policy.bin
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_rake_smoke)
+  set_tests_properties(gtosd_preflop_blueprint_monker_charts_rake_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED preflop_blueprint_rake_smoke_policy
+               FIXTURES_SETUP preflop_blueprint_rake_smoke_monker_charts)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_rake_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${rake_fixture}
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_rake_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_rake_smoke
+      --flops 2 --threads 2 --expected-rake
+      --out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_values_rake_smoke.json)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_rake_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED
+                 "preflop_blueprint_rake_smoke_policy;preflop_blueprint_rake_smoke_monker_charts"
+               FIXTURES_SETUP preflop_blueprint_rake_smoke_monker_values
+               PASS_REGULAR_EXPRESSION "rake: EV0 \\+ EV1 .*expected rake by hero.*PREFLOP_BLUEPRINT_MONKER_VALUES=PASS")
+  add_test(NAME gtosd_preflop_blueprint_monker_values_rake_exploit_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${rake_fixture}
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_rake_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_rake_smoke
+      --all-flops --flop-limit 2 --threads 2 --no-combo-values
+      --exploit self --exploit-streets river)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_rake_exploit_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED
+                 "preflop_blueprint_rake_smoke_policy;preflop_blueprint_rake_smoke_monker_charts")
+  add_test(NAME gtosd_preflop_blueprint_monker_values_rake_exact_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${rake_fixture}
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_rake_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_rake_smoke
+      --all-flops --threads 3 --no-combo-values --expected-rake)
+  # The exact pass enumerates the 573 canonical flops (13 minutes on 3 threads
+  # beside a training run on 2026-09-30): kept out of the preflop_blueprint
+  # label, run with ctest -L monker_exact (the fixture setup tests come along).
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_rake_exact_smoke
+    PROPERTIES LABELS "research;monker_exact"
+               FIXTURES_REQUIRED
+                 "preflop_blueprint_rake_smoke_policy;preflop_blueprint_rake_smoke_monker_charts"
+               PASS_REGULAR_EXPRESSION
+                 "expected rake -\\(EV0 \\+ EV1\\).*expected rake by hero.*PREFLOP_BLUEPRINT_MONKER_VALUES=PASS mode=exact")
+  # The checkdown solver (step 1: preflop tree, empty postflop) with and
+  # without rake: its payoff check is the zero-sum check without rake and the
+  # minus-the-rake check with it, where -(EV0 + EV1) must also equal the rake
+  # of every terminal weighted by its reach.
+  foreach(variant IN ITEMS plain rake)
+    if(variant STREQUAL "rake")
+      set(checkdown_config ${rake_fixture})
+      set(checkdown_pass "rake: EV .* by reach .*PREFLOP_BLUEPRINT_CHECKDOWN=PASS")
+    else()
+      set(checkdown_config
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json)
+      set(checkdown_pass "PREFLOP_BLUEPRINT_CHECKDOWN=PASS")
+    endif()
+    add_test(NAME gtosd_preflop_blueprint_checkdown_${variant}_smoke
+      COMMAND gtosd_preflop_blueprint_checkdown
+        --config ${checkdown_config}
+        --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+        --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_${variant}_smoke
+        --iterations 50 --report-every 25)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_${variant}_smoke
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 PASS_REGULAR_EXPRESSION "${checkdown_pass}")
+  endforeach()
   # Per-board bucket tables with an exact flop (one id per suit orbit), the
   # 15x4 turn and the 15-level river, checked by
   # gtosd_preflop_blueprint_monker_buckets_tests.
@@ -729,6 +821,13 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
                 gtosd_preflop_blueprint_monker_values_orbit_smoke
                 gtosd_preflop_blueprint_monker_values_exploit_smoke
                 gtosd_preflop_blueprint_monker_values_exploit_out_refused
+                gtosd_preflop_blueprint_train_rake_smoke
+                gtosd_preflop_blueprint_monker_charts_rake_smoke
+                gtosd_preflop_blueprint_monker_values_rake_smoke
+                gtosd_preflop_blueprint_monker_values_rake_exploit_smoke
+                gtosd_preflop_blueprint_monker_values_rake_exact_smoke
+                gtosd_preflop_blueprint_checkdown_plain_smoke
+                gtosd_preflop_blueprint_checkdown_rake_smoke
                 gtosd_preflop_blueprint_monker_buckets_exact_smoke
                 gtosd_preflop_blueprint_monker_buckets_default_smoke
                 gtosd_preflop_blueprint_monker_buckets_streets_smoke
