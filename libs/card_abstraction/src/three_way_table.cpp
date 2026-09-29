@@ -37,8 +37,23 @@ constexpr std::uint64_t folded_hands_per_pair = 496U;
 
 using Clock = std::chrono::steady_clock;
 // Upper triangle (row key <= column key) of the ordered-pair counts D[k1][k2],
-// modulo 2^32: the per-board terms subtract, only the final sums are counts.
+// packed row by row (118 KB instead of 236 KB, it stays in L2), modulo 2^32:
+// the per-board terms subtract, only the final sums are counts.
 using Accumulator = std::vector<std::uint32_t>;
+constexpr std::size_t triangle_size = key_count * (key_count + 1U) / 2U;
+
+// Slot of (low, high), low <= high, is triangle_base[low] + high.
+constexpr std::array<std::uint32_t, key_count> make_triangle_base() noexcept {
+  std::array<std::uint32_t, key_count> base{};
+  std::uint32_t start = 0U;
+  for (std::uint32_t low = 0U; low < key_count; ++low) {
+    base[low] = start - low;
+    start += key_count - low;
+  }
+  return base;
+}
+
+constexpr auto triangle_base = make_triangle_base();
 
 struct ClassMembers {
   std::array<std::array<std::uint16_t, 12>, class_count> ids{};
@@ -172,7 +187,9 @@ std::uint32_t orbit_weight(const HeroContext &hero, const std::array<std::uint8_
 // opponents of key k and the ordered disjoint pairs D[k1][k2]:
 //   D = n n^T - diag(n) - (ordered pairs of distinct combos sharing a card),
 // and two distinct combos share at most one card, so the last term is a sum
-// over the shared card of the pairs among the 28 combos holding it.
+// over the shared card c of m_c m_c^T - diag(m_c), m_c the key histogram of
+// the 28 combos holding c. Both products run over the present keys only
+// (about 84 of the 243, and about 18 per card), in ascending key order.
 class BoardKernel {
 public:
   BoardKernel(const RankTable &ranks, const HeroContext &hero) : ranks_(ranks), hero_(hero) {}
@@ -241,10 +258,38 @@ public:
         present_[present++] = key;
       }
     }
+    add_outer_product(present, weight, accumulator);
+
+    // Per shared card: the key histogram of its holders, kept sorted.
+    for (std::uint32_t shared = 0U; shared < rest_card_count; ++shared) {
+      present = 0U;
+      for (std::uint32_t other = 0U; other < rest_card_count; ++other) {
+        if (other == shared) {
+          continue;
+        }
+        const auto key = keys_[shared][other];
+        if (counts_[key]++ != 0U) {
+          continue;
+        }
+        auto slot = present++;
+        for (; slot > 0U && present_[slot - 1U] > key; --slot) {
+          present_[slot] = present_[slot - 1U];
+        }
+        present_[slot] = key;
+      }
+      add_outer_product(present, 0U - weight, accumulator);
+    }
+  }
+
+private:
+  // accumulator += weight * (c c^T - diag(c)) over the upper triangle, for the
+  // histogram c = counts_ on the sorted keys present_[0, present); clears c.
+  void add_outer_product(const std::uint32_t present, const std::uint32_t weight,
+                         std::uint32_t *accumulator) {
     for (std::uint32_t a = 0U; a < present; ++a) {
       const auto key_a = present_[a];
       const std::uint32_t count_a = counts_[key_a];
-      auto *row = accumulator + static_cast<std::size_t>(key_a) * key_count;
+      auto *row = accumulator + triangle_base[key_a];
       row[key_a] += weight * (count_a * count_a - count_a);
       const auto scaled = weight * count_a;
       for (std::uint32_t b = a + 1U; b < present; ++b) {
@@ -255,30 +300,8 @@ public:
     for (std::uint32_t a = 0U; a < present; ++a) {
       counts_[present_[a]] = 0U;
     }
-
-    const auto doubled = weight * 2U;
-    std::array<std::uint16_t, rest_card_count - 1U> holders{};
-    for (std::uint32_t shared = 0U; shared < rest_card_count; ++shared) {
-      std::uint32_t count = 0U;
-      for (std::uint32_t other = 0U; other < rest_card_count; ++other) {
-        if (other != shared) {
-          holders[count++] = keys_[shared][other];
-        }
-      }
-      for (std::uint32_t a = 0U; a + 1U < count; ++a) {
-        const auto key_a = holders[a];
-        for (std::uint32_t b = a + 1U; b < count; ++b) {
-          const auto key_b = holders[b];
-          const auto low = std::min(key_a, key_b);
-          const auto high = std::max(key_a, key_b);
-          accumulator[static_cast<std::size_t>(low) * key_count + high] -=
-              low == high ? doubled : weight;
-        }
-      }
-    }
   }
 
-private:
   const RankTable &ranks_;
   const HeroContext &hero_;
   std::array<std::uint8_t, rest_card_count> rest_{};
@@ -300,13 +323,13 @@ struct HeroCost {
 std::vector<Accumulator> accumulate_heroes(const RankTable &ranks,
                                            const std::vector<HeroContext> &heroes,
                                            const unsigned threads, std::vector<HeroCost> &costs) {
-  std::vector<Accumulator> totals(heroes.size(), Accumulator(key_count * key_count, 0U));
+  std::vector<Accumulator> totals(heroes.size(), Accumulator(triangle_size, 0U));
   costs.assign(heroes.size(), HeroCost{});
   std::vector<std::mutex> locks(heroes.size());
   const auto task_count = heroes.size() * tasks_per_hero;
   std::atomic<std::size_t> next_task{0U};
   const auto work = [&] {
-    Accumulator local(key_count * key_count, 0U);
+    Accumulator local(triangle_size, 0U);
     for (auto task = next_task.fetch_add(1U); task < task_count; task = next_task.fetch_add(1U)) {
       const auto started = Clock::now();
       const auto hero_index = task / tasks_per_hero;
@@ -361,7 +384,7 @@ void write_rows(const Accumulator &total, const std::uint16_t hero_combo,
           const auto key_second = 3U * second + y;
           const auto low = std::min(key_first, key_second);
           const auto high = std::max(key_first, key_second);
-          entry.cells[3U * x + y] = total[static_cast<std::size_t>(low) * key_count + high];
+          entry.cells[3U * x + y] = total[triangle_base[low] + high];
         }
       }
     }

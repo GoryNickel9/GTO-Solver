@@ -47,6 +47,13 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <ctime>
+#endif
+
 namespace {
 
 namespace ca = gtosd::card_abstraction;
@@ -57,6 +64,26 @@ constexpr std::uint8_t class_count = static_cast<std::uint8_t>(ca::three_way_cla
 
 double seconds_since(const Clock::time_point started) {
   return std::chrono::duration<double>(Clock::now() - started).count();
+}
+
+// CPU seconds of the whole process (all threads): the build cost without the
+// time its threads waited for a core on a shared machine.
+double process_cpu_seconds() {
+#ifdef _WIN32
+  FILETIME creation{};
+  FILETIME exit{};
+  FILETIME kernel{};
+  FILETIME user{};
+  if (GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user) == 0) {
+    return 0.0;
+  }
+  const auto ticks = [](const FILETIME &time) {
+    return (static_cast<std::uint64_t>(time.dwHighDateTime) << 32U) | time.dwLowDateTime;
+  };
+  return static_cast<double>(ticks(kernel) + ticks(user)) * 1e-7;
+#else
+  return static_cast<double>(std::clock()) / CLOCKS_PER_SEC;
+#endif
 }
 
 std::uint64_t parse_unsigned(const std::string_view value) {
@@ -341,7 +368,9 @@ int main(const int argc, char **argv) {
     } else {
       ca::ThreeWayBuildOptions build{options.threads, options.board_symmetry, options.hero_classes};
       ca::ThreeWayBuildTiming timing;
+      const auto cpu_before = process_cpu_seconds();
       auto built = ca::ThreeWayTable::build(ranks.value(), build, &timing);
+      const auto cpu_seconds = process_cpu_seconds() - cpu_before;
       if (!built) {
         throw std::runtime_error(std::string{"build failed: "} +
                                  ca::resource_error_name(built.error()));
@@ -364,6 +393,7 @@ int main(const int argc, char **argv) {
       Json build_report{{"hero_classes", options.hero_classes.size()},
                         {"wall_seconds", timing.wall_seconds},
                         {"task_seconds", task_seconds},
+                        {"process_cpu_seconds", cpu_seconds},
                         {"effective_threads",
                          timing.wall_seconds > 0.0 ? task_seconds / timing.wall_seconds : 0.0},
                         {"heroes", heroes}};
@@ -372,6 +402,8 @@ int main(const int argc, char **argv) {
                                        36.0 * type_seconds[1] / type_count[1] +
                                        36.0 * type_seconds[2] / type_count[2];
         build_report["full_build_task_seconds_estimate"] = full_task_seconds;
+        build_report["full_build_cpu_seconds_estimate"] =
+            cpu_seconds * full_task_seconds / task_seconds;
         build_report["full_build_wall_seconds_estimate_at_effective_threads"] =
             full_task_seconds / (task_seconds / timing.wall_seconds);
       }
