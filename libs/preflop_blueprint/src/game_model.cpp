@@ -245,8 +245,17 @@ action_config_at(const GameConfig &config, const PublicState &state, const Aggre
     result.raise_depth = maximum_core_raise_depth;
     if (config.include_all_in) {
       result.all_in_mode = AllInMode::Add;
-      result.all_in_threshold = always_add_all_in();
-      result.all_in_unconditional = true;
+      if (config.postflop_all_in_max_pot.has_value()) {
+        // Capped all-in (user decision of 2026-09-29): the core adds it when
+        // the stack left above the call is at most the cap times the pot
+        // after the call, boundary included.
+        result.all_in_threshold = config.postflop_all_in_max_pot.value();
+        result.all_in_strict_boundary = false;
+        result.all_in_unconditional = false;
+      } else {
+        result.all_in_threshold = always_add_all_in();
+        result.all_in_unconditional = true;
+      }
     }
     return ConfigResult::success(std::move(result));
   }

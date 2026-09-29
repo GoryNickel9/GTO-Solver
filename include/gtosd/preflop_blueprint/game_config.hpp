@@ -71,6 +71,15 @@ struct GameConfig {
   // without aggression restricts nothing. Serialized, and therefore part of
   // the fingerprint, only when false.
   bool postflop_donk_bets{true};
+  // Largest postflop all-in, as a fraction of the pot in basis points
+  // (50,000 = 5x the pot; user decision of 2026-09-29 for the MonkerSolver
+  // trees). The all-in is offered only when the chips it adds above the call
+  // are at most this fraction of the pot after the call, the convention of
+  // the percentage sizes; an all-in of exactly that size is allowed. A size
+  // whose bet reaches the stack still becomes the all-in. Preflop is not
+  // affected. Absent means an all-in at every postflop decision; serialized,
+  // and therefore part of the fingerprint, only when set.
+  std::optional<PotPercentage> postflop_all_in_max_pot;
   // Version 1 accepts only a disabled rake.
   RakeConfig rake{};
 };

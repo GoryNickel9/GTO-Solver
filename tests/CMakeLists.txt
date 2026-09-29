@@ -454,7 +454,12 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu20_test_v1.json
-        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu30_test_v1.json)
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu30_test_v1.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_allin5x.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_allin5x.json)
     set_tests_properties(gtosd_preflop_blueprint_fixture_schema
       PROPERTIES LABELS "preflop_blueprint;p0;schema" SKIP_RETURN_CODE 77)
   else()

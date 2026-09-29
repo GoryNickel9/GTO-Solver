@@ -3,6 +3,7 @@
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/game_model.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstdint>
@@ -13,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -890,6 +892,317 @@ void test_no_donk_bets() {
             << "; CO40 no donk bets: nodes=" << co40.stats().node_count << '\n';
 }
 
+pb::GameConfig load_monker(const std::string_view name) {
+  return load_config(std::filesystem::path("benchmarks") / "monker" / std::string(name));
+}
+
+gtosd::PotPercentage five_times_the_pot() {
+  return gtosd::PotPercentage::from_basis_points(50'000).value();
+}
+
+bool has_all_in(const pb::CompiledGame &game, const std::uint32_t node) {
+  for (const auto &edge : game.edges_of(node)) {
+    if (edge.action.type == gtosd::ActionType::AllIn) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// postflop_all_in_max_pot_basis_points: optional integer, serialized only when set.
+void test_all_in_cap_config_key() {
+  const auto uncapped = load_hu50();
+  require(!uncapped.postflop_all_in_max_pot.has_value(),
+          "a configuration without the key has no all-in cap");
+  require(pb::serialize_game_config_json(uncapped).find("postflop_all_in_max_pot") ==
+              std::string::npos,
+          "an absent cap is not serialized, so existing fingerprints do not move");
+
+  auto capped = uncapped;
+  capped.postflop_all_in_max_pot = five_times_the_pot();
+  require(capped != uncapped, "configuration equality sees the cap");
+  require(pb::game_config_fingerprint(capped) != pb::game_config_fingerprint(uncapped),
+          "the cap enters the configuration fingerprint");
+  const auto capped_json = pb::serialize_game_config_json(capped);
+  constexpr std::string_view serialized_key = "\"postflop_all_in_max_pot_basis_points\": 50000";
+  const auto key_position = capped_json.find(serialized_key);
+  require(key_position != std::string::npos, "a set cap is serialized in basis points");
+  const auto reparsed = pb::parse_game_config_json(capped_json);
+  require(reparsed.has_value() && reparsed.value() == capped,
+          "the cap survives a serialization round trip");
+
+  const auto parse_with_value = [&](const std::string_view value) {
+    auto text = capped_json;
+    text.replace(key_position, serialized_key.size(),
+                 std::string("\"postflop_all_in_max_pot_basis_points\": ") + std::string(value));
+    return pb::parse_game_config_json(text);
+  };
+  for (const auto [value, basis_points] :
+       {std::pair<std::string_view, std::uint32_t>{"1", 1U},
+        std::pair<std::string_view, std::uint32_t>{"100000", 100'000U}}) {
+    const auto parsed = parse_with_value(value);
+    require(parsed.has_value() && parsed.value().postflop_all_in_max_pot.has_value() &&
+                parsed.value().postflop_all_in_max_pot.value().basis_points() == basis_points,
+            "caps from one basis point to 10x the pot are accepted");
+  }
+  for (const std::string_view invalid :
+       {"0", "100001", "-1", "50000.0", "5e4", "\"50000\"", "null", "true", "[]"}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidValue,
+            "a cap outside 1..100000 or not an integer is rejected as an invalid value");
+  }
+
+  // The two benchmark variants are the step 2 trees plus the 5x cap, with
+  // their own ids.
+  for (const auto [base, variant, id] :
+       {std::array<std::string_view, 3>{"HU50_step2.json", "HU50_step2_allin5x.json",
+                                        "MONKER-HU50-STEP2-ALLIN5X-001"},
+        std::array<std::string_view, 3>{"HU50_step2_donk.json", "HU50_step2_donk_allin5x.json",
+                                        "MONKER-HU50-STEP2-DONK-ALLIN5X-001"}}) {
+    auto expected = load_monker(base);
+    expected.id = std::string(id);
+    expected.postflop_all_in_max_pot = five_times_the_pot();
+    require(load_monker(variant) == expected,
+            std::string(variant) + " is " + std::string(base) + " with the 5x cap");
+  }
+}
+
+// Without the key every configuration and every tree keeps its fingerprint:
+// the suite values gtosd_preflop_blueprint_game recorded in
+// benchmarks/suite/actions and the MonkerSolver HU50 trees measured on
+// 2026-09-29 before the cap existed.
+void test_fingerprints_without_the_cap() {
+  struct Frozen {
+    std::string_view path;
+    std::string_view config;
+    std::string_view tree;
+  };
+  for (const auto &frozen : {Frozen{"benchmarks/suite/fixtures/HU10.json",
+                                    "fnv1a64:d7585ed4add81e39", "fnv1a64:d7b31d6f2cb759fc"},
+                             Frozen{"benchmarks/suite/fixtures/HU10-FULL.json",
+                                    "fnv1a64:d3ea597979f33cbd", "fnv1a64:bc9e7b35ad8c021d"},
+                             Frozen{"benchmarks/suite/fixtures/HU20.json",
+                                    "fnv1a64:6c7f8a7484f87014", "fnv1a64:f5b432de223744cc"},
+                             Frozen{"benchmarks/suite/fixtures/HU20-2.json",
+                                    "fnv1a64:daec4717349ea62c", "fnv1a64:7b59c6cacc9f5da5"},
+                             Frozen{"benchmarks/suite/fixtures/HU30.json",
+                                    "fnv1a64:e89fbd8a269c7494", "fnv1a64:17dc5c7d07ea30c2"},
+                             Frozen{"benchmarks/suite/fixtures/HU40.json",
+                                    "fnv1a64:abbaffde7936699f", "fnv1a64:18d08f453034ac0f"},
+                             Frozen{"benchmarks/suite/fixtures/HU40-FULL.json",
+                                    "fnv1a64:51e0b2530dc3511e", "fnv1a64:d6c10723d35b9503"},
+                             Frozen{"benchmarks/monker/HU50.json", "fnv1a64:d2ecda83778fd1d2",
+                                    "fnv1a64:d535abd7f76a586f"},
+                             Frozen{"benchmarks/monker/HU50_step2.json", "fnv1a64:4e975e019c8867e6",
+                                    "fnv1a64:61b31653264e1782"},
+                             Frozen{"benchmarks/monker/HU50_step2_donk.json",
+                                    "fnv1a64:f181a0fec25a83ed", "fnv1a64:c21be92c2a7c9133"}}) {
+    const auto config = load_config(std::filesystem::path(frozen.path));
+    require(!config.postflop_all_in_max_pot.has_value(),
+            std::string(frozen.path) + " carries no all-in cap");
+    require(pb::game_config_fingerprint(config) == frozen.config,
+            std::string(frozen.path) + " keeps its configuration fingerprint, got " +
+                pb::game_config_fingerprint(config));
+    const auto game = compile(config);
+    require(game.fingerprint() == frozen.tree,
+            std::string(frozen.path) + " keeps its tree fingerprint, got " + game.fingerprint());
+  }
+}
+
+// Preflop decisions in node order: public state and actions.
+std::vector<std::pair<std::string, std::vector<gtosd::Action>>>
+preflop_decisions(const pb::CompiledGame &game) {
+  std::vector<std::pair<std::string, std::vector<gtosd::Action>>> result;
+  for (const auto &node : game.nodes()) {
+    if (node.street != gtosd::Street::Preflop || node.kind != pb::NodeKind::Decision) {
+      continue;
+    }
+    std::vector<gtosd::Action> actions;
+    for (const auto &edge : game.edges_of(node.id)) {
+      actions.push_back(edge.action);
+    }
+    result.emplace_back(gtosd::serialize_public_state(game.states()[node.id]), std::move(actions));
+  }
+  return result;
+}
+
+// The rule read off the public state, independently of action_config_at:
+// the all-in is offered when the chips it adds above the call are at most
+// five times the pot after the call. Counts, by street, the decisions of a
+// capped tree that lose it (check-only decisions under the donk-bet rule
+// are skipped).
+std::array<std::uint64_t, 3> check_all_in_cap_rule(const pb::CompiledGame &game) {
+  std::array<std::uint64_t, 3> removed{};
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::Decision || node.street == gtosd::Street::Preflop ||
+        check_only(game, node.id)) {
+      continue;
+    }
+    const auto &state = game.states()[node.id];
+    const auto to_call = gtosd::amount_to_call(state, state.player_to_act).units();
+    const auto stack = state.remaining_stacks[state.player_to_act].units();
+    const auto above_call = stack - std::min(stack, to_call);
+    const auto pot_after_call = state.pot.units() + to_call;
+    const bool within_cap = above_call > 0 && above_call <= 5 * pot_after_call;
+    require(has_all_in(game, node.id) == within_cap,
+            "a postflop all-in exists exactly when it is at most 5x the pot after the call");
+    if (above_call > 0 && !within_cap) {
+      ++removed[static_cast<std::size_t>(node.street) - 1U];
+    }
+  }
+  return removed;
+}
+
+// Postflop all-in capped at 5x the pot (user decision of 2026-09-29) on the
+// MonkerSolver step 2 trees: pots of 4a (limp, check) with 48a behind and
+// 12a (open called, or limp, isolation, call) with 44a behind. Amounts are
+// the chips the actor adds, in units (1a = 10,000).
+void test_postflop_all_in_cap() {
+  using gtosd::ActionType;
+  const auto uncapped = compile(load_monker("HU50_step2.json"));
+  const auto capped_config = load_monker("HU50_step2_allin5x.json");
+  const auto capped = compile(capped_config);
+  test_structure_and_transitions(capped, false);
+  test_payoffs(capped);
+
+  // The preflop is MonkerSolver's tree whatever the cap: same eight
+  // decisions, same actions, the 49a open-shove at the root included.
+  const auto preflop = preflop_decisions(capped);
+  require(preflop.size() == 8U && preflop == preflop_decisions(uncapped) &&
+              legacy_preflop_fingerprint(capped) == legacy_preflop_fingerprint(uncapped) &&
+              capped.stats().preflop_nodes == uncapped.stats().preflop_nodes &&
+              capped.stats().postflop_entries == uncapped.stats().postflop_entries,
+          "the cap leaves the preflop part untouched: same 8 decisions and actions");
+  require(has_edge(capped, capped.root(), ActionType::AllIn, 490'000),
+          "the 49a open-shove stays at the root");
+
+  // (1) Limp, check: pot 4a, 48a behind. The all-in lead (48a > 5 x 4a)
+  // disappears for both players; the pot bet stays.
+  const std::vector<Step> limp_checked{{ActionType::Call, 10'000}, {ActionType::Check, 0}};
+  const auto limped_flop = walk(capped, limp_checked);
+  require(capped.nodes()[limped_flop].street == gtosd::Street::Flop &&
+              capped.nodes()[limped_flop].actor == 0U &&
+              capped.nodes()[limped_flop].action_count == 2U &&
+              has_edge(capped, limped_flop, ActionType::Check, 0) &&
+              has_edge(capped, limped_flop, ActionType::Bet, 40'000),
+          "(1) limped flop: the CO may check or bet 4a, no 48a all-in into 4a");
+  require(has_edge(uncapped, walk(uncapped, limp_checked), ActionType::AllIn, 480'000),
+          "without the cap the CO may shove 48a into 4a");
+  const auto limped_flop_btn = follow(capped, limped_flop, ActionType::Check, 0);
+  require(capped.nodes()[limped_flop_btn].action_count == 2U &&
+              has_edge(capped, limped_flop_btn, ActionType::Bet, 40'000) &&
+              !has_all_in(capped, limped_flop_btn),
+          "(1) the BTN after the check: bet 4a, no all-in");
+
+  // (2) Facing the 4a bet: 44a above the call against a pot of 12a after the
+  // call (44 <= 60), so the all-in raise (48a added) stays next to the pot
+  // raise to 16a.
+  const auto facing_bet = follow(capped, limped_flop, ActionType::Bet, 40'000);
+  require(capped.nodes()[facing_bet].action_count == 4U &&
+              has_edge(capped, facing_bet, ActionType::Fold, 0) &&
+              has_edge(capped, facing_bet, ActionType::Call, 40'000) &&
+              has_edge(capped, facing_bet, ActionType::Raise, 160'000) &&
+              has_edge(capped, facing_bet, ActionType::AllIn, 480'000),
+          "(2) facing 4a in the limped pot: fold, call, raise to 16a, all-in 48a");
+
+  // (3) The flop and then the turn checked through: the pot is still 4a, so
+  // the turn and river leads lose the all-in too.
+  auto flop_checked = limp_checked;
+  flop_checked.insert(flop_checked.end(), {{ActionType::Check, 0}, {ActionType::Check, 0}});
+  auto turn_checked = flop_checked;
+  turn_checked.insert(turn_checked.end(), {{ActionType::Check, 0}, {ActionType::Check, 0}});
+  for (const auto &line : {flop_checked, turn_checked}) {
+    const auto lead = walk(capped, line);
+    const auto after_check = follow(capped, lead, ActionType::Check, 0);
+    require(capped.nodes()[lead].street != gtosd::Street::Flop &&
+                capped.states()[lead].pot.units() == 40'000 && !has_all_in(capped, lead) &&
+                !has_all_in(capped, after_check) &&
+                has_edge(capped, lead, ActionType::Bet, 40'000) &&
+                has_edge(uncapped, walk(uncapped, line), ActionType::AllIn, 480'000),
+            "(3) turn and river of the limped pot checked through: no all-in lead");
+  }
+
+  // (4) The 12a pots keep every all-in: 44a <= 5 x 12a.
+  const std::vector<Step> open_called{{ActionType::Raise, 50'000}, {ActionType::Call, 40'000}};
+  const auto opened_flop = walk(capped, open_called);
+  require(has_edge(capped, opened_flop, ActionType::AllIn, 440'000) &&
+              has_edge(capped, follow(capped, opened_flop, ActionType::Check, 0), ActionType::AllIn,
+                       440'000),
+          "(4) open called: both players keep the 44a all-in into 12a");
+  const std::vector<Step> limp_isolated_called{
+      {ActionType::Call, 10'000}, {ActionType::Bet, 40'000}, {ActionType::Call, 40'000}};
+  const auto isolated_flop = walk(capped, limp_isolated_called);
+  require(check_only(capped, isolated_flop) &&
+              has_edge(capped, follow(capped, isolated_flop, ActionType::Check, 0),
+                       ActionType::AllIn, 440'000),
+          "(4) limp, isolation, call: the aggressor keeps the 44a all-in into 12a");
+
+  // (5) Boundary: with 22a stacks the limped flop leaves 20a = 5 x 4a behind
+  // and the all-in lead stays; one unit more and it goes.
+  auto boundary_config = capped_config;
+  boundary_config.effective_stack = units(220'000);
+  const auto at_boundary = compile(boundary_config);
+  require(has_edge(at_boundary, walk(at_boundary, limp_checked), ActionType::AllIn, 200'000),
+          "(5) an all-in of exactly 5x the pot is allowed");
+  boundary_config.effective_stack = units(220'001);
+  const auto above_boundary = compile(boundary_config);
+  require(!has_all_in(above_boundary, walk(above_boundary, limp_checked)),
+          "(5) one unit above 5x the pot removes it");
+
+  // Everywhere else the tree follows the rule; the removed all-ins are the
+  // leads into the 4a pot on each street.
+  const auto removed = check_all_in_cap_rule(capped);
+  require(check_only_decisions(capped) == check_only_decisions(uncapped),
+          "the cap creates no check-only decision");
+
+  // The same cap with donk bets.
+  const auto donk = compile(load_monker("HU50_step2_donk.json"));
+  const auto donk_capped = compile(load_monker("HU50_step2_donk_allin5x.json"));
+  test_structure_and_transitions(donk_capped, false);
+  test_payoffs(donk_capped);
+  require(preflop_decisions(donk_capped) == preflop, "donk variant: the same preflop");
+  const auto donk_removed = check_all_in_cap_rule(donk_capped);
+  require(check_only_decisions(donk_capped) == 0U, "donk variant: no check-only decision");
+
+  // Six all-in leads go in each tree (both players, flop, turn and river of
+  // the 4a pot), each with the fold-or-call decision behind it: 18 nodes.
+  const auto &stats = capped.stats();
+  const auto &donk_stats = donk_capped.stats();
+  constexpr std::array<std::uint64_t, 3> two_per_street{2U, 2U, 2U};
+  require(removed == two_per_street && stats.node_count == 475U && stats.decision_nodes == 193U &&
+              stats.postflop_decisions_by_street == std::array<std::uint64_t, 3>{23U, 56U, 106U} &&
+              uncapped.stats().node_count == 493U && uncapped.stats().decision_nodes == 199U,
+          "HU50 step 2 with the 5x cap: 475 nodes (493 without), 193 decisions (23/56/106)");
+  require(capped.fingerprint() == "fnv1a64:d5881c39de9cc238",
+          "HU50 step 2 with the 5x cap: frozen tree fingerprint, got " + capped.fingerprint());
+  require(donk_removed == two_per_street && donk_stats.node_count == 553U &&
+              donk_stats.decision_nodes == 222U &&
+              donk_stats.postflop_decisions_by_street ==
+                  std::array<std::uint64_t, 3>{26U, 66U, 122U} &&
+              donk.stats().node_count == 571U && donk.stats().decision_nodes == 228U,
+          "HU50 step 2 donk with the 5x cap: 553 nodes (571 without), 222 decisions (26/66/122)");
+  require(donk_capped.fingerprint() == "fnv1a64:2ccd265dfe0e4902",
+          "HU50 step 2 donk with the 5x cap: frozen tree fingerprint, got " +
+              donk_capped.fingerprint());
+  std::cout << "HU50 step 2 all-in <= 5x pot: nodes=" << stats.node_count
+            << " decisions=" << stats.decision_nodes
+            << " postflop decisions=" << stats.postflop_decisions_by_street[0] << '/'
+            << stats.postflop_decisions_by_street[1] << '/' << stats.postflop_decisions_by_street[2]
+            << " removed all-ins=" << removed[0] << '/' << removed[1] << '/' << removed[2]
+            << " fingerprint=" << capped.fingerprint()
+            << " (uncapped nodes=" << uncapped.stats().node_count
+            << " decisions=" << uncapped.stats().decision_nodes
+            << "); with donk bets: nodes=" << donk_stats.node_count
+            << " decisions=" << donk_stats.decision_nodes
+            << " postflop decisions=" << donk_stats.postflop_decisions_by_street[0] << '/'
+            << donk_stats.postflop_decisions_by_street[1] << '/'
+            << donk_stats.postflop_decisions_by_street[2] << " removed all-ins=" << donk_removed[0]
+            << '/' << donk_removed[1] << '/' << donk_removed[2]
+            << " fingerprint=" << donk_capped.fingerprint()
+            << " (uncapped nodes=" << donk.stats().node_count
+            << " decisions=" << donk.stats().decision_nodes << ")\n";
+}
+
 } // namespace
 
 int main() {
@@ -906,6 +1219,9 @@ int main() {
     test_donk_bet_config_key();
     test_tree_fingerprints_without_the_flag(co40);
     test_no_donk_bets();
+    test_all_in_cap_config_key();
+    test_fingerprints_without_the_cap();
+    test_postflop_all_in_cap();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
     std::cout << "PREFLOP_BLUEPRINT_GAME_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

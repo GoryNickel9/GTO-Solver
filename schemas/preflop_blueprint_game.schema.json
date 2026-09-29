@@ -71,6 +71,7 @@
     "postflop_minimum_bet_units": {"type": "integer", "minimum": 1},
     "include_all_in": {"const": true},
     "postflop_donk_bets": {"type": "boolean", "description": "Optional. false removes donk bets: before any bet on a postflop street a player cannot bet into the last aggressor of the previous round who acts later. Absent means true."},
+    "postflop_all_in_max_pot_basis_points": {"type": "integer", "minimum": 1, "maximum": 100000, "description": "Optional. Largest postflop all-in in basis points of the pot (50000 = 5x): the all-in is offered only when the chips it adds above the call are at most this fraction of the pot after the call (boundary included). A size whose bet reaches the stack still becomes the all-in. Preflop is not affected. Absent means an all-in at every postflop decision."},
     "raise_termination": {"const": "natural_stack"},
     "rake_mode": {"const": "disabled"}
   }

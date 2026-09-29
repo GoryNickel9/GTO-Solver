@@ -57,6 +57,8 @@ inline constexpr std::uint8_t no_aggressor = 0xFFU;
 // forbids donk bets: while nobody has bet on the street the actor may only
 // check if that player is still in the hand, is not all-in and acts later.
 // The default no_aggressor never restricts; any other value must be a seat.
+// Postflop the all-in is offered at every decision, or only up to
+// postflop_all_in_max_pot when the configuration sets it.
 action_config_at(const GameConfig &config, const PublicState &state, AggressionLevel level,
                  bool limped_pot = false, std::uint8_t previous_round_aggressor = no_aggressor);
 

@@ -161,6 +161,11 @@ OrderedJson to_ordered_json(const GameConfig &config) {
   if (!config.postflop_donk_bets) {
     root["postflop_donk_bets"] = false;
   }
+  // Emitted only when set: without the cap every fingerprint stays as it was.
+  if (config.postflop_all_in_max_pot.has_value()) {
+    root["postflop_all_in_max_pot_basis_points"] =
+        config.postflop_all_in_max_pot.value().basis_points();
+  }
   root["raise_termination"] = "natural_stack";
   root["rake_mode"] = config.rake.enabled ? "enabled" : "disabled";
   return root;
@@ -180,6 +185,7 @@ bool operator==(const GameConfig &left, const GameConfig &right) {
          left.postflop_minimum_bet == right.postflop_minimum_bet &&
          left.include_all_in == right.include_all_in &&
          left.postflop_donk_bets == right.postflop_donk_bets &&
+         left.postflop_all_in_max_pot == right.postflop_all_in_max_pot &&
          left.rake.enabled == right.rake.enabled &&
          left.rake.percentage == right.rake.percentage && left.rake.cap == right.rake.cap &&
          left.rake.no_flop_no_drop == right.rake.no_flop_no_drop &&
@@ -255,6 +261,12 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
                            config.postflop_sizes[index - 1U].basis_points())) {
       return Validation::failure(ConfigError::InvalidValue);
     }
+  }
+  // A zero cap would remove every explicit postflop all-in; PotPercentage
+  // already bounds the value at 100,000 basis points (10x the pot).
+  if (config.postflop_all_in_max_pot.has_value() &&
+      config.postflop_all_in_max_pot.value().basis_points() == 0U) {
+    return Validation::failure(ConfigError::InvalidValue);
   }
   if (!config.include_all_in || config.rake.enabled) {
     return Validation::failure(ConfigError::InvalidValue);
@@ -385,6 +397,19 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
         return Parsed::failure(donk_bets.error());
       }
       config.postflop_donk_bets = donk_bets.value();
+    }
+    // Optional integer: a missing key offers the postflop all-in at every
+    // decision, the behaviour of every configuration written before it.
+    if (root.contains("postflop_all_in_max_pot_basis_points")) {
+      const auto &cap = root.at("postflop_all_in_max_pot_basis_points");
+      if (!cap.is_number_integer()) {
+        return Parsed::failure(ConfigError::InvalidValue);
+      }
+      const auto percentage = PotPercentage::from_basis_points(cap.get<std::int64_t>());
+      if (!percentage) {
+        return Parsed::failure(ConfigError::InvalidValue);
+      }
+      config.postflop_all_in_max_pot = percentage.value();
     }
 
     const auto sizes = field(root, "postflop_sizes_basis_points");
