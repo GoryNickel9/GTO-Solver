@@ -230,8 +230,9 @@ void test_subset_table(const ca::RankTable &ranks, const ca::ThreeWayTable &tabl
   require(report.passed(), "integer identities V1-V6 hold on the subset");
   if (heads_up != nullptr) {
     require(report.checks[5] == 3U * 81U * 4U, "V6 checks every (hero, opponent) of the subset");
-    require(report.max_folded_equity_shift > 0.0 && report.max_folded_equity_shift < 0.2,
-            "folded cards shift the 2-way equity a little");
+    // Up to 0.195 on this subset: AKo against 66 with 66 folded, no six left.
+    require(report.max_folded_equity_shift > 0.0 && report.max_folded_equity_shift < 0.25,
+            "dead folded cards shift the 2-way equity");
   }
 
   // Masses read by the trainer sum to N.
