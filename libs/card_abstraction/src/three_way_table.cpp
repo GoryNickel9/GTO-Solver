@@ -188,8 +188,9 @@ std::uint32_t orbit_weight(const HeroContext &hero, const std::array<std::uint8_
 //   D = n n^T - diag(n) - (ordered pairs of distinct combos sharing a card),
 // and two distinct combos share at most one card, so the last term is a sum
 // over the shared card c of m_c m_c^T - diag(m_c), m_c the key histogram of
-// the 28 combos holding c. Both products run over the present keys only
-// (about 84 of the 243, and about 18 per card), in ascending key order.
+// the 28 combos holding c. Both products run over the present keys only (84
+// of the 243 on average for the AKo hero, at most 28 per card), in ascending
+// key order.
 class BoardKernel {
 public:
   BoardKernel(const RankTable &ranks, const HeroContext &hero) : ranks_(ranks), hero_(hero) {}
