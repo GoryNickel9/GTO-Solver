@@ -692,6 +692,301 @@ std::uint64_t check_only_decisions(const pb::CompiledGame &game) {
   return count;
 }
 
+// Tree of the MonkerSolver 3-way 50a charts: a pot-sized first raise, then
+// fold, call or all-in; postflop the HU50 G1 rules (one pot size, the all-in,
+// donk bets).
+pb::GameConfig load_three_way50() {
+  return load_config(std::filesystem::path("benchmarks") / "monker" / "3WAY50_donk.json");
+}
+
+gtosd::PotPercentage pot_raise() { return gtosd::PotPercentage::from_basis_points(10'000).value(); }
+
+// preflop_open_sizes_basis_points: optional list, serialized only when set and
+// mutually exclusive with open_target_units.
+void test_open_sizes_config_key() {
+  // Every configuration written before the key keeps its serialization; their
+  // frozen fingerprints are checked by test_fingerprints_without_the_cap.
+  for (const std::string_view path :
+       {"benchmarks/fixtures/preflop_blueprint_co40_v1.json",
+        "benchmarks/fixtures/preflop_blueprint_hu10_full_v1.json",
+        "benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json", "benchmarks/monker/HU50.json",
+        "benchmarks/monker/HU50_step2_donk.json"}) {
+    const auto config = load_config(std::filesystem::path(path));
+    const auto serialized = pb::serialize_game_config_json(config);
+    require(config.open_sizes.empty() && serialized.find("preflop_open_sizes") == std::string::npos,
+            std::string(path) + " has live open targets and serializes no open size");
+  }
+
+  const auto targets = load_hu50();
+  auto pot = targets;
+  pot.open_targets.clear();
+  pot.open_sizes = {pot_raise()};
+  require(pb::validate_game_config(pot).has_value(), "pot mode validates");
+  require(pot != targets &&
+              pb::game_config_fingerprint(pot) != pb::game_config_fingerprint(targets),
+          "the open sizes enter operator== and the configuration fingerprint");
+  const auto pot_json = pb::serialize_game_config_json(pot);
+  const auto key_position = pot_json.find("\"preflop_open_sizes_basis_points\": [");
+  require(key_position != std::string::npos &&
+              pot_json.find("\"open_target_units\": []") != std::string::npos,
+          "pot mode serializes the sizes next to an empty target list");
+  const auto reparsed = pb::parse_game_config_json(pot_json);
+  require(reparsed.has_value() && reparsed.value() == pot &&
+              pb::game_config_fingerprint(reparsed.value()) == pb::game_config_fingerprint(pot),
+          "the open sizes survive a serialization round trip");
+
+  const auto value_end = pot_json.find(']', key_position) + 1U;
+  const auto parse_with_value = [&](const std::string_view value) {
+    auto text = pot_json;
+    text.replace(key_position, value_end - key_position,
+                 std::string("\"preflop_open_sizes_basis_points\": ") + std::string(value));
+    return pb::parse_game_config_json(text);
+  };
+  for (const auto [value, count] :
+       {std::pair<std::string_view, std::size_t>{"[5000, 10000]", 2U},
+        std::pair<std::string_view, std::size_t>{"[1, 50000, 100000]", 3U}}) {
+    const auto parsed = parse_with_value(value);
+    require(parsed.has_value() && parsed.value().open_sizes.size() == count,
+            "up to three increasing sizes from 1 to 100000 basis points are accepted");
+  }
+  for (const std::string_view invalid :
+       {"[0]", "[10000, 10000]", "[10000, 5000]", "[100001]", "[-1]", "[10000.0]", "[\"10000\"]",
+        "[null]", "10000", "null", "true", "{}"}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidValue,
+            "zero, out of range, not increasing or not a list of integers: an invalid value, " +
+                std::string(invalid));
+  }
+  for (const std::string_view invalid : {"[]", "[2500, 5000, 7500, 10000]"}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidStructure,
+            "an empty list or more than three sizes is an invalid structure: " +
+                std::string(invalid));
+  }
+
+  // Exactly one kind of first raise, and no re-raise target in pot mode.
+  auto both = pot;
+  both.open_targets = {antes(5)};
+  auto neither = pot;
+  neither.open_sizes.clear();
+  auto response = pot;
+  response.response_targets = {antes(7)};
+  auto limp_response = pot;
+  limp_response.limp_response_targets = std::vector<gtosd::Money>{antes(7)};
+  for (const auto *invalid : {&both, &neither, &response, &limp_response}) {
+    const auto valid = pb::validate_game_config(*invalid);
+    require(!valid.has_value() && valid.error() == pb::ConfigError::InvalidStructure,
+            "open targets and open sizes exclude each other, and pot mode has no response target");
+  }
+  auto limp_all_in = pot;
+  limp_all_in.limp_response_targets = std::vector<gtosd::Money>{};
+  require(pb::validate_game_config(limp_all_in).has_value(),
+          "an empty limped-pot response list (all-in only) is allowed in pot mode");
+
+  // The 3-way fixtures: pot mode, and their variants with their own ids.
+  const auto three_way = load_three_way50();
+  require(three_way.player_count == 3U &&
+              three_way.positions == std::vector<std::string>{"UTG", "CO", "BTN"} &&
+              three_way.open_targets.empty() &&
+              three_way.open_sizes == std::vector<gtosd::PotPercentage>{pot_raise()} &&
+              three_way.response_targets.empty() && !three_way.limp_response_targets.has_value(),
+          "3WAY50_donk is in pot mode with a single 100 % open size");
+  auto capped = three_way;
+  capped.id = "MONKER-3WAY50-DONK-ALLIN5X-001";
+  capped.postflop_all_in_max_pot = gtosd::PotPercentage::from_basis_points(50'000).value();
+  require(load_config("benchmarks/monker/3WAY50_donk_allin5x.json") == capped,
+          "3WAY50_donk_allin5x is 3WAY50_donk with the 5x cap");
+  auto deeper = three_way;
+  deeper.id = "MONKER-3WAY100-DONK-001";
+  deeper.effective_stack = antes(100);
+  require(load_config("benchmarks/monker/3WAY100_donk.json") == deeper,
+          "3WAY100_donk is 3WAY50_donk with 100a stacks");
+}
+
+// Pot mode reproduces the HU50 target tree: the pot-sized open is 5a (pot 3a
+// plus the 1a call, on top of the call) and the BTN's pot bet over the limp
+// adds 4a to its blind, exactly open_target_units [50000]. Only the
+// fingerprints move, because the configuration is part of them.
+void test_hu50_pot_mode_equivalence() {
+  const auto targets_config = load_config("benchmarks/monker/HU50_step2_donk.json");
+  auto pot_config = targets_config;
+  pot_config.open_targets.clear();
+  pot_config.open_sizes = {pot_raise()};
+  const auto targets = compile(targets_config);
+  const auto pot = compile(pot_config);
+  require(targets.nodes().size() == 571U && pot.nodes().size() == targets.nodes().size(),
+          "pot mode compiles the 571 nodes of HU50_step2_donk");
+  for (const auto &node : pot.nodes()) {
+    const auto &other = targets.nodes()[node.id];
+    require(node.kind == other.kind && node.level == other.level &&
+                node.limped_pot == other.limped_pot && node.actor == other.actor &&
+                node.action_count == other.action_count &&
+                gtosd::serialize_public_state(pot.states()[node.id]) ==
+                    gtosd::serialize_public_state(targets.states()[node.id]),
+            "pot mode: same node kind, level and public state");
+    const auto edges = pot.edges_of(node.id);
+    const auto other_edges = targets.edges_of(node.id);
+    for (std::size_t index = 0; index < edges.size(); ++index) {
+      require(edges[index].action.type == other_edges[index].action.type &&
+                  edges[index].action.amount == other_edges[index].action.amount &&
+                  edges[index].action.all_in_kind == other_edges[index].action.all_in_kind &&
+                  edges[index].child == other_edges[index].child,
+              "pot mode: same edges, amounts and children");
+    }
+    if (node.kind == pb::NodeKind::TerminalFold) {
+      const auto payoffs = pot.fold_payoffs(node.id);
+      const auto other_payoffs = targets.fold_payoffs(node.id);
+      require(std::equal(payoffs.begin(), payoffs.end(), other_payoffs.begin()),
+              "pot mode: same fold payoffs");
+    }
+  }
+  require(pot.fingerprint() != targets.fingerprint(),
+          "the tree fingerprint follows the configuration");
+  test_structure_and_transitions(pot, false);
+  test_payoffs(pot);
+}
+
+// Preflop tree of the MonkerSolver 3-way 50a charts (54 files): a pot-sized
+// first raise (6a UTG open, 7a CO isolation over the limp, 6a / 7a BTN raise
+// over one / two limps), then fold, call or all-in; limps, over-limps, cold
+// calls and multiway calls of an all-in allowed. Amounts are the chips the
+// actor adds, in units (1a = 10,000).
+void test_three_way_monker_preflop() {
+  using gtosd::ActionType;
+  pb::CompileOptions options;
+  options.preflop_only = true;
+  const auto game = compile(load_three_way50(), options);
+  const auto &stats = game.stats();
+  std::array<std::uint64_t, 4> entries_by_players{};
+  for (const auto entry : game.postflop_entries()) {
+    ++entries_by_players[static_cast<std::size_t>(std::popcount(game.nodes()[entry].active_mask))];
+  }
+  require(stats.node_count == 130U && stats.preflop_decisions == 54U &&
+              stats.preflop_terminal_folds == 25U && stats.preflop_all_in_runouts == 36U &&
+              stats.postflop_entries == 15U && entries_by_players[2] == 11U &&
+              entries_by_players[3] == 4U,
+          "3-way 50a preflop: 130 nodes, 54 decisions, 25 folds, 36 all-in runouts, 15 entries "
+          "(11 two-way, 4 three-way)");
+  require(game.fingerprint() == "fnv1a64:1eecd0ede02825d5",
+          "the 3-way 50a preflop tree keeps its fingerprint, got " + game.fingerprint());
+
+  const auto root = game.root();
+  require(has_edge(game, root, ActionType::Raise, 60'000) &&
+              has_edge(game, root, ActionType::AllIn, 490'000),
+          "UTG opens to 6a (pot 4a, call 1a: 1 + 5) or shoves 49a");
+  const auto utg_limp = follow(game, root, ActionType::Call, 10'000);
+  require(has_edge(game, utg_limp, ActionType::Raise, 70'000),
+          "CO isolates the UTG limp to 7a (pot 5a, call 1a: 1 + 6)");
+  const auto co_fold = follow(game, utg_limp, ActionType::Fold, 0);
+  require(game.nodes()[co_fold].actor == 2U && has_edge(game, co_fold, ActionType::Bet, 50'000),
+          "after UTG limp and CO fold the BTN raises to 6a (5a on its 1a blind)");
+  const auto co_limp = follow(game, utg_limp, ActionType::Call, 10'000);
+  require(has_edge(game, co_limp, ActionType::Bet, 60'000),
+          "over two limps the BTN raises to 7a (6a on its 1a blind)");
+  const auto utg_fold = follow(game, root, ActionType::Fold, 0);
+  require(game.nodes()[utg_fold].actor == 1U && has_edge(game, utg_fold, ActionType::Raise, 60'000),
+          "after the UTG fold the CO opens to 6a");
+
+  // Every sized raise follows the pot rule, read off the public state; after
+  // the first raise only fold, call and all-in remain, and facing an all-in
+  // only fold and call.
+  const std::vector<ActionType> fold_call_all_in{ActionType::Fold, ActionType::Call,
+                                                 ActionType::AllIn};
+  const std::vector<ActionType> fold_call{ActionType::Fold, ActionType::Call};
+  const std::vector<ActionType> first_raise{ActionType::Fold, ActionType::Call, ActionType::Raise,
+                                            ActionType::AllIn};
+  const std::vector<ActionType> button_option{ActionType::Check, ActionType::Bet,
+                                              ActionType::AllIn};
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::Decision) {
+      continue;
+    }
+    const auto &state = game.states()[node.id];
+    std::vector<ActionType> types;
+    for (const auto &edge : game.edges_of(node.id)) {
+      types.push_back(edge.action.type);
+      if (edge.action.type == ActionType::Bet || edge.action.type == ActionType::Raise) {
+        const auto to_call = gtosd::amount_to_call(state, state.player_to_act).units();
+        require(node.level == 0U &&
+                    edge.action.amount.units() - to_call == state.pot.units() + to_call,
+                "a sized raise adds the pot after the call on top of the call");
+      }
+    }
+    if (pb::facing_all_in(state)) {
+      require(types == fold_call, "facing an all-in: fold or call");
+    } else if (node.level >= 1U) {
+      require(types == fold_call_all_in, "after the first raise: fold, call or all-in");
+    } else if (node.actor == 2U) {
+      require(types == button_option, "the BTN over limps: check, the sized raise or the all-in");
+    } else {
+      require(types == first_raise,
+              "before the first raise: fold, limp, the sized raise or the all-in");
+    }
+  }
+  test_structure_and_transitions(game, true);
+  test_payoffs(game);
+  std::cout << "3-way 50a MonkerSolver preflop: nodes=" << stats.node_count
+            << " decisions=" << stats.preflop_decisions << " folds=" << stats.preflop_terminal_folds
+            << " all_in_runouts=" << stats.preflop_all_in_runouts
+            << " entries=" << stats.postflop_entries << " (" << entries_by_players[2]
+            << " two-way, " << entries_by_players[3] << " three-way)"
+            << " fingerprint=" << game.fingerprint() << '\n';
+}
+
+// The full 3-way 50a trees, first compiled in C++ here, against the counts of
+// the independent Python oracle (tools/monker_compare/monker_tree_oracle.py,
+// which also reproduces the C++ HU50 counts 493 / 571 / 8,599): nodes,
+// decisions and edges per street, and the cells of the compact abstraction
+// (15x4 buckets + TX2 turn classes: 34,380 / 268,920 / 67,230 rows). The
+// tree fingerprints were frozen when the counts first matched (2026-09-30).
+void test_three_way_full_counts() {
+  struct Expected {
+    std::string_view path;
+    std::uint64_t nodes;
+    std::array<std::uint64_t, 4> decisions;
+    std::array<std::uint64_t, 4> edges;
+    std::array<std::uint64_t, 4> cells;
+    std::string_view tree;
+  };
+  for (const auto &expected : {Expected{"benchmarks/monker/3WAY50_donk.json",
+                                        7'225U,
+                                        {54U, 330U, 936U, 1'802U},
+                                        {129U, 790U, 2'078U, 3'886U},
+                                        {10'449U, 27'160'200U, 558'815'760U, 261'255'780U},
+                                        "fnv1a64:49412deedbe6f6cc"},
+                               Expected{"benchmarks/monker/3WAY50_donk_allin5x.json",
+                                        7'126U,
+                                        {54U, 317U, 923U, 1'789U},
+                                        {129U, 757U, 2'045U, 3'853U},
+                                        {10'449U, 26'025'660U, 549'941'400U, 259'037'190U},
+                                        "fnv1a64:78322185bfa4d03d"}}) {
+    const auto game = compile(load_config(std::filesystem::path(expected.path)));
+    std::array<std::uint64_t, 4> decisions{};
+    std::array<std::uint64_t, 4> edges{};
+    for (const auto &node : game.nodes()) {
+      if (node.kind == pb::NodeKind::Decision) {
+        ++decisions[static_cast<std::size_t>(node.street)];
+        edges[static_cast<std::size_t>(node.street)] += node.action_count;
+      }
+    }
+    const auto layout = pb::layout_state(game, 34'380U, 268'920U, 67'230U);
+    require(game.stats().node_count == expected.nodes && decisions == expected.decisions &&
+                edges == expected.edges && layout.entries_by_street == expected.cells,
+            std::string(expected.path) + ": the oracle's nodes, decisions, edges and cells, got " +
+                std::to_string(game.stats().node_count) + " nodes, " +
+                std::to_string(layout.entries) + " cells");
+    require(game.fingerprint() == expected.tree,
+            std::string(expected.path) + " keeps its tree fingerprint, got " + game.fingerprint());
+    test_structure_and_transitions(game, false);
+    test_payoffs(game);
+    std::cout << expected.path << ": nodes=" << game.stats().node_count
+              << " decisions=" << decisions[0] << '/' << decisions[1] << '/' << decisions[2] << '/'
+              << decisions[3] << " edges=" << edges[0] << '/' << edges[1] << '/' << edges[2] << '/'
+              << edges[3] << " compact cells=" << layout.entries
+              << " fingerprint=" << game.fingerprint() << '\n';
+  }
+}
+
 // postflop_donk_bets: optional boolean, serialized only when false.
 void test_donk_bet_config_key() {
   const auto allowed = load_hu50();
@@ -1216,6 +1511,10 @@ int main() {
     test_layout(co40);
     test_hu10_trees(co40);
     test_three_way_readiness();
+    test_open_sizes_config_key();
+    test_hu50_pot_mode_equivalence();
+    test_three_way_monker_preflop();
+    test_three_way_full_counts();
     test_donk_bet_config_key();
     test_tree_fingerprints_without_the_flag(co40);
     test_no_donk_bets();

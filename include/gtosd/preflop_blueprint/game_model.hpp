@@ -48,7 +48,10 @@ inline constexpr std::uint8_t no_aggressor = 0xFFU;
 // True when the current bet of the street was set by a player who is all-in.
 [[nodiscard]] bool facing_all_in(const PublicState &state) noexcept;
 
-// Action abstraction at a decision node.
+// Action abstraction at a decision node. Preflop, level 0 offers the open
+// targets or, in pot mode, the pot-relative open sizes, level 1 the response
+// target (none in pot mode) and higher levels no sized raise; the all-in is
+// offered at every level, and facing an all-in only fold and call remain.
 [[nodiscard]] Result<ActionConfig, GameModelError>
 // `limped_pot` marks the preflop branch in which a player called the button
 // blind before the first raise; it only affects the level 1 response and only
