@@ -432,6 +432,58 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_train_smoke PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Policy snapshots with a stride: charts every 2 iterations, a policy in the
+  # snapshots of iterations 4 and 8 only. The second run asks for an impossible
+  # free-space reserve: both policies are skipped and the training still ends.
+  add_test(NAME gtosd_preflop_blueprint_train_policy_snapshot_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 8 --batch 8 --threads 2 --eval-every 0
+      --chart-every 2 --chart-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_snapshot_smoke
+      --policy-snapshots --policy-snapshot-every 4 --policy-snapshot-reserve-gb 0)
+  set_tests_properties(gtosd_preflop_blueprint_train_policy_snapshot_smoke PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    PASS_REGULAR_EXPRESSION
+      "\"iteration\":4,\"training_seconds\":[^,}]*,\"policy_fingerprint\":\"fnv1a64:[0-9a-f]+\".*\"iteration\":8,\"training_seconds\":[^,}]*,\"policy_fingerprint\":\"fnv1a64:[0-9a-f]+\".*PREFLOP_BLUEPRINT_TRAIN=ITERATION_LIMIT"
+    FAIL_REGULAR_EXPRESSION
+      "\"iteration\":[26],\"training_seconds\":[^,}]*,\"policy|policy_snapshot_(skipped|failed)|PREFLOP_BLUEPRINT_TRAIN=FAIL")
+  add_test(NAME gtosd_preflop_blueprint_train_policy_snapshot_disk_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 8 --batch 8 --threads 2 --eval-every 0
+      --chart-every 2
+      --chart-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_snapshot_disk_smoke
+      --policy-snapshots --policy-snapshot-every 4 --policy-snapshot-reserve-gb 1000000000)
+  set_tests_properties(gtosd_preflop_blueprint_train_policy_snapshot_disk_smoke PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    PASS_REGULAR_EXPRESSION
+      "\"event\":\"policy_snapshot_skipped\",\"iteration\":4,\"reason\":\"disk_space\".*\"event\":\"policy_snapshot_skipped\",\"iteration\":8,\"reason\":\"disk_space\".*PREFLOP_BLUEPRINT_TRAIN=ITERATION_LIMIT"
+    FAIL_REGULAR_EXPRESSION
+      "\"policy_seconds\"|\"iteration\":[26],\"reason\"|policy_snapshot_failed|PREFLOP_BLUEPRINT_TRAIN=FAIL")
+  add_test(NAME gtosd_preflop_blueprint_train_policy_snapshot_stride_rejected
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 1 --chart-every 2
+      --chart-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_snapshot_rejected
+      --policy-snapshots --policy-snapshot-every 3)
+  set_tests_properties(gtosd_preflop_blueprint_train_policy_snapshot_stride_rejected PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    PASS_REGULAR_EXPRESSION
+      "PREFLOP_BLUEPRINT_TRAIN=FAIL --policy-snapshot-every requires --policy-snapshots and a multiple of --chart-every")
+  foreach(smoke gtosd_preflop_blueprint_train_policy_snapshot_smoke
+                gtosd_preflop_blueprint_train_policy_snapshot_disk_smoke
+                gtosd_preflop_blueprint_train_policy_snapshot_stride_rejected)
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(${smoke} PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
+  endforeach()
 
   add_executable(gtosd_preflop_blueprint_certify preflop_blueprint_certify.cpp)
   add_executable(gtosd_preflop_blueprint_abstract_br preflop_blueprint_abstract_br.cpp)
@@ -558,10 +610,96 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   set_tests_properties(gtosd_preflop_blueprint_monker_values_orbit_smoke
     PROPERTIES LABELS "preflop_blueprint;research;monker"
                FIXTURES_REQUIRED "preflop_blueprint_smoke_policy;preflop_blueprint_smoke_monker_charts")
+  # The best response against the same chart set (--exploit): both chart
+  # players, with a river-restricted pass, on a partial canonical pass. The
+  # summary goes to a directory removed beforehand: the tool creates it.
+  set(exploit_smoke_dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_values_exploit_smoke)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_exploit_smoke_clean
+    COMMAND ${CMAKE_COMMAND} -E rm -rf ${exploit_smoke_dir})
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_exploit_smoke_clean
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_SETUP preflop_blueprint_monker_values_exploit_dir)
+  add_test(NAME gtosd_preflop_blueprint_monker_values_exploit_smoke
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_smoke
+      --all-flops --flop-limit 2 --threads 2 --no-combo-values
+      --exploit self --exploit-streets river
+      --exploit-out ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_values_exploit_smoke.json
+      --exploit-summary ${exploit_smoke_dir}/summary/exploit.txt)
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_exploit_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_REQUIRED
+                 "preflop_blueprint_smoke_policy;preflop_blueprint_smoke_monker_charts;preflop_blueprint_monker_values_exploit_dir")
+  # An output path that cannot be written fails before the first pass.
+  add_test(NAME gtosd_preflop_blueprint_monker_values_exploit_out_refused
+    COMMAND gtosd_preflop_blueprint_monker_values
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --policy ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_train_smoke_policy.bin
+      --charts self=${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_charts_smoke
+      --all-flops --flop-limit 2 --threads 2 --no-combo-values
+      --exploit self --exploit-out ${CMAKE_CURRENT_BINARY_DIR})
+  set_tests_properties(gtosd_preflop_blueprint_monker_values_exploit_out_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_MONKER_VALUES=FAIL --exploit-out names a directory"
+               FAIL_REGULAR_EXPRESSION "stage one|flops_done")
+  # Per-board bucket tables with an exact flop (one id per suit orbit), the
+  # 15x4 turn and the 15-level river, checked by
+  # gtosd_preflop_blueprint_monker_buckets_tests.
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_exact_smoke
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_buckets_exact
+      --flop-exact --levels 15 --tiers 4 --threads 4)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_exact_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_SETUP preflop_blueprint_monker_buckets_exact)
+  # The default path without per-street flags (must keep the 15x4 tables and
+  # report of the builder before per-street settings) and a per-street run
+  # (flop override equal to --levels/--tiers, turn and river at 30 levels, turn
+  # tiers from --tiers: the 30x4 turn and 30-level river tables), both checked by
+  # fingerprint in gtosd_preflop_blueprint_monker_buckets_*_tests.
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_default_smoke
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_buckets_default
+      --levels 15 --tiers 4 --threads 4)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_default_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_SETUP preflop_blueprint_monker_buckets_default)
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_streets_smoke
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_buckets_streets
+      --levels 15 --tiers 4 --flop-levels 15 --flop-tiers 4 --turn-levels 30
+      --river-levels 30 --threads 4)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_streets_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_SETUP preflop_blueprint_monker_buckets_streets)
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_exact_levels_refused
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --flop-exact --flop-levels 10)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_exact_levels_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_MONKER_BUCKETS=FAIL --flop-exact excludes --flop-levels and --flop-tiers")
   foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
                 gtosd_preflop_blueprint_compare_smoke gtosd_preflop_blueprint_postflop_tree_smoke
                 gtosd_preflop_blueprint_monker_charts_smoke gtosd_preflop_blueprint_monker_values_smoke
-                gtosd_preflop_blueprint_monker_values_orbit_smoke)
+                gtosd_preflop_blueprint_monker_values_orbit_smoke
+                gtosd_preflop_blueprint_monker_values_exploit_smoke
+                gtosd_preflop_blueprint_monker_values_exploit_out_refused
+                gtosd_preflop_blueprint_monker_buckets_exact_smoke
+                gtosd_preflop_blueprint_monker_buckets_default_smoke
+                gtosd_preflop_blueprint_monker_buckets_streets_smoke
+                gtosd_preflop_blueprint_monker_buckets_exact_levels_refused)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       set_tests_properties(${smoke} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")

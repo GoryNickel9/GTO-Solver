@@ -1987,6 +1987,10 @@ BestResponseEvaluator::aggregate(const std::vector<const FlopValues *> &flops,
         mix.node = node;
         mix.hero = hero;
         mix.action_count = entry.action_count;
+        mix.class_action.reserve(class_count);
+        for (const auto action : per_class) {
+          mix.class_action.push_back(static_cast<std::int16_t>(action));
+        }
         std::size_t seen = 0;
         for (std::size_t index = 0; index < class_count; ++index) {
           if (per_class[index] < 0) {

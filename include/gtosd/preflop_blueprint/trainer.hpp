@@ -324,6 +324,13 @@ public:
   save_average_policy(const std::filesystem::path &path, const std::string &source);
   [[nodiscard]] Result<std::string, TrainerError>
   save_current_policy(const std::filesystem::path &path, const std::string &source);
+  // Same file as save_average_policy, byte for byte in every storage and discount mode,
+  // without modifying the state: a row with a pending lazy discount is discounted into
+  // local copies rounded through the storage type exactly as the materialization would
+  // store it, so training then continues bit-identically. Used for the policy snapshots
+  // of the trainer CLI; call between iterations.
+  [[nodiscard]] Result<std::string, TrainerError>
+  save_average_policy_snapshot(const std::filesystem::path &path, const std::string &source) const;
   // Average strategy of one row, read without touching the state (training then
   // continues bit-identically). A pending lazy discount multiplies every strategy
   // sum of a row by one factor and every positive regret by another, so the
@@ -412,9 +419,18 @@ private:
   void refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *telemetry);
   template <typename Function> void for_each_row(Function &&function) const;
   void average_row(std::uint64_t offset, std::uint8_t actions, double *out) const noexcept;
+  // Average row as materialize_all_discounts() would leave it: a pending lazy discount
+  // (slot older than discount_target_) is applied to copies of the cells, each rounded
+  // through the storage type as apply_row_discount stores it. Reads only.
+  void materialized_average_row(std::uint64_t offset, std::uint8_t actions, std::uint16_t slot,
+                                double *out) const noexcept;
   void current_row(std::uint64_t offset, std::uint8_t actions, double *out) const noexcept;
   void fill_average_policy(std::vector<double> &table);
   void fill_current_policy(std::vector<double> &table);
+  // Streams the average rows; rows with a pending lazy discount are read through
+  // materialized_average_row, so the state is never modified.
+  [[nodiscard]] Result<std::string, TrainerError>
+  write_average_policy(const std::filesystem::path &path, const std::string &source) const;
   void discount_state(std::uint64_t iteration);
   void prepare_discount_factors(std::uint64_t iteration);
   void materialize_row(std::uint32_t node, std::uint32_t row, std::uint64_t iteration);

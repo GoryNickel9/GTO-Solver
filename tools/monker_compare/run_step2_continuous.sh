@@ -12,7 +12,14 @@
 # (relative paths are relative to the repository root)
 # Environment: STEP (4000), MAX (160000), THRESHOLD (0.01), CHECKPOINT_EVERY (20000),
 #              THREADS (8), STORAGE (double), BIN, RES, TRAIN_ARGS (extra trainer
-#              arguments, for example "--seed 2").
+#              arguments, for example "--seed 2"), POLICY_SNAPSHOTS (1: every snapshot
+#              also holds the average policy of its iteration, charts/it_<N>/policy.bin,
+#              read by tools/monker_compare/convergence_curve.py; one policy file per
+#              snapshot, about half the state size each), POLICY_SNAPSHOT_EVERY (with
+#              POLICY_SNAPSHOTS=1: keep a policy only every N iterations, a multiple of
+#              STEP), POLICY_SNAPSHOT_RESERVE_GB (free space kept on the disk beyond the
+#              next checkpoint and the final policy, default 1; a policy that does not
+#              fit is skipped and logged, the training goes on).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
@@ -29,6 +36,15 @@ STORAGE="${STORAGE:-double}"
 BIN="${BIN:-out/build/windows-release-suite/benchmarks}"
 RES="${RES:-out/preflop_blueprint_resources}"
 TRAIN_ARGS="${TRAIN_ARGS:-}"
+POLICY_SNAPSHOTS="${POLICY_SNAPSHOTS:-0}"
+POLICY_SNAPSHOT_EVERY="${POLICY_SNAPSHOT_EVERY:-}"
+POLICY_SNAPSHOT_RESERVE_GB="${POLICY_SNAPSHOT_RESERVE_GB:-}"
+snapshot_args=""
+if [ "$POLICY_SNAPSHOTS" = "1" ]; then
+  snapshot_args="--policy-snapshots"
+  [ -n "$POLICY_SNAPSHOT_EVERY" ] && snapshot_args="$snapshot_args --policy-snapshot-every $POLICY_SNAPSHOT_EVERY"
+  [ -n "$POLICY_SNAPSHOT_RESERVE_GB" ] && snapshot_args="$snapshot_args --policy-snapshot-reserve-gb $POLICY_SNAPSHOT_RESERVE_GB"
+fi
 mkdir -p "$OUT/charts"
 rm -f "$OUT/STOP"
 log() { echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$OUT/run.log"; }
@@ -36,13 +52,13 @@ field() { python -c "import json,sys; v=json.load(open(sys.argv[1]))[sys.argv[2]
 
 resume=""
 [ -f "$OUT/state.ckpt" ] && resume="--resume"
-log "step 2 continuous start: config $CFG buckets $BUCKETS step $STEP max $MAX threshold $THRESHOLD $TRAIN_ARGS $resume"
+log "step 2 continuous start: config $CFG buckets $BUCKETS step $STEP max $MAX threshold $THRESHOLD $TRAIN_ARGS $snapshot_args $resume"
 "$BIN/gtosd_preflop_blueprint_train.exe" --config "$CFG" --resources-dir "$RES" --buckets-dir "$BUCKETS" \
   --board-class-rows --threads "$THREADS" --table-storage "$STORAGE" --eval-every 0 \
   --batch 32 --partition-target 64 --scheme dcfr --update alternating --batch-policy-refresh \
   --lazy-discount --progress-every 500 --iterations "$MAX" \
   --checkpoint "$OUT/state.ckpt" --checkpoint-every "$CHECKPOINT_EVERY" --policy-out "$OUT/policy.bin" \
-  --chart-every "$STEP" --chart-dir "$OUT/charts" --stop-file "$OUT/STOP" $TRAIN_ARGS $resume \
+  --chart-every "$STEP" --chart-dir "$OUT/charts" --stop-file "$OUT/STOP" $snapshot_args $TRAIN_ARGS $resume \
   >> "$OUT/train.jsonl" 2>> "$OUT/train.stderr.log" &
 trainer=$!
 
@@ -87,4 +103,8 @@ if [ $rc -ne 0 ]; then
   exit 1
 fi
 log "trainer finished: $(grep -o "PREFLOP_BLUEPRINT_TRAIN=[A-Z_]*" "$OUT/train.jsonl" | tail -n 1), last snapshot $previous, stop event $(grep -o "\"event\":\"stop_file\",\"iteration\":[0-9]*" "$OUT/train.jsonl" | tail -n 1)"
+if [ "$POLICY_SNAPSHOTS" = "1" ]; then
+  skipped=$(grep -o "\"event\":\"policy_snapshot_skipped\",\"iteration\":[0-9]*" "$OUT/train.jsonl" | sed 's/.*://' | tr '\n' ' ' | sed 's/ $//')
+  log "policy snapshots: skipped for disk space at iterations ${skipped:-none}, failed $(grep -c "\"event\":\"policy_snapshot_failed\"" "$OUT/train.jsonl")"
+fi
 exit 0

@@ -698,6 +698,57 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_monker_values_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Exact-flop per-board bucket tables (gtosd_preflop_blueprint_monker_buckets
+  # --flop-exact, written by the benchmarks fixture): suit orbits and ids on
+  # named and on all canonical flops, the 15x4 turn and 15-level river
+  # fingerprints of the non-exact run, the board class rows with TX2.
+  add_executable(gtosd_preflop_blueprint_monker_buckets_tests
+    preflop_blueprint_monker_buckets_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_buckets_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_monker_buckets_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_buckets_tests)
+  if(GTOSD_BUILD_BENCHMARKS)
+    add_test(NAME gtosd_preflop_blueprint_monker_buckets_tests
+      COMMAND gtosd_preflop_blueprint_monker_buckets_tests
+        --buckets-dir ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_buckets_exact
+        --texture-map
+          ${PROJECT_SOURCE_DIR}/benchmarks/monker/textures/texture_map_TX2_recommended.txt
+        --expect-flop fnv1a64:430aa1ec4a8d2307
+        --expect-turn fnv1a64:e03b8a4c8f3e91e7 --expect-river fnv1a64:e819b14897bca674
+        --street-settings present)
+    set_tests_properties(gtosd_preflop_blueprint_monker_buckets_tests
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_monker_buckets_exact)
+    # Byte identity of the non-exact paths with the tables of the builder before
+    # per-street settings (out/monker/buckets_15x4 and buckets_30x4 fingerprints).
+    add_test(NAME gtosd_preflop_blueprint_monker_buckets_default_tests
+      COMMAND gtosd_preflop_blueprint_monker_buckets_tests
+        --buckets-dir ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_buckets_default
+        --expect-flop fnv1a64:cf2607c75869355d --expect-turn fnv1a64:e03b8a4c8f3e91e7
+        --expect-river fnv1a64:e819b14897bca674 --street-settings absent)
+    set_tests_properties(gtosd_preflop_blueprint_monker_buckets_default_tests
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_monker_buckets_default)
+    add_test(NAME gtosd_preflop_blueprint_monker_buckets_streets_tests
+      COMMAND gtosd_preflop_blueprint_monker_buckets_tests
+        --buckets-dir ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_buckets_streets
+        --expect-flop fnv1a64:cf2607c75869355d --expect-turn fnv1a64:575640ec13251aa5
+        --expect-river fnv1a64:ebab0a9cf4c56cc8 --street-settings present)
+    set_tests_properties(gtosd_preflop_blueprint_monker_buckets_streets_tests
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_monker_buckets_streets)
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      foreach(checker gtosd_preflop_blueprint_monker_buckets_tests
+                      gtosd_preflop_blueprint_monker_buckets_default_tests
+                      gtosd_preflop_blueprint_monker_buckets_streets_tests)
+        set_tests_properties(${checker} PROPERTIES
+          ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+      endforeach()
+    endif()
+  endif()
   if(Python3_Interpreter_FOUND AND GTOSD_BUILD_BENCHMARKS)
     # The Python recursion over the smoke JSON: our own rows reproduce the
     # tool's EV, the chart set of the smoke policy its loss.

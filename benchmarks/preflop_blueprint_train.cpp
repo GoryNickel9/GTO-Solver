@@ -179,6 +179,18 @@ int main(const int argc, char **argv) {
     // tables without stopping or perturbing the training.
     std::uint64_t chart_every = 0U;
     std::filesystem::path chart_dir;
+    // --policy-snapshots: every chart snapshot also holds the average policy of that
+    // iteration (chart_dir/it_<N>/policy.bin, the --policy-out format and source, the
+    // bytes save_average_policy would write), read without modifying the state.
+    // --policy-snapshot-every N (a multiple of --chart-every) keeps a policy only in
+    // the snapshots whose iteration is a multiple of N. A snapshot policy is skipped
+    // (policy_snapshot_skipped event) unless the chart directory's disk has room for
+    // it, for what the rest of the run still has to write (the temporary copy of the
+    // next checkpoint, the final --policy-out) and for --policy-snapshot-reserve-gb
+    // (default 1) more.
+    bool policy_snapshots = false;
+    std::uint64_t policy_snapshot_every = 0U;
+    double policy_snapshot_reserve_gb = 1.0;
     // When this file appears the training stops after the current iteration and
     // saves as at the normal end (used by the step-2 stability watcher).
     std::filesystem::path stop_file;
@@ -236,6 +248,10 @@ int main(const int argc, char **argv) {
       }
       if (name == "--eval-only") {
         evaluate_only = true;
+        continue;
+      }
+      if (name == "--policy-snapshots") {
+        policy_snapshots = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -296,6 +312,10 @@ int main(const int argc, char **argv) {
         chart_every = parse_unsigned(value);
       } else if (name == "--chart-dir") {
         chart_dir = std::filesystem::path(value);
+      } else if (name == "--policy-snapshot-every") {
+        policy_snapshot_every = parse_unsigned(value);
+      } else if (name == "--policy-snapshot-reserve-gb") {
+        policy_snapshot_reserve_gb = parse_decimal(value);
       } else if (name == "--stop-file") {
         stop_file = std::filesystem::path(value);
       } else if (name == "--scheme") {
@@ -351,6 +371,16 @@ int main(const int argc, char **argv) {
     if ((chart_every > 0U) != !chart_dir.empty()) {
       throw std::runtime_error("--chart-every and --chart-dir go together");
     }
+    if (policy_snapshots && chart_every == 0U) {
+      throw std::runtime_error("--policy-snapshots requires --chart-every and --chart-dir");
+    }
+    if (policy_snapshot_every > 0U &&
+        (!policy_snapshots || policy_snapshot_every % chart_every != 0U)) {
+      throw std::runtime_error(
+          "--policy-snapshot-every requires --policy-snapshots and a multiple of --chart-every");
+    }
+    if (!(policy_snapshot_reserve_gb >= 0.0 && policy_snapshot_reserve_gb <= 1.0e9))
+      throw std::runtime_error("--policy-snapshot-reserve-gb must be in [0, 1e9]");
     if (!stop_file.empty() && std::filesystem::exists(stop_file)) {
       // A stop file left by an earlier run would end this one after one iteration.
       std::filesystem::remove(stop_file);
@@ -550,6 +580,22 @@ int main(const int argc, char **argv) {
       std::cout << breakdown.dump() << "\n" << std::flush;
     }
 
+    // Source text of the exported policies (the evaluators check the abstraction suffix).
+    const std::string abstraction_source =
+        history_rows ? "|abstraction=" + std::string(history_rows->format_name()) +
+                           "|map=" + history_rows->fingerprint()
+        : use_class_rows
+            ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
+                  "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
+        : board_class_rows
+            ? "|abstraction=" + board_class_rows->fingerprint() + "|flop=" +
+                  flop.value().fingerprint() + "|turn=" + turn.value().fingerprint() +
+                  "|river=" + river.value().fingerprint()
+            : "";
+    const auto average_policy_source = [&] {
+      return trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
+             abstraction_source;
+    };
     double training_seconds = 0.0;
     const auto initial_iteration = trainer.iteration();
     double discount_seconds = 0.0, refresh_seconds = 0.0, prepare_seconds = 0.0,
@@ -761,6 +807,17 @@ int main(const int argc, char **argv) {
         const auto name = "it_" + std::to_string(trainer.iteration());
         const auto temporary = chart_dir / (name + ".tmp");
         std::string failure;
+        // The policy is written inside the temporary directory, so it_<N> appears
+        // with it; a failed policy is reported on its own and the charts still count.
+        std::string policy_fingerprint;
+        std::string policy_failure;
+        double policy_seconds = 0.0;
+        const bool policy_due =
+            policy_snapshots &&
+            (policy_snapshot_every == 0U || trainer.iteration() % policy_snapshot_every == 0U);
+        bool policy_skipped = false;
+        std::uint64_t space_available = 0U;
+        std::uint64_t space_required = 0U;
         try {
           std::error_code error;
           std::filesystem::remove_all(temporary, error);
@@ -772,6 +829,43 @@ int main(const int argc, char **argv) {
                 return row;
               },
               temporary);
+          if (policy_due) {
+            // After this policy the run still writes the temporary copy of the next
+            // checkpoint (a failed checkpoint write ends the run) and the final
+            // --policy-out export; both are assumed on the chart directory's disk.
+            const auto margin_bytes =
+                static_cast<std::uint64_t>(policy_snapshot_reserve_gb * 1073741824.0);
+            const std::uint64_t policy_bytes = trainer.layout().entries * sizeof(double);
+            std::uint64_t checkpoint_bytes = 0U;
+            if (!checkpoint_path.empty()) {
+              std::error_code size_error;
+              const auto size = std::filesystem::file_size(checkpoint_path, size_error);
+              checkpoint_bytes = size_error ? trainer.state_bytes() : size;
+            }
+            space_required = policy_bytes + checkpoint_bytes +
+                             (policy_path.empty() ? 0U : policy_bytes) + margin_bytes;
+            std::error_code space_error;
+            const auto space = std::filesystem::space(temporary, space_error);
+            if (!space_error) {
+              space_available = space.available;
+              policy_skipped = space.available < space_required;
+            }
+          }
+          if (policy_due && !policy_skipped) {
+            const auto policy_started = Clock::now();
+            try {
+              const auto saved = trainer.save_average_policy_snapshot(temporary / "policy.bin",
+                                                                      average_policy_source());
+              if (saved)
+                policy_fingerprint = saved.value();
+              else
+                policy_failure = pb::trainer_error_name(saved.error());
+            } catch (const std::exception &exception) {
+              policy_failure = exception.what();
+            }
+            policy_seconds =
+                std::chrono::duration<double>(Clock::now() - policy_started).count();
+          }
           // A fresh directory can be briefly held by an indexer or antivirus.
           for (int attempt = 0; attempt < 5; ++attempt) {
             error.clear();
@@ -789,8 +883,22 @@ int main(const int argc, char **argv) {
         }
         if (failure.empty()) {
           std::cout << "{\"event\":\"charts\",\"iteration\":" << trainer.iteration()
-                    << ",\"training_seconds\":" << training_seconds << "}\n"
-                    << std::flush;
+                    << ",\"training_seconds\":" << training_seconds;
+          if (policy_due && !policy_skipped && policy_failure.empty())
+            std::cout << ",\"policy_fingerprint\":\"" << policy_fingerprint
+                      << "\",\"policy_seconds\":" << policy_seconds;
+          std::cout << "}\n" << std::flush;
+          if (policy_skipped)
+            std::cout << "{\"event\":\"policy_snapshot_skipped\",\"iteration\":"
+                      << trainer.iteration() << ",\"reason\":\"disk_space\""
+                      << ",\"available_bytes\":" << space_available
+                      << ",\"required_bytes\":" << space_required << "}\n"
+                      << std::flush;
+          if (!policy_failure.empty())
+            std::cout << "{\"event\":\"policy_snapshot_failed\",\"iteration\":"
+                      << trainer.iteration()
+                      << ",\"error\":" << nlohmann::json(policy_failure).dump() << "}\n"
+                      << std::flush;
         } else {
           std::cout << "{\"event\":\"charts_failed\",\"iteration\":" << trainer.iteration()
                     << ",\"error\":" << nlohmann::json(failure).dump() << "}\n"
@@ -910,17 +1018,6 @@ int main(const int argc, char **argv) {
     }
     const auto training_end_peaks = pb::process_memory_peaks();
     std::string policy_fingerprint_text;
-    const std::string abstraction_source =
-        history_rows ? "|abstraction=" + std::string(history_rows->format_name()) +
-                           "|map=" + history_rows->fingerprint()
-        : use_class_rows
-            ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
-                  "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
-        : board_class_rows
-            ? "|abstraction=" + board_class_rows->fingerprint() + "|flop=" +
-                  flop.value().fingerprint() + "|turn=" + turn.value().fingerprint() +
-                  "|river=" + river.value().fingerprint()
-            : "";
     // Save final state even when periodic evaluation was explicitly disabled. The
     // pending discounts are materialized once here, after which every save is a
     // read-only pass: the checkpoint (raw copy of the tables) is written by a helper
@@ -958,9 +1055,7 @@ int main(const int argc, char **argv) {
       }
     }
     if (!policy_path.empty()) {
-      const auto saved = trainer.save_average_policy(
-          policy_path, trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
-                           abstraction_source);
+      const auto saved = trainer.save_average_policy(policy_path, average_policy_source());
       if (!saved) {
         throw std::runtime_error(std::string("policy write failed: ") +
                                  pb::trainer_error_name(saved.error()));

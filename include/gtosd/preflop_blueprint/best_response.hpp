@@ -164,12 +164,17 @@ struct BestResponseReport {
   // hand classes, as in the chart export, so the two can be compared directly.
   // `split_classes` counts classes whose combos disagreed on the action, which
   // suit symmetry forbids and which therefore must come out zero.
+  // `class_action` gives the action of every hand class (that of its first
+  // allowed combo; -1 for a class without allowed combos): the per-class
+  // choice behind `frequency`. It is empty for a street-restricted responder,
+  // whose preflop is the average strategy's mix.
   struct PreflopChoiceMix {
     std::uint32_t node{0U};
     std::uint8_t hero{0U};
     std::uint8_t action_count{0U};
     std::uint32_t split_classes{0U};
     std::array<double, maximum_actions> frequency{};
+    std::vector<std::int16_t> class_action;
   };
   std::vector<PreflopChoiceMix> best_response_preflop_mix;
   // Loss inside one postflop entry, measured at a fixed reach: the mean over

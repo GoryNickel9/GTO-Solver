@@ -16,6 +16,20 @@
 // partial pass for smoke tests). Writes JSON with --out (schema
 // gtosd.preflop_blueprint_monker_values.v1), read by
 // tools/monker_compare/monker_in_our_game.py.
+//
+// --exploit NAME[,NAME...] (a --charts set, or all; off by default) adds the
+// other side: the best response against a chart set
+// (monker_chart_exploitation.hpp). For each named set and chart player
+// (--exploit-heroes CO,BTN, both by default) the policy whose preflop rows of
+// that player are the chart rows is evaluated again on the same flops; both
+// players' ev, best response, gains, nashconv, preflop best-response choices
+// per node and class, postflop entry losses and routes are reported with our
+// policy's and the difference (charts minus ours). --exploit-streets
+// flop,turn,river adds street-restricted passes (DeviationStreet) of both
+// policies. The report goes into the --out JSON under "exploitation", to
+// --exploit-out (schema gtosd.preflop_blueprint_chart_exploitation.v1) and,
+// as text, to stdout and --exploit-summary. Every pass costs one stage one.
+#include "monker_chart_exploitation.hpp"
 #include "monker_chart_values.hpp"
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
@@ -35,6 +49,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -42,12 +57,14 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -73,6 +90,48 @@ std::string read_file(const std::filesystem::path &path) {
     throw std::runtime_error("cannot open " + path.string());
   }
   return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+}
+
+// The output files are written after every pass (an --exploit run takes hours): their
+// directories are created and probed before the first pass, so a bad path fails at
+// once instead of after the passes.
+void prepare_output(const std::filesystem::path &path, const std::string_view flag) {
+  if (path.empty()) {
+    return;
+  }
+  std::error_code error;
+  if (std::filesystem::is_directory(path, error)) {
+    throw std::runtime_error(std::string(flag) + " names a directory: " + path.string());
+  }
+  const auto parent = path.parent_path();
+  if (!parent.empty()) {
+    error.clear();
+    std::filesystem::create_directories(parent, error);
+    if (error) {
+      throw std::runtime_error("cannot create the directory of " + std::string(flag) + " " +
+                               path.string() + ": " + error.message());
+    }
+  }
+  const std::filesystem::path probe = path.string() + ".probe";
+  bool writable = false;
+  {
+    std::ofstream output(probe, std::ios::binary | std::ios::trunc);
+    writable = static_cast<bool>(output);
+  }
+  error.clear();
+  std::filesystem::remove(probe, error);
+  if (!writable) {
+    throw std::runtime_error("cannot write " + std::string(flag) + " " + path.string());
+  }
+}
+
+// Writes one output file; false when it cannot be written (the caller goes on with the
+// other outputs and fails at the end).
+bool write_output(const std::filesystem::path &path, const std::string &text) {
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  output << text;
+  output.flush();
+  return static_cast<bool>(output);
 }
 
 std::uint64_t parse_unsigned(const std::string_view text) {
@@ -145,7 +204,33 @@ struct Options {
   bool combo_values{true};
   double target_pot_percent{1.0};
   std::vector<ChartSet> charts;
+  // Best response against chart sets (--exploit, off by default): the chart
+  // sets to exploit ("all" for every one), the chart players (positions;
+  // empty for both), street-restricted passes and the outputs.
+  std::vector<std::string> exploit_sets;
+  std::vector<std::string> exploit_heroes;
+  std::vector<pb::DeviationStreet> exploit_streets;
+  std::filesystem::path exploit_output_path;
+  std::filesystem::path exploit_summary_path;
 };
+
+std::vector<std::string> split_list(const std::string_view text) {
+  std::vector<std::string> items;
+  std::size_t start = 0U;
+  while (true) {
+    const auto comma = text.find(',', start);
+    const auto item = text.substr(start, comma == std::string_view::npos ? std::string_view::npos
+                                                                         : comma - start);
+    if (item.empty()) {
+      throw std::runtime_error("empty item in the list " + std::string(text));
+    }
+    items.emplace_back(item);
+    if (comma == std::string_view::npos) {
+      return items;
+    }
+    start = comma + 1U;
+  }
+}
 
 Options parse_options(const int argc, char **argv) {
   Options options;
@@ -206,6 +291,27 @@ Options parse_options(const int argc, char **argv) {
       }
       options.charts.push_back(
           {std::string(value.substr(0, equals)), std::filesystem::path(value.substr(equals + 1U))});
+    } else if (name == "--exploit") {
+      for (auto &set : split_list(value)) {
+        options.exploit_sets.push_back(std::move(set));
+      }
+    } else if (name == "--exploit-heroes") {
+      for (auto &position : split_list(value)) {
+        options.exploit_heroes.push_back(std::move(position));
+      }
+    } else if (name == "--exploit-streets") {
+      for (const auto &text : split_list(value)) {
+        const auto street = pb::parse_deviation_street(text);
+        if (!street || *street == pb::DeviationStreet::Preflop ||
+            *street == pb::DeviationStreet::None) {
+          throw std::runtime_error("--exploit-streets takes flop, turn and river");
+        }
+        options.exploit_streets.push_back(*street);
+      }
+    } else if (name == "--exploit-out") {
+      options.exploit_output_path = value;
+    } else if (name == "--exploit-summary") {
+      options.exploit_summary_path = value;
     } else {
       throw std::runtime_error("unknown argument " + std::string(name));
     }
@@ -229,6 +335,20 @@ Options parse_options(const int argc, char **argv) {
   if (!(options.target_pot_percent > 0.0 && options.target_pot_percent <= 100.0)) {
     throw std::runtime_error("--target-pot-percent must be in (0, 100]");
   }
+  if (options.exploit_sets.empty() &&
+      (!options.exploit_heroes.empty() || !options.exploit_streets.empty() ||
+       !options.exploit_output_path.empty() || !options.exploit_summary_path.empty())) {
+    throw std::runtime_error("--exploit-heroes, --exploit-streets, --exploit-out and "
+                             "--exploit-summary go with --exploit");
+  }
+  for (const auto &name : options.exploit_sets) {
+    const bool known =
+        name == "all" || std::any_of(options.charts.begin(), options.charts.end(),
+                                     [&](const ChartSet &set) { return set.name == name; });
+    if (!known) {
+      throw std::runtime_error("--exploit " + name + " names no --charts set");
+    }
+  }
   return options;
 }
 
@@ -240,9 +360,268 @@ Json vector_json(const std::vector<double> &values) {
   return array;
 }
 
+// --exploit: one chart set played preflop by one player, the rows written
+// into our policy for its passes.
+struct ExploitCase {
+  std::size_t set{0U};
+  std::uint8_t hero{0U};
+  std::vector<std::uint32_t> nodes;
+  mc::PreflopStrategy rows;
+  // EV the player loses with the charts, from our pass (chart_loss).
+  double chart_loss{0.0};
+  // Rows from the chart, outside the range (our row, never reached) and
+  // fallbacks (our row, reached under the charts).
+  std::array<std::size_t, 3> sources{};
+  double fallback_reach_combos{0.0};
+};
+
+// Labels of the report JSON: node tokens, hand classes, positions, the pot.
+struct ReportLabels {
+  const pb::CompiledGame *game{nullptr};
+  const std::map<std::uint32_t, mc::ChartNode> *chart_of{nullptr};
+  const std::vector<std::string> *class_labels{nullptr};
+  double initial_pot{0.0};
+
+  [[nodiscard]] double percent(const double antes) const {
+    return initial_pot > 0.0 ? 100.0 * antes / initial_pot : 0.0;
+  }
+  [[nodiscard]] std::string position(const std::uint8_t hero) const {
+    return pb::position_name(*game, hero);
+  }
+  [[nodiscard]] const mc::ChartNode &chart(const std::uint32_t node) const {
+    return chart_of->at(node);
+  }
+};
+
+// Players' values of a best-response report, or their differences (charts
+// minus ours) with `baseline`.
+Json players_json(const ReportLabels &labels, const pb::BestResponseReport &report,
+                  const pb::BestResponseReport *baseline = nullptr) {
+  Json players = Json::array();
+  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+    const auto value = [&](const std::array<double, 2> pb::BestResponseReport::*field) {
+      return (report.*field)[hero] - (baseline != nullptr ? ((*baseline).*field)[hero] : 0.0);
+    };
+    Json player = {
+        {"hero", hero},
+        {"position", labels.position(hero)},
+        {"ev_antes", value(&pb::BestResponseReport::ev)},
+        {"best_response_antes", value(&pb::BestResponseReport::best_response)},
+        {"gain_antes", value(&pb::BestResponseReport::gain)},
+        {"gain_pot_percent", labels.percent(value(&pb::BestResponseReport::gain))},
+        {"best_response_lower_antes", value(&pb::BestResponseReport::best_response_lower)},
+        {"gain_lower_antes", value(&pb::BestResponseReport::gain_lower)},
+        {"best_response_preflop_antes", value(&pb::BestResponseReport::best_response_preflop)},
+        {"gain_preflop_antes", value(&pb::BestResponseReport::gain_preflop)},
+        {"best_response_route_average_value_antes",
+         value(&pb::BestResponseReport::best_response_route_average_value)}};
+    if (baseline == nullptr) {
+      player["ev_standard_error_antes"] = report.ev_standard_error[hero];
+      player["best_response_standard_error_antes"] = report.best_response_standard_error[hero];
+    }
+    players.push_back(player);
+  }
+  return players;
+}
+
+// Every number of a best-response report with the chart tokens and class
+// labels: values per player, nashconv, the preflop best-response mix per node
+// with the action of every class, the postflop entry losses and routes.
+Json report_json(const ReportLabels &labels, const pb::BestResponseReport &report) {
+  Json json;
+  json["deviation_from"] = pb::deviation_street_name(report.deviation_from);
+  json["players"] = players_json(labels, report);
+  json["nashconv_antes"] = report.nashconv;
+  json["nashconv_pot_percent"] = labels.percent(report.nashconv);
+  json["max_gain_antes"] = report.max_gain;
+  Json mixes = Json::array();
+  for (const auto &mix : report.best_response_preflop_mix) {
+    const auto &chart = labels.chart(mix.node);
+    Json frequency = Json::object();
+    for (std::size_t action = 0; action < mix.action_count; ++action) {
+      frequency[chart.tokens.at(action)] = mix.frequency[action];
+    }
+    Json classes = nullptr;
+    if (!mix.class_action.empty()) {
+      classes = Json::object();
+      for (std::size_t hand_class = 0; hand_class < mix.class_action.size(); ++hand_class) {
+        const auto action = mix.class_action[hand_class];
+        classes[labels.class_labels->at(hand_class)] =
+            action < 0 ? Json(nullptr) : Json(chart.tokens.at(static_cast<std::size_t>(action)));
+      }
+    }
+    mixes.push_back({{"chart", chart.relative},
+                     {"node", mix.node},
+                     {"path_id", pb::node_path_id(*labels.game, mix.node)},
+                     {"hero", mix.hero},
+                     {"position", labels.position(mix.hero)},
+                     {"split_classes", mix.split_classes},
+                     {"frequency", frequency},
+                     {"class_action", classes}});
+  }
+  json["best_response_preflop_mix"] = mixes;
+  Json losses = Json::array();
+  for (const auto &loss : report.postflop_entry_loss) {
+    losses.push_back({{"node", loss.node},
+                      {"path", pb::node_path_id(*labels.game, loss.node)},
+                      {"hero", loss.hero},
+                      {"position", labels.position(loss.hero)},
+                      {"mean_gain_antes", loss.mean_gain},
+                      {"opponent_reach", loss.opponent_reach},
+                      {"entry_probability", loss.entry_probability},
+                      {"conditional_gain_antes",
+                       loss.conditional_gain ? Json(*loss.conditional_gain) : Json(nullptr)}});
+  }
+  json["postflop_entry_loss"] = losses;
+  Json routes = Json::array();
+  for (const auto &route : report.postflop_entry_route) {
+    routes.push_back(
+        {{"node", route.node},
+         {"path", route.path},
+         {"hero", route.hero},
+         {"position", labels.position(route.hero)},
+         {"average_probability", route.average_probability},
+         {"response_probability", route.response_probability},
+         {"postflop_gain_on_response_route_antes", route.postflop_gain_on_response_route}});
+  }
+  json["postflop_entry_route"] = routes;
+  return json;
+}
+
+// A best-response choice of a class that differs between two reports.
+struct ChoiceChange {
+  std::uint32_t node{0U};
+  std::uint8_t hero{0U};
+  std::size_t hand_class{0U};
+  int ours{-1};
+  int charts{-1};
+};
+
+// Same game and restriction, so the lists of both reports match entry by
+// entry; anything else is an error.
+void require_matching(const pb::BestResponseReport &charts, const pb::BestResponseReport &ours) {
+  bool same = charts.deviation_from == ours.deviation_from &&
+              charts.best_response_preflop_mix.size() == ours.best_response_preflop_mix.size() &&
+              charts.postflop_entry_loss.size() == ours.postflop_entry_loss.size() &&
+              charts.postflop_entry_route.size() == ours.postflop_entry_route.size();
+  for (std::size_t index = 0; same && index < ours.best_response_preflop_mix.size(); ++index) {
+    const auto &left = charts.best_response_preflop_mix[index];
+    const auto &right = ours.best_response_preflop_mix[index];
+    same = left.node == right.node && left.hero == right.hero &&
+           left.class_action.size() == right.class_action.size();
+  }
+  for (std::size_t index = 0; same && index < ours.postflop_entry_loss.size(); ++index) {
+    same = charts.postflop_entry_loss[index].node == ours.postflop_entry_loss[index].node &&
+           charts.postflop_entry_loss[index].hero == ours.postflop_entry_loss[index].hero;
+  }
+  for (std::size_t index = 0; same && index < ours.postflop_entry_route.size(); ++index) {
+    same = charts.postflop_entry_route[index].node == ours.postflop_entry_route[index].node &&
+           charts.postflop_entry_route[index].hero == ours.postflop_entry_route[index].hero;
+  }
+  if (!same) {
+    throw std::runtime_error("the reports of the chart pass and of our pass do not match");
+  }
+}
+
+std::vector<ChoiceChange> choice_changes(const pb::BestResponseReport &charts,
+                                         const pb::BestResponseReport &ours) {
+  require_matching(charts, ours);
+  std::vector<ChoiceChange> changes;
+  for (std::size_t index = 0; index < ours.best_response_preflop_mix.size(); ++index) {
+    const auto &left = charts.best_response_preflop_mix[index];
+    const auto &right = ours.best_response_preflop_mix[index];
+    for (std::size_t hand_class = 0; hand_class < right.class_action.size(); ++hand_class) {
+      if (left.class_action[hand_class] != right.class_action[hand_class]) {
+        changes.push_back({right.node, right.hero, hand_class, right.class_action[hand_class],
+                           left.class_action[hand_class]});
+      }
+    }
+  }
+  return changes;
+}
+
+// Differences charts minus ours of every number of report_json, and the
+// best-response choices that change.
+Json difference_json(const ReportLabels &labels, const pb::BestResponseReport &charts,
+                     const pb::BestResponseReport &ours) {
+  const auto changes = choice_changes(charts, ours);
+  Json json;
+  json["players"] = players_json(labels, charts, &ours);
+  json["nashconv_antes"] = charts.nashconv - ours.nashconv;
+  json["nashconv_pot_percent"] = labels.percent(charts.nashconv - ours.nashconv);
+  Json frequency_changes = Json::array();
+  for (std::size_t index = 0; index < ours.best_response_preflop_mix.size(); ++index) {
+    const auto &left = charts.best_response_preflop_mix[index];
+    const auto &right = ours.best_response_preflop_mix[index];
+    const auto &chart = labels.chart(right.node);
+    Json frequency = Json::object();
+    for (std::size_t action = 0; action < right.action_count; ++action) {
+      frequency[chart.tokens.at(action)] = left.frequency[action] - right.frequency[action];
+    }
+    Json classes = Json::object();
+    for (const auto &change : changes) {
+      if (change.node != right.node || change.hero != right.hero) {
+        continue;
+      }
+      const auto token = [&](const int action) {
+        return action < 0 ? Json(nullptr) : Json(chart.tokens.at(static_cast<std::size_t>(action)));
+      };
+      classes[labels.class_labels->at(change.hand_class)] = {{"ours", token(change.ours)},
+                                                             {"charts", token(change.charts)}};
+    }
+    frequency_changes.push_back({{"chart", chart.relative},
+                                 {"node", right.node},
+                                 {"hero", right.hero},
+                                 {"position", labels.position(right.hero)},
+                                 {"frequency", frequency},
+                                 {"changed_classes", classes.size()},
+                                 {"class_action", classes}});
+  }
+  json["best_response_preflop_mix"] = frequency_changes;
+  json["changed_class_choices"] = changes.size();
+  Json losses = Json::array();
+  for (std::size_t index = 0; index < ours.postflop_entry_loss.size(); ++index) {
+    const auto &left = charts.postflop_entry_loss[index];
+    const auto &right = ours.postflop_entry_loss[index];
+    losses.push_back(
+        {{"node", right.node},
+         {"path", pb::node_path_id(*labels.game, right.node)},
+         {"hero", right.hero},
+         {"position", labels.position(right.hero)},
+         {"mean_gain_antes", left.mean_gain - right.mean_gain},
+         {"opponent_reach", left.opponent_reach - right.opponent_reach},
+         {"entry_probability", left.entry_probability - right.entry_probability},
+         {"conditional_gain_antes", left.conditional_gain && right.conditional_gain
+                                        ? Json(*left.conditional_gain - *right.conditional_gain)
+                                        : Json(nullptr)}});
+  }
+  json["postflop_entry_loss"] = losses;
+  Json routes = Json::array();
+  for (std::size_t index = 0; index < ours.postflop_entry_route.size(); ++index) {
+    const auto &left = charts.postflop_entry_route[index];
+    const auto &right = ours.postflop_entry_route[index];
+    routes.push_back(
+        {{"node", right.node},
+         {"path", right.path},
+         {"hero", right.hero},
+         {"position", labels.position(right.hero)},
+         {"average_probability", left.average_probability - right.average_probability},
+         {"response_probability", left.response_probability - right.response_probability},
+         {"postflop_gain_on_response_route_antes",
+          left.postflop_gain_on_response_route - right.postflop_gain_on_response_route}});
+  }
+  json["postflop_entry_route"] = routes;
+  return json;
+}
+
 int run(const int argc, char **argv) {
   const auto options = parse_options(argc, argv);
   const auto started = Clock::now();
+  prepare_output(options.output_path, "--out");
+  prepare_output(options.exploit_output_path, "--exploit-out");
+  prepare_output(options.exploit_summary_path, "--exploit-summary");
+  // Output files that could not be written at the end; the others are still written.
+  std::vector<std::string> write_failures;
 
   const auto config = pb::parse_game_config_json(read_file(options.config_path));
   if (!config) {
@@ -257,6 +636,25 @@ int run(const int argc, char **argv) {
   const auto &game = compiled.value();
   if (game.config().player_count != 2U) {
     throw std::runtime_error("the chart values are heads-up only");
+  }
+  // Chart players of --exploit (both by default).
+  std::array<bool, 2> exploit_hero{false, false};
+  if (!options.exploit_sets.empty()) {
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      exploit_hero[hero] = options.exploit_heroes.empty();
+    }
+    for (const auto &position : options.exploit_heroes) {
+      bool found = false;
+      for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+        if (pb::position_name(game, hero) == position) {
+          exploit_hero[hero] = true;
+          found = true;
+        }
+      }
+      if (!found) {
+        throw std::runtime_error("--exploit-heroes: no position " + position + " in the game");
+      }
+    }
   }
   auto ranks = ca::RankTable::load(options.resources_dir / "rank_table_v1.bin");
   auto all_in = ca::AllInTable::load(options.resources_dir / "preflop_all_in_v1.bin");
@@ -666,7 +1064,11 @@ int run(const int argc, char **argv) {
 
   // Every chart set, for both players.
   Json chart_sets = Json::array();
+  std::vector<ExploitCase> exploit_cases;
   for (const auto &set : options.charts) {
+    const bool exploit_set =
+        std::any_of(options.exploit_sets.begin(), options.exploit_sets.end(),
+                    [&](const std::string &name) { return name == "all" || name == set.name; });
     Json players = Json::array();
     for (std::uint8_t hero = 0; hero < 2U; ++hero) {
       const auto &pav = action_values[hero];
@@ -689,6 +1091,21 @@ int run(const int argc, char **argv) {
             "chart set " + set.name + ": no preflop strategy beats the best preflop response "
                                       "for hero " +
                 std::to_string(hero));
+      if (exploit_set && exploit_hero[hero]) {
+        ExploitCase exploit_case;
+        exploit_case.set = static_cast<std::size_t>(&set - options.charts.data());
+        exploit_case.hero = hero;
+        exploit_case.nodes = pav.nodes;
+        exploit_case.rows = charts.rows;
+        exploit_case.chart_loss = loss.loss;
+        for (const auto &per_slot : charts.source) {
+          for (const auto source : per_slot) {
+            ++exploit_case.sources.at(static_cast<std::size_t>(source));
+          }
+        }
+        exploit_case.fallback_reach_combos = charts.fallback_reach_combos;
+        exploit_cases.push_back(std::move(exploit_case));
+      }
       double standard_error = 0.0;
       if (mode == "sampled" && groups.size() > 1U) {
         auto reach = mc::entry_reach(game, tree, hero, ours[hero]);
@@ -791,27 +1208,312 @@ int run(const int argc, char **argv) {
                                    {"aggregate", aggregate_seconds},
                                    {"values", values_seconds}};
   json["evaluation"]["process_after_load"] = load_peaks;
+
+  // Best response against the chart sets (--exploit): for every chart set and
+  // chart player, our policy with that player's preflop rows replaced by the
+  // chart rows (chart_strategy above: a class without a chart row keeps our
+  // row), evaluated on the same flops as our pass, whose report is the
+  // baseline; charts minus ours isolates what the charts add.
+  if (!options.exploit_sets.empty()) {
+    const auto exploit_started = Clock::now();
+    const bool exact = mode == "exact";
+    // Our flop values are no longer needed: release them before the chart
+    // passes build theirs.
+    pointers.clear();
+    std::vector<pb::FlopValues>().swap(values);
+    pb::BucketPolicy &writable = *policy_holder;
+    const ReportLabels labels{&game, &chart_of, &class_labels, initial_pot};
+    const auto run_pass = [&](const std::string &label, const pb::DeviationStreet street) {
+      std::cerr << "{\"event\": \"exploit_pass\", \"pass\": " << Json(label).dump()
+                << ", \"deviation_from\": \"" << pb::deviation_street_name(street) << "\"}\n"
+                << std::flush;
+      const mc::EvaluationProgress progress = [&](const std::size_t finished,
+                                                  const std::size_t total, const double elapsed) {
+        if (finished % progress_every != 0U && finished != total) {
+          return;
+        }
+        const double rate = elapsed / static_cast<double>(finished);
+        std::cerr << "{\"event\": \"exploit_progress\", \"pass\": " << Json(label).dump()
+                  << ", \"flops_done\": " << finished << ", \"flops_total\": " << total
+                  << ", \"elapsed_seconds\": " << elapsed << ", \"seconds_per_flop\": " << rate
+                  << ", \"eta_seconds\": " << rate * static_cast<double>(total - finished) << "}\n"
+                  << std::flush;
+      };
+      auto evaluation =
+          mc::evaluate_policy(game, policy, resources, groups, options.all_flops, exact,
+                              options.threads, options.river_engine, street, progress);
+      check(evaluation.boards == boards && evaluation.physical_flops == physical_flops,
+            "exploitation pass " + label + " covers the boards of our pass");
+      return evaluation;
+    };
+    const auto street_label = [](const pb::DeviationStreet street) {
+      return std::string(pb::deviation_street_name(street));
+    };
+
+    std::ostringstream summary;
+    summary << std::fixed << std::setprecision(4);
+    const auto antes_text = [](const double antes) {
+      std::ostringstream text;
+      text << std::fixed << std::setprecision(6) << antes;
+      return text.str();
+    };
+    const auto percent_text = [&](const double antes) {
+      std::ostringstream text;
+      text << std::fixed << std::setprecision(4) << percent(antes) << " % of the pot";
+      return text.str();
+    };
+    summary << "best response against chart sets: " << mode << " pass, " << groups.size()
+            << " flops (" << physical_flops << " physical, " << boards << " boards), policy "
+            << info.policy_fingerprint << ", initial pot " << initial_pot << " antes\n";
+    summary << "our policy: nashconv " << antes_text(report.nashconv) << " antes ("
+            << percent_text(report.nashconv) << ")\n";
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      summary << "  " << labels.position(hero) << ": ev " << antes_text(report.ev[hero])
+              << ", best response " << antes_text(report.best_response[hero]) << ", gain "
+              << antes_text(report.gain[hero]) << " (" << percent_text(report.gain[hero])
+              << "), gain_lower " << antes_text(report.gain_lower[hero]) << ", gain_preflop "
+              << antes_text(report.gain_preflop[hero]) << "\n";
+    }
+
+    // Street-restricted passes of our policy.
+    std::vector<pb::BestResponseReport> ours_streets;
+    Json ours_streets_json = Json::array();
+    for (const auto street : options.exploit_streets) {
+      auto evaluation = run_pass("ours/" + street_label(street), street);
+      ours_streets_json.push_back(report_json(labels, evaluation.report));
+      summary << "  our policy, deviations from the " << street_label(street) << " on: gain "
+              << labels.position(0) << " " << antes_text(evaluation.report.gain[0]) << ", "
+              << labels.position(1) << " " << antes_text(evaluation.report.gain[1]) << "\n";
+      ours_streets.push_back(std::move(evaluation.report));
+    }
+
+    Json cases_json = Json::array();
+    for (const auto &exploit_case : exploit_cases) {
+      const auto &set = options.charts[exploit_case.set];
+      const auto hero = exploit_case.hero;
+      const auto exploiter = static_cast<std::uint8_t>(1U - hero);
+      const auto label = set.name + "/" + labels.position(hero);
+      const auto previous =
+          mc::replace_preflop_rows(writable, exploit_case.nodes, exploit_case.rows);
+      const auto full = run_pass(label, pb::DeviationStreet::Preflop);
+      std::vector<pb::BestResponseReport> chart_streets;
+      for (const auto street : options.exploit_streets) {
+        chart_streets.push_back(run_pass(label + "/" + street_label(street), street).report);
+      }
+      static_cast<void>(mc::replace_preflop_rows(writable, exploit_case.nodes, previous));
+      const auto &charts = full.report;
+
+      const double ev_change = charts.ev[hero] - report.ev[hero];
+      check(std::abs(ev_change + exploit_case.chart_loss) <= check_tolerance,
+            "exploitation " + label + ": the chart player's EV changes by minus the chart loss");
+      check(std::abs(charts.best_response[hero] - report.best_response[hero]) <= check_tolerance,
+            "exploitation " + label +
+                ": the chart player's best response ignores its own preflop rows");
+      const double extra = charts.gain[exploiter] - report.gain[exploiter];
+
+      Json case_json;
+      case_json["chart_set"] = set.name;
+      case_json["directory"] = set.directory.generic_string();
+      case_json["chart_player"] = {{"hero", hero}, {"position", labels.position(hero)}};
+      case_json["exploiter"] = {{"hero", exploiter}, {"position", labels.position(exploiter)}};
+      case_json["rows"] = {{"chart", exploit_case.sources[0]},
+                           {"outside_range", exploit_case.sources[1]},
+                           {"fallback", exploit_case.sources[2]},
+                           {"fallback_reach_combos", exploit_case.fallback_reach_combos}};
+      case_json["exploitation"] = {
+          {"charts_antes", charts.gain[exploiter]},
+          {"charts_pot_percent", percent(charts.gain[exploiter])},
+          {"ours_antes", report.gain[exploiter]},
+          {"ours_pot_percent", percent(report.gain[exploiter])},
+          {"extra_antes", extra},
+          {"extra_pot_percent", percent(extra)},
+          {"extra_gain_lower_antes", charts.gain_lower[exploiter] - report.gain_lower[exploiter]},
+          {"extra_gain_preflop_antes",
+           charts.gain_preflop[exploiter] - report.gain_preflop[exploiter]}};
+      case_json["chart_player_ev_change_antes"] = ev_change;
+      case_json["chart_loss_antes"] = exploit_case.chart_loss;
+      case_json["charts"] = report_json(labels, charts);
+      case_json["difference"] = difference_json(labels, charts, report);
+      Json streets_json = Json::array();
+      for (std::size_t index = 0; index < options.exploit_streets.size(); ++index) {
+        streets_json.push_back(
+            {{"deviation_from", street_label(options.exploit_streets[index])},
+             {"charts", report_json(labels, chart_streets[index])},
+             {"difference", difference_json(labels, chart_streets[index], ours_streets[index])}});
+      }
+      case_json["streets"] = streets_json;
+      case_json["seconds"] = {{"stage_one", full.stage_seconds},
+                              {"aggregate", full.aggregate_seconds}};
+      cases_json.push_back(case_json);
+
+      // Text summary of the case.
+      summary << "\nchart set " << set.name << ", " << labels.position(hero)
+              << " plays the charts preflop (rows: " << exploit_case.sources[0] << " chart, "
+              << exploit_case.sources[1] << " outside the range, " << exploit_case.sources[2]
+              << " fallback with " << exploit_case.fallback_reach_combos << " combos of reach)\n";
+      summary << "  " << std::left << std::setw(26) << "value" << std::right << std::setw(14)
+              << "ours" << std::setw(14) << "charts" << std::setw(14) << "difference" << "\n";
+      const auto row = [&](const std::string &name, const double ours, const double theirs) {
+        summary << "  " << std::left << std::setw(26) << name << std::right << std::setw(14)
+                << antes_text(ours) << std::setw(14) << antes_text(theirs) << std::setw(14)
+                << antes_text(theirs - ours) << "\n";
+      };
+      for (const std::uint8_t player : {hero, exploiter}) {
+        const auto name = labels.position(player);
+        row(name + " ev", report.ev[player], charts.ev[player]);
+        row(name + " best_response", report.best_response[player], charts.best_response[player]);
+        row(name + " gain", report.gain[player], charts.gain[player]);
+        row(name + " gain_lower", report.gain_lower[player], charts.gain_lower[player]);
+        row(name + " gain_preflop", report.gain_preflop[player], charts.gain_preflop[player]);
+      }
+      row("nashconv", report.nashconv, charts.nashconv);
+      summary << "  exploitation by " << labels.position(exploiter) << ": "
+              << antes_text(charts.gain[exploiter]) << " antes ("
+              << percent_text(charts.gain[exploiter]) << ") against the charts, "
+              << antes_text(report.gain[exploiter]) << " (" << percent_text(report.gain[exploiter])
+              << ") against ours: extra " << antes_text(extra) << " antes (" << percent_text(extra)
+              << ")\n";
+      summary << "  check: " << labels.position(hero) << " EV change " << antes_text(ev_change)
+              << ", chart loss " << antes_text(exploit_case.chart_loss) << "\n";
+      const auto changes = choice_changes(charts, report);
+      std::map<std::uint32_t, std::vector<const ChoiceChange *>> changes_by_node;
+      for (const auto &change : changes) {
+        changes_by_node[change.node].push_back(&change);
+      }
+      summary << "  preflop best response of " << labels.position(exploiter) << ": "
+              << changes.size() << " class choices change at " << changes_by_node.size()
+              << " nodes\n";
+      for (const auto &[node, node_changes] : changes_by_node) {
+        const auto &chart = labels.chart(node);
+        const auto token = [&](const int action) {
+          return action < 0 ? std::string("-") : chart.tokens.at(static_cast<std::size_t>(action));
+        };
+        summary << "    " << chart.relative << " (" << labels.position(node_changes.front()->hero)
+                << "): " << node_changes.size() << " classes:";
+        constexpr std::size_t listed = 12U;
+        for (std::size_t index = 0; index < node_changes.size() && index < listed; ++index) {
+          const auto &change = *node_changes[index];
+          summary << " " << class_labels[change.hand_class] << " " << token(change.ours) << "->"
+                  << token(change.charts);
+        }
+        if (node_changes.size() > listed) {
+          summary << " and " << node_changes.size() - listed << " more";
+        }
+        summary << "\n";
+      }
+      std::vector<std::size_t> route_order;
+      for (std::size_t index = 0; index < charts.postflop_entry_route.size(); ++index) {
+        const auto &route = charts.postflop_entry_route[index];
+        const auto &baseline = report.postflop_entry_route[index];
+        if (route.hero == exploiter &&
+            route.postflop_gain_on_response_route != baseline.postflop_gain_on_response_route) {
+          route_order.push_back(index);
+        }
+      }
+      const auto route_change = [&](const std::size_t index) {
+        return std::abs(charts.postflop_entry_route[index].postflop_gain_on_response_route -
+                        report.postflop_entry_route[index].postflop_gain_on_response_route);
+      };
+      std::stable_sort(route_order.begin(), route_order.end(),
+                       [&](const std::size_t a, const std::size_t b) {
+                         return route_change(a) > route_change(b);
+                       });
+      summary << "  postflop gain of " << labels.position(exploiter)
+              << " on its response route, largest changes (antes; response probability):\n";
+      for (std::size_t rank = 0; rank < route_order.size() && rank < 8U; ++rank) {
+        const auto &route = charts.postflop_entry_route[route_order[rank]];
+        const auto &baseline = report.postflop_entry_route[route_order[rank]];
+        summary << "    " << route.path << ": ours "
+                << antes_text(baseline.postflop_gain_on_response_route) << ", charts "
+                << antes_text(route.postflop_gain_on_response_route) << ", difference "
+                << antes_text(route.postflop_gain_on_response_route -
+                              baseline.postflop_gain_on_response_route)
+                << " (" << std::setprecision(4) << baseline.response_probability << " -> "
+                << route.response_probability << ")\n";
+      }
+      for (std::size_t index = 0; index < options.exploit_streets.size(); ++index) {
+        const auto &ours_street = ours_streets[index];
+        const auto &charts_street = chart_streets[index];
+        summary << "  deviations from the " << street_label(options.exploit_streets[index])
+                << " on: gain of " << labels.position(exploiter) << " ours "
+                << antes_text(ours_street.gain[exploiter]) << ", charts "
+                << antes_text(charts_street.gain[exploiter]) << ", difference "
+                << antes_text(charts_street.gain[exploiter] - ours_street.gain[exploiter])
+                << "; gain of " << labels.position(hero) << " difference "
+                << antes_text(charts_street.gain[hero] - ours_street.gain[hero]) << "\n";
+      }
+    }
+    // The rows written back leave our policy bit for bit as loaded.
+    check(pb::policy_fingerprint(policy) == info.policy_fingerprint,
+          "the policy is restored after the chart passes");
+
+    const double exploit_seconds =
+        std::chrono::duration<double>(Clock::now() - exploit_started).count();
+    Json exploitation;
+    exploitation["schema"] = "gtosd.preflop_blueprint_chart_exploitation.v1";
+    exploitation["config_id"] = json["config_id"];
+    exploitation["tree_fingerprint"] = json["tree_fingerprint"];
+    exploitation["policy_fingerprint"] = json["policy_fingerprint"];
+    exploitation["policy_source"] = json["policy_source"];
+    exploitation["abstraction"] = json["abstraction"];
+    exploitation["board_texture"] = json["board_texture"];
+    exploitation["fingerprints"] = json["fingerprints"];
+    exploitation["evaluation"] = {{"mode", mode},
+                                  {"flops", groups.size()},
+                                  {"physical_flops", physical_flops},
+                                  {"boards", boards},
+                                  {"threads", options.threads},
+                                  {"river_engine", pb::river_engine_name(options.river_engine)},
+                                  {"seconds", exploit_seconds}};
+    exploitation["initial_pot_antes"] = initial_pot;
+    exploitation["value_scope"] =
+        "antes per hand of each player under the policy whose preflop rows of the chart player "
+        "are the chart rows (classes without a chart row keep our row); gain = best response "
+        "minus ev; the exploiter's gain is the exploitation of the charts; difference = charts "
+        "minus ours on the same flops";
+    exploitation["ours"] = report_json(labels, report);
+    Json ours_streets_entries = Json::array();
+    for (std::size_t index = 0; index < options.exploit_streets.size(); ++index) {
+      ours_streets_entries.push_back(
+          {{"deviation_from", street_label(options.exploit_streets[index])},
+           {"report", ours_streets_json[index]}});
+    }
+    exploitation["ours_streets"] = ours_streets_entries;
+    exploitation["cases"] = cases_json;
+    json["exploitation"] = exploitation;
+    summary << "\nexploitation passes: " << exploit_seconds << " s\n";
+    std::cout << summary.str();
+    if (!options.exploit_output_path.empty() &&
+        !write_output(options.exploit_output_path, exploitation.dump(1) + "\n")) {
+      write_failures.push_back(options.exploit_output_path.string());
+    }
+    if (!options.exploit_summary_path.empty() &&
+        !write_output(options.exploit_summary_path, summary.str())) {
+      write_failures.push_back(options.exploit_summary_path.string());
+    }
+  }
   json["evaluation"]["process_peaks"] = peaks_json();
   json["self_checks"] = {{"passed", failures.empty()}, {"failures", failures}};
 
-  if (!options.output_path.empty()) {
-    std::ofstream output(options.output_path, std::ios::binary | std::ios::trunc);
-    if (!output) {
-      throw std::runtime_error("cannot write " + options.output_path.string());
-    }
-    output << json.dump(1) << '\n';
-    if (!output) {
-      throw std::runtime_error("cannot write " + options.output_path.string());
-    }
+  if (!options.output_path.empty() && !write_output(options.output_path, json.dump(1) + "\n")) {
+    write_failures.push_back(options.output_path.string());
   }
   std::cout << "evaluation: " << mode << ", " << groups.size() << " flops (" << physical_flops
             << " physical, " << boards << " boards), EV [" << report.ev[0] << ", " << report.ev[1]
             << "], stage one " << stage_seconds << " s\n";
-  if (!failures.empty()) {
+  if (!failures.empty() || !write_failures.empty()) {
     for (const auto &failure : failures) {
       std::cerr << "self-check failed: " << failure << '\n';
     }
-    std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES=FAIL self-checks " << failures.size() << '\n';
+    for (const auto &path : write_failures) {
+      std::cerr << "cannot write " << path << '\n';
+    }
+    if (!failures.empty()) {
+      std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES=FAIL self-checks " << failures.size() << '\n';
+    } else {
+      std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES=FAIL cannot write " << write_failures.front()
+                << '\n';
+    }
     return 1;
   }
   std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES=PASS mode=" << mode << '\n';

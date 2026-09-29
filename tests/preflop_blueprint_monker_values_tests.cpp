@@ -5,8 +5,16 @@
 // evaluated from scratch; the recursion equals the node sum; our own charts
 // lose exactly zero; the preflop response reproduces the aggregate's
 // gain_preflop; the chart files read back as written.
+//
+// The best response against a chart set (monker_chart_exploitation.hpp):
+// writing a policy's own preflop rows back into it leaves every number of
+// the report unchanged, full and street-restricted; with random chart rows
+// the chart player's EV moves by the chart loss while its own best response
+// does not move, the per-class best-response choices match the mix, and the
+// replaced rows restore the table bit for bit.
 #include "preflop_blueprint_test_support.hpp"
 
+#include "../benchmarks/monker_chart_exploitation.hpp"
 #include "../benchmarks/monker_chart_values.hpp"
 
 #include "gtosd/card_abstraction/deterministic_random.hpp"
@@ -19,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -323,6 +332,263 @@ void test_chart_files(const Resources &resources, const std::filesystem::path &s
             << " written charts read back (" << rows_compared << " rows) PASS\n";
 }
 
+// Largest absolute difference over every number of two best-response
+// reports; infinity when their structure differs (list sizes, nodes, heroes,
+// paths, restriction, the presence of a conditional gain or of the per-class
+// choices, or a per-class choice).
+double largest_report_difference(const pb::BestResponseReport &left,
+                                 const pb::BestResponseReport &right) {
+  constexpr double different = std::numeric_limits<double>::infinity();
+  double largest = 0.0;
+  const auto compare = [&](const double a, const double b) {
+    largest = std::max(largest, std::abs(a - b));
+  };
+  const auto pair = [&](const std::array<double, 2> &a, const std::array<double, 2> &b) {
+    compare(a[0], b[0]);
+    compare(a[1], b[1]);
+  };
+  if (left.flops != right.flops || left.boards != right.boards ||
+      left.deviation_from != right.deviation_from ||
+      left.best_response_preflop_mix.size() != right.best_response_preflop_mix.size() ||
+      left.postflop_entry_loss.size() != right.postflop_entry_loss.size() ||
+      left.postflop_entry_route.size() != right.postflop_entry_route.size()) {
+    return different;
+  }
+  pair(left.ev, right.ev);
+  pair(left.best_response, right.best_response);
+  pair(left.gain, right.gain);
+  pair(left.best_response_lower, right.best_response_lower);
+  pair(left.gain_lower, right.gain_lower);
+  pair(left.best_response_preflop, right.best_response_preflop);
+  pair(left.gain_preflop, right.gain_preflop);
+  pair(left.best_response_route_average_value, right.best_response_route_average_value);
+  pair(left.best_response_standard_error, right.best_response_standard_error);
+  pair(left.ev_standard_error, right.ev_standard_error);
+  compare(left.max_gain, right.max_gain);
+  compare(left.max_gain_lower, right.max_gain_lower);
+  compare(left.max_gain_half_width, right.max_gain_half_width);
+  compare(left.nashconv, right.nashconv);
+  for (std::size_t index = 0; index < left.best_response_preflop_mix.size(); ++index) {
+    const auto &a = left.best_response_preflop_mix[index];
+    const auto &b = right.best_response_preflop_mix[index];
+    if (a.node != b.node || a.hero != b.hero || a.action_count != b.action_count ||
+        a.split_classes != b.split_classes || a.class_action != b.class_action) {
+      return different;
+    }
+    for (std::size_t action = 0; action < a.frequency.size(); ++action) {
+      compare(a.frequency[action], b.frequency[action]);
+    }
+  }
+  for (std::size_t index = 0; index < left.postflop_entry_loss.size(); ++index) {
+    const auto &a = left.postflop_entry_loss[index];
+    const auto &b = right.postflop_entry_loss[index];
+    if (a.node != b.node || a.hero != b.hero ||
+        a.conditional_gain.has_value() != b.conditional_gain.has_value()) {
+      return different;
+    }
+    compare(a.mean_gain, b.mean_gain);
+    compare(a.opponent_reach, b.opponent_reach);
+    compare(a.entry_probability, b.entry_probability);
+    if (a.conditional_gain) {
+      compare(*a.conditional_gain, *b.conditional_gain);
+    }
+  }
+  for (std::size_t index = 0; index < left.postflop_entry_route.size(); ++index) {
+    const auto &a = left.postflop_entry_route[index];
+    const auto &b = right.postflop_entry_route[index];
+    if (a.node != b.node || a.hero != b.hero || a.path != b.path) {
+      return different;
+    }
+    compare(a.average_probability, b.average_probability);
+    compare(a.response_probability, b.response_probability);
+    compare(a.postflop_gain_on_response_route, b.postflop_gain_on_response_route);
+  }
+  return largest;
+}
+
+// The per-class choices of every unrestricted mix give its frequencies; a
+// restricted report has none.
+void require_class_actions(const pb::BestResponseReport &report) {
+  for (const auto &mix : report.best_response_preflop_mix) {
+    if (report.deviation_from != pb::DeviationStreet::Preflop) {
+      require(mix.class_action.empty(), "a restricted mix has no per-class choices");
+      continue;
+    }
+    require(mix.class_action.size() == mc::class_count, "one choice per hand class");
+    std::array<double, pb::maximum_actions> counts{};
+    double seen = 0.0;
+    for (const auto action : mix.class_action) {
+      require(action >= -1 && action < static_cast<int>(mix.action_count),
+              "per-class choices are actions of the node");
+      if (action >= 0) {
+        counts[static_cast<std::size_t>(action)] += 1.0;
+        seen += 1.0;
+      }
+    }
+    for (std::size_t action = 0; action < mix.action_count; ++action) {
+      require(close(mix.frequency[action], seen > 0.0 ? counts[action] / seen : 0.0, 1e-15),
+              "per-class choices reproduce the mix frequencies");
+    }
+  }
+}
+
+void test_exploitation(const Resources &resources) {
+  const auto started = Clock::now();
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "HU10 reduced compiles");
+  const auto view = response_resources(resources);
+  const auto policy = random_policy(game.value(), resources, 0x4D56'0004ULL);
+  const auto evaluator = pb::BestResponseEvaluator::create(game.value(), policy, view);
+  require(evaluator.has_value(), "evaluator creates");
+  const auto &flops = resources.catalog->flops();
+  std::vector<pb::FlopGroup> groups;
+  for (const std::size_t index : {std::size_t{7}, flops.size() / 2U}) {
+    auto cards = flops[index].cards;
+    std::sort(cards.begin(), cards.end());
+    groups.push_back(pb::full_runouts(cards));
+  }
+  const auto evaluate_with = [&](const pb::BucketPolicy &rows, const bool orbits,
+                                 const pb::DeviationStreet street) {
+    std::size_t calls = 0U;
+    auto evaluation = mc::evaluate_policy(
+        game.value(), rows, view, groups, orbits, false, 2U, pb::RiverEngine::Joint, street,
+        [&](const std::size_t done, const std::size_t total, const double) {
+          require(done >= 1U && done <= total && total == groups.size(), "progress in range");
+          ++calls;
+        });
+    require(calls == groups.size(), "one progress call per flop group");
+    require(evaluation.boards > 0U && evaluation.physical_flops >= groups.size(),
+            "the evaluation counts its boards and physical flops");
+    return evaluation;
+  };
+  ca::DeterministicRandom random(0x4D56'0005ULL);
+  double largest_self = 0.0;
+  double largest_extra = 0.0;
+  std::uint32_t changed_choices = 0U;
+  for (const bool orbits : {false, true}) {
+    // The helper reproduces the stage one and aggregate of the evaluator.
+    const auto base = evaluate(evaluator.value(), groups, orbits);
+    const auto direct = evaluator.value().aggregate(base.pointers, false);
+    require(direct.has_value(), "aggregation succeeds");
+    const auto ours = evaluate_with(policy, orbits, pb::DeviationStreet::Preflop);
+    require(largest_report_difference(ours.report, direct.value()) == 0.0,
+            "evaluate_policy reproduces the evaluator's report bit for bit");
+    require_class_actions(ours.report);
+    const auto ours_river = evaluate_with(policy, orbits, pb::DeviationStreet::River);
+    require_class_actions(ours_river.report);
+
+    for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+      const auto exploiter = static_cast<std::uint8_t>(1U - hero);
+      const auto values = evaluator.value().preflop_action_values(base.pointers, hero);
+      require(values.has_value(), "preflop action values");
+      const auto &pav = values.value();
+      const auto tree = mc::hero_tree(game.value(), pav.nodes, hero);
+      const auto own = policy_rows(policy, pav);
+
+      // Our own rows through the chart path: every number unchanged.
+      const auto self =
+          mc::chart_strategy(tree, own, [&](const std::size_t slot, const std::size_t hand_class) {
+            return std::optional<std::vector<double>>(own[slot][hand_class]);
+          });
+      auto replaced = policy;
+      const auto previous = mc::replace_preflop_rows(replaced, pav.nodes, self.rows);
+      require(previous == own, "the replaced rows are the policy's own");
+      require(replaced.table() == policy.table(), "own rows leave the table bit for bit");
+      const auto self_full = evaluate_with(replaced, orbits, pb::DeviationStreet::Preflop);
+      const auto self_river = evaluate_with(replaced, orbits, pb::DeviationStreet::River);
+      const double difference =
+          std::max(largest_report_difference(self_full.report, ours.report),
+                   largest_report_difference(self_river.report, ours_river.report));
+      require(difference == 0.0, "own rows as charts leave every number unchanged");
+      largest_self = std::max(largest_self, difference);
+
+      // Random chart rows, some classes without a row.
+      const auto charts = mc::chart_strategy(
+          tree, own,
+          [&](const std::size_t slot,
+              const std::size_t hand_class) -> std::optional<std::vector<double>> {
+            if (random.uniform_below(5U) == 0U) {
+              return std::nullopt;
+            }
+            std::vector<double> row(own[slot][hand_class].size(), 0.0);
+            double total = 0.0;
+            for (auto &value : row) {
+              value = random.uniform_below(3U) == 0U ? 0.0 : random.uniform_unit();
+              total += value;
+            }
+            if (total == 0.0) {
+              row.back() = 1.0;
+              total = 1.0;
+            }
+            for (auto &value : row) {
+              value /= total;
+            }
+            return row;
+          });
+      const auto loss = mc::chart_loss(tree, pav, own, charts);
+      const auto written = mc::replace_preflop_rows(replaced, pav.nodes, charts.rows);
+      require(written == own, "the rows replaced are our rows");
+      const auto chart_full = evaluate_with(replaced, orbits, pb::DeviationStreet::Preflop);
+      const auto &report = chart_full.report;
+      require(close(report.ev[hero], ours.report.ev[hero] - loss.loss, 1e-10),
+              "the chart player's EV moves by the chart loss");
+      require(close(report.best_response[hero], ours.report.best_response[hero], 1e-12),
+              "the chart player's best response ignores its own preflop rows");
+      require(report.gain[exploiter] >= -1e-12 && report.gain_lower[exploiter] >= -1e-12 &&
+                  report.gain_preflop[exploiter] >= -1e-12,
+              "the exploiter's gains are not negative");
+      require(report.gain[exploiter] >= report.gain_lower[exploiter] - 1e-12 &&
+                  report.gain[exploiter] >= report.gain_preflop[exploiter] - 1e-12,
+              "the full best response dominates the partial ones");
+      require(close(report.nashconv, report.gain[0] + report.gain[1], 1e-12),
+              "nashconv adds the gains");
+      require_class_actions(report);
+      require(largest_report_difference(report, ours.report) > 0.0,
+              "random charts change the report");
+      for (std::size_t index = 0; index < report.best_response_preflop_mix.size(); ++index) {
+        const auto &mix = report.best_response_preflop_mix[index];
+        const auto &baseline = ours.report.best_response_preflop_mix[index];
+        require(mix.node == baseline.node && mix.hero == baseline.hero,
+                "the mixes of both passes match node by node");
+        if (mix.hero == hero) {
+          require(mix.class_action == baseline.class_action,
+                  "the chart player's best-response choices do not move");
+        } else {
+          for (std::size_t hand_class = 0; hand_class < mix.class_action.size(); ++hand_class) {
+            changed_choices +=
+                mix.class_action[hand_class] != baseline.class_action[hand_class] ? 1U : 0U;
+          }
+        }
+      }
+      largest_extra =
+          std::max(largest_extra, std::abs(report.gain[exploiter] - ours.report.gain[exploiter]));
+      const auto chart_river = evaluate_with(replaced, orbits, pb::DeviationStreet::River);
+      require_class_actions(chart_river.report);
+      require(chart_river.report.gain[exploiter] <= report.gain[exploiter] + 1e-12,
+              "a river-restricted response never gains more than the full one");
+
+      // Writing the replaced rows back restores the table bit for bit.
+      const auto restored = mc::replace_preflop_rows(replaced, pav.nodes, written);
+      require(restored == charts.rows, "the rows written back replace the chart rows");
+      require(replaced.table() == policy.table(), "the table is restored bit for bit");
+    }
+  }
+  bool rejected = false;
+  try {
+    auto copy = policy;
+    static_cast<void>(mc::replace_preflop_rows(copy, {0U}, mc::PreflopStrategy{}));
+  } catch (const std::exception &) {
+    rejected = true;
+  }
+  require(rejected, "rows for another number of nodes are rejected");
+  require(changed_choices > 0U, "random charts change some best-response choices");
+  std::cout << "exploitation: sampled and orbit groups, both chart players, own rows change "
+            << largest_self << ", random charts move the exploiter's gain by up to "
+            << largest_extra << " antes and " << changed_choices << " class choices, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -348,6 +614,7 @@ int main(const int argc, char **argv) {
               << (resources.buckets_loaded ? "loaded" : "synthetic") << "\n";
     test_chart_files(resources, scratch_dir);
     test_loss_identity(resources);
+    test_exploitation(resources);
     std::cout << "PREFLOP_BLUEPRINT_MONKER_VALUES_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

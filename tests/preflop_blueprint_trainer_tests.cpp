@@ -814,6 +814,123 @@ void test_average_strategy_row_snapshot(const Resources &resources) {
             << '\n';
 }
 
+// Policy snapshots of the trainer CLI (--policy-snapshots): the average policy file
+// written without modifying the state at iteration k must leave the training
+// bit-identical (state after 2k equals a run without the snapshot) and must be the
+// file a trainer exports at iteration k with save_average_policy, byte for byte, with
+// eager and with pending lazy discounts, in every table storage (a narrow storage
+// rounds the materialized cells, which the snapshot has to reproduce).
+void test_average_policy_snapshot(const Resources &resources) {
+  const auto game = pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "policy snapshot fixture compiles");
+  const auto directory = std::filesystem::temp_directory_path() / "gtosd_preflop_blueprint_tests";
+  std::filesystem::create_directories(directory);
+  constexpr int k = 7;
+  // The last case rebases the 16-bit discount epoch at iteration 5, so the snapshot
+  // reads timestamps relative to a nonzero epoch base.
+  struct SnapshotCase {
+    pb::TableStorage storage;
+    const char *storage_name;
+    bool lazy;
+    std::uint32_t epoch;
+  };
+  const std::array<SnapshotCase, 7> cases{
+      {{pb::TableStorage::Double, "double", false, 65'535U},
+       {pb::TableStorage::Double, "double", true, 65'535U},
+       {pb::TableStorage::MixedFloatSums, "mixed", false, 65'535U},
+       {pb::TableStorage::MixedFloatSums, "mixed", true, 65'535U},
+       {pb::TableStorage::Float32, "float32", false, 65'535U},
+       {pb::TableStorage::Float32, "float32", true, 65'535U},
+       {pb::TableStorage::Float32, "float32", true, 4U}}};
+  for (const auto &[storage, storage_name, lazy, epoch] : cases) {
+    auto config = resources.config();
+    config.threads = 2U;
+    config.batch_boards = 8U;
+    config.batch_policy_refresh = true;
+    config.scheme = pb::WeightingScheme::Dcfr;
+    config.update_mode = pb::UpdateMode::Alternating;
+    config.lazy_discount = lazy;
+    config.storage = storage;
+    config.lazy_discount_epoch = epoch;
+    auto snapshot = pb::Trainer::create(game.value(), resources.view(), config);
+    auto plain = pb::Trainer::create(game.value(), resources.view(), config);
+    auto exported = pb::Trainer::create(game.value(), resources.view(), config);
+    require(snapshot.has_value() && plain.has_value() && exported.has_value(),
+            "policy snapshot trainers create");
+    for (int iteration = 0; iteration < k; ++iteration) {
+      require(snapshot.value()->iterate().has_value() && plain.value()->iterate().has_value() &&
+                  exported.value()->iterate().has_value(),
+              "policy snapshot iterations succeed");
+    }
+    std::uint64_t pending = 0U;
+    const auto &layout = snapshot.value()->layout();
+    for (const auto &node : game.value().nodes()) {
+      if (node.kind != pb::NodeKind::Decision)
+        continue;
+      const auto count = pb::StateLayout::rows_for(node.street, layout.flop_capacity,
+                                                    layout.turn_capacity, layout.river_capacity);
+      for (std::uint32_t row = 0; row < count; ++row) {
+        const auto last = snapshot.value()->discount_last_iteration(node.id, row);
+        if (last > 0U && last + 1U < snapshot.value()->iteration())
+          ++pending;
+      }
+    }
+    require(!lazy || pending > 0U, "the lazy snapshot is written with pending discounts");
+    require(epoch == 65'535U || snapshot.value()->discount_epoch_base() > 0U,
+            "the short-epoch snapshot is written after an epoch rebase");
+    const std::string name =
+        std::string(storage_name) + (lazy ? "_lazy" : "_eager") + "_" + std::to_string(epoch);
+    const auto snapshot_path = directory / ("policy_snapshot_" + name + ".bin");
+    const auto export_path = directory / ("policy_export_" + name + ".bin");
+    const std::string source = snapshot.value()->identity() + "|iteration=" + std::to_string(k);
+    const auto written = snapshot.value()->save_average_policy_snapshot(snapshot_path, source);
+    require(written.has_value(), "policy snapshot writes");
+    require(!std::filesystem::exists(snapshot_path.string() + ".tmp"),
+            "policy snapshot leaves no temporary file");
+    const auto saved = exported.value()->save_average_policy(export_path, source);
+    require(saved.has_value(), "reference policy exports at the snapshot iteration");
+    for (int iteration = 0; iteration < k; ++iteration) {
+      require(snapshot.value()->iterate().has_value() && plain.value()->iterate().has_value(),
+              "training continues after the policy snapshot");
+    }
+    require(snapshot.value()->state_fingerprint() == plain.value()->state_fingerprint(),
+            "a policy snapshot does not perturb the training");
+
+    const auto snapshot_info = pb::read_policy_info(snapshot_path);
+    const auto export_info = pb::read_policy_info(export_path);
+    require(snapshot_info.has_value() && export_info.has_value(), "both policy files read back");
+    require(snapshot_info.value().source == source && export_info.value().source == source &&
+                snapshot_info.value().tree_fingerprint == export_info.value().tree_fingerprint &&
+                snapshot_info.value().flop_capacity == export_info.value().flop_capacity &&
+                snapshot_info.value().turn_capacity == export_info.value().turn_capacity &&
+                snapshot_info.value().river_capacity == export_info.value().river_capacity &&
+                snapshot_info.value().entries == export_info.value().entries,
+            "the snapshot carries the header of the exported policy");
+    require(snapshot_info.value().policy_fingerprint == written.value(),
+            "the snapshot returns the fingerprint of its table");
+    const auto snapshot_policy = pb::load_policy(snapshot_path, game.value());
+    const auto export_policy = pb::load_policy(export_path, game.value());
+    require(snapshot_policy.has_value() && export_policy.has_value(), "both policies load");
+    const auto &left = snapshot_policy.value()->table();
+    const auto &right = export_policy.value()->table();
+    require(left.size() == right.size(), "snapshot and export have the same entries");
+    double largest = 0.0;
+    std::uint64_t different = 0U;
+    for (std::size_t entry = 0; entry < left.size(); ++entry) {
+      largest = std::max(largest, std::abs(left[entry] - right[entry]));
+      different += left[entry] != right[entry] ? 1U : 0U;
+    }
+    const bool identical_bytes = read_file(snapshot_path) == read_file(export_path);
+    require(identical_bytes && written.value() == saved.value() && different == 0U,
+            "the policy snapshot is the exported file byte for byte");
+    std::cout << "policy snapshot (" << storage_name << ", " << (lazy ? "lazy" : "eager")
+              << " discount" << (epoch == 65'535U ? "" : ", epoch " + std::to_string(epoch))
+              << "): entries " << left.size() << ", pending rows " << pending
+              << ", largest difference " << largest << ", entries not bit-identical " << different
+              << ", identical file " << (identical_bytes ? "yes" : "no") << '\n';
+  }
+}
+
 // The 16-bit lazy-discount timestamps live in epochs. A run shorter than the epoch never
 // rebases and is bit-identical to unbounded timestamps; a rebase materializes every touched
 // row to the target, so a rebase whose target is also the final materialization target
@@ -1554,6 +1671,7 @@ int main(const int argc, char **argv) {
       test_lazy_dcfr_discount(resources);
       test_lazy_discount_epoch(resources);
       test_average_strategy_row_snapshot(resources);
+      test_average_policy_snapshot(resources);
       return 0;
     }
     test_configurable_stop_rule();
@@ -1583,6 +1701,7 @@ int main(const int argc, char **argv) {
     test_lazy_dcfr_discount(resources);
     test_lazy_discount_epoch(resources);
     test_average_strategy_row_snapshot(resources);
+    test_average_policy_snapshot(resources);
     test_physical_best_response(resources);
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';

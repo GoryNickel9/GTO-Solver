@@ -31,6 +31,7 @@
 #include <optional>
 #include <stdexcept>
 #include <thread>
+#include <type_traits>
 #include <utility>
 
 #ifdef _WIN32
@@ -148,6 +149,65 @@ inline void regret_match_row(const RegretT *regrets, const std::uint8_t actions,
     for (std::uint8_t action = 0; action < actions; ++action) {
       out[action] = std::max(0.0, static_cast<double>(regrets[action])) / positive;
     }
+  }
+}
+
+// Lazy DCFR discount of one row over (last, target]: positive regrets times the ratio
+// of positive-factor prefix products, non-positive ones halved per skipped iteration,
+// strategy sums times the ratio of strategy-factor prefix products, each cell rounded
+// once through its storage type. An all-zero row is left alone. Shared by the
+// materialization of the state and the read-only snapshot of a materialized row.
+template <typename RegretT, typename SumT>
+inline void discount_row_cells(RegretT *regrets, SumT *sums, const std::uint8_t actions,
+                               const double positive_ratio, const double strategy_ratio,
+                               const std::uint64_t skipped) noexcept {
+  bool nonzero = false;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    nonzero = nonzero || regrets[action] != 0 || sums[action] != 0;
+  }
+  if (!nonzero)
+    return;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    auto &regret_cell = regrets[action];
+    double regret = static_cast<double>(regret_cell);
+    if (regret > 0.0) {
+      // Product of the positive factors over (last, target] as one ratio of prefix
+      // products instead of one multiply per skipped iteration (rows are revisited
+      // after thousands of iterations).
+      regret *= positive_ratio;
+    } else if (skipped > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+      regret = 0.0;
+    } else {
+      regret = std::ldexp(regret, -static_cast<int>(skipped));
+    }
+    store(regret_cell, regret);
+    auto &sum_cell = sums[action];
+    store(sum_cell, static_cast<double>(sum_cell) * strategy_ratio);
+  }
+}
+
+// Average strategy of one row: the normalized positive strategy sums, else the
+// normalized positive regrets, else uniform.
+template <typename RegretT, typename SumT>
+inline void average_of_row(const RegretT *regrets, const SumT *sums, const std::uint8_t actions,
+                           double *out) noexcept {
+  double total = 0.0;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    total += std::max(0.0, static_cast<double>(sums[action]));
+  }
+  if (total > 0.0) {
+    for (std::uint8_t action = 0; action < actions; ++action) {
+      out[action] = std::max(0.0, static_cast<double>(sums[action])) / total;
+    }
+    return;
+  }
+  double positive = 0.0;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    positive += std::max(0.0, static_cast<double>(regrets[action]));
+  }
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    out[action] = positive > 0.0 ? std::max(0.0, static_cast<double>(regrets[action])) / positive
+                                 : 1.0 / actions;
   }
 }
 
@@ -908,38 +968,14 @@ void Trainer::apply_row_discount(const std::uint32_t node_id, const std::uint32_
   const auto &node = game_->nodes()[node_id];
   const auto offset = layout_.offsets[node_id] +
                       static_cast<std::uint64_t>(row) * node.action_count;
+  const auto first = static_cast<std::size_t>(last);
+  const auto final = static_cast<std::size_t>(iteration);
+  const double positive = positive_discount_prefix_[final] / positive_discount_prefix_[first];
+  const double strategy = strategy_discount_prefix_[final] / strategy_discount_prefix_[first];
   dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
                   [&](auto *regrets, auto *sums) {
-                    bool nonzero = false;
-                    for (std::uint8_t action = 0; action < node.action_count; ++action) {
-                      nonzero = nonzero || regrets[offset + action] != 0 ||
-                                sums[offset + action] != 0;
-                    }
-                    if (!nonzero)
-                      return;
-                    const auto first = static_cast<std::size_t>(last);
-                    const auto final = static_cast<std::size_t>(iteration);
-                    const auto skipped = iteration - last;
-                    const double strategy =
-                        strategy_discount_prefix_[final] / strategy_discount_prefix_[first];
-                    for (std::uint8_t action = 0; action < node.action_count; ++action) {
-                      auto &regret_cell = regrets[offset + action];
-                      double regret = static_cast<double>(regret_cell);
-                      if (regret > 0.0) {
-                        // Product of the positive factors over (last, iteration] as one
-                        // ratio of prefix products instead of one multiply per skipped
-                        // iteration (rows are revisited after thousands of iterations).
-                        regret *= positive_discount_prefix_[final] / positive_discount_prefix_[first];
-                      } else if (skipped >
-                                 static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
-                        regret = 0.0;
-                      } else {
-                        regret = std::ldexp(regret, -static_cast<int>(skipped));
-                      }
-                      store(regret_cell, regret);
-                      auto &sum_cell = sums[offset + action];
-                      store(sum_cell, static_cast<double>(sum_cell) * strategy);
-                    }
+                    discount_row_cells(regrets + offset, sums + offset, node.action_count, positive,
+                                       strategy, iteration - last);
                   });
 }
 
@@ -1695,28 +1731,34 @@ void Trainer::average_row(const std::uint64_t offset, const std::uint8_t actions
                           double *out) const noexcept {
   dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
                   [&](const auto *regrets, const auto *sums) {
-                    double total = 0.0;
-                    for (std::uint8_t action = 0; action < actions; ++action) {
-                      total += std::max(0.0, static_cast<double>(sums[offset + action]));
-                    }
-                    if (total > 0.0) {
-                      for (std::uint8_t action = 0; action < actions; ++action) {
-                        out[action] =
-                            std::max(0.0, static_cast<double>(sums[offset + action])) / total;
-                      }
-                      return;
-                    }
-                    double positive = 0.0;
-                    for (std::uint8_t action = 0; action < actions; ++action) {
-                      positive += std::max(0.0, static_cast<double>(regrets[offset + action]));
-                    }
-                    for (std::uint8_t action = 0; action < actions; ++action) {
-                      out[action] =
-                          positive > 0.0
-                              ? std::max(0.0, static_cast<double>(regrets[offset + action])) /
-                                    positive
-                              : 1.0 / actions;
-                    }
+                    average_of_row(regrets + offset, sums + offset, actions, out);
+                  });
+}
+
+void Trainer::materialized_average_row(const std::uint64_t offset, const std::uint8_t actions,
+                                       const std::uint16_t slot, double *out) const noexcept {
+  const std::uint64_t last = slot == 0U ? 0U : discount_epoch_base_ + (slot - 1U);
+  // Slot 0 (never touched, every cell zero) and a row already at the target are left
+  // alone by materialize_all_discounts: the stored row is the materialized one.
+  if (slot == 0U || last >= discount_target_) {
+    average_row(offset, actions, out);
+    return;
+  }
+  const auto first = static_cast<std::size_t>(last);
+  const auto final = static_cast<std::size_t>(discount_target_);
+  const double positive = positive_discount_prefix_[final] / positive_discount_prefix_[first];
+  const double strategy = strategy_discount_prefix_[final] / strategy_discount_prefix_[first];
+  dispatch_tables(config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+                  [&](const auto *regrets, const auto *sums) {
+                    using RegretT = std::remove_cv_t<std::remove_pointer_t<decltype(regrets)>>;
+                    using SumT = std::remove_cv_t<std::remove_pointer_t<decltype(sums)>>;
+                    std::array<RegretT, maximum_actions> regret_cells{};
+                    std::array<SumT, maximum_actions> sum_cells{};
+                    std::copy_n(regrets + offset, actions, regret_cells.begin());
+                    std::copy_n(sums + offset, actions, sum_cells.begin());
+                    discount_row_cells(regret_cells.data(), sum_cells.data(), actions, positive,
+                                       strategy, discount_target_ - last);
+                    average_of_row(regret_cells.data(), sum_cells.data(), actions, out);
                   });
 }
 
@@ -1778,24 +1820,61 @@ BucketPolicy Trainer::current_policy() {
 
 Result<std::string, TrainerError> Trainer::save_average_policy(const std::filesystem::path &path,
                                                                const std::string &source) {
-  using Outcome = Result<std::string, TrainerError>;
   if (!usable_)
-    return Outcome::failure(TrainerError::IntegrityFailure);
+    return Result<std::string, TrainerError>::failure(TrainerError::IntegrityFailure);
   materialize_all_discounts();
+  return write_average_policy(path, source);
+}
+
+Result<std::string, TrainerError>
+Trainer::save_average_policy_snapshot(const std::filesystem::path &path,
+                                      const std::string &source) const {
+  if (!usable_)
+    return Result<std::string, TrainerError>::failure(TrainerError::IntegrityFailure);
+  // The pending discounts are read up to discount_target_, whose prefix products
+  // iterate() (or a checkpoint load) has already prepared.
+  if (config_.lazy_discount && !discounts_materialized_ &&
+      (discount_target_ >= positive_discount_prefix_.size() ||
+       discount_target_ >= strategy_discount_prefix_.size()))
+    return Result<std::string, TrainerError>::failure(TrainerError::IntegrityFailure);
+  return write_average_policy(path, source);
+}
+
+Result<std::string, TrainerError> Trainer::write_average_policy(const std::filesystem::path &path,
+                                                                const std::string &source) const {
+  using Outcome = Result<std::string, TrainerError>;
   PolicyStreamWriter writer(path, *game_, layout_, source);
   if (!writer.ok())
     return Outcome::failure(TrainerError::IoFailure);
   std::vector<double> block;
   block.reserve(export_block_entries + maximum_actions);
   std::array<double, maximum_actions> row{};
-  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
-    average_row(offset, actions, row.data());
-    block.insert(block.end(), row.begin(), row.begin() + actions);
-    if (block.size() >= export_block_entries) {
-      writer.append(block);
-      block.clear();
+  // With discounts pending, every row is read as materialize_all_discounts() would leave
+  // it (the same rows in the same order as for_each_row), so a snapshot has the bytes
+  // of save_average_policy at the same iteration without changing the state.
+  const bool pending = config_.lazy_discount && !discounts_materialized_;
+  for (const auto &node : game_->nodes()) {
+    if (node.kind != NodeKind::Decision)
+      continue;
+    const auto rows = StateLayout::rows_for(node.street, config_.flop_capacity,
+                                            config_.turn_capacity, config_.river_capacity);
+    const auto actions = node.action_count;
+    const auto base = layout_.offsets[node.id];
+    const std::uint16_t *slots =
+        pending ? discount_iterations_.data() + discount_offsets_[node.id] : nullptr;
+    for (std::uint32_t index = 0; index < rows; ++index) {
+      const auto offset = base + static_cast<std::uint64_t>(index) * actions;
+      if (slots != nullptr)
+        materialized_average_row(offset, actions, slots[index], row.data());
+      else
+        average_row(offset, actions, row.data());
+      block.insert(block.end(), row.begin(), row.begin() + actions);
+      if (block.size() >= export_block_entries) {
+        writer.append(block);
+        block.clear();
+      }
     }
-  });
+  }
   writer.append(block);
   const auto finished = writer.finish();
   if (!finished)
