@@ -572,6 +572,12 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
       (config_.scheme != WeightingScheme::Dcfr || config_.dcfr_beta != 0.0 ||
        fixed_policy != nullptr))
     return Outcome::failure(TrainerError::InvalidConfiguration);
+  // A fixed-policy evaluator reads its whole policy from the dense table.
+  if (fixed_policy != nullptr && resources_.preflop_lock != nullptr &&
+      !resources_.preflop_lock->rows.empty())
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (const auto locked = initialize_lock(); !locked)
+    return Outcome::failure(locked.error());
   const auto node_count = static_cast<std::uint32_t>(game_->nodes().size());
   const auto target = config_.partition_target_nodes != 0U
                           ? config_.partition_target_nodes
@@ -730,8 +736,109 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   // silently resume a double checkpoint.
   if (config_.storage != TableStorage::Double)
     identity += std::string("|storage=") + table_storage_name(config_.storage);
+  // Without a lock the identity is unchanged.
+  if (!lock_fingerprint_.empty())
+    identity += "|preflop-lock-v1=" + lock_fingerprint_;
   identity_ = "fnv1a64:" + detail::hex64_text(detail::fnv1a_text(identity));
   return Outcome::success(true);
+}
+
+Result<bool, TrainerError> Trainer::initialize_lock() {
+  using Outcome = Result<bool, TrainerError>;
+  constexpr std::uint32_t classes = 81U;
+  lock_block_.clear();
+  locked_nodes_.clear();
+  lock_classes_.clear();
+  lock_value_offsets_.clear();
+  lock_values_.clear();
+  lock_row_count_ = 0U;
+  lock_fingerprint_.clear();
+  if (resources_.preflop_lock == nullptr || resources_.preflop_lock->rows.empty())
+    return Outcome::success(true);
+  const auto &nodes = game_->nodes();
+  std::vector<const PreflopLockRow *> sorted;
+  sorted.reserve(resources_.preflop_lock->rows.size());
+  for (const auto &row : resources_.preflop_lock->rows) {
+    if (row.node >= nodes.size())
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    const auto &node = nodes[row.node];
+    // Preflop rows are the hand classes (StateLayout::rows_for), one block per node.
+    if (node.kind != NodeKind::Decision || node.street != Street::Preflop ||
+        row.hand_class >= classes || row.frequencies.size() != node.action_count)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    double total = 0.0;
+    for (const auto frequency : row.frequencies) {
+      if (!std::isfinite(frequency) || frequency < 0.0)
+        return Outcome::failure(TrainerError::InvalidConfiguration);
+      total += frequency;
+    }
+    if (!(std::abs(total - 1.0) <= 1e-9))
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    sorted.push_back(&row);
+  }
+  std::sort(sorted.begin(), sorted.end(), [](const auto *left, const auto *right) {
+    return left->node != right->node ? left->node < right->node
+                                     : left->hand_class < right->hand_class;
+  });
+  lock_block_.assign(nodes.size(), no_unit);
+  std::string input;
+  for (std::size_t index = 0; index < sorted.size(); ++index) {
+    const auto &row = *sorted[index];
+    if (index > 0U && sorted[index - 1U]->node == row.node &&
+        sorted[index - 1U]->hand_class == row.hand_class)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    const auto actions = nodes[row.node].action_count;
+    auto &block = lock_block_[row.node];
+    if (block == no_unit) {
+      block = static_cast<std::uint32_t>(locked_nodes_.size());
+      locked_nodes_.push_back(row.node);
+      lock_classes_.resize(lock_classes_.size() + classes, 0U);
+      lock_value_offsets_.push_back(lock_values_.size());
+      lock_values_.resize(lock_values_.size() + static_cast<std::size_t>(classes) * actions, 0.0);
+    }
+    lock_classes_[static_cast<std::size_t>(block) * classes + row.hand_class] = 1U;
+    std::copy(row.frequencies.begin(), row.frequencies.end(),
+              lock_values_.begin() +
+                  static_cast<std::ptrdiff_t>(lock_value_offsets_[block] +
+                                              static_cast<std::uint64_t>(row.hand_class) * actions));
+    append_little32(input, row.node);
+    input.push_back(static_cast<char>(row.hand_class));
+    input.push_back(static_cast<char>(actions));
+    for (const auto frequency : row.frequencies)
+      append_little(input, std::bit_cast<std::uint64_t>(frequency));
+  }
+  lock_row_count_ = static_cast<std::uint32_t>(sorted.size());
+  lock_fingerprint_ = detail::hex64_text(detail::fnv1a_text(input));
+  return Outcome::success(true);
+}
+
+const std::uint8_t *Trainer::locked_classes(const std::uint32_t node) const noexcept {
+  if (node >= lock_block_.size() || lock_block_[node] == no_unit)
+    return nullptr;
+  return lock_classes_.data() + static_cast<std::size_t>(lock_block_[node]) * 81U;
+}
+
+const double *Trainer::locked_row(const std::uint32_t node, const std::uint32_t row) const noexcept {
+  const auto *flags = locked_classes(node);
+  if (flags == nullptr || row >= 81U || flags[row] == 0U)
+    return nullptr;
+  return lock_values_.data() + lock_value_offsets_[lock_block_[node]] +
+         static_cast<std::uint64_t>(row) * game_->nodes()[node].action_count;
+}
+
+void Trainer::apply_lock_to_policy() {
+  // Preflop slots of the compact policy are the hand classes (collect_active_rows).
+  for (std::size_t block = 0; block < locked_nodes_.size(); ++block) {
+    const auto node = locked_nodes_[block];
+    const auto actions = game_->nodes()[node].action_count;
+    const auto *flags = lock_classes_.data() + block * 81U;
+    const auto *values = lock_values_.data() + lock_value_offsets_[block];
+    auto *out = compact_policy_.data() + compact_offsets_[node];
+    for (std::size_t hand_class = 0; hand_class < 81U; ++hand_class) {
+      if (flags[hand_class] != 0U)
+        std::copy_n(values + hand_class * actions, actions, out + hand_class * actions);
+    }
+  }
 }
 
 Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardHistory &history,
@@ -918,6 +1025,7 @@ void Trainer::refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *
                       }
                     });
                   });
+  apply_lock_to_policy();
   if (telemetry != nullptr) {
     telemetry->policy_refresh_collect_seconds +=
         std::chrono::duration<double>(materialize_started - collect_started).count();
@@ -1558,6 +1666,8 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
     }
     const auto update_started = profile_sample ? Clock::now() : Clock::time_point{};
     const bool accumulate_strategy = !fixed_policy_evaluation_;
+    // Locked classes play their fixed row: no regret and no strategy-sum write.
+    const std::uint8_t *locked = preflop ? locked_classes(node_id) : nullptr;
     dispatch_tables(
         config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
         [&](auto *regrets, auto *sums) {
@@ -1577,6 +1687,8 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
                        level.child_values[static_cast<std::size_t>(action) * live_hand_count + hand];
             }
             values[hand] = value;
+            if (locked != nullptr && locked[board.context.hand_classes()[hand]] != 0U)
+              continue;
             const double regret_weight = workspace.regret_weight[hand];
             if (!opponent_zero && regret_weight != 0.0) {
               regret_cells += actions;
@@ -1722,7 +1834,7 @@ template <typename Function> void Trainer::for_each_row(Function &&function) con
     const auto actions = node.action_count;
     const auto base = layout_.offsets[node.id];
     for (std::uint32_t row = 0; row < rows; ++row) {
-      function(base + static_cast<std::uint64_t>(row) * actions, actions);
+      function(node.id, row, base + static_cast<std::uint64_t>(row) * actions, actions);
     }
   }
 }
@@ -1765,6 +1877,10 @@ void Trainer::materialized_average_row(const std::uint64_t offset, const std::ui
 void Trainer::average_strategy_row(const std::uint32_t node, const std::uint32_t row,
                                    double *out) const noexcept {
   const auto actions = game_->nodes()[node].action_count;
+  if (const auto *fixed = locked_row(node, row)) {
+    std::copy_n(fixed, actions, out);
+    return;
+  }
   average_row(layout_.offsets[node] + static_cast<std::uint64_t>(row) * actions, actions, out);
 }
 
@@ -1791,8 +1907,12 @@ void Trainer::fill_average_policy(std::vector<double> &table) {
     throw std::logic_error("trainer state invalid after failed checkpoint load");
   materialize_all_discounts();
   table.resize(layout_.entries);
-  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
-    average_row(offset, actions, table.data() + offset);
+  for_each_row([&](const std::uint32_t node, const std::uint32_t row, const std::uint64_t offset,
+                   const std::uint8_t actions) {
+    if (const auto *fixed = locked_row(node, row))
+      std::copy_n(fixed, actions, table.data() + offset);
+    else
+      average_row(offset, actions, table.data() + offset);
   });
 }
 
@@ -1801,8 +1921,12 @@ void Trainer::fill_current_policy(std::vector<double> &table) {
     throw std::logic_error("trainer state invalid after failed checkpoint load");
   materialize_all_discounts();
   table.resize(layout_.entries);
-  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
-    current_row(offset, actions, table.data() + offset);
+  for_each_row([&](const std::uint32_t node, const std::uint32_t row, const std::uint64_t offset,
+                   const std::uint8_t actions) {
+    if (const auto *fixed = locked_row(node, row))
+      std::copy_n(fixed, actions, table.data() + offset);
+    else
+      current_row(offset, actions, table.data() + offset);
   });
 }
 
@@ -1864,7 +1988,9 @@ Result<std::string, TrainerError> Trainer::write_average_policy(const std::files
         pending ? discount_iterations_.data() + discount_offsets_[node.id] : nullptr;
     for (std::uint32_t index = 0; index < rows; ++index) {
       const auto offset = base + static_cast<std::uint64_t>(index) * actions;
-      if (slots != nullptr)
+      if (const auto *fixed = locked_row(node.id, index))
+        std::copy_n(fixed, actions, row.data());
+      else if (slots != nullptr)
         materialized_average_row(offset, actions, slots[index], row.data());
       else
         average_row(offset, actions, row.data());
@@ -1894,8 +2020,12 @@ Result<std::string, TrainerError> Trainer::save_current_policy(const std::filesy
   std::vector<double> block;
   block.reserve(export_block_entries + maximum_actions);
   std::array<double, maximum_actions> row{};
-  for_each_row([&](const std::uint64_t offset, const std::uint8_t actions) {
-    current_row(offset, actions, row.data());
+  for_each_row([&](const std::uint32_t node, const std::uint32_t index,
+                   const std::uint64_t offset, const std::uint8_t actions) {
+    if (const auto *fixed = locked_row(node, index))
+      std::copy_n(fixed, actions, row.data());
+    else
+      current_row(offset, actions, row.data());
     block.insert(block.end(), row.begin(), row.begin() + actions);
     if (block.size() >= export_block_entries) {
       writer.append(block);

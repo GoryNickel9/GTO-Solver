@@ -586,6 +586,26 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 
+  # Preflop lock of the trainer and its chart helper (benchmarks/monker_chart_lock.hpp).
+  add_executable(gtosd_preflop_blueprint_preflop_lock_tests
+    preflop_blueprint_preflop_lock_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_preflop_lock_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_preflop_lock_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_preflop_lock_tests)
+  add_test(NAME gtosd_preflop_blueprint_preflop_lock_tests
+    COMMAND gtosd_preflop_blueprint_preflop_lock_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_preflop_lock_tests
+    PROPERTIES LABELS "preflop_blueprint;research;monker")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_preflop_lock_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+
   # Board texture maps of the board class rows (benchmarks/monker/textures).
   add_executable(gtosd_preflop_blueprint_board_texture_tests
     preflop_blueprint_board_texture_tests.cpp)

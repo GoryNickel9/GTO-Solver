@@ -16,6 +16,7 @@
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include "monker_chart_format.hpp"
+#include "monker_chart_lock.hpp"
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -194,6 +195,11 @@ int main(const int argc, char **argv) {
     // When this file appears the training stops after the current iteration and
     // saves as at the normal end (used by the step-2 stability watcher).
     std::filesystem::path stop_file;
+    // --lock-charts DIR --lock-nodes CO/CO_strategy.txt[,...]|all: the named preflop
+    // nodes play the rows of the MonkerSolver-format charts in DIR (heads-up; see
+    // monker_chart_lock.hpp); every other node trains normally. Part of the identity.
+    std::filesystem::path lock_charts;
+    std::vector<std::string> lock_nodes;
     // Diagnostic exact mode: the first N boards drawn with the training seed
     // form a fixed, equally weighted board list processed in full every
     // iteration and evaluated exactly.
@@ -318,6 +324,21 @@ int main(const int argc, char **argv) {
         policy_snapshot_reserve_gb = parse_decimal(value);
       } else if (name == "--stop-file") {
         stop_file = std::filesystem::path(value);
+      } else if (name == "--lock-charts") {
+        lock_charts = std::filesystem::path(value);
+      } else if (name == "--lock-nodes") {
+        std::size_t start = 0U;
+        while (start <= value.size()) {
+          const auto comma = value.find(',', start);
+          const auto item =
+              value.substr(start, comma == std::string_view::npos ? value.npos : comma - start);
+          if (item.empty())
+            throw std::runtime_error("empty chart name in --lock-nodes");
+          lock_nodes.emplace_back(item);
+          if (comma == std::string_view::npos)
+            break;
+          start = comma + 1U;
+        }
       } else if (name == "--scheme") {
         if (value == "linear") {
           config.scheme = pb::WeightingScheme::Linear;
@@ -367,6 +388,9 @@ int main(const int argc, char **argv) {
     }
     if (checkpoint_every > 0U && checkpoint_path.empty()) {
       throw std::runtime_error("--checkpoint-every requires --checkpoint");
+    }
+    if (lock_charts.empty() != lock_nodes.empty()) {
+      throw std::runtime_error("--lock-charts and --lock-nodes go together");
     }
     if ((chart_every > 0U) != !chart_dir.empty()) {
       throw std::runtime_error("--chart-every and --chart-dir go together");
@@ -511,6 +535,12 @@ int main(const int argc, char **argv) {
       }
       boards->sample = false;
     }
+    // Declared before the trainer, which keeps a pointer to the lock.
+    std::optional<gtosd::monker_charts::ChartLock> chart_lock;
+    if (!lock_charts.empty()) {
+      chart_lock = gtosd::monker_charts::chart_lock(compiled.value(), lock_charts, lock_nodes);
+      resources.preflop_lock = &chart_lock->lock;
+    }
     auto created = pb::Trainer::create(compiled.value(), resources, config,
                                        boards ? &boards.value() : nullptr);
     if (!created) {
@@ -540,6 +570,21 @@ int main(const int argc, char **argv) {
           {"classes", nlohmann::json::array({texture.classes(ca::BucketStreet::Flop),
                                              texture.classes(ca::BucketStreet::Turn),
                                              texture.classes(ca::BucketStreet::River)})}};
+    }
+    // Without a lock the start event is unchanged.
+    std::string lock_text;
+    std::string lock_source;
+    if (chart_lock) {
+      const nlohmann::json lock_json{{"charts", lock_charts.generic_string()},
+                                     {"files", chart_lock->files},
+                                     {"rows", chart_lock->chart_rows},
+                                     {"outside_range_rows", chart_lock->outside_range_rows},
+                                     {"fingerprint", trainer.preflop_lock_fingerprint()}};
+      lock_text = ", \"preflop_lock\": " + lock_json.dump();
+      std::string files;
+      for (const auto &file : chart_lock->files)
+        files += (files.empty() ? "" : ",") + file;
+      lock_source = "|preflop-lock=" + trainer.preflop_lock_fingerprint() + ":" + files;
     }
     const double preparation_seconds =
         std::chrono::duration<double>(Clock::now() - started).count();
@@ -572,7 +617,7 @@ int main(const int argc, char **argv) {
               << ", \"initial_pot_antes\": " << trainer.initial_pot_antes()
               << ", \"target_pot_percent\": " << target_pot_percent
               << ", \"automatic_target\": " << (automatic_target ? "true" : "false")
-              << ", \"preparation_seconds\": " << preparation_seconds << "}\n";
+              << lock_text << ", \"preparation_seconds\": " << preparation_seconds << "}\n";
     {
       auto breakdown = memory_breakdown_json(trainer.memory_breakdown());
       breakdown["process"] = peaks_json(pb::process_memory_peaks());
@@ -594,7 +639,7 @@ int main(const int argc, char **argv) {
             : "";
     const auto average_policy_source = [&] {
       return trainer.identity() + "|iteration=" + std::to_string(trainer.iteration()) +
-             abstraction_source;
+             lock_source + abstraction_source;
     };
     double training_seconds = 0.0;
     const auto initial_iteration = trainer.iteration();
@@ -1049,7 +1094,7 @@ int main(const int argc, char **argv) {
       const auto saved = trainer.save_current_policy(
           current_policy_path,
           trainer.identity() + "|current|iteration=" + std::to_string(trainer.iteration()) +
-              abstraction_source);
+              lock_source + abstraction_source);
       if (!saved) {
         throw std::runtime_error("current policy write failed");
       }

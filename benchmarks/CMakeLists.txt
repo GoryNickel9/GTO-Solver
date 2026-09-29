@@ -476,9 +476,42 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     LABELS "preflop_blueprint;research;monker"
     PASS_REGULAR_EXPRESSION
       "PREFLOP_BLUEPRINT_TRAIN=FAIL --policy-snapshot-every requires --policy-snapshots and a multiple of --chart-every")
+  # Preflop lock: the CO root of the reduced game plays the rows of the snapshot
+  # charts of iteration 8 while everything else trains; an unknown chart is refused.
+  set_tests_properties(gtosd_preflop_blueprint_train_policy_snapshot_smoke PROPERTIES
+    FIXTURES_SETUP preflop_blueprint_policy_snapshot_charts)
+  add_test(NAME gtosd_preflop_blueprint_train_lock_smoke
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 4 --batch 8 --threads 2 --eval-every 0
+      --scheme dcfr --update alternating --lazy-discount
+      --chart-every 2 --chart-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_lock_smoke
+      --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_snapshot_smoke/it_8
+      --lock-nodes CO/CO_strategy.txt)
+  set_tests_properties(gtosd_preflop_blueprint_train_lock_smoke PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    FIXTURES_REQUIRED preflop_blueprint_policy_snapshot_charts
+    PASS_REGULAR_EXPRESSION
+      "\"preflop_lock\": .\"charts\":\"[^\"]*\",\"files\":.\"CO/CO_strategy.txt\".,\"fingerprint\":\"[0-9a-f]+\",\"outside_range_rows\":0,\"rows\":81.*PREFLOP_BLUEPRINT_TRAIN=ITERATION_LIMIT"
+    FAIL_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_TRAIN=FAIL")
+  add_test(NAME gtosd_preflop_blueprint_train_lock_rejected
+    COMMAND gtosd_preflop_blueprint_train
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu10_reduced_v1.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --iterations 1 --eval-every 0
+      --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_snapshot_smoke/it_8
+      --lock-nodes CO/XX_strategy.txt)
+  set_tests_properties(gtosd_preflop_blueprint_train_lock_rejected PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_TRAIN=FAIL unknown chart CO/XX_strategy.txt")
   foreach(smoke gtosd_preflop_blueprint_train_policy_snapshot_smoke
                 gtosd_preflop_blueprint_train_policy_snapshot_disk_smoke
-                gtosd_preflop_blueprint_train_policy_snapshot_stride_rejected)
+                gtosd_preflop_blueprint_train_policy_snapshot_stride_rejected
+                gtosd_preflop_blueprint_train_lock_smoke
+                gtosd_preflop_blueprint_train_lock_rejected)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       set_tests_properties(${smoke} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")

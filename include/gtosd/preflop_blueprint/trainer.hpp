@@ -50,6 +50,14 @@
 // disjoint from h); in the full game 1/465 and 1/406. Linear multiplies the
 // increments of iteration t by t; DCFR alpha/beta/gamma discounts the
 // accumulated state once per iteration before the increments.
+//
+// Preflop lock (TrainerResources::preflop_lock): a locked (preflop node, hand
+// class) row plays the given frequencies in every pass. Its row of the compact
+// policy is overwritten after regret matching, its regret and strategy-sum
+// cells are never written (they stay zero, so no discount changes them) and
+// every export (average, current, snapshots, charts) returns the locked row.
+// Reaches of both players flow through the locked strategy normally. The lock
+// is part of the identity, so a checkpoint cannot resume with another lock.
 namespace gtosd::preflop_blueprint {
 
 class ParallelExecutor;
@@ -119,6 +127,18 @@ struct TrainerConfig {
   std::uint32_t partition_target_nodes{0U};
 };
 
+// One locked preflop row: the frequencies of the node's edges (edge order, sum
+// one) played by every combo of the class. An empty lock locks nothing.
+struct PreflopLockRow {
+  std::uint32_t node{0U};
+  std::uint8_t hand_class{0U};
+  std::vector<double> frequencies;
+};
+
+struct PreflopLock {
+  std::vector<PreflopLockRow> rows;
+};
+
 struct TrainerResources {
   const card_abstraction::RankTable *ranks{nullptr};
   const card_abstraction::AllInTable *all_in{nullptr};
@@ -131,6 +151,8 @@ struct TrainerResources {
   const HistoryBucketRows *history_rows{nullptr};
   // MonkerSolver-style (board class, per-board bucket) rows. Must outlive trainer.
   const BoardClassRows *board_class_rows{nullptr};
+  // Optional fixed preflop rows (see the contract above). Must outlive trainer.
+  const PreflopLock *preflop_lock{nullptr};
 };
 
 // Exact-mode hook: explicit boards with weights. With sample = false every
@@ -386,6 +408,11 @@ public:
   [[nodiscard]] std::uint64_t state_bytes() const noexcept;
   [[nodiscard]] MemoryBreakdown memory_breakdown() const noexcept;
   [[nodiscard]] const std::string &identity() const noexcept { return identity_; }
+  // FNV-1a of the locked rows (node, class, bits of every frequency); empty without a lock.
+  [[nodiscard]] const std::string &preflop_lock_fingerprint() const noexcept {
+    return lock_fingerprint_;
+  }
+  [[nodiscard]] std::uint32_t preflop_locked_rows() const noexcept { return lock_row_count_; }
 
   // Atomic checkpoint (temporary file then rename) with checksum and identity.
   [[nodiscard]] Result<bool, TrainerError> save_checkpoint(const std::filesystem::path &path);
@@ -417,7 +444,15 @@ private:
   // Materialize the regret-matched policy of the rows of the batch into the
   // compact table and map every (board, street, hand) to its slot.
   void refresh_policy(std::vector<BoardWork> &batch, IterationTelemetry *telemetry);
+  // Calls function(node, row, offset, actions) for every row of the layout.
   template <typename Function> void for_each_row(Function &&function) const;
+  // Locked frequencies of (node, row), or nullptr (unlocked node or class, postflop row).
+  [[nodiscard]] const double *locked_row(std::uint32_t node, std::uint32_t row) const noexcept;
+  // Per-class lock flags (81 bytes) of a locked node, or nullptr.
+  [[nodiscard]] const std::uint8_t *locked_classes(std::uint32_t node) const noexcept;
+  Result<bool, TrainerError> initialize_lock();
+  // Overwrites the locked rows of the compact per-batch policy.
+  void apply_lock_to_policy();
   void average_row(std::uint64_t offset, std::uint8_t actions, double *out) const noexcept;
   // Average row as materialize_all_discounts() would leave it: a pending lazy discount
   // (slot older than discount_target_) is applied to copies of the cells, each rounded
@@ -527,6 +562,16 @@ private:
   double initial_pot_antes_{0.0};
   double stack_antes_{0.0};
   std::string identity_;
+  // Preflop lock: lock_block_[node] indexes the node's block (no lock = all ones);
+  // block b has 81 class flags at lock_classes_[81 b] and 81 x actions frequencies
+  // at lock_values_[lock_value_offsets_[b]] (zero for unlocked classes).
+  std::vector<std::uint32_t> lock_block_;
+  std::vector<std::uint32_t> locked_nodes_;
+  std::vector<std::uint8_t> lock_classes_;
+  std::vector<std::uint64_t> lock_value_offsets_;
+  std::vector<double> lock_values_;
+  std::uint32_t lock_row_count_{0U};
+  std::string lock_fingerprint_;
   HeadsUpShowdownKernel kernel_;
 };
 
