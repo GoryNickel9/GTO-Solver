@@ -314,6 +314,33 @@ livello +0,00014 / −0,00001, TX1 −0,00046 / −0,00017, TX2 −0,00065 / −
 0,03 % del piatto. Con questa misura, nel gioco del passo 2, le chart del passo 2 e di tutte le varianti
 sono intercambiabili; la distanza fra chart resta utile per vedere dove si spostano, meno per giudicarle.
 
+### 5.6 Giochi sull'astrazione compatta (notte del 29 settembre)
+
+Decisioni dell'utente: all-in postflop solo fino a 5 volte il piatto (opzione
+`postflop_all_in_max_pot_basis_points`, commit 410a380: spariscono 6 all-in, tutti nelle linee limp-check
+del piatto da 4a con 48a dietro; il preflop resta identico), tabelle in double, criterio per scegliere il
+gioco di G4: il più vicino a MonkerSolver sulla distanza, a parità di EV. Tutti i giochi usano
+l'astrazione compatta (15 livelli + TX2), arresto sotto 0,01, e sono valutati con MonkerSolver giocato nel
+proprio gioco.
+
+| Gioco | Configurazione | Iterazioni | Distanza da MonkerSolver | Differenza di range | Preferenza suited | Dalle chart G0c | Perdita di MonkerSolver nel suo gioco (CO / BTN) | Picco |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| G0c | `HU50_step2.json` | 20.000 | 0,0706 | 0,3625 | 0,353 | — | 0,0017 / 0,0007 a | 1,03 GB |
+| **G1** | `HU50_step2_donk.json` | 16.000 | **0,0641** | **0,350** | 0,365 | 0,021 / 0,134 | 0,0011 / 0,0005 a | 1,20 GB |
+| G2 | `HU50_step2_allin5x.json` | 16.000 | 0,0750 | 0,383 | 0,381 | 0,013 / 0,073 | 0,0019 / 0,0006 a | 1,00 GB |
+| G3 | `HU50_step2_donk_allin5x.json` | 16.000 | 0,0658 | 0,360 | 0,381 | 0,023 / 0,138 | 0,0020 / 0,0004 a | 1,17 GB |
+
+- **I donk bet avvicinano a MonkerSolver anche sull'astrazione compatta** (G1 −0,0065 da G0c); sommati
+  alla compatta danno il risultato migliore finora (0,0641 / 0,350).
+- **L'all-in fino a 5 volte il piatto allontana un po'** (G2 +0,004 da G0c, G3 +0,0017 da G1), ai limiti
+  del rumore; in EV tutti i giochi restano equivalenti (perdita di MonkerSolver sotto lo 0,07 % del
+  piatto).
+- **Scelta per G4**: G1 (compatta + donk) + due size (bet e raise al 50 % e al 100 % del piatto),
+  `benchmarks/monker/HU50_step2_2size_donk.json`: 8.599 nodi, 3.220 decisioni postflop, 15,6 GB in double
+  (calcolo esatto dal layout, verificato sui run precedenti; prova su 2 size senza donk in float32: 6,29 GB
+  misurati, 0,44 s per iterazione). Con 12,5 GiB liberi su 32 (llama-server dell'utente 5 GB) il run
+  finirebbe nel file di paging: lanciato solo dopo la chiusura di llama-server.
+
 ## 6. Strumenti e riproduzione
 
 ```

@@ -43,6 +43,22 @@ Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
 
+### 2026-09-29 (notte) — all-in fino a 5 volte il piatto, giochi G1-G3 sull'astrazione compatta
+
+Decisioni dell'utente: all-in postflop solo fino a 5 volte il piatto; tabelle in double; G4 = il gioco più
+vicino a MonkerSolver sulla distanza, a parità di EV, più una seconda size (50 % + 100 %). Verifica della
+memoria per due size (l'utente ha chiesto di ricontrollare la mia stima di 80 GB): calcolo esatto dal
+layout, che riproduce tutti i picchi misurati; con l'astrazione del passo 2 servono 70,7 GB (non 80), con
+quella compatta 11,7 GB (15,6 con i donk bet); una prova in float32 ha misurato 6,29 GB e 0,44 s per
+iterazione. Opzione `postflop_all_in_max_pot_basis_points` (commit `410a380`, workflow con due
+revisori): spariscono 6 all-in delle linee limp-check del piatto da 4a.
+
+Risultati (documento, sezione 5.6): G1 compatta + donk 0,0641 / 0,350 (il migliore finora), G2 compatta +
+all-in fino a 5× 0,0750 / 0,383, G3 con entrambi 0,0658 / 0,360, contro G0c 0,0706 / 0,3625; in EV
+MonkerSolver nel gioco di ciascuno perde al massimo lo 0,068 % del piatto. G4 = G1 + due size (15,6 GB in
+double): in attesa che l'utente chiuda llama-server, perché con 12,5 GiB liberi il run andrebbe nel file
+di paging.
+
 ### 2026-09-28 (sera e notte) — passo 2 stabile, varianti, MonkerSolver nel nostro gioco, turn in texture
 
 Passo 2 su HU50 stabile a 24.000 iterazioni (17:45): distanza da MonkerSolver 0,0725 (passo 1: 0,262),
