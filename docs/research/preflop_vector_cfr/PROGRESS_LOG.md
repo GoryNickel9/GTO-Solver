@@ -11,17 +11,17 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28): passo 1 e passo 2 fatti su HU50 (distanza 0,0725, chart di MonkerSolver equivalenti in EV nel nostro gioco: perdita fino allo 0,03 % del piatto nel gioco del passo 2); varianti e turn in texture in valutazione; ottimizzazione dei 35 minuti di HU40 in pausa |
+| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28): su HU50 configurazione di riferimento decisa il 2026-09-29, G1 = astrazione compatta 15 livelli × 4 + turn in texture TX2, donk bet, una size (distanza da MonkerSolver 0,0641; chart di MonkerSolver equivalenti in EV nel nostro gioco: perdita al massimo dello 0,07 % del piatto nei giochi fermati a 0,01); resta aperta la radice del CO (open a 5a 7-8 % contro 0,5 %; scarto per circa il 70 % nel piatto limpato), test della radice bloccata dalle 00:00 del 2026-09-30; 3-way rinviato a quando il problema è capito meglio (probabilmente dopo le 3 del 30); ottimizzazione dei 35 minuti di HU40 in pausa |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
 | Branch di fase | `feat/monker-step1-checkdown` (dal 2026-09-28, da `feat/preflop-phase1-time`); in precedenza `feat/preflop-phase1-time` e `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
-| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `6de08ae`; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin` e `out/monker/bin_texture` |
+| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `5578ab8`; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin`, `out/monker/bin_texture`, `out/monker/bin_allin` (`410a380`) e `out/monker/bin_abd` (`5578ab8`); copie congelate del runner in `out/frozen/` |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il vecchio limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Decisioni con l'utente: configurazione HU di riferimento (donk bet, astrazione compatta 15 livelli + texture dei turn se neutra), criterio di somiglianza (perdita di MonkerSolver nel nostro gioco), seconda size postflop su server affittato; poi il 3-way (raise al 100 % del piatto, regole sparse, equity a tre giocatori, motore multiway). Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezione 8. |
+| Prossimo passo | Test della radice bloccata dalle 00:00 del 2026-09-30 (radice del CO alla chart di MonkerSolver; se non converge, tutto il CO preflop bloccato). Poi fase 1 del 3-way 50a, rinviata a quando il problema della radice è capito meglio (probabilmente dopo le 3 del 30): albero identico a quello delle chart 3-way a 50a dell'utente (54 file), raise al 100 % del piatto, regole sparse, equity a tre giocatori, motore multiway, astrazione compatta. Da decidere con l'utente: regola di arresto per il 3-way (proposta 0,005 o il doppio delle iterazioni), test dell'albero delle azioni nei soli piatti rilanciati o impostazioni dell'albero MonkerSolver dell'utente (chieste) per la radice del CO. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezione 8. |
 
 ## 2. Registro dei gate
 
@@ -42,6 +42,67 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-29 (dalle 10 alle 18:38) — G4 a due size, bucket più fini (E, F), seed e curva di convergenza (A), migliore risposta contro le chart (B), flop esatto (D)
+
+G4 (G1 + bet e raise al 50 % e al 100 %, 8.599 nodi, tabelle in double) lanciato alle 10:02, stabile a
+20.000 iterazioni alle 13:29: picco 15,67 GB (la stima dal layout, 15,6 GB, era giusta), 0,617 s per
+iterazione, valutazione esatta 5.067 s. Distanza da MonkerSolver 0,0663, differenza di range 0,373,
+preferenza suited 0,432 (G1: 0,0641 / 0,350 / 0,365): la seconda size sposta le chart quanto i donk bet
+(0,0219 / 0,1285 da G1; G0c 0,0212 / 0,1342) ma lontano da MonkerSolver; in EV resta equivalente
+(MonkerSolver perde lo 0,032 % / 0,022 % del piatto). G1 resta il riferimento (criterio della notte: il gioco
+più vicino a MonkerSolver a parità di EV).
+
+Poi una modifica alla volta su G1, con gli eseguibili `out/monker/bin_allin` (E, F) e `out/monker/bin_abd`
+(A, B, D). E (bucket 30 × 8) e F (60 × 8) stabili a 20.000 iterazioni, distanza 0,0625 per entrambi, range
+0,339 / 0,3395, preferenza suited 0,394 / 0,395, picco 3,82 e 7,53 GB; F coincide con E (0,0043 / 0,0245):
+il numero di bucket non è la leva. A (G1 con seed 2) stabile a 16.000 (0,0650 / 0,352): il rumore del seed su
+G1 è 0,0088 / 0,0425 a 16.000 iterazioni (passo 2: 0,007 / 0,034 a 24.000; la differenza può venire dalle
+iterazioni); le varianti fermate a 20.000 contengono anche 4.000 iterazioni in più (G1 contro A a 20.000:
+0,0099 / 0,0497, 1,1 / 1,2 volte il rumore); rispetto a G1 le varianti di astrazione (D, E, F) spostano le
+chart di 1,2-1,6 volte il rumore, i cambi dell'albero (G0c senza donk, G4) di 2,4-3,2 volte. D (flop esatto, un id per orbita dei semi, capacità 528) stabile a 20.000 (0,0621 / 0,342),
+stato 1,41 GB (+30 % su G1), chart vicine a quelle di E (0,0072 / 0,0443). In EV tutte equivalenti:
+MonkerSolver nel gioco di ciascun run perde al massimo lo 0,048 % del piatto.
+
+Curva di convergenza esatta di A (policy a ogni salvataggio e `convergence_curve.py`), poi A ripreso fino a
+32.000 iterazioni: NashConv a carte vere 1,903 a (4.000), 0,899 a (16.000), 0,777 a (32.000); guadagno solo
+preflop del CO 0,0120 -> 0,0048 -> 0,0028 a (il preflop converge), solo postflop 0,460 -> 0,262 -> 0,236 a
+(scende ancora). Le chart si muovono ancora (A a 32.000 contro A a 16.000: 0,0155 / 0,0838, circa 2 volte il
+rumore), lentamente verso MonkerSolver (distanza 0,0650 -> 0,0631). La soglia 0,01 basta per il preflop ma
+non per la posizione finale delle chart: proposta per il 3-way una soglia di 0,005 o il doppio delle
+iterazioni. Corretta nel documento (5.3) la stima del 28 che prevedeva una distanza in salita con più
+iterazioni; corrette anche la nota sugli 80 GB della seconda size e la decisione "niente donk bet" della
+sezione 1.
+
+B (migliore risposta esatta contro il preflop delle chart, su G1): con il preflop del CO di MonkerSolver (e
+il nostro postflop) la migliore risposta del BTN vale 0,0221 a in meno che contro il nostro CO (sfruttabilità
+−0,74 % del piatto), con il preflop del BTN di MonkerSolver quella del CO 0,0250 a in più (+0,83 %): poco
+rispetto alla NashConv (29,9 %), ma circa 20 e 55 volte la perdita delle chart nel nostro gioco; il controllo
+con le nostre chart esportate resta entro 0,0003 a. Il CO di MonkerSolver non apre quasi mai a 5a; il nostro
+apre il 7,0-7,7 % in G1 e in tutte le varianti di astrazione del giorno (MonkerSolver 0,5 %; AA:
+MonkerSolver limpa il 93 %, noi apriamo il 66-76 %), il 9,4 % con due size; l'open scende con le iterazioni
+(A: 7,7 % a 16.000, 6,7 % a 32.000). Ipotesi: le chart dell'utente vengono da un albero postflop diverso nei
+piatti rilanciati e/o portano l'errore dell'astrazione di MonkerSolver, e da parte nostra pesa la
+convergenza incompleta; proposti test dell'albero nei soli piatti rilanciati o le impostazioni dell'albero
+MonkerSolver dell'utente (chieste).
+
+Decisioni dell'utente: configurazione HU di riferimento G1 (donk bet sì, all-in postflop fino a 5 volte il
+piatto no, che revoca la decisione della notte), B solo su G1, test C (postflop ricalcolato con il preflop di MonkerSolver fermo) non si fa, A
+fino a 32.000 iterazioni, fase 1 del 3-way prima fissata per le 00:00 del 30 settembre e poi rinviata alle
+20:00 (si parte quando il problema della radice è capito meglio, probabilmente dopo le 3 del 30). Commit `5578ab8` (policy a ogni salvataggio, bucket per street e flop esatto, `--exploit` di
+`gtosd_preflop_blueprint_monker_values`): 44/44 test `preflop_blueprint` e test di base PASS, 4 rilievi
+della revisione corretti prima del commit. Incidenti: il runner di G4 è morto con un errore di sintassi dopo
+l'arresto del trainer, perché un agente ha modificato lo script mentre bash lo leggeva (training e
+valutazione intatti); una copia congelata del runner fuori dal repository è fallita alla partenza (la radice
+è calcolata dal percorso dello script): le copie congelate stanno ora in `out/frozen/`. Dettagli in
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezione 5.7.
+
+Sera: G1+ (E ripreso fino alla soglia 0,005, fermo a 28.000) arriva a 0,0622 / 0,338, perdita di
+MonkerSolver 0,00225 / 0,00022 a. Scomposizione dello scarto su G1: circa il 70 % sta nel piatto limpato
+(CO contro l'isolation 28,6 % della distanza, BTN contro il limp 21 %; range di limp del CO 39,5 % e range di
+isolation del BTN 31,5 % della differenza di range), circa il 30 % nell'open a 5a. L'utente chiede il test
+della radice bloccata: codice la sera (anche dopo le 21), test in partenza automatica alle 00:00 del 30, secondo
+test con tutto il CO preflop bloccato solo se il primo non converge (sezione 5.8).
 
 ### 2026-09-29 (notte) — all-in fino a 5 volte il piatto, giochi G1-G3 sull'astrazione compatta
 
