@@ -331,6 +331,11 @@ def load_outcomes(choice: str, python_path: Path, engine_path: Path) -> tuple[Ou
     info = {"requested": choice}
     if choice == "python" or (choice == "auto" and python_path.exists()):
         wins, ties, meta = resources.read_python_allin(python_path)
+        # Same acceptance as S4: all 376,992 boards, the engine's straight > trips order.
+        if meta.get("boards") != sdcards.FIVE_CARD_SET_COUNT or meta.get("straight_vs_trips") != "straight":
+            raise ValueError(f"{python_path}: metadata boards={meta.get('boards')}, straight_vs_trips="
+                             f"{meta.get('straight_vs_trips')!r}; expected {sdcards.FIVE_CARD_SET_COUNT} "
+                             "and 'straight'")
         info.update(source="python", path=rel(python_path), metadata=meta)
         outcomes = Outcomes(wins, ties, f"python:{rel(python_path)}")
         if engine_path.exists():
