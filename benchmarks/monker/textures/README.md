@@ -16,6 +16,7 @@ turn (`river-key turn`).
 | `texture_map_TX3_aggressive.txt` | TX3_aggressive | 2,680 | 68,760 / 321,600 / 80,400 | `67f7cf8b4881bc91...` |
 | `texture_map_TXM_monker_like.txt` | TXM_monker_like | 1,899 | 68,760 / 227,880 / 56,970 | `977081d612ad5d2c...` |
 | `texture_map_TXM2_monker_like.txt` | TXM2_monker_like | 2,151 | 68,760 / 258,120 / 64,530 | `87e12b5ed291a626...` |
+| `identity_river_board_texture_map.txt` | identity_river_board (`river-key river-board`) | 13,761 (river 19,998) | 68,760 / 1,651,320 / 599,940 | `a220d309a1ccfea5...` |
 
 `TXM_monker_like` (30 September 2026) imitates what is known of MonkerSolver's turn textures:
 classes global per street, blind to which card came on the turn and to the flop. Its key is the
@@ -24,9 +25,10 @@ counts, 4 / 3+1 / 2+2 / 2+1+1 / 1+1+1+1), without which ranks share a suit. That
 classes against 3,663 unordered suit-canonical turn boards and a scaled estimate of about 1,990
 for Monker's "Large" (keeping the ranks of a 2+2 pair of suits would give 2,151, the ranks of a
 3+ card suit 2,277). The exact Monker rule is unknown. Monker's river classes depend on the
-5-card board (about 540-760 short-deck classes estimated); the engine supports only
-`river-key turn`, so here the river takes the class of its turn (1,899 classes), and a 5-card
-river key would need code changes. On HU50 step 2 donk with 30 x 4 buckets the trainer state is
+5-card board (about 540-760 short-deck classes estimated); this map uses `river-key turn`, so
+here the river takes the class of its turn (1,899 classes). Since 30 September 2026 the engine also
+reads `river-key river-board` (below), but a river keyed by the 5-card board alone forgets the
+card order, which matters when there is betting before the river. On HU50 step 2 donk with 30 x 4 buckets the trainer state is
 966,809,248 bytes against 2,168,834,128 with TX2 (0.45x).
 
 `TXM2_monker_like` adds to the TXM key, on 2+2 boards only, which ranks share each suit
@@ -40,7 +42,15 @@ fingerprint (`board-class-rows-v1|...`), trainer identity and checkpoints. Any o
 the rows fingerprint (`board-class-rows-v2|...|texture=fnv1a64:...`), so a checkpoint or a policy
 of another texture is refused.
 
-`generate_texture_maps.py` regenerates the seven files byte for byte in a few seconds
+`identity_river_board_texture_map.txt` (30 September 2026, correctness tests of the board class
+rows) keeps the identity flop and turn sections and keys the river by the unordered five-card board
+(`river-key river-board`): a river section of the 19,998 canonical five-card boards, each its own
+class, so the river rows are `five-card board * groups + bucket`. It forgets which card came on the
+river, so it is lossless only in games without postflop decisions before the river (the
+`benchmarks/monker/correctness/HU6_V2_river.json` game, flop and turn checked through); its
+fingerprint (`...|river-key=river-board`) differs from every turn-keyed map.
+
+`generate_texture_maps.py` regenerates the eight files byte for byte in a few seconds
 (`--check` compares them instead); its docstring defines the rules. The rule study, the proxy
 scores and the run plan are in the research notes of 28 September 2026 (turn texture merge on
 HU50 step 2). Keep LF line ends (`.gitattributes`); the loader also accepts CRLF.

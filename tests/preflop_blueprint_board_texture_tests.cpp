@@ -9,13 +9,16 @@
 // and match the documented class counts and examples; a trainer with a merged
 // map has its own identity and refuses the checkpoints of other partitions.
 // The best response with a texture is covered by the certifier tests
-// (test_board_texture_rows).
+// (test_board_texture_rows). River key "river-board" (the river class of the
+// unordered five-card board): its file, fingerprint, rows in BoardContext and
+// in the joint river engine, and a short training run.
 #include "preflop_blueprint_test_support.hpp"
 
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/preflop_blueprint/board_class_rows.hpp"
 #include "gtosd/preflop_blueprint/board_context.hpp"
 #include "gtosd/preflop_blueprint/board_texture.hpp"
+#include "gtosd/preflop_blueprint/river_engine.hpp"
 
 #include <algorithm>
 #include <array>
@@ -24,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <set>
 #include <string>
@@ -421,8 +425,10 @@ void test_file_format(const Resources &resources, const std::filesystem::path &s
   expect("no_name", edited([](auto &copy) { copy[1] = "name "; }), pb::TextureError::BadHeader);
   expect("river_key_unknown", edited([](auto &copy) { copy[2] = "river-key flop"; }),
          pb::TextureError::BadHeader);
+  // River key "river-board" is read, but its river section lists the 19,998
+  // canonical five-card boards: a turn-style river section is refused.
   expect("river_key_river_board", edited([](auto &copy) { copy[2] = "river-key river-board"; }),
-         pb::TextureError::Unsupported);
+         pb::TextureError::BadSection);
   expect("section_size", edited([&](auto &copy) {
            copy[flop_header] = "flop 572";
            copy.erase(copy.begin() + static_cast<std::ptrdiff_t>(flop_header + 1U));
@@ -916,6 +922,200 @@ void test_trainer(const Resources &resources, const FoldedTables &tables,
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+// River key "river-board" (correctness tests of 30 September 2026): the river
+// class is that of the unordered five-card board. The identity river-board
+// map (benchmarks/monker/textures/identity_river_board_texture_map.txt,
+// written by generate_texture_maps.py) is the save of the identity partition,
+// round-trips, has its own fingerprint and trainer identity, gives the river
+// rows class * groups + bucket with the canonical five-card board as the class
+// in BoardContext and in the joint river engine alike, gives two histories
+// with the same five cards the same river rows, and trains.
+void test_river_board_key(const Resources &resources, const FoldedTables &tables,
+                          const std::filesystem::path &scratch) {
+  const auto started = Clock::now();
+  const auto &catalog = *resources.catalog;
+  constexpr std::uint32_t river_count = ca::canonical_river_board_count;
+  auto built = pb::BoardTextureMap::from_river_board_partition(
+      iota_labels(flop_count), iota_labels(turn_count), iota_labels(river_count),
+      "identity_river_board");
+  require(built.has_value(), "the identity river-board partition is accepted");
+  const auto &map = built.value();
+  require(!map.is_identity() && map.river_key() == pb::RiverKey::RiverBoard &&
+              map.classes(ca::BucketStreet::Flop) == flop_count &&
+              map.classes(ca::BucketStreet::Turn) == turn_count &&
+              map.classes(ca::BucketStreet::River) == river_count,
+          "river-board map: its key, 573 / 13,761 / 19,998 classes, never the identity");
+  require(map.fingerprint().starts_with("texture=fnv1a64:") &&
+              map.fingerprint().ends_with("|classes=573/13761/19998|river-key=river-board"),
+          "the river-board fingerprint names the class counts and the key: " + map.fingerprint());
+  bool identity_classes = true;
+  for (std::uint32_t index = 0; index < river_count; ++index) {
+    identity_classes = identity_classes && map.river_board_class(index) == index &&
+                       map.river_class(index % turn_count, index) == index;
+  }
+  for (std::uint32_t index = 0; index < turn_count; ++index) {
+    identity_classes = identity_classes && map.turn_class(index) == index;
+  }
+  require(identity_classes, "identity river-board classes are the canonical indices");
+  {
+    const auto wrong = pb::BoardTextureMap::from_river_board_partition(
+        iota_labels(flop_count), iota_labels(turn_count), iota_labels(turn_count), "wrong");
+    require(!wrong.has_value() && wrong.error() == pb::TextureError::BadSection,
+            "a river-board partition needs one class per canonical five-card board");
+  }
+  // A merged river partition: its own class count and fingerprint.
+  std::vector<std::uint32_t> halves(river_count);
+  for (std::uint32_t index = 0; index < river_count; ++index) {
+    halves[index] = index / 2U;
+  }
+  const auto merged = pb::BoardTextureMap::from_river_board_partition(
+      iota_labels(flop_count), iota_labels(turn_count), halves, "river_halves");
+  require(merged.has_value() && merged.value().classes(ca::BucketStreet::River) == 9'999U &&
+              merged.value().river_board_class(3U) == 1U &&
+              merged.value().fingerprint() != map.fingerprint(),
+          "a merged river-board partition has its classes and its fingerprint");
+
+  // File: the repository map is the save of the identity partition.
+  const auto repository = texture_directory() / "identity_river_board_texture_map.txt";
+  const auto path = scratch / "identity_river_board.txt";
+  require(map.save(path, catalog).has_value(), "river-board map saves");
+  require(read_text(path) == read_text(repository),
+          "the repository river-board map is the identity partition (generate_texture_maps.py)");
+  const auto loaded = load_map(repository, catalog);
+  require(loaded.fingerprint() == map.fingerprint() &&
+              loaded.river_key() == pb::RiverKey::RiverBoard &&
+              loaded.name() == "identity_river_board" &&
+              loaded.classes(ca::BucketStreet::River) == river_count,
+          "the repository river-board map loads");
+  const auto merged_path = scratch / "river_halves.txt";
+  require(merged.value().save(merged_path, catalog).has_value(), "merged river-board map saves");
+  const auto merged_loaded = load_map(merged_path, catalog);
+  require(merged_loaded.fingerprint() == merged.value().fingerprint() &&
+              merged_loaded.river_board_class(19'997U) == 9'998U,
+          "a merged river-board map round-trips");
+  const auto lines = split_lines(read_text(path));
+  constexpr std::size_t river_header = 3U + 1U + flop_count + 1U + turn_count;
+  require(lines.size() == river_header + 1U + river_count &&
+              lines[2] == "river-key river-board" && lines[river_header] == "river 19998" &&
+              lines[river_header + 1U] ==
+                  std::to_string(catalog.river_boards()[0].code) + " 0",
+          "river-board file layout: 19,998 river lines of canonical five-card board codes");
+  const auto expect = [&](const std::string &case_name, std::vector<std::string> copy,
+                          const pb::TextureError error) {
+    const auto bad_path = scratch / ("bad_river_board_" + case_name + ".txt");
+    write_text(bad_path, join_lines(copy));
+    const auto rejected = pb::BoardTextureMap::load(bad_path, catalog);
+    require(!rejected.has_value() && rejected.error() == error,
+            "malformed river-board map rejected: " + case_name);
+  };
+  {
+    auto copy = lines;
+    std::swap(copy[river_header + 10U], copy[river_header + 11U]);
+    expect("swapped_codes", copy, pb::TextureError::CodeMismatch);
+  }
+  {
+    auto copy = lines;
+    copy.resize(river_header + 100U);
+    expect("truncated", copy, pb::TextureError::BadSection);
+  }
+  {
+    auto copy = lines;
+    copy[2] = "river-key turn";
+    expect("turn_key", copy, pb::TextureError::BadSection);
+  }
+
+  // Rows: flop and turn as without a map, the river from the five-card board,
+  // equal in BoardContext and in the joint river engine; the same five cards
+  // in another order give the same river rows.
+  const pb::BoardClassRows legacy_rows(4U, 5U, 6U);
+  const pb::BoardClassRows rows(4U, 5U, 6U, map);
+  require(rows.fingerprint() != legacy_rows.fingerprint() &&
+              rows.fingerprint().starts_with("board-class-rows-v2|") &&
+              rows.river_key() == pb::RiverKey::RiverBoard &&
+              rows.count(ca::BucketStreet::River) == river_count * 6U &&
+              rows.count(ca::BucketStreet::Turn) == legacy_rows.count(ca::BucketStreet::Turn) &&
+              rows.count(ca::BucketStreet::Flop) == legacy_rows.count(ca::BucketStreet::Flop),
+          "river-board rows: own fingerprint, river capacity 19,998 * groups");
+  const auto legacy_view = abstraction_tables(resources, tables, legacy_rows);
+  const auto view = abstraction_tables(resources, tables, rows);
+  auto prefix = std::make_unique<pb::RiverPrefix>();
+  auto river_board = std::make_unique<pb::RiverBoard>();
+  ca::DeterministicRandom random(0x5445'5854'0007ULL);
+  constexpr int histories = 300;
+  std::uint64_t compared = 0U;
+  std::uint64_t turn_key_differs = 0U;
+  for (int draw = 0; draw < histories; ++draw) {
+    const auto history = catalog.sample_physical_history(random);
+    const std::array<gtosd::CardId, 5> board{history.flop[0], history.flop[1], history.flop[2],
+                                             history.turn, history.river};
+    const auto river_index = catalog.lookup_river_board(board).value().index;
+    const auto legacy = pb::BoardContext::build(history, *resources.ranks, &legacy_view);
+    const auto context = pb::BoardContext::build(history, *resources.ranks, &view);
+    auto swapped_history = history;
+    std::swap(swapped_history.turn, swapped_history.river);
+    const auto swapped = pb::BoardContext::build(swapped_history, *resources.ranks, &view);
+    const auto swapped_legacy =
+        pb::BoardContext::build(swapped_history, *resources.ranks, &legacy_view);
+    require(legacy.has_value() && context.has_value() && swapped.has_value() &&
+                swapped_legacy.has_value(),
+            "river-board contexts build");
+    require(prefix->assign(history.flop, history.turn, view).has_value() &&
+                river_board->assign(history, *resources.ranks, prefix.get()).has_value(),
+            "the joint river engine accepts the river-board rows");
+    const auto river_buckets = context.value().buckets(gtosd::Street::River);
+    bool legacy_same = true;
+    for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
+      require(context.value().row(gtosd::Street::Flop, hand) ==
+                      legacy.value().row(gtosd::Street::Flop, hand) &&
+                  context.value().row(gtosd::Street::Turn, hand) ==
+                      legacy.value().row(gtosd::Street::Turn, hand),
+              "flop and turn rows do not depend on the river key");
+      const auto river_row = context.value().row(gtosd::Street::River, hand);
+      require(river_row == river_index * 6U + river_buckets[hand],
+              "river-board river row = five-card board class * groups + bucket");
+      require(river_board->rows()[hand] == river_row,
+              "the joint river engine reads the same river-board rows as BoardContext");
+      // Same live hands in the same combo order on the same five cards.
+      require(swapped.value().combo_ids()[hand] == context.value().combo_ids()[hand] &&
+                  swapped.value().row(gtosd::Street::River, hand) == river_row,
+              "the same five cards in another order share the river-board rows");
+      legacy_same = legacy_same && swapped_legacy.value().row(gtosd::Street::River, hand) ==
+                                       legacy.value().row(gtosd::Street::River, hand);
+      ++compared;
+    }
+    turn_key_differs += legacy_same ? 0U : 1U;
+  }
+  require(turn_key_differs > 0U,
+          "with river key turn the swapped histories have other river rows (the test sees "
+          "the key)");
+
+  // Trainer: its own identity, river capacity of the five-card boards, and a
+  // checkpoint of the turn-keyed rows refused.
+  const auto game =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  require(game.has_value(), "HU10 reduced compiles");
+  const auto legacy_trainer = trained(game.value(), resources, tables, legacy_rows, 2);
+  const auto trainer = trained(game.value(), resources, tables, rows, 2);
+  require(trainer->identity() != legacy_trainer->identity(),
+          "the river-board key changes the trainer identity");
+  require(texture_config(resources, rows).river_capacity == river_count * 6U,
+          "river-board trainer river capacity 19,998 * groups");
+  const auto checkpoint = scratch / "river_board_legacy.ckpt";
+  require(legacy_trainer->save_checkpoint(checkpoint).has_value(), "legacy checkpoint saves");
+  {
+    const auto fresh = trained(game.value(), resources, tables, rows, 0);
+    const auto refused = fresh->load_checkpoint(checkpoint);
+    require(!refused.has_value() && refused.error() == pb::TrainerError::IntegrityFailure,
+            "a river-board run refuses the checkpoint of the turn-keyed rows");
+  }
+  std::cout << "river-board key: " << map.fingerprint() << ", rows " << rows.fingerprint()
+            << ", " << compared << " river rows on " << histories
+            << " histories equal in BoardContext, the joint river engine and the swapped "
+               "history (turn key differs on "
+            << turn_key_differs << "), trainer identity " << trainer->identity() << ", "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -955,6 +1155,13 @@ int main(const int argc, char **argv) {
     test_suit_symmetry(resources, tables, {&maps[0], &merged, &maps[3]});
     test_texture_row_formula(resources, tables, maps[3]);
     test_trainer(resources, tables, scratch_dir);
+    test_river_board_key(resources, tables, scratch_dir);
+    {
+      // Suit symmetry of the river-board rows through BoardContext.
+      const auto river_board = load_map(
+          texture_directory() / "identity_river_board_texture_map.txt", *resources.catalog);
+      test_suit_symmetry(resources, tables, {&river_board});
+    }
     std::cout << "PREFLOP_BLUEPRINT_BOARD_TEXTURE_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
   } catch (const std::exception &error) {

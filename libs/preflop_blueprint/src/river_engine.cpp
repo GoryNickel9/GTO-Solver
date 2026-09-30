@@ -117,7 +117,8 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
   }
   // Board class rows: every river of the turn uses the class of the turn,
   // the texture's river class of its canonical flop+turn index
-  // (BoardContext::build).
+  // (BoardContext::build); with river key "river-board" RiverBoard::assign
+  // reads the class of each five-card board instead.
   turn_class_ = tables.board_class_rows != nullptr
                     ? tables.board_class_rows->river_class(turn_lookup.value().index)
                     : turn_lookup.value().index;
@@ -223,6 +224,13 @@ Result<bool, KernelError> RiverBoard::assign(const ca::BoardHistory &history,
     return Outcome::failure(KernelError::MissingTable);
   }
   const auto &table = *tables.river;
+  // Board class rows: the class of the turn, or with river key "river-board"
+  // the class of this five-card board (BoardContext::build).
+  const auto river_class =
+      tables.board_class_rows != nullptr &&
+              tables.board_class_rows->river_key() == RiverKey::RiverBoard
+          ? tables.board_class_rows->river_class(0U, lookup.value().index)
+          : prefix->turn_class();
   std::uint32_t maximum = 0U;
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
     const auto combo = combo_ids_[hand];
@@ -245,8 +253,7 @@ Result<bool, KernelError> RiverBoard::assign(const ca::BoardHistory &history,
         return Outcome::failure(KernelError::InvalidInput);
       }
     } else if (tables.board_class_rows != nullptr) {
-      // The river shares the class of its turn.
-      row = tables.board_class_rows->row(ca::BucketStreet::River, prefix->turn_class(), bucket);
+      row = tables.board_class_rows->row(ca::BucketStreet::River, river_class, bucket);
     }
     rows_[hand] = row;
     maximum = std::max(maximum, row);

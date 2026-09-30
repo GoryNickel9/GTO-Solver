@@ -17,7 +17,7 @@ using MapResult = Result<BoardTextureMap, TextureError>;
 
 constexpr std::string_view format_line = "gtosd-board-texture-v1";
 constexpr std::string_view river_key_turn = "turn";
-// Reserved for river textures keyed by the river board (not supported yet).
+// River textures keyed by the unordered five-card board.
 constexpr std::string_view river_key_river_board = "river-board";
 constexpr std::uint64_t maximum_file_bytes = 16ULL * 1024 * 1024;
 
@@ -148,9 +148,30 @@ std::vector<std::uint32_t> flop_turn_codes(const ca::BoardCatalog &catalog) {
   return codes;
 }
 
+std::vector<std::uint32_t> river_board_codes(const ca::BoardCatalog &catalog) {
+  std::vector<std::uint32_t> codes;
+  codes.reserve(catalog.river_boards().size());
+  for (const auto &board : catalog.river_boards()) {
+    codes.push_back(board.code);
+  }
+  return codes;
+}
+
 bool catalog_complete(const ca::BoardCatalog &catalog) {
   return catalog.flops().size() == ca::canonical_flop_count &&
          catalog.flop_turns().size() == ca::canonical_flop_turn_count;
+}
+
+bool river_boards_complete(const ca::BoardCatalog &catalog) {
+  return catalog.river_boards().size() == ca::canonical_river_board_count;
+}
+
+void append_payload_section(std::string &payload, const std::uint32_t classes,
+                    const std::vector<std::uint32_t> &labels) {
+  append_u32(payload, classes);
+  for (const auto value : labels) {
+    append_u32(payload, value);
+  }
 }
 
 } // namespace
@@ -176,7 +197,15 @@ const char *texture_error_name(const TextureError error) noexcept {
 }
 
 std::uint32_t BoardTextureMap::classes(const ca::BucketStreet street) const noexcept {
-  return street == ca::BucketStreet::Flop ? flop_classes_ : turn_classes_;
+  switch (street) {
+  case ca::BucketStreet::Flop:
+    return flop_classes_;
+  case ca::BucketStreet::Turn:
+    return turn_classes_;
+  case ca::BucketStreet::River:
+    return river_key_ == RiverKey::RiverBoard ? river_board_classes_ : turn_classes_;
+  }
+  return 0U;
 }
 
 Result<BoardTextureMap, TextureError>
@@ -217,6 +246,50 @@ BoardTextureMap::from_partition(std::vector<std::uint32_t> flop, std::vector<std
   return MapResult::success(std::move(map));
 }
 
+Result<BoardTextureMap, TextureError>
+BoardTextureMap::from_river_board_partition(std::vector<std::uint32_t> flop,
+                                            std::vector<std::uint32_t> turn,
+                                            std::vector<std::uint32_t> river, std::string name) {
+  if (flop.size() != ca::canonical_flop_count || turn.size() != ca::canonical_flop_turn_count ||
+      river.size() != ca::canonical_river_board_count) {
+    return MapResult::failure(TextureError::BadSection);
+  }
+  if (!valid_name(name)) {
+    return MapResult::failure(TextureError::BadHeader);
+  }
+  BoardTextureMap map;
+  map.name_ = std::move(name);
+  map.river_key_ = RiverKey::RiverBoard;
+  const auto flop_classes = relabel(flop);
+  const auto turn_classes = relabel(turn);
+  const auto river_classes = relabel(river);
+  // The fingerprint hashes the relabelled partition and the key, not the
+  // name; a turn-keyed map never hashes this prefix.
+  std::string payload = "gtosd-board-texture-v1|river-key=river-board|";
+  payload.reserve(payload.size() + 4U * (3U + flop.size() + turn.size() + river.size()));
+  append_payload_section(payload, flop_classes, flop);
+  append_payload_section(payload, turn_classes, turn);
+  append_payload_section(payload, river_classes, river);
+  map.fingerprint_ = "texture=fnv1a64:" + detail::hex64_text(detail::fnv1a_text(payload)) +
+                     "|classes=" + std::to_string(flop_classes) + "/" +
+                     std::to_string(turn_classes) + "/" + std::to_string(river_classes) +
+                     "|river-key=river-board";
+  // An identity section is stored empty (the index is the class).
+  if (!is_identity_labels(flop)) {
+    map.flop_ = std::move(flop);
+  }
+  if (!is_identity_labels(turn)) {
+    map.turn_ = std::move(turn);
+  }
+  if (!is_identity_labels(river)) {
+    map.river_ = std::move(river);
+  }
+  map.flop_classes_ = flop_classes;
+  map.turn_classes_ = turn_classes;
+  map.river_board_classes_ = river_classes;
+  return MapResult::success(std::move(map));
+}
+
 Result<BoardTextureMap, TextureError> BoardTextureMap::load(const std::filesystem::path &path,
                                                             const ca::BoardCatalog &catalog) {
   if (!catalog_complete(catalog)) {
@@ -244,11 +317,12 @@ Result<BoardTextureMap, TextureError> BoardTextureMap::load(const std::filesyste
     return MapResult::failure(TextureError::BadHeader);
   }
   const auto river_key = lines[2].substr(river_key_prefix.size());
-  if (river_key == river_key_river_board) {
-    return MapResult::failure(TextureError::Unsupported);
-  }
-  if (river_key != river_key_turn) {
+  if (river_key != river_key_turn && river_key != river_key_river_board) {
     return MapResult::failure(TextureError::BadHeader);
+  }
+  const bool river_board = river_key == river_key_river_board;
+  if (river_board && !river_boards_complete(catalog)) {
+    return MapResult::failure(TextureError::BadSection);
   }
   const auto turn_codes = flop_turn_codes(catalog);
   std::size_t cursor = 3U;
@@ -259,6 +333,19 @@ Result<BoardTextureMap, TextureError> BoardTextureMap::load(const std::filesyste
   auto turn = read_section(lines, cursor, "turn", turn_codes);
   if (!turn) {
     return MapResult::failure(turn.error());
+  }
+  if (river_board) {
+    // The river section lists the canonical five-card boards.
+    auto river = read_section(lines, cursor, "river", river_board_codes(catalog));
+    if (!river) {
+      return MapResult::failure(river.error());
+    }
+    if (cursor != lines.size()) {
+      return MapResult::failure(TextureError::BadSection);
+    }
+    return from_river_board_partition(std::move(flop.value()), std::move(turn.value()),
+                                      std::move(river.value()),
+                                      std::string(lines[1].substr(name_prefix.size())));
   }
   const auto river = read_section(lines, cursor, "river", turn_codes);
   if (!river) {
@@ -277,16 +364,17 @@ Result<BoardTextureMap, TextureError> BoardTextureMap::load(const std::filesyste
 Result<bool, TextureError> BoardTextureMap::save(const std::filesystem::path &path,
                                                  const ca::BoardCatalog &catalog) const {
   using Outcome = Result<bool, TextureError>;
-  if (!catalog_complete(catalog)) {
+  const bool river_board = river_key_ == RiverKey::RiverBoard;
+  if (!catalog_complete(catalog) || (river_board && !river_boards_complete(catalog))) {
     return Outcome::failure(TextureError::BadSection);
   }
   if (!valid_name(name_)) {
     return Outcome::failure(TextureError::BadHeader);
   }
   std::string text;
-  text.reserve(512U * 1024U);
+  text.reserve(river_board ? 1024U * 1024U : 512U * 1024U);
   text.append(format_line).append("\nname ").append(name_).append("\nriver-key ");
-  text.append(river_key_turn).append("\n");
+  text.append(river_board ? river_key_river_board : river_key_turn).append("\n");
   const auto append_section = [&](const std::string_view section,
                                   const std::vector<std::uint32_t> &codes, const auto &class_of) {
     text.append(section).append(" ").append(std::to_string(codes.size())).append("\n");
@@ -302,8 +390,13 @@ Result<bool, TextureError> BoardTextureMap::save(const std::filesystem::path &pa
                  [this](const std::uint32_t index) { return flop_class(index); });
   append_section("turn", turn_codes,
                  [this](const std::uint32_t index) { return turn_class(index); });
-  append_section("river", turn_codes,
-                 [this](const std::uint32_t index) { return river_class(index); });
+  if (river_board) {
+    append_section("river", river_board_codes(catalog),
+                   [this](const std::uint32_t index) { return river_board_class(index); });
+  } else {
+    append_section("river", turn_codes,
+                   [this](const std::uint32_t index) { return river_class(index); });
+  }
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
   if (!output) {
     return Outcome::failure(TextureError::IoFailure);

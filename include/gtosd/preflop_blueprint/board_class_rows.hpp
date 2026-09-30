@@ -18,9 +18,11 @@
 // flop+turn boards, so every flop and every turn has its own rows; a texture
 // merges turns into classes that share their rows. The flop classes are
 // always the canonical flops in the maps used so far. The river shares the
-// class of its turn (all rivers of a turn use the same rows). This river
-// rule is ours: MonkerSolver merges turns and rivers into texture classes
-// with an undocumented rule. Row of a street: class * groups + bucket, with
+// class of its turn (all rivers of a turn use the same rows) or, with a
+// texture of river key "river-board", takes the class of its unordered
+// five-card board (the canonical river board index for the identity
+// partition). This river rule is ours: MonkerSolver merges turns and rivers
+// into texture classes with an undocumented rule. Row of a street: class * groups + bucket, with
 // groups the capacity of that street's bucket table; the bucket stays the
 // one of the canonical board (the texture changes only the class). Imperfect
 // recall: the row keeps neither the preflop class nor the buckets of earlier
@@ -72,11 +74,21 @@ public:
   [[nodiscard]] std::uint32_t turn_class(const std::uint32_t flop_turn_index) const noexcept {
     return texture_.turn_class(flop_turn_index);
   }
+  // River key "turn" only: the class of the turn.
   [[nodiscard]] std::uint32_t river_class(const std::uint32_t flop_turn_index) const noexcept {
     return texture_.river_class(flop_turn_index);
   }
+  // Either river key: the class of a river from its canonical flop+turn index
+  // and its canonical five-card board index.
+  [[nodiscard]] std::uint32_t river_class(const std::uint32_t flop_turn_index,
+                                          const std::uint32_t river_board_index) const noexcept {
+    return texture_.river_class(flop_turn_index, river_board_index);
+  }
+  [[nodiscard]] RiverKey river_key() const noexcept { return texture_.river_key(); }
   // Class of a canonical board: the canonical flop index on the flop, the
-  // canonical flop+turn index on the turn and on the river.
+  // canonical flop+turn index on the turn and on the river (river key "turn"),
+  // the canonical five-card board index on the river (river key
+  // "river-board").
   [[nodiscard]] std::uint32_t board_class(const card_abstraction::BucketStreet street,
                                           const std::uint32_t canonical_index) const noexcept {
     switch (street) {
@@ -85,7 +97,9 @@ public:
     case card_abstraction::BucketStreet::Turn:
       return turn_class(canonical_index);
     case card_abstraction::BucketStreet::River:
-      return river_class(canonical_index);
+      return texture_.river_key() == RiverKey::RiverBoard
+                 ? texture_.river_board_class(canonical_index)
+                 : river_class(canonical_index);
     }
     return 0U;
   }

@@ -43,15 +43,24 @@ pair of suits gives 2,151 (TXM2_monker_like: its Hold'em analogue gives 8,996 cl
 0.6 % from MonkerSolver's 8,942 "Large", against 7,566 for the plain rule), keeping the
 ranks of a 3+ card suit 2,277.
 Monker's river classes depend on the 5-card board (about 540-760 classes
-estimated for short deck); the engine only supports river key "turn", so
-here the river takes the class of its 4-card turn board.
+estimated for short deck); these maps use river key "turn", so here the river
+takes the class of its 4-card turn board.
+
+identity_river_board_texture_map.txt (30 September 2026) is the identity with
+river key "river-board": flop and turn sections as in the identity map and a
+river section of the 19,998 canonical 5-card boards (code = the sorted
+suit-permuted card values packed 6 bits per card, minimum over the 24
+permutations, catalog order = sorted codes), each its own class. It keys the
+river rows by the unordered 5-card board, which is lossless only when no
+postflop decision precedes the river (the correctness games, flop and turn
+checked through).
 
 Usage: python generate_texture_maps.py [--out-dir DIR] [--check]
   --check compares the regenerated files with the ones in the output
   directory (default: this script's directory) instead of writing them.
-Takes a few seconds; the files are byte-identical to the 28 September 2026
-originals and the TXM_monker_like map of 30 September 2026 (sha256 in
-README.md).
+Takes a few seconds (plus about half a minute for the river boards); the
+files are byte-identical to the 28 September 2026 originals and the
+TXM_monker_like map of 30 September 2026 (sha256 in README.md).
 """
 import argparse
 import itertools
@@ -103,6 +112,16 @@ def catalog():
     turns = [dict(code=code, flop=unpack(code >> 6, 3), turn=code & 63,
                   flop_index=flop_index[code >> 6]) for code in turn_codes]
     return flop_codes, turns
+
+
+def river_board_codes():
+    """Canonical 5-card board codes in catalog order (19,998)."""
+    codes = set()
+    for cards in itertools.combinations(range(DECK), 5):
+        codes.add(min(pack(sorted(image[card] for card in cards)) for image in IMAGES))
+    codes = sorted(codes)
+    assert len(codes) == 19998, len(codes)
+    return codes
 
 
 def ranks_of(cards):
@@ -257,6 +276,30 @@ def map_text(name, flop_codes, turns, turn_classes):
     return "\n".join(lines) + "\n"
 
 
+def river_board_map_text(name, flop_codes, turns, river_codes):
+    lines = ["gtosd-board-texture-v1", "name " + name, "river-key river-board",
+             "flop %d" % len(flop_codes)]
+    lines += ["%d %d" % (code, index) for index, code in enumerate(flop_codes)]
+    lines.append("turn %d" % len(turns))
+    lines += ["%d %d" % (entry["code"], index) for index, entry in enumerate(turns)]
+    lines.append("river %d" % len(river_codes))
+    lines += ["%d %d" % (code, index) for index, code in enumerate(river_codes)]
+    return "\n".join(lines) + "\n"
+
+
+def emit(path, text, check, label):
+    """Writes the file, or with check compares it; returns True when it differs."""
+    if check:
+        with open(path, "rb") as existing:
+            same = existing.read().replace(b"\r\n", b"\n") == text.encode("ascii")
+        print("%-40s %s  %s" % (os.path.basename(path), label, "same" if same else "DIFFERENT"))
+        return not same
+    with open(path, "w", newline="\n", encoding="ascii") as output:
+        output.write(text)
+    print("%-40s %s  written" % (os.path.basename(path), label))
+    return False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out-dir", default=os.path.dirname(os.path.abspath(__file__)))
@@ -280,6 +323,10 @@ def main():
             with open(path, "w", newline="\n", encoding="ascii") as output:
                 output.write(text)
             print("%-34s %5d turn classes  written" % (file_name, classes))
+    river_codes = river_board_codes()
+    text = river_board_map_text("identity_river_board", flop_codes, turns, river_codes)
+    failed = emit(os.path.join(arguments.out_dir, "identity_river_board_texture_map.txt"), text,
+                  arguments.check, "%5d river classes" % len(river_codes)) or failed
     return 1 if failed else 0
 
 
