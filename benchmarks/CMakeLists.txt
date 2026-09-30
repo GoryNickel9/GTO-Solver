@@ -1112,6 +1112,34 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;research;monker"
                PASS_REGULAR_EXPRESSION
                  "PREFLOP_BLUEPRINT_MONKER_BUCKETS=FAIL --flop-exact excludes --flop-levels and --flop-tiers")
+  # Exact turn and river (one id per suit orbit of the flop+turn board and of
+  # the five-card board) over the 15x4 flop, checked by
+  # gtosd_preflop_blueprint_monker_buckets_turn_river_exact_tests; tables of the
+  # lossless correctness games (benchmarks/monker/correctness).
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_turn_river_exact_smoke
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_buckets_turn_river_exact
+      --turn-exact --river-exact --levels 15 --tiers 4 --threads 4)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_turn_river_exact_smoke
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               FIXTURES_SETUP preflop_blueprint_monker_buckets_turn_river_exact)
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_turn_exact_levels_refused
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --turn-exact --turn-tiers 2)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_turn_exact_levels_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_MONKER_BUCKETS=FAIL --turn-exact excludes --turn-levels and --turn-tiers")
+  add_test(NAME gtosd_preflop_blueprint_monker_buckets_river_exact_levels_refused
+    COMMAND gtosd_preflop_blueprint_monker_buckets
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --river-exact --river-levels 10)
+  set_tests_properties(gtosd_preflop_blueprint_monker_buckets_river_exact_levels_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_MONKER_BUCKETS=FAIL --river-exact excludes --river-levels")
   foreach(smoke gtosd_preflop_blueprint_export_smoke gtosd_preflop_blueprint_query_smoke
                 gtosd_preflop_blueprint_compare_smoke gtosd_preflop_blueprint_postflop_tree_smoke
                 gtosd_preflop_blueprint_monker_charts_smoke gtosd_preflop_blueprint_monker_values_smoke
@@ -1128,7 +1156,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
                 gtosd_preflop_blueprint_monker_buckets_exact_smoke
                 gtosd_preflop_blueprint_monker_buckets_default_smoke
                 gtosd_preflop_blueprint_monker_buckets_streets_smoke
-                gtosd_preflop_blueprint_monker_buckets_exact_levels_refused)
+                gtosd_preflop_blueprint_monker_buckets_exact_levels_refused
+                gtosd_preflop_blueprint_monker_buckets_turn_river_exact_smoke
+                gtosd_preflop_blueprint_monker_buckets_turn_exact_levels_refused
+                gtosd_preflop_blueprint_monker_buckets_river_exact_levels_refused)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       set_tests_properties(${smoke} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")

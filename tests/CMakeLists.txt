@@ -807,10 +807,25 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_monker_buckets_streets_tests
       PROPERTIES LABELS "preflop_blueprint;research;monker"
                  FIXTURES_REQUIRED preflop_blueprint_monker_buckets_streets)
+    # Exact turn and river (--turn-exact --river-exact): suit orbits and ids on
+    # named and on all canonical flop+turn and five-card boards, the 15x4 flop
+    # unchanged, the board class rows of the river-board identity map (river
+    # rows 19,998 x 465).
+    add_test(NAME gtosd_preflop_blueprint_monker_buckets_turn_river_exact_tests
+      COMMAND gtosd_preflop_blueprint_monker_buckets_tests
+        --buckets-dir
+          ${PROJECT_BINARY_DIR}/benchmarks/preflop_blueprint_monker_buckets_turn_river_exact
+        --texture-map
+          ${PROJECT_SOURCE_DIR}/benchmarks/monker/textures/identity_river_board_texture_map.txt
+        --expect-flop fnv1a64:cf2607c75869355d --street-settings present)
+    set_tests_properties(gtosd_preflop_blueprint_monker_buckets_turn_river_exact_tests
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_monker_buckets_turn_river_exact)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
       foreach(checker gtosd_preflop_blueprint_monker_buckets_tests
                       gtosd_preflop_blueprint_monker_buckets_default_tests
-                      gtosd_preflop_blueprint_monker_buckets_streets_tests)
+                      gtosd_preflop_blueprint_monker_buckets_streets_tests
+                      gtosd_preflop_blueprint_monker_buckets_turn_river_exact_tests)
         set_tests_properties(${checker} PROPERTIES
           ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
       endforeach()

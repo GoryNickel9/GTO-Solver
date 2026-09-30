@@ -20,6 +20,14 @@
 // two ids, even with equal values. Ids follow strength, then potential, then
 // the smallest combo index of the orbit; the capacity is the largest orbit
 // count over the canonical flops (528 on a flop without symmetry).
+// --turn-exact does the same on the turn (orbits under the suit permutations
+// that fix the flop as a set and the turn card, the symmetry of a canonical
+// flop+turn board; 496 ids without symmetry) and --river-exact on the river
+// (orbits under the permutations that fix the unordered five-card board, the
+// key of the river table; ids ordered by river equity, then the smallest combo
+// index; 465 without symmetry). Exact streets make lossless abstractions for
+// the correctness tests of the board class rows (30 September 2026); without
+// these flags every table, recipe and report stays byte-identical.
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/bucket_tables.hpp"
@@ -69,7 +77,7 @@ constexpr std::uint32_t lookup_histories = 10'000U;
 constexpr std::uint64_t lookup_seed = 0x4D4F'4E4B'4552'4C4BULL;
 
 // Grouping of one street: strength levels times potential tiers (the river
-// uses the levels only) or, on the flop, one id per suit-isomorphism orbit.
+// uses the levels only) or one id per suit-isomorphism orbit (exact).
 struct StreetSettings {
   std::uint32_t levels{default_levels};
   std::uint32_t tiers{default_tiers};
@@ -91,7 +99,7 @@ struct Settings {
   // Every street on --levels/--tiers: the historical tables and report.
   [[nodiscard]] bool uniform() const noexcept {
     const StreetSettings shared{levels, tiers, false};
-    return flop == shared && turn == shared && river.levels == levels;
+    return flop == shared && turn == shared && river.levels == levels && !river.exact;
   }
 };
 
@@ -345,6 +353,22 @@ std::uint16_t orbit_representative(const SymmetryMaps &maps,
   return representative;
 }
 
+// Number of suit-isomorphism orbits of the live combos of a board, under its
+// stabilizer (set_cards as a set, fixed_cards card by card).
+std::uint32_t orbit_count(const SymmetryMaps &maps, const std::span<const std::uint8_t> set_cards,
+                          const std::span<const std::uint8_t> fixed_cards,
+                          std::vector<std::size_t> &stabilizer, ca::LiveHands &live) {
+  board_stabilizer(maps, set_cards, fixed_cards, stabilizer);
+  ca::collect_live_hands(mask_of(set_cards) | mask_of(fixed_cards), live);
+  std::uint32_t orbits = 0U;
+  for (const auto combo : live.combo_ids) {
+    if (orbit_representative(maps, stabilizer, combo) == combo) {
+      ++orbits;
+    }
+  }
+  return orbits;
+}
+
 // Largest number of suit-isomorphism orbits of the live combos on a canonical
 // flop: the capacity of an exact flop table.
 std::uint32_t exact_flop_capacity(const ca::BoardCatalog &catalog, const SymmetryMaps &maps) {
@@ -356,15 +380,42 @@ std::uint32_t exact_flop_capacity(const ca::BoardCatalog &catalog, const Symmetr
     for (std::size_t card = 0U; card < flop_card_count; ++card) {
       cards[card] = entry.cards[card].value();
     }
-    board_stabilizer(maps, cards, std::span<const std::uint8_t>(), stabilizer);
-    ca::collect_live_hands(mask_of(cards), live);
-    std::uint32_t orbits = 0U;
-    for (const auto combo : live.combo_ids) {
-      if (orbit_representative(maps, stabilizer, combo) == combo) {
-        ++orbits;
-      }
+    capacity = std::max(capacity, orbit_count(maps, cards, std::span<const std::uint8_t>(),
+                                              stabilizer, live));
+  }
+  return capacity;
+}
+
+// Same on the canonical flop+turn boards (the flop as a set, the turn card
+// fixed, as the catalog canonicalizes them): the capacity of an exact turn.
+std::uint32_t exact_turn_capacity(const ca::BoardCatalog &catalog, const SymmetryMaps &maps) {
+  std::vector<std::size_t> stabilizer;
+  ca::LiveHands live;
+  std::array<std::uint8_t, flop_card_count> cards{};
+  std::uint32_t capacity = 0U;
+  for (const auto &entry : catalog.flop_turns()) {
+    for (std::size_t card = 0U; card < flop_card_count; ++card) {
+      cards[card] = entry.flop[card].value();
     }
-    capacity = std::max(capacity, orbits);
+    const std::array<std::uint8_t, 1> turn{entry.turn.value()};
+    capacity = std::max(capacity, orbit_count(maps, cards, turn, stabilizer, live));
+  }
+  return capacity;
+}
+
+// Same on the canonical five-card boards (a set): the capacity of an exact
+// river.
+std::uint32_t exact_river_capacity(const ca::BoardCatalog &catalog, const SymmetryMaps &maps) {
+  std::vector<std::size_t> stabilizer;
+  ca::LiveHands live;
+  std::array<std::uint8_t, river_board_card_count> cards{};
+  std::uint32_t capacity = 0U;
+  for (const auto &entry : catalog.river_boards()) {
+    for (std::size_t card = 0U; card < river_board_card_count; ++card) {
+      cards[card] = entry.cards[card].value();
+    }
+    capacity = std::max(capacity, orbit_count(maps, cards, std::span<const std::uint8_t>(),
+                                              stabilizer, live));
   }
   return capacity;
 }
@@ -561,6 +612,51 @@ std::uint32_t exact_ids(const SymmetryMaps &maps, const std::vector<std::size_t>
   return static_cast<std::uint32_t>(order.size());
 }
 
+// Exact river ids: one per suit-isomorphism orbit of the live combos of the
+// five-card board, ordered by river equity (2 * wins + ties), then by the
+// orbit's smallest combo index. Every orbit member must carry its
+// representative's equity. Writes the id of every live hand and returns the
+// number of orbits.
+std::uint32_t exact_river_ids(const SymmetryMaps &maps, const std::vector<std::size_t> &stabilizer,
+                              const ca::LiveHands &live,
+                              const std::vector<std::uint64_t> &strength,
+                              std::vector<std::uint32_t> &order,
+                              std::vector<std::uint16_t> &output, SelfChecks &checks) {
+  const auto count = live.combo_ids.size();
+  std::vector<std::uint16_t> hand_of_combo(ca::combo_count, ca::no_bucket);
+  for (std::size_t hand = 0U; hand < count; ++hand) {
+    hand_of_combo[live.combo_ids[hand]] = static_cast<std::uint16_t>(hand);
+  }
+  std::vector<std::uint16_t> root(count);
+  order.clear();
+  for (std::size_t hand = 0U; hand < count; ++hand) {
+    const auto representative =
+        hand_of_combo[orbit_representative(maps, stabilizer, live.combo_ids[hand])];
+    root[hand] = representative;
+    if (representative == hand) {
+      order.push_back(static_cast<std::uint32_t>(hand));
+    } else if (strength[hand] != strength[representative]) {
+      ++checks.orbit_value_mismatches;
+    }
+  }
+  std::sort(order.begin(), order.end(),
+            [&](const std::uint32_t left, const std::uint32_t right) {
+              if (strength[left] != strength[right]) {
+                return strength[left] < strength[right];
+              }
+              return live.combo_ids[left] < live.combo_ids[right];
+            });
+  std::vector<std::uint16_t> id_of_root(count, ca::no_bucket);
+  for (std::size_t position = 0U; position < order.size(); ++position) {
+    id_of_root[order[position]] = static_cast<std::uint16_t>(position);
+  }
+  output.resize(count);
+  for (std::size_t hand = 0U; hand < count; ++hand) {
+    output[hand] = id_of_root[root[hand]];
+  }
+  return static_cast<std::uint32_t>(order.size());
+}
+
 // Coordinate-wise weighted median of the cumulative histogram counts, the
 // exact L1 barycenter the k-means flop/turn tables store as centroids. Ids
 // that no board uses keep a zero row.
@@ -622,7 +718,8 @@ const WorkerState &finish_output(StreetOutput &output, std::vector<WorkerState> 
   return merged;
 }
 
-// `capacity` is levels * tiers, or exact_flop_capacity for an exact flop.
+// `capacity` is levels * tiers, or exact_flop_capacity / exact_turn_capacity
+// for an exact street.
 StreetOutput build_pre_river(const ca::BucketStreet street, const ca::BoardCatalog &catalog,
                              const ca::RankTable &ranks, const SymmetryMaps &maps,
                              const StreetSettings &grouping, const std::uint32_t capacity,
@@ -718,12 +815,13 @@ StreetOutput build_pre_river(const ca::BucketStreet street, const ca::BoardCatal
   return output;
 }
 
+// `capacity` is the levels, or exact_river_capacity for an exact river.
 StreetOutput build_river(const ca::BoardCatalog &catalog, const ca::RankTable &ranks,
                          const ca::RiverFeatureTable &features, const SymmetryMaps &maps,
-                         const std::uint32_t levels, const unsigned threads) {
+                         const StreetSettings &grouping, const std::uint32_t capacity,
+                         const unsigned threads) {
   const auto started = Clock::now();
   const auto rows = catalog.river_boards().size();
-  const auto capacity = levels;
   StreetOutput output;
   output.buckets.assign(rows * ca::combo_count, ca::no_bucket);
   output.distinct_ids.assign(rows, 0U);
@@ -762,7 +860,16 @@ StreetOutput build_river(const ca::BoardCatalog &catalog, const ca::RankTable &r
         }
         strength[hand] = 2U * static_cast<std::uint64_t>(outcome.wins) + outcome.ties;
       }
-      quantile_classes(strength, levels, order, level_of);
+      // The stabilizer of the five-card set: the orbits of an exact river and
+      // the orbit check of every river.
+      board_stabilizer(maps, cards, std::span<const std::uint8_t>(), stabilizer);
+      std::uint32_t orbits = 0U;
+      if (grouping.exact) {
+        orbits = exact_river_ids(maps, stabilizer, scratch.live, strength, order, level_of,
+                                 state.checks);
+      } else {
+        quantile_classes(strength, grouping.levels, order, level_of);
+      }
       auto *row = output.buckets.data() + index * ca::combo_count;
       const auto board_index = static_cast<std::uint32_t>(index);
       for (std::size_t hand = 0U; hand < live_count; ++hand) {
@@ -782,7 +889,9 @@ StreetOutput build_river(const ca::BoardCatalog &catalog, const ca::RankTable &r
       }
       output.distinct_ids[index] =
           verify_row(row, mask_of(cards), capacity, seen, state.checks);
-      board_stabilizer(maps, cards, std::span<const std::uint8_t>(), stabilizer);
+      if (grouping.exact && output.distinct_ids[index] != orbits) {
+        ++state.checks.orbit_count_mismatches;
+      }
       check_orbits(maps, stabilizer, row, state.checks);
     }
   });
@@ -872,9 +981,14 @@ std::string pre_river_recipe(const ca::BucketStreet street, const StreetSettings
          rank_fingerprint;
 }
 
-std::string river_recipe(const std::uint32_t levels, const std::string &rank_fingerprint,
+std::string river_recipe(const StreetSettings &grouping, const std::string &rank_fingerprint,
                          const std::string &features_fingerprint) {
-  return "gtosd.monker_buckets.v1|street=river|levels=" + std::to_string(levels) +
+  if (grouping.exact) {
+    return "gtosd.monker_buckets.v1|street=river|ids=suit_orbits|order=river_equity,min_combo"
+           "|centroids=river_features_weighted_mean|ranks=" +
+           rank_fingerprint + "|river_features=" + features_fingerprint;
+  }
+  return "gtosd.monker_buckets.v1|street=river|levels=" + std::to_string(grouping.levels) +
          "|strength=river_equity|centroids=river_features_weighted_mean|ranks=" +
          rank_fingerprint + "|river_features=" + features_fingerprint;
 }
@@ -969,6 +1083,8 @@ int main(const int argc, char **argv) {
     std::optional<std::uint32_t> turn_tiers;
     std::optional<std::uint32_t> river_levels;
     bool flop_exact = false;
+    bool turn_exact = false;
+    bool river_exact = false;
     const auto parse_count = [](const std::string_view value) {
       return static_cast<std::uint32_t>(parse_bounded(value, 1U, ca::maximum_bucket_capacity));
     };
@@ -976,6 +1092,14 @@ int main(const int argc, char **argv) {
       const std::string_view name = argv[index];
       if (name == "--flop-exact") {
         flop_exact = true;
+        continue;
+      }
+      if (name == "--turn-exact") {
+        turn_exact = true;
+        continue;
+      }
+      if (name == "--river-exact") {
+        river_exact = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -1012,16 +1136,23 @@ int main(const int argc, char **argv) {
     if (flop_exact && (flop_levels || flop_tiers)) {
       throw std::runtime_error("--flop-exact excludes --flop-levels and --flop-tiers");
     }
+    if (turn_exact && (turn_levels || turn_tiers)) {
+      throw std::runtime_error("--turn-exact excludes --turn-levels and --turn-tiers");
+    }
+    if (river_exact && river_levels) {
+      throw std::runtime_error("--river-exact excludes --river-levels");
+    }
     settings.flop = {flop_levels.value_or(settings.levels), flop_tiers.value_or(settings.tiers),
                      flop_exact};
     settings.turn = {turn_levels.value_or(settings.levels), turn_tiers.value_or(settings.tiers),
-                     false};
-    settings.river = {river_levels.value_or(settings.levels), 1U, false};
+                     turn_exact};
+    settings.river = {river_levels.value_or(settings.levels), 1U, river_exact};
     if (!settings.flop.exact &&
         settings.flop.levels * settings.flop.tiers > ca::maximum_bucket_capacity) {
       throw std::runtime_error("flop levels * tiers exceeds the bucket capacity limit");
     }
-    if (settings.turn.levels * settings.turn.tiers > ca::maximum_bucket_capacity) {
+    if (!settings.turn.exact &&
+        settings.turn.levels * settings.turn.tiers > ca::maximum_bucket_capacity) {
       throw std::runtime_error("turn levels * tiers exceeds the bucket capacity limit");
     }
 
@@ -1041,10 +1172,16 @@ int main(const int argc, char **argv) {
     const auto flop_capacity = settings.flop.exact
                                    ? exact_flop_capacity(catalog, maps)
                                    : settings.flop.levels * settings.flop.tiers;
-    const auto turn_capacity = settings.turn.levels * settings.turn.tiers;
-    const auto river_capacity = settings.river.levels;
+    const auto turn_capacity = settings.turn.exact ? exact_turn_capacity(catalog, maps)
+                                                   : settings.turn.levels * settings.turn.tiers;
+    const auto river_capacity =
+        settings.river.exact ? exact_river_capacity(catalog, maps) : settings.river.levels;
     if (flop_capacity == 0U || flop_capacity > ca::maximum_bucket_capacity) {
       throw std::runtime_error("flop capacity outside the bucket capacity limit");
+    }
+    if (turn_capacity == 0U || turn_capacity > ca::maximum_bucket_capacity ||
+        river_capacity == 0U || river_capacity > ca::maximum_bucket_capacity) {
+      throw std::runtime_error("turn or river capacity outside the bucket capacity limit");
     }
 
     auto flop_output = build_pre_river(ca::BucketStreet::Flop, catalog, ranks, maps,
@@ -1065,8 +1202,8 @@ int main(const int argc, char **argv) {
       }
       river_features_seconds = seconds_since(phase);
       river_features_fingerprint = features.value().fingerprint();
-      river_output = build_river(catalog, ranks, features.value(), maps, settings.river.levels,
-                                 settings.threads);
+      river_output = build_river(catalog, ranks, features.value(), maps, settings.river,
+                                 river_capacity, settings.threads);
     }
 
     const auto flop = make_table(ca::BucketStreet::Flop, catalog, flop_capacity, flop_output,
@@ -1077,7 +1214,7 @@ int main(const int argc, char **argv) {
                                                   ranks.fingerprint()));
     const auto river = make_table(
         ca::BucketStreet::River, catalog, river_capacity, river_output,
-        river_recipe(settings.river.levels, ranks.fingerprint(), river_features_fingerprint));
+        river_recipe(settings.river, ranks.fingerprint(), river_features_fingerprint));
 
     phase = Clock::now();
     const auto lookups = check_physical_lookups(catalog, {&flop, &turn, &river});
@@ -1111,9 +1248,17 @@ int main(const int argc, char **argv) {
         report << "{\"levels\": " << settings.flop.levels << ", \"tiers\": " << settings.flop.tiers
                << "}";
       }
-      report << ", \"turn\": {\"levels\": " << settings.turn.levels
-             << ", \"tiers\": " << settings.turn.tiers << "}, \"river\": {\"levels\": "
-             << settings.river.levels << "}},\n";
+      if (settings.turn.exact) {
+        report << ", \"turn\": {\"exact\": true}";
+      } else {
+        report << ", \"turn\": {\"levels\": " << settings.turn.levels
+               << ", \"tiers\": " << settings.turn.tiers << "}";
+      }
+      if (settings.river.exact) {
+        report << ", \"river\": {\"exact\": true}},\n";
+      } else {
+        report << ", \"river\": {\"levels\": " << settings.river.levels << "}},\n";
+      }
     }
     report << "  \"catalog_fingerprint\": \"" << catalog.fingerprint() << "\",\n"
            << "  \"rank_fingerprint\": \"" << ranks.fingerprint() << "\",\n"
@@ -1121,8 +1266,8 @@ int main(const int argc, char **argv) {
            << "  \"load_seconds\": " << load_seconds << ",\n"
            << "  \"river_features_load_seconds\": " << river_features_seconds << ",\n";
     write_street(report, "flop", flop, flop_output, settings.flop.exact, false);
-    write_street(report, "turn", turn, turn_output, false, false);
-    write_street(report, "river", river, river_output, false, false);
+    write_street(report, "turn", turn, turn_output, settings.turn.exact, false);
+    write_street(report, "river", river, river_output, settings.river.exact, false);
     report << "  \"physical_lookups\": {\"histories\": " << lookups.histories
            << ", \"hands\": " << lookups.hands << ", \"failures\": " << lookups.failures
            << ", \"seconds\": " << lookup_seconds << "},\n"

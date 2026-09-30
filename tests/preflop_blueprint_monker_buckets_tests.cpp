@@ -13,6 +13,9 @@
 // byte-identical to the tables of the builder before per-street settings.
 // --street-settings present|absent checks the builder report of the directory
 // (the key is written only when a street differs from --levels/--tiers).
+// Exact turn and river tables (--turn-exact, --river-exact, recognized by
+// their recipe) get the same checks on named physical boards and on every
+// canonical flop+turn (flop as a set, turn fixed) or five-card board.
 #include "preflop_blueprint_test_support.hpp"
 
 #include "gtosd/preflop_blueprint/board_class_rows.hpp"
@@ -240,6 +243,222 @@ void test_canonical_flops(const ca::BoardCatalog &catalog, const ca::BucketTable
   }
 }
 
+// Exact turn and river tables (--turn-exact, --river-exact). A board is a set
+// of cards plus cards fixed one by one (the turn of a flop+turn board, as the
+// catalog canonicalizes it); its stabilizer is found from the cards.
+std::vector<ca::SuitPermutation> board_stabilizer(const std::vector<gtosd::CardId> &set_cards,
+                                                  const std::vector<gtosd::CardId> &fixed_cards) {
+  auto sorted = set_cards;
+  std::sort(sorted.begin(), sorted.end());
+  std::vector<ca::SuitPermutation> stabilizer;
+  for (const auto &permutation : ca::all_suit_permutations()) {
+    auto image = set_cards;
+    for (auto &value : image) {
+      value = ca::permute_card(value, permutation);
+    }
+    std::sort(image.begin(), image.end());
+    bool fixes = image == sorted;
+    for (const auto fixed : fixed_cards) {
+      fixes = fixes && ca::permute_card(fixed, permutation) == fixed;
+    }
+    if (fixes) {
+      stabilizer.push_back(permutation);
+    }
+  }
+  return stabilizer;
+}
+
+std::vector<std::array<gtosd::CardId, 2>> live_hands_of(const std::uint64_t mask) {
+  std::vector<std::array<gtosd::CardId, 2>> hands;
+  for (std::uint8_t first = 0U; first < ca::deck_cards; ++first) {
+    for (auto second = static_cast<std::uint8_t>(first + 1U); second < ca::deck_cards; ++second) {
+      const auto a = gtosd::CardId::from_index(first).value();
+      const auto b = gtosd::CardId::from_index(second).value();
+      if (((a.mask() | b.mask()) & mask) == 0U) {
+        hands.push_back({a, b});
+      }
+    }
+  }
+  return hands;
+}
+
+std::uint64_t mask_of_cards(const std::vector<gtosd::CardId> &cards) {
+  std::uint64_t mask = 0U;
+  for (const auto value : cards) {
+    mask |= value.mask();
+  }
+  return mask;
+}
+
+std::uint16_t image_combo(const std::array<gtosd::CardId, 2> &hand,
+                          const ca::SuitPermutation &permutation) {
+  return ca::combo_index(ca::permute_card(hand[0], permutation),
+                         ca::permute_card(hand[1], permutation));
+}
+
+// Pair by pair on a physical turn or river board looked up through the
+// catalog as BoardContext does: equal ids exactly for isomorphic hands.
+FlopSummary check_physical_board(const ca::BucketTable &table,
+                                 const ca::CanonicalLookup &lookup,
+                                 const std::vector<gtosd::CardId> &set_cards,
+                                 const std::vector<gtosd::CardId> &fixed_cards,
+                                 const std::string &name, const std::size_t live_count) {
+  const auto stabilizer = board_stabilizer(set_cards, fixed_cards);
+  auto all_cards = set_cards;
+  all_cards.insert(all_cards.end(), fixed_cards.begin(), fixed_cards.end());
+  const auto hands = live_hands_of(mask_of_cards(all_cards));
+  require(hands.size() == live_count, "live hands of " + name);
+  std::vector<std::uint16_t> ids(hands.size());
+  std::vector<std::uint8_t> seen(table.capacity(), 0U);
+  FlopSummary summary;
+  summary.stabilizer = static_cast<std::uint32_t>(stabilizer.size());
+  for (std::size_t hand = 0U; hand < hands.size(); ++hand) {
+    ids[hand] = table.bucket(lookup.index, image_combo(hands[hand], lookup.permutation));
+    require(ids[hand] != ca::no_bucket && ids[hand] < table.capacity(),
+            "live hand holds an id below the capacity on " + name);
+    if (seen[ids[hand]] == 0U) {
+      seen[ids[hand]] = 1U;
+      ++summary.distinct_ids;
+    }
+  }
+  for (std::size_t left = 0U; left < hands.size(); ++left) {
+    for (std::size_t right = left + 1U; right < hands.size(); ++right) {
+      const auto target = ca::combo_index(hands[right][0], hands[right][1]);
+      bool isomorphic = false;
+      for (const auto &permutation : stabilizer) {
+        if (image_combo(hands[left], permutation) == target) {
+          isomorphic = true;
+          break;
+        }
+      }
+      summary.isomorphic_pairs += isomorphic ? 1U : 0U;
+      require((ids[left] == ids[right]) == isomorphic,
+              "exact ids: equal exactly for suit-isomorphic hands on " + name);
+    }
+  }
+  return summary;
+}
+
+std::string board_name(const std::vector<gtosd::CardId> &cards) {
+  std::string name;
+  for (const auto value : cards) {
+    name += gtosd::format_card(value);
+  }
+  return name;
+}
+
+// Named physical turn and river boards with trivial and non-trivial
+// stabilizers.
+void test_named_exact_boards(const ca::BoardCatalog &catalog, const ca::BucketTable &table) {
+  struct Named {
+    std::string_view kind;
+    std::vector<std::string_view> cards;
+    std::uint32_t stabilizer;
+  };
+  const bool turn = table.street() == ca::BucketStreet::Turn;
+  const std::size_t live_count = turn ? 496U : 465U;
+  const std::vector<Named> named =
+      turn ? std::vector<Named>{{"rainbow + fourth suit", {"As", "Kd", "9c", "7h"}, 1U},
+                                {"two-tone + flop suit", {"Ah", "Kh", "9c", "7c"}, 2U},
+                                {"monotone + same suit", {"Ah", "Kh", "9h", "7h"}, 6U},
+                                {"paired + other suit", {"As", "Ad", "9c", "7h"}, 2U},
+                                {"trips + quads", {"7s", "7h", "7d", "7c"}, 6U}}
+           : std::vector<Named>{{"rainbow straight", {"6c", "7d", "8h", "9s", "Ts"}, 1U},
+                                {"five of a suit", {"Ah", "Kh", "9h", "7h", "6h"}, 6U},
+                                {"two pairs", {"As", "Ad", "9c", "9h", "7s"}, 2U},
+                                {"full house", {"Ks", "Kh", "Kd", "6c", "6s"}, 2U}};
+  for (const auto &entry : named) {
+    std::vector<gtosd::CardId> cards;
+    for (const auto text : entry.cards) {
+      cards.push_back(card(text));
+    }
+    FlopSummary summary;
+    if (turn) {
+      std::array<gtosd::CardId, 3> flop{cards[0], cards[1], cards[2]};
+      std::sort(flop.begin(), flop.end());
+      const auto lookup = catalog.lookup_flop_turn(flop, cards[3]);
+      require(lookup.has_value(), "physical turn board found in the catalog");
+      summary = check_physical_board(table, lookup.value(), {cards[0], cards[1], cards[2]},
+                                     {cards[3]}, board_name(cards), live_count);
+    } else {
+      const std::array<gtosd::CardId, 5> board{cards[0], cards[1], cards[2], cards[3], cards[4]};
+      const auto lookup = catalog.lookup_river_board(board);
+      require(lookup.has_value(), "physical river board found in the catalog");
+      summary = check_physical_board(table, lookup.value(), cards, {}, board_name(cards),
+                                     live_count);
+    }
+    require(summary.stabilizer == entry.stabilizer,
+            "stabilizer size of the " + std::string(entry.kind) + " board");
+    require(entry.stabilizer == 1U
+                ? summary.distinct_ids == live_count && summary.isomorphic_pairs == 0U
+                : summary.distinct_ids < live_count && summary.isomorphic_pairs > 0U,
+            "exact ids: one per hand without symmetry, merged isomorphic hands otherwise");
+    std::cout << "exact " << ca::bucket_street_name(table.street()) << " " << entry.kind << " "
+              << board_name(cards) << ": stabilizer " << summary.stabilizer << ", distinct ids "
+              << summary.distinct_ids << ", isomorphic pairs " << summary.isomorphic_pairs
+              << '\n';
+  }
+}
+
+// Every canonical flop+turn (flop set, turn fixed) or five-card board: ids
+// dense in 0..orbits-1 and in bijection with the orbits; the capacity is the
+// largest orbit count, which a board without symmetry reaches (496 / 465).
+void test_canonical_exact_boards(const ca::BoardCatalog &catalog, const ca::BucketTable &table) {
+  const bool turn = table.street() == ca::BucketStreet::Turn;
+  const auto rows = turn ? catalog.flop_turns().size() : catalog.river_boards().size();
+  const std::uint32_t live_count = turn ? 496U : 465U;
+  std::uint32_t largest = 0U;
+  std::uint32_t smallest = live_count;
+  std::uint64_t symmetric = 0U;
+  for (std::uint32_t index = 0U; index < rows; ++index) {
+    std::vector<gtosd::CardId> set_cards;
+    std::vector<gtosd::CardId> fixed_cards;
+    if (turn) {
+      const auto &entry = catalog.flop_turns()[index];
+      set_cards.assign(entry.flop.begin(), entry.flop.end());
+      fixed_cards.push_back(entry.turn);
+    } else {
+      const auto &entry = catalog.river_boards()[index];
+      set_cards.assign(entry.cards.begin(), entry.cards.end());
+    }
+    const auto stabilizer = board_stabilizer(set_cards, fixed_cards);
+    symmetric += stabilizer.size() > 1U ? 1U : 0U;
+    auto all_cards = set_cards;
+    all_cards.insert(all_cards.end(), fixed_cards.begin(), fixed_cards.end());
+    std::vector<std::uint16_t> id_of_orbit(ca::combo_count, ca::no_bucket);
+    std::vector<std::uint16_t> orbit_of_id(table.capacity(), ca::no_bucket);
+    std::uint32_t orbits = 0U;
+    for (const auto &hand : live_hands_of(mask_of_cards(all_cards))) {
+      const auto combo = ca::combo_index(hand[0], hand[1]);
+      auto representative = combo;
+      for (const auto &permutation : stabilizer) {
+        representative = std::min(representative, image_combo(hand, permutation));
+      }
+      const auto id = table.bucket(index, combo);
+      require(id != ca::no_bucket && id < table.capacity(), "canonical live combo holds an id");
+      if (id_of_orbit[representative] == ca::no_bucket) {
+        id_of_orbit[representative] = id;
+        ++orbits;
+      }
+      require(id_of_orbit[representative] == id, "an orbit holds one id");
+      if (orbit_of_id[id] == ca::no_bucket) {
+        orbit_of_id[id] = representative;
+      }
+      require(orbit_of_id[id] == representative, "an id holds one orbit");
+    }
+    for (std::uint32_t id = 0U; id < orbits; ++id) {
+      require(orbit_of_id[id] != ca::no_bucket, "ids are dense below the orbit count");
+    }
+    largest = std::max(largest, orbits);
+    smallest = std::min(smallest, orbits);
+  }
+  require(table.capacity() == largest && largest == live_count,
+          "exact capacity is the largest orbit count, reached without symmetry");
+  std::cout << "exact " << ca::bucket_street_name(table.street()) << " canonical boards " << rows
+            << " (" << symmetric << " symmetric): orbits min " << smallest << ", max "
+            << largest << ", capacity " << table.capacity() << '\n';
+}
+
 void test_board_class_rows(const ca::BoardCatalog &catalog,
                            const std::array<const ca::BucketTable *, 3> &tables,
                            const std::filesystem::path &texture_path) {
@@ -324,6 +543,12 @@ int main(const int argc, char **argv) {
     if (exact) {
       test_named_flops(catalog, flop.value());
       test_canonical_flops(catalog, flop.value());
+    }
+    for (const auto *table : {&turn.value(), &river.value()}) {
+      if (table->feature_fingerprint().find("|ids=suit_orbits|") != std::string::npos) {
+        test_named_exact_boards(catalog, *table);
+        test_canonical_exact_boards(catalog, *table);
+      }
     }
     if (!expect_flop.empty()) {
       require(flop.value().fingerprint() == expect_flop, "flop fingerprint unchanged");
