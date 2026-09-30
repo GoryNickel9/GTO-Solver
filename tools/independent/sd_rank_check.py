@@ -32,8 +32,8 @@ seven-card ordinals that sd_allin_check.py --python-ordinals can reuse).
 
 Exit codes: 0 pass, 1 a mismatch, 2 usage, input or format error.
 Expected cost (one core, measured 30/09 with a 20,000-set P3): about 15 s for the file, the tables and the
-engine checks, plus about 10 us per set for P3 (about 1.5 min over all 8,347,680 sets); peak RAM (inferred)
-about 0.5 GB.
+engine checks, plus about 10 us per set for P3 (about 1.5 min over all 8,347,680 sets); peak commit
+0.67 GB (working set 0.46 GB) measured with a 1,000-set P3.
 
 Usage: python tools/independent/sd_rank_check.py [--rank-table PATH] [--values-json PATH|""]
        [--out-dir DIR] [--direct-sample N] [--straight-vs-trips straight|trips] [--skip-checksum]

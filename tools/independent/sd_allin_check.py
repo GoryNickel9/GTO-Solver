@@ -29,8 +29,8 @@ mismatch samples), python_seven_ordinals.npy when rebuilt, and with --exhaustive
 Exit codes: 0 pass, 1 a mismatch, 2 usage, input or format error.
 Expected cost (measured 30/09 on 3,000 boards and 210 pairs): sampled about 41 ms per pair on one core
 (2,000 pairs about 1.5 min); exhaustive about 0.75 ms per board, i.e. about 280 CPU-s, 1.5-2 min wall on 4
-processes; RAM (inferred) under 0.2 GB per worker and about 0.5 GB in the parent while it rebuilds the
-Python ordinals.
+processes; memory measured on the smoke runs: parent peak commit 0.47 GB (working set 0.25 GB) when it
+rebuilds the Python ordinals, each worker 0.29 GB commit (0.08 GB working set).
 
 Usage: python tools/independent/sd_allin_check.py [--sampled N] [--exhaustive] [--processes 1-4]
        [--python-ordinals PATH] [--all-in PATH] [--rank-table PATH|""] [--out-dir DIR]
