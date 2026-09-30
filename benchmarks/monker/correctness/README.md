@@ -60,3 +60,56 @@ The driver checks every segment's start event against the tree fingerprints of t
 (`EXPECT_TREE` overrides): the pre-edit executables (`bin_correct/base`) ignore
 `postflop_betting_streets` and would silently train the tree that bets on every street.
 Long runs: frozen copy `out/frozen/run_correctness_lock.sh`.
+
+## Games with bets below the all-in and non-all-in raises (1 October 2026)
+
+HU50's postflop shapes in a lossless game. Same HU setup (1a ante, BTN blind 1a, 3a initial pot),
+but the preflop open is 1000 % of the pot, which merges into the all-in: preflop is the same
+4-decision tree as HU6, so `lock_limp_check/` applies unchanged and every deal reaches the flop
+with a 4a pot. Postflop one size of 100 % of the pot plus the all-in (HU50's size), donk bets on.
+With 19a stacks the limped-pot shapes are HU50's: `check;bet_4;all_in`, `fold;call;raise_16;all_in`,
+`check;bet_12;all_in` after a bet-call. The lock keeps only the limp-check entry.
+
+| File | Stack | Postflop betting | Nodes | Decisions (pre / flop / turn / river) | Tree |
+|---|---:|---|---:|---|---|
+| `HU19_B0_flop.json` | 19a | flop (`bet_4`, `raise_16`, all-in) | 73 | 4 / 12 / 10 check-only / 10 check-only | `fnv1a64:b58f4ac0e4cf68b1` |
+| `HU19_B2_river.json` | 19a | river (same shapes) | 49 | 4 / 2 check-only / 2 check-only / 12 | `fnv1a64:23b83f3f3b18d1c0` |
+| `HU8_B1_flopturn.json` | 8a | flop, turn (turn after a flop bet-call, donk all-in) | 85 | 4 / 8 / 16 / 10 check-only | `fnv1a64:5269db409b4bcf45` |
+
+| Run | Game | Tables | Texture map | Why lossless | Control (one id on the deciding street) |
+|---|---|---|---|---|---|
+| B0L | `HU19_B0_flop` | `v1g_flopexact_turn1x1` | `identity_texture_map.txt` | exact flop rows; turn and river nodes are check-only (one action) | B0LG1: `g1x1` (`--levels 1 --tiers 1`) |
+| B2L | `HU19_B2_river` | `v2_river_exact` | `identity_river_board_texture_map.txt` | no decision before the river; river rows keyed by the five-card board | B2LG1: `v2g_river1` |
+| B1L | `HU8_B1_flopturn` | `v1_flopturn_exact` | `identity_texture_map.txt` | exact flop and turn rows; river check-only | B1LG1: `v1g_flopexact_turn1x1` |
+
+All six run locked (`LOCK_CHARTS`/`LOCK_NODES` as above) and are gated on the sum of the
+`gain_lower` columns. Start-event smoke values: capacities B0 `[302544, 13761, 206415]`, B2
+`[34380, 825660, 9299070]` (texture `river-key=river-board`), B1 `[302544, 6825456, 206415]`;
+`preflop_lock.rows` 162. Trainer state (double, 16 B per cell + 2 B per row), trainer peak about
+state + 0.11 GB: B0 0.20 GB, B2 5.02 GB, B1 4.29 GB; evaluator about policy (8 B per cell) +
+0.12 GB: B0 0.22 GB, B2 2.51 GB, B1 2.15 GB. The controls stay below 0.3 GB.
+
+## Raked twins of V2 (1 October 2026)
+
+`HU6_V2_river` with rake, all other keys unchanged, so the trees are node-identical to V2 and only
+the payoffs differ (rake at compile time, paid by the winner, no flop no drop). Same tables, map
+and memory as V2; run unlocked (the rake bites mainly on the called preflop all-in).
+
+| File | Rake | Tree | Use |
+|---|---|---|---|
+| `HU6_V2_river_rake25cap2.json` | 2.5 %, cap 2a | `fnv1a64:cd2e1217488aaea9` | V2R: general-sum convergence on a lossless game |
+| `HU6_V2_river_rakeinert.json` | 2.5 %, cap 2a, minimum pot 13a (above every pot: no hand is raked) | `fnv1a64:eb528dbdd5dbe94c` | V2Z: must reproduce V2's policies bit for bit |
+| `HU6_V2_river_rake5cap05.json` | 5 %, cap 0.5a (binds on the 12a pots) | `fnv1a64:0133288de510b8f0` | V2R5: the cap in a converged run |
+
+`convergence_curve.py` does not pass `--expected-rake`; run `gtosd_preflop_blueprint_monker_values
+... --all-flops --expected-rake --out <file>` on a kept snapshot (`KEEP_POLICIES=1`) for the
+per-hero expected rake.
+
+## Second seed
+
+`SEED=<decimal>` passes `--seed` to the trainer; the start line of `run.log` logs it (`seed default`
+otherwise, the trainer's built-in seed used by every run before 1 October 2026). The seed is part
+of the trainer identity, so a second seed needs a fresh run directory. Compare a replicate with
+seed 1 on the same target list: segment ends materialize the lazy discounts, so two target lists
+differ at rounding level. Long runs with these options: frozen copy
+`out/frozen/run_correctness_v2.sh`.

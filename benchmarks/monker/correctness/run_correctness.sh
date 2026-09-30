@@ -22,6 +22,9 @@
 # (e.g. benchmarks/monker/correctness/lock_limp_check with
 # CO/CO_strategy.txt,BTN/CO_Call_BTN_strategy.txt: every hand limps and is checked behind,
 # so every deal reaches the flop; gate those runs on the gain_lower columns).
+# SEED=<decimal> passes --seed to the trainer (default: the trainer's own seed, as in
+# every run before 1 October 2026). The seed is part of the trainer identity, so a run
+# directory keeps one seed: a second seed needs a fresh run directory.
 # Every segment's start event must carry the tree fingerprint of the config listed in
 # README.md (EXPECT_TREE overrides it; a config not in the table is not checked): an
 # executable folder without postflop_betting_streets (bin_correct/base) silently builds
@@ -49,19 +52,32 @@ LOCK_ARGS=()
 if [ -n "${LOCK_CHARTS:-}" ] || [ -n "${LOCK_NODES:-}" ]; then
   LOCK_ARGS=(--lock-charts "${LOCK_CHARTS:-}" --lock-nodes "${LOCK_NODES:-}")
 fi
+SEED_ARGS=()
+if [ -n "${SEED:-}" ]; then
+  case "$SEED" in
+    *[!0-9]*) echo "SEED must be a decimal number, not '$SEED'" >&2; exit 2 ;;
+  esac
+  SEED_ARGS=(--seed "$SEED")
+fi
 case "$(basename "$CFG")" in
   HU6_all.json) TREE_DEFAULT="fnv1a64:fb76ddcd880fec5f" ;;
   HU6_all_rake25cap2.json) TREE_DEFAULT="fnv1a64:f226b87d43f28215" ;;
   HU6_V0_flop.json) TREE_DEFAULT="fnv1a64:cd66796bdbdac5c1" ;;
   HU6_V1_flopturn.json) TREE_DEFAULT="fnv1a64:da5c6942354ad5ad" ;;
   HU6_V2_river.json) TREE_DEFAULT="fnv1a64:2f109f6f1891d9f2" ;;
+  HU6_V2_river_rake25cap2.json) TREE_DEFAULT="fnv1a64:cd2e1217488aaea9" ;;
+  HU6_V2_river_rakeinert.json) TREE_DEFAULT="fnv1a64:eb528dbdd5dbe94c" ;;
+  HU6_V2_river_rake5cap05.json) TREE_DEFAULT="fnv1a64:0133288de510b8f0" ;;
+  HU19_B0_flop.json) TREE_DEFAULT="fnv1a64:b58f4ac0e4cf68b1" ;;
+  HU19_B2_river.json) TREE_DEFAULT="fnv1a64:23b83f3f3b18d1c0" ;;
+  HU8_B1_flopturn.json) TREE_DEFAULT="fnv1a64:5269db409b4bcf45" ;;
   *) TREE_DEFAULT="" ;;
 esac
 EXPECT_TREE="${EXPECT_TREE:-$TREE_DEFAULT}"
 mkdir -p "$RUN/charts"
 echo "$(date '+%Y-%m-%d %H:%M:%S') correctness start: config $CFG buckets $BUCKETS map $MAP" \
   "threads $THREADS eval $EVAL_THREADS partition $PARTITION bin $BIN lock ${LOCK_CHARTS:-none}" \
-  "${LOCK_NODES:-} tree ${EXPECT_TREE:-unchecked} targets $*" >> "$RUN/run.log"
+  "${LOCK_NODES:-} seed ${SEED:-default} tree ${EXPECT_TREE:-unchecked} targets $*" >> "$RUN/run.log"
 for N in "$@"; do
   if [ -f "$RUN/CANCEL" ]; then
     echo "$(date '+%H:%M:%S') cancelled before $N" >> "$RUN/run.log"
@@ -75,7 +91,7 @@ for N in "$@"; do
     --table-storage double --eval-every 0 --batch 32 --partition-target "$PARTITION" \
     --scheme dcfr --update alternating --batch-policy-refresh --lazy-discount \
     --progress-every 1000 --iterations "$N" --checkpoint "$RUN/state.ckpt" --chart-every "$N" \
-    --chart-dir "$RUN/charts" --policy-snapshots "${LOCK_ARGS[@]}" $resume \
+    --chart-dir "$RUN/charts" --policy-snapshots "${LOCK_ARGS[@]}" "${SEED_ARGS[@]}" $resume \
     >> "$RUN/train.jsonl" 2>> "$RUN/train.stderr.log"
   rc=$?
   echo "$(date '+%H:%M:%S') segment $N rc $rc ($(( $(date +%s) - started )) s)" >> "$RUN/run.log"
