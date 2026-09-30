@@ -217,6 +217,15 @@ inline pb::HandSubsets oracle_subsets() {
   return subsets;
 }
 
+// Street bucket tables of a FiniteGameBuilder in place of the resources'
+// tables (a null entry keeps the resource table): the small per-board tables
+// that board class rows need (board texture tests).
+struct StreetTables {
+  const ca::BucketTable *flop{nullptr};
+  const ca::BucketTable *turn{nullptr};
+  const ca::BucketTable *river{nullptr};
+};
+
 // Builds the finite game of the reduced problem: chance over boards, chance
 // over disjoint deals, then a copy of the compiled tree per deal whose
 // information sets are keyed by (player, compiled node, bucket row).
@@ -227,12 +236,18 @@ public:
   // node, combo, public cards dealt so far): the physical game restricted to
   // the listed boards, whose exact best response is the physical one. With an
   // average policy the builder also records the lifted strategy profile.
+  // The rows are those of BoardContext::build with the given row map (class,
+  // history or board class rows, at most one) on the resources' bucket tables
+  // or on street_tables.
   FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
                     const bool lossless = false, const pb::BucketPolicy *average = nullptr,
                     const pb::ClassBucketRows *class_rows = nullptr,
-                    const pb::HistoryBucketRows *history_rows = nullptr)
+                    const pb::HistoryBucketRows *history_rows = nullptr,
+                    const pb::BoardClassRows *board_class_rows = nullptr,
+                    const StreetTables street_tables = {})
       : game_(game), resources_(resources), lossless_(lossless), average_(average),
-        class_rows_(class_rows), history_rows_(history_rows) {}
+        class_rows_(class_rows), history_rows_(history_rows),
+        board_class_rows_(board_class_rows), street_tables_(street_tables) {}
 
   [[nodiscard]] const gtosd::StrategyProfile &profile() const noexcept { return profile_; }
 
@@ -249,11 +264,13 @@ public:
     }
     pb::AbstractionTables tables;
     tables.catalog = &resources_.catalog.value();
-    tables.flop = &resources_.flop.value();
-    tables.turn = &resources_.turn.value();
-    tables.river = &resources_.river.value();
+    tables.flop = street_tables_.flop != nullptr ? street_tables_.flop : &resources_.flop.value();
+    tables.turn = street_tables_.turn != nullptr ? street_tables_.turn : &resources_.turn.value();
+    tables.river =
+        street_tables_.river != nullptr ? street_tables_.river : &resources_.river.value();
     tables.class_rows = class_rows_;
     tables.history_rows = history_rows_;
+    tables.board_class_rows = board_class_rows_;
     for (std::size_t board = 0; board < boards.histories.size(); ++board) {
       const auto context =
           pb::BoardContext::build(boards.histories[board], resources_.ranks.value(), &tables);
@@ -418,6 +435,8 @@ private:
   const pb::BucketPolicy *average_{nullptr};
   const pb::ClassBucketRows *class_rows_{nullptr};
   const pb::HistoryBucketRows *history_rows_{nullptr};
+  const pb::BoardClassRows *board_class_rows_{nullptr};
+  StreetTables street_tables_{};
   gtosd::StrategyProfile profile_;
   std::vector<gtosd::GameNode> nodes_;
 };
