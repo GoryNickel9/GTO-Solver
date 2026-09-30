@@ -239,6 +239,14 @@ T3, an id on a dead combo fails T1, and swapping two rows fails T1 to T4.
 
 **Cost:** about 3.5-4 min, 0.9 GB peak (river tables). `--skip-checksum` makes it much faster.
 
+**Tables outside `out/monker/correctness/buckets`** need their own run with `--buckets-root out/monker
+--tables ...`. Two matter:
+- `out/monker/buckets_flopexact_15x4`, V0's exact flop table;
+- `out/monker/buckets_15x4`, the tables of the HU6 P runs and of S5a.
+
+Smoke runs of their flop and turn tables on 30/09 passed, without the checksum and on 300-500 physical
+boards.
+
 ## Run order after the build window (Git Bash, repo root)
 
 ```
@@ -247,6 +255,9 @@ python tools/independent/sd_rank_check.py > $D/S1_rank.log 2>&1; echo "S1 exit $
 python tools/independent/sd_allin_check.py --sampled 2000 --exhaustive --processes 4 > $D/S2_allin.log 2>&1; echo "S2 exit $?"
 python tools/independent/sd_step1_lp.py > $D/S4_step1.log 2>&1; echo "S4 exit $?"          # needs S2's npz
 python tools/independent/sd_catalog_check.py > $D/S6_catalog.log 2>&1; echo "S6 exit $?"
+# V0's exact flop table and the HU6 15x4 tables (S5a, P runs) live outside correctness/buckets (about 1 min):
+python tools/independent/sd_catalog_check.py --buckets-root out/monker --tables buckets_flopexact_15x4 buckets_15x4 \
+    --no-enumeration --out-dir $D/S6_tables > $D/S6_tables.log 2>&1; echo "S6 tables exit $?"
 # after `cmake --build out/build/windows-release-suite --target gtosd_preflop_blueprint_game` (vsdev wrapper):
 ctest --test-dir out/build/windows-release-suite -R "gtosd_preflop_blueprint_independent_referee|gtosd_preflop_blueprint_game_report" --output-on-failure
 python tools/independent/sd_referee.py --executable out/build/windows-release-suite/benchmarks/gtosd_preflop_blueprint_game.exe \
