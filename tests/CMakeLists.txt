@@ -865,5 +865,55 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_chart_schema
       PROPERTIES LABELS "preflop_blueprint;p8;schema" SKIP_RETURN_CODE 77
                  FIXTURES_REQUIRED preflop_blueprint_smoke_chart)
+    # S3 of the correctness coverage, referee machinery only (no engine): the
+    # referee passes dumps of its own trees, catches tampered amounts and
+    # payoffs and attributes a dump written under an alternative convention.
+    add_test(NAME gtosd_preflop_blueprint_independent_referee_selftest
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py --self-test
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_all_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake25cap2.json
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+    set_tests_properties(gtosd_preflop_blueprint_independent_referee_selftest
+      PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
+  endif()
+  if(Python3_Interpreter_FOUND AND GTOSD_BUILD_BENCHMARKS)
+    # S3: the compiled trees of the correctness and MonkerSolver games
+    # (gtosd_preflop_blueprint_game --dump-nodes) against the independent
+    # referee written from the rules (tools/independent/sdref/rules.py):
+    # every action's legality and amount, pots, contributions, uncalled
+    # returns and every terminal payoff row incl. rake; path sets against the
+    # referee's own enumeration. Exit 3 = only named conventions differ.
+    add_test(NAME gtosd_preflop_blueprint_independent_referee
+      COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py
+        --executable $<TARGET_FILE:gtosd_preflop_blueprint_game>
+        --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_independent_referee
+        --report ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_independent_referee/report.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_all.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_all_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V0_flop.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V1_flopturn.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V2_river.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_allin5x.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake5cap075.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake5cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_2size_donk.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_2size_donk_allin5x.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+    set_tests_properties(gtosd_preflop_blueprint_independent_referee
+      PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(gtosd_preflop_blueprint_independent_referee PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
   endif()
 endif()
