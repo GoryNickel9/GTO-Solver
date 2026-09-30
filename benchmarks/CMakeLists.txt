@@ -951,6 +951,76 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_reference_mismatch_refused
       PROPERTIES ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # The 3-way step 1 on the 3WAY50 trees (the donk configurations: the
+  # checkdown tree never reads their postflop settings) without and with rake,
+  # folded cards dead: a short smoke on 2 threads (needs the complete
+  # preflop_three_way_v1.bin in the resources), its 54 charts against the
+  # 3WAY50 manifest, and with rake the smoke's own charts locked on every node
+  # and evaluated without iterations (the path of the MonkerSolver evaluation).
+  foreach(variant IN ITEMS plain rake)
+    if(variant STREQUAL "rake")
+      set(three_way_config ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json)
+    else()
+      set(three_way_config ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json)
+    endif()
+    set(three_way_output
+      ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_${variant})
+    add_test(NAME gtosd_preflop_blueprint_checkdown_classes_3way50_${variant}_smoke
+      COMMAND gtosd_preflop_blueprint_checkdown_classes
+        --config ${three_way_config}
+        --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+        --output-dir ${three_way_output}
+        --iterations 40 --report-every 20 --threads 2 --folded-cards dead)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_3way50_${variant}_smoke
+      PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+                 PASS_REGULAR_EXPRESSION
+                   "expected rake -\\(sum EV\\).*PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=3 charts=54 "
+                 FIXTURES_SETUP preflop_blueprint_checkdown_classes_3way50_${variant}_charts)
+    add_test(NAME gtosd_preflop_blueprint_monker_tree_checkdown_classes_3way50_${variant}_charts
+      COMMAND gtosd_preflop_blueprint_monker_tree
+        --config ${three_way_config}
+        --charts ${three_way_output}/charts
+        --manifest ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_tree_manifest.tsv)
+    set_tests_properties(gtosd_preflop_blueprint_monker_tree_checkdown_classes_3way50_${variant}_charts
+      PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+                 FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_3way50_${variant}_charts
+                 PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=PASS nodes=54 files=54")
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_3way50_${variant}_smoke
+        PROPERTIES ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endif()
+  endforeach()
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_3way50_rake_lock
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_rake_lock
+      --iterations 0 --threads 2
+      --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_rake/charts
+      --lock-nodes all)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_3way50_rake_lock
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_3way50_rake_charts
+               PASS_REGULAR_EXPRESSION
+                 "lock: 54 charts from .*PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=3 charts=54 ")
+  # --folded-cards is 3-way only.
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_folded_cards_refused
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_folded_refused
+      --iterations 10 --folded-cards ignore)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_folded_cards_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL --folded-cards needs a 3-player game")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    foreach(three_way_test IN ITEMS gtosd_preflop_blueprint_checkdown_classes_3way50_rake_lock
+                                    gtosd_preflop_blueprint_checkdown_classes_folded_cards_refused)
+      set_tests_properties(${three_way_test} PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endforeach()
+  endif()
   # Per-board bucket tables with an exact flop (one id per suit orbit), the
   # 15x4 turn and the 15-level river, checked by
   # gtosd_preflop_blueprint_monker_buckets_tests.
