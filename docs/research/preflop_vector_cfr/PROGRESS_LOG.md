@@ -11,17 +11,18 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 
 | Campo | Valore |
 |---|---|
-| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28). HU50: configurazione di riferimento G1 decisa il 2026-09-29 (astrazione compatta 15 livelli × 4 + TX2, donk bet, una size; distanza da MonkerSolver 0,0641); dal 2026-09-30 riaperta sul rake (l'utente: "molto probabile" rake 5 %, cap 3a, no flop no drop; le impostazioni vere non sono note). Il preflop di MonkerSolver, con il postflop che il nostro CFR impara contro i suoi range, non è un equilibrio del nostro gioco: migliore risposta preflop al CO 1,44 % del piatto senza rake (test 5), 0,92-1,13 % con le ipotesi di rake 5 % / cap 3a, 2a o 0,75a e 2,5 % / cap 2a (test 6-6d), 1,60-1,80 % con un postflop più fine (test 5M-5D: l'astrazione non è la leva); il nostro preflop nel suo gioco circa 0,1 %; limite del test: postflop appreso contro range fissi, non prova che nessun postflop lo renda un equilibrio (manca la migliore risposta preflop contro un postflop risolto esattamente). Contro la nostra strategia le chart di MonkerSolver restano equivalenti in EV (al massimo lo 0,09 % del piatto). 3-way 50a: fasi 1, 2a e 2b fatte (2b chiusa alle 05:20 del 2026-09-30, 90/90 test); prime chart 3-way del passo 1 in cinque giochi (distanza da MonkerSolver 0,245-0,288, come il passo 1 HU); fase 3 (postflop sparso a tre) dopo le decisioni dell'utente. Ottimizzazione dei 35 minuti di HU40 in pausa |
+| Fase in corso | Riproduzione della ricetta MonkerSolver per il preflop multiway (dal 2026-09-28). HU50: configurazione di riferimento G1 decisa il 2026-09-29 (astrazione compatta 15 livelli × 4 + TX2, donk bet, una size; distanza da MonkerSolver 0,0641); dal 2026-09-30 riaperta sul rake (l'utente: "molto probabile" rake 5 %, cap 3a, no flop no drop; le impostazioni vere non sono note). Il preflop di MonkerSolver, con il postflop che il nostro CFR impara contro i suoi range, non è un equilibrio del nostro gioco: migliore risposta preflop al CO 1,44 % del piatto senza rake (test 5), 0,92-1,13 % con le ipotesi di rake 5 % / cap 3a, 2a o 0,75a e 2,5 % / cap 2a (test 6-6d), 1,60-1,80 % con un postflop più fine (test 5M-5D: raffinare l'astrazione non è la leva); il nostro preflop nel suo gioco circa 0,1 %; limite del test: postflop appreso contro range fissi, non prova che nessun postflop lo renda un equilibrio (manca la migliore risposta preflop contro un postflop risolto esattamente). Contro la nostra strategia le chart di MonkerSolver restano equivalenti in EV (al massimo lo 0,09 % del piatto). 3-way 50a: fasi 1, 2a e 2b fatte (2b chiusa alle 05:20 del 2026-09-30, 90/90 test); prime chart 3-way del passo 1 in cinque giochi (distanza da MonkerSolver 0,245-0,288, come il passo 1 HU); fase 3 (postflop sparso a tre) dopo le decisioni dell'utente. Pomeriggio del 2026-09-30: il gioco con i bucket di default di MonkerSolver (30 × 4) e rake 2,5 % / cap 2a dà le chart più vicine finora (distanza 0,0568 / differenza di range 0,320 all'arresto a 32.000; 0,0532 / 0,289 a 48.000 nell'estensione in corso) e la preferenza suited di MonkerSolver (0,214 contro 0,224); il preflop di MonkerSolver bloccato in quel gioco lascia al CO ancora l'1,03-1,04 % (test 7, anche con il doppio delle iterazioni): fra le leve provate il rake è quella che abbassa di più lo scarto (−35 %), un bucket più grossolano lo abbassa del 10-11 %, raffinare l'astrazione lo alza; texture più grossolane (TXM, TXM2) non ancora provate con il preflop bloccato. Specifica della fase 3 del 3-way scritta e criticata, decisioni D1-D7 aperte. Ottimizzazione dei 35 minuti di HU40 in pausa |
 | Ultimo gate | P8 PASS (2026-09-16) |
 | Branch di integrazione | `feature/preflop-blueprint` |
 | Branch di fase | `feat/monker-step1-checkdown` (dal 2026-09-28, da `feat/preflop-phase1-time`); in precedenza `feat/preflop-phase1-time` e `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
-| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `67de1d7` del 2026-09-30; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin`, `out/monker/bin_texture`, `out/monker/bin_allin` (`410a380`), `out/monker/bin_abd` (`5578ab8`), `out/monker/bin_lock` (`c7d6ba0`), `out/monker/bin_rake` (`3ec4027`), `out/monker/bin_threeway` (tabella a tre giocatori) e `out/monker/bin_3way_step1` (`67de1d7`, passo 1 a tre giocatori); copie congelate del runner in `out/frozen/` (anche `run_step2_continuous_lock.sh` e `run_step2_continuous_rake.sh`) |
+| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `67de1d7` del 2026-09-30; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin`, `out/monker/bin_texture`, `out/monker/bin_allin` (`410a380`), `out/monker/bin_abd` (`5578ab8`), `out/monker/bin_lock` (`c7d6ba0`), `out/monker/bin_rake` (`3ec4027`), `out/monker/bin_threeway` (tabella a tre giocatori) e `out/monker/bin_3way_step1` (`67de1d7`, passo 1 a tre giocatori); copie congelate del runner in `out/frozen/` (anche `run_step2_continuous_lock.sh`, `run_step2_continuous_rake.sh` e, dal 2026-09-30, `run_step2_continuous_algo.sh` con `LAZY_ARG` per l'opzione A); eseguibili, bucket, risorse, runner congelati e build restano sull'SSD C: |
+| Archivio dei run | Dal 2026-09-30 (decisione dell'utente verso le 12:00, prima dell'inizio dello spostamento alle 12:01:28): i run si allenano sull'SSD C: e dopo la loro valutazione vanno sul disco USB F: (Seagate Basic da 2 TB) in `F:\GTO-Solver-out`, stessi percorsi relativi, con una directory junction al vecchio percorso (lettura trasparente); script `archive_run.ps1` nella cartella temporanea della sessione, che salta le cartelle con `NO_ARCHIVE` e dalle 14:31 prende un lock esclusivo per cartella. Spostate 37 cartelle (299,7 GiB, 4.515 file) dalle 12:01 alle 14:18, ognuna verificata in file e byte; dopo, C: ha 308,5 GiB liberi. Una junction non si cancella mai in modo ricorsivo |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il vecchio limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | Colloquio con l'utente verso le 12:00 del 2026-09-30. Decisioni in attesa: rake e configurazione HU di riferimento; criterio di somiglianza in EV; regola di arresto 0,005; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente; per il 3-way rake e convenzione delle carte foldate del passo 2, bucket 30 × 4 o 15 × 4 della fase 3. Poi fase 3 del 3-way (kernel di showdown a tre attivi nel trainer, migliore risposta e certificatore a tre). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.10, 8 e 9. |
+| Prossimo passo | In corso alle 14:40 del 2026-09-30: estensione del run 30 × 4 con rake 2,5 % / cap 2a fino a 64.000 iterazioni (valutazione esatta, poi archivio su F:), in coda il run con le texture TXM2 nello stesso gioco (64.000). Decisioni in attesa: le D1-D7 della specifica della fase 3 del 3-way (astrazione, rake del passo 2, regola di arresto 0,008 sulle 18 chart non all-in, ambito della valutazione, server a noleggio, build fino alle 24:00, conferme); configurazione HU di riferimento dopo l'estensione e il TXM2 (candidato 30 × 4 con rake 2,5 % / cap 2a); opzione A (algoritmo): la condizione dell'utente delle 12:26 (dopo il risultato del 30 × 4 e il test 7) è soddisfatta; non rimessa in coda, aspetta la conferma dell'utente (gioco: G1 come preparata, oppure il 30 × 4 con rake 2,5 % / cap 2a secondo il piano delle 12:26); criterio di somiglianza in EV; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente. Poi il codice della fase 3 (dalle 15:00 circa secondo la specifica). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.11, 6, 8 e 9.6, e nella [specifica della fase 3](threeway/PHASE3_SPEC_2026-09-30.md). |
 
 ## 2. Registro dei gate
 
@@ -42,6 +43,94 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-09-30 (pomeriggio) — 30 × 4 con rake, test 7, studio I/N, texture di MonkerSolver (TXM, TXM2), file .tree, run su F:, specifica della fase 3
+
+Dalle 09:30 alle 14:40 (nessuna riga nel `out/monker/variants/chain.log` fra le 08:43 e le 11:47: macchina ferma fino al
+colloquio con l'utente, dalle 11:45 circa); dettagli nelle sezioni 5.11, 6, 8 e 9.6 di
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md); specifica in
+[threeway/PHASE3_SPEC_2026-09-30.md](threeway/PHASE3_SPEC_2026-09-30.md). Nessun commit di codice.
+
+`HU50_m30x4_rake25` (11:47-12:50, richiesta dell'utente): il gioco più vicino ai default di MonkerSolver, bucket 30 × 4, TX2,
+donk bet, rake 2,5 % / cap 2a, soglia 0,005. Arresto a 32.000 (cambiamento 0,0045; trainer fermo a 32.117): distanza da
+MonkerSolver 0,0568, differenza di range 0,320 (G1 0,0641 / 0,350, G1+ 0,0622 / 0,338); preferenza suited 0,214 (MonkerSolver
+0,224, G1 0,365); radice del CO all-in / open 5a / limp / fold 35,6 / 3,5 / 24,0 / 37,0 % (MonkerSolver 33,1 / 0,5 / 29,0 /
+37,4 %). Il miglioramento della distanza su G1 (0,0073 / 0,029) supera le soglie del 5.1 (0,005 / 0,02; su questa misura i
+due seed di G1 differiscono di 0,0009 / 0,0026); contro G1+ è al limite (0,0054 / 0,018); le chart si spostano da quelle di
+G1 di 0,0514 / 0,283 (soglia fra chart, rumore di due seed: 0,0088 / 0,0425; A continuato a 32.000 0,0163 / 0,0840) e la
+preferenza suited di 0,151, più di 10 volte la differenza fra due seed. Valutazione esatta: le chart di MonkerSolver in
+questo gioco perdono −0,024 % del piatto al CO (fanno un po' meglio delle nostre contro la nostra strategia) e 0,013 % al
+BTN; il nostro scarto dalla migliore risposta preflop 0,092 / 0,032 %; rake atteso 0,239 a. Estensione fino a 64.000 chiesta dall'utente
+verso le 13:10, in corso dalle 14:18 (cartella con `NO_ARCHIVE`): 0,0532 / 0,289 a 48.000 (14:38); poi il run TXM2 (in coda).
+
+Test 7 (`HU50_lock_all_m30x4_rake25`, tutto il preflop di MonkerSolver bloccato nello stesso gioco, piano concordato alle
+12:26): guadagno della migliore risposta preflop CO / BTN 1,04 / 0,54 % del piatto a 24.000 (12:51-13:38) e 1,03 / 0,49 % a
+48.000 (esteso per la parità di I/N con i test a 15 × 4, 13:38-14:18; `br_split.txt` nella cartella, ora su F:). Confronto:
+test 5 1,44 / 0,54, 5M 1,60 / 0,60, 6c 0,92 / 0,47. Il 30 × 4 non rende il preflop di MonkerSolver più coerente nemmeno con il
+doppio delle iterazioni. Non viene dalla convergenza (al CO il test 7 a 48.000 è uguale a 24.000); raffinare la nostra
+astrazione lo alza (15 × 4 < 30 × 4 < 30 × 8 < 60 × 8) e non lo toglie; fra le leve che lo abbassano il rake è la più forte
+(−35/−36 %), un bucket più grossolano lo abbassa del 10-11 % (da 30 × 4 a 15 × 4); texture più grossolane come quelle di
+MonkerSolver (TXM, TXM2) non sono ancora state provate con il preflop bloccato. Il resto (circa l'1 % al CO, lo 0,5 % al BTN)
+sta nelle stesse linee: al CO soprattutto la spinta verso l'open a 5a alla radice (0,017 a su 0,031 a 48.000), al BTN il
+check dietro il limp del CO (0,010 a su 0,015). Lettura: probabilmente strutturale, con il limite del test (5.9).
+
+Studio I/N (workflow con due corsie e due verificatori, `scratchpad/monker_research/research_results.md`). La guida di
+MonkerSolver indica 10 volte il numero di nodi in iterazioni come il punto in cui una soluzione comincia a essere solida; il
+numero di nodi è, per inferenza, quello degli insiemi di informazione (nodi di decisione × bucket per nodo, capacità); sul forum
+di solito 20-40. I nostri run hanno due scale (per board e per mano, che differiscono del fattore h = 5,7 al preflop, 12,2 al
+flop, 14,6 al turn, 33,8 al river con 15 × 4) e un fattore f ignoto (uno o due posti per iterazione di MonkerSolver). Per mano
+(f = 1): G1 8,7, G1 con rake 20,4, test 5 12,9 / 21,6 / 34,5 a 24.000 / 40.000 / 64.000, 5M 6,5, E / G1+ 3,2-4,5, F 1,6-1,9,
+`HU50_m30x4_rake25` 8,66 (17,3 con f = 1/2); per board nessun run arriva a 10 nei nodi più raggiunti. Bucket più fini chiedono
+più iterazioni in proporzione: i risultati 5M-5F possono essere in parte sotto-convergenti; per il 30 × 4 il test 7 a 48.000 lo
+ha controllato (nessun cambiamento al CO).
+
+Texture di MonkerSolver (stesso workflow): HoldemTools non contiene la regola; i conteggi "Large" 8.942 / 3.677 non sono
+riprodotti; riprodotti gli spazi delle chiavi delle tabelle di MonkerSolver, 1.755 / 16.432 / 42.783 (short deck 573 / 3.663 /
+6.318). Per inferenza le classi di MonkerSolver sono globali per street e dimenticano l'ordine delle carte e il flop (solido
+per il river, per il turn poggia su un solo esempio). Stime short deck (scalate dall'Hold'em): turn "Large" circa 1.990 classi,
+river "Large" circa 540-760; il nostro TX2 (4.482 classi di turn, river per classe del turn) è più fine per numero di classi
+(stima) di circa 2 volte al turn e 6-8 al river; al river la nostra riga ignora la carta del river. Mappe nuove in
+`benchmarks/monker/textures` (non committate): TXM (multinsieme dei ranghi × schema dei semi del turn, senza quali ranghi
+condividono un seme, 1.899 classi) e TXM2 (più quali ranghi condividono ciascun seme sui board 2+2, 2.151 classi; in
+Hold'em 7.566 e 8.996 contro gli 8.942 di MonkerSolver); verificate (ricalcolo indipendente della partizione, altre mappe identiche byte per byte, smoke del
+caricatore e del trainer); il river resta per classe del turn (limite del motore).
+
+File .tree di MonkerSolver (due alberi 6-max a 100 bb dell'utente, small e medium): formato decodificato e verificato in modo
+indipendente (caratteri UTF-8 come interi; intestazione con 6 giocatori, blind 1.000 / 2.000 mchip, stack 200 fiche; albero
+completo esplicito con il postflop; codici 0 fold, 1 check/call, 3 all-in, 40100 piatto). Alberi in stile pot limit (solo la
+size del piatto, all-in solo quando un rilancio al piatto non ci sta, niente donk bet, call solo quando chiude l'azione o contro
+un all-in, call tolto al flop e al turn quando lascerebbe 19 bb, 0,117 volte il piatto, una sola geometria osservata);
+small 3.705 nodi, medium 11.034 (aggiunge il flat del BTN e l'overcall dello SB, le uniche eccezioni alla regola del call). Un .tree di un calcolo short deck mostrerebbe direttamente le size postflop; ignoti i campi a zero dell'intestazione e
+i codici delle size diverse dal piatto. Lettore copiato in `tools/monker_compare/monker_tree_file.py` (non committato).
+
+Algoritmo: nelle schermate (impostazioni generiche di MonkerSolver per l'Hold'em, non quelle delle chart) MonkerSolver usa
+MCCFR (CSCFR o ESCFR) con strategia media ed EV solo sulla prima street; le impostazioni delle chart non sono note. Il
+nostro trainer è CFR vettoriale con campionamento pubblico del caso (32 board per giocatore per iterazione), DCFR 1,5 / 0 / 2, alternato. Opzione A
+(Linear CFR; DCFR con un board per batch; Linear simultaneo con un board per batch, sul gioco G1) preparata con il runner
+congelato `out/frozen/run_step2_continuous_algo.sh` (`LAZY_ARG`: lo sconto lazy richiede DCFR), smoke passati, messa in coda
+alle 12:23 e tenuta alle 12:26 su domanda dell'utente fino al risultato del 30 × 4.
+
+Spazio su disco (decisione dell'utente verso le 12:00, prima dell'inizio dello spostamento alle 12:01:28): l'SSD C: era al 98 % (circa 20 GB liberi). 37 cartelle di run finiti
+(299,7 GiB, 4.515 file: `out/monker/variants/*` tranne il run in corso, `out/monker/step2`, `out/monker/smoke_*`, `out/matrix`,
+`out/hu40_history7_solve`, `out/suite`, `out/history7_optimized`, `out/hierarchy32`) spostate sul disco USB F: (Seagate Basic da
+2 TB, circa 37 MiB/s) in `F:\GTO-Solver-out`, stessi percorsi relativi e una junction al vecchio percorso, ognuna verificata in
+file e byte prima di togliere la sorgente; dalle 12:01 alle 14:18; dopo, C: ha 308,5 GiB liberi. Regola da allora: i run si
+allenano sull'SSD e vanno su F: dopo la valutazione (`archive_run.ps1`, file `NO_ARCHIVE` per le cartelle ancora in uso, dalle
+14:31 un lock esclusivo per cartella); eseguibili, bucket, risorse, runner congelati e build restano su C:; una junction non si
+cancella mai in modo ricorsivo. Incidente delle 14:18-14:31: due script in coda hanno archiviato insieme la cartella del test 7;
+il primo ha finito e verificato (156 file, 3.091.519.957 byte su F:), il robocopy del secondo copiava la destinazione su sé
+stessa attraverso la nuova junction ed è stato bloccato da violazioni di condivisione; ucciso alle 14:31, nessun file perso.
+
+Specifica della fase 3 del 3-way (13:20-13:40, rivista 14:00-14:30 dopo due critiche indipendenti, 19 rilievi accolti; 1.531
+righe): percorso a tre posti separato nel trainer (HU identico byte per byte), showdown con una scansione e inclusione-esclusione
+sulle carte condivise, carte foldate morte, cache per classi per i terminali preflop, validazione V1-V13 (più V9b), memoria
+15 × 4 in double picco circa 14,8 GB (i3) e 30 × 4 circa 29,2 GB (server), 2-4,5 s per iterazione sull'i3 (stima), 26-36 ore di
+agente. Decisioni D1-D7 per l'utente: astrazione, rake, regola di arresto (proposta 0,008 sulle 18 chart non all-in), ambito
+della valutazione, server a noleggio, build fino alle 24:00, conferme.
+
+Decisioni dell'utente del pomeriggio: regola dello spazio su disco; opzione A solo dopo il run 30 × 4; test 7 e poi la sua
+estensione; estensione del 30 × 4 fino a 64.000; texture simili a MonkerSolver (TXM, run TXM2); specifica della fase 3.
+Confermato: l'utente non conosce le impostazioni di MonkerSolver (non chiederle).
 
 ### 2026-09-30 (mattina) — test del rake 6-6d, B con rake, test 5 con altri bucket (5M-5D), impostazioni di MonkerSolver, fase 2b finita, prime chart 3-way del passo 1
 
