@@ -118,8 +118,12 @@ BTN 5,46 / 4,71 / 1,40 % senza rake, 4,47 / 4,17 / 1,58 % con 5 % / cap 3a, 3,95
 5,06 / 4,52 / 1,41 % con 2,5 % / cap 2a: con il cap di 0,75a il preflop di MonkerSolver è il meno sfruttabile per UTG, CO
 e nella somma (solo indicativo: nel passo 1 non c'è postflop).
 
-Altro: documenti della notte committati (`a319d0c`, 04:34); viewer degli output della fase 2b per il 3-way in
-preparazione (cartella temporanea, non nel repository); nuove configurazioni non committate
+Altro: documenti della notte committati (`a319d0c`, 04:34) e di questa mattina (`5c8343f`); viewer 3-way pubblicato alle
+09:30 (artifact privato dell'utente "Short Deck 3-way 50a", generatore nella cartella temporanea
+`scratchpad/threeway/viewer/build_viewer_3way.py`, non nel repository: i cinque run del passo 1, tabella dei 54 nodi,
+griglie 9x9 MonkerSolver / nostre / distanza; 270 distanze per nodo uguali a `compare_charts.py`, 5.670 celle nostre e
+10.449 di MonkerSolver uguali alle chart; l'agente che lo preparava si era fermato alle 05:49 in attesa del browser e il
+viewer è stato completato a mano); promemoria delle 11:52 tolto su richiesta dell'utente; nuove configurazioni non committate
 `HU50_step2_donk_rake5cap075.json`, `3WAY50_donk_rake5cap075.json`, `3WAY50_donk_rake25cap2.json` (oltre a
 `HU50_step2_donk_rake5cap2.json` e `HU50_step2_donk_rake25cap2.json` della notte). L'utente ha chiesto di risentirsi verso
 le 12:00 del 30 e ha permesso di anticipare i run 3-way con la macchina libera (partiti alle 07:55 invece che alle 11:30).

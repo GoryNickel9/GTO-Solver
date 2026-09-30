@@ -1575,8 +1575,10 @@ e HU50_rake per classi identiche byte per byte a prima; la valutazione delle cha
 **Velocità**: circa 17 ms per iterazione con 8 thread sull'i3 libero (10.000 iterazioni in 172-176 s, 9.5), 42-49 ms
 con 2 thread e la CPU condivisa durante il workflow; 0,49 GB di tensori, picco stimato circa 0,55 GB (dalle
 allocazioni, non misurato). Il rapporto del workflow è nel suo giornale (cartella della sessione,
-`subagents/workflows/wf_e198de0e-ef3/journal.jsonl`; copia leggibile in `scratchpad/p2b_results.txt`). Un viewer degli
-output della fase 2b per il 3-way è in preparazione nella cartella temporanea della sessione, non nel repository.
+`subagents/workflows/wf_e198de0e-ef3/journal.jsonl`; copia leggibile in `scratchpad/p2b_results.txt`). Il viewer 3-way
+(artifact privato dell'utente "Short Deck 3-way 50a", pubblicato il 30/09 alle 09:30; generatore
+`scratchpad/threeway/viewer/build_viewer_3way.py` nella cartella temporanea della sessione, non nel repository) mostra i
+cinque run di 9.5 con la tabella dei 54 nodi e le griglie 9x9 MonkerSolver / nostre / distanza per mano.
 
 ### 9.5 Prime chart 3-way del passo 1 (mattina del 30 settembre)
 
