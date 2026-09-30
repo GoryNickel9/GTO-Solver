@@ -726,7 +726,9 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   endif()
   # Class-level checkdown solver (benchmarks/checkdown_classes.hpp): the
   # aggregation of the heads-up all-in table to 81 x 81 classes, the terminal
-  # tensors against the combo-level values, the 3-seat layout.
+  # tensors against the combo-level values, the 3-seat layout, and a short
+  # 3-way solve's charts locked back through the 3-seat chart lock (written
+  # under the scratch directory).
   add_executable(gtosd_preflop_blueprint_checkdown_classes_tests
     preflop_blueprint_checkdown_classes_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_checkdown_classes_tests
@@ -736,7 +738,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   gtosd_set_warnings(gtosd_preflop_blueprint_checkdown_classes_tests)
   add_test(NAME gtosd_preflop_blueprint_checkdown_classes_tests
     COMMAND gtosd_preflop_blueprint_checkdown_classes_tests
-      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_scratch)
   set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_tests
     PROPERTIES LABELS "preflop_blueprint;research;monker;three_way")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)

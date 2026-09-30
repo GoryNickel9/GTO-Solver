@@ -16,11 +16,16 @@
 // the dense contraction of N, the rake identity of every terminal (the seats'
 // reach-weighted values sum to minus its rake times its deals), and short
 // solves with and without rake: the same values on 1 and 2 threads, best
-// response at least the average, local gains non-negative, a locked row kept.
+// response at least the average, local gains non-negative, a locked row kept;
+// with rake, a short solve's charts locked back on every node of a fresh
+// solver through the 3-seat chart lock (every row classified, every seat's
+// rows on their own node and class, kept through iterations, the source's EVs
+// and gains reproduced), written under --scratch-dir.
 // The complete three-player table is loaded from the resources; without it a
 // subset is built for the brute-force hero classes and the checks that need
 // every class are skipped.
 #include "../benchmarks/checkdown_classes.hpp"
+#include "../benchmarks/monker_chart_lock.hpp"
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
@@ -52,6 +57,7 @@ namespace {
 
 namespace ca = gtosd::card_abstraction;
 namespace cc = gtosd::checkdown_classes;
+namespace mc = gtosd::monker_charts;
 namespace pb = gtosd::preflop_blueprint;
 using Clock = std::chrono::steady_clock;
 
@@ -680,16 +686,109 @@ void test_three_way_solver(const pb::CompiledGame &game, const cc::CheckdownTerm
             << ev_sum << ", expected rake by reach " << rake << ", locked AA shove kept\n";
 }
 
+// The 3-seat chart lock (the path of the MonkerSolver evaluation): a short
+// solve written as charts (write_class_charts) and locked back on every chart
+// node of a fresh solver (chart_lock_seats). Every class row of the 54 nodes
+// is a chart row, a row outside the range or a zero row reached under the
+// charts; each seat gets a chart row exactly where the source wrote a
+// non-zero row; every locked row is the source's average strategy of the
+// same node and class up to the three printed decimals (normalizing a row
+// of k printed values moves a cell by at most k x 0.0005); the fresh solver
+// holds every chart row once and keeps it through iterations, below the root
+// too; the locked profile's EVs and best-response gains are the source's
+// within 0.005 antes (the printed decimals move them by about 6e-4 after 20
+// iterations; any one seat left unlocked, uniform, moves them by 1.4 to 2.1
+// antes).
+void test_three_way_chart_lock(const pb::CompiledGame &game,
+                               const cc::CheckdownTerminals &terminals,
+                               const std::filesystem::path &scratch) {
+  constexpr std::uint64_t iterations = 20U;
+  cc::ClassSolver source(game, terminals, 1.5, 0.0, 2.0, 2U);
+  for (std::uint64_t iteration = 1U; iteration <= iterations; ++iteration) {
+    source.iterate(iteration);
+  }
+  const auto directory = scratch / "three_way_chart_lock";
+  std::filesystem::remove_all(directory);
+  const auto written = cc::write_class_charts(game, source, directory);
+  const auto nodes = mc::chart_nodes(game);
+  require(written.size() == 54U && nodes.size() == 54U, "3WAY50: 54 charts written");
+  const auto lock = mc::chart_lock_seats(game, directory, {"all"}, true);
+  require(lock.files.size() == nodes.size(), "every chart node locked");
+  require(static_cast<std::size_t>(lock.chart_rows) + lock.outside_range_rows +
+                  lock.fallback_rows ==
+              nodes.size() * classes,
+          "every class row of every locked node classified once");
+  const auto source_reach = source.own_reach();
+  std::array<std::size_t, 3> written_rows{};
+  for (const auto &chart : nodes) {
+    const auto actor = game.nodes()[chart.node].actor;
+    for (std::size_t hand_class = 0; hand_class < classes; ++hand_class) {
+      written_rows[actor] +=
+          source_reach[chart.node][actor][hand_class] >= cc::out_of_range_reach ? 1U : 0U;
+    }
+  }
+  cc::ClassSolver locked(game, terminals, 1.5, 0.0, 2.0, 2U);
+  std::array<std::size_t, 3> locked_rows{};
+  double largest = 0.0;
+  for (const auto &row : lock.lock.rows) {
+    const auto actor = game.nodes()[row.node].actor;
+    ++locked_rows[actor];
+    const auto expected = source.average_strategy(row.node, row.hand_class);
+    require(row.frequencies.size() == expected.size(), "a locked row has its node's actions");
+    const double tolerance = 5e-4 * static_cast<double>(expected.size()) + 1e-9;
+    for (std::size_t action = 0; action < expected.size(); ++action) {
+      const double difference = std::abs(row.frequencies[action] - expected[action]);
+      largest = std::max(largest, difference);
+      require(difference <= tolerance,
+              "a locked row is the source row of its node and class up to the printed decimals");
+    }
+    locked.lock_row(row.node, row.hand_class, row.frequencies);
+  }
+  for (std::size_t seat = 0; seat < 3U; ++seat) {
+    require(locked_rows[seat] > 0U && locked_rows[seat] == written_rows[seat],
+            "every seat's chart rows are the rows its charts wrote");
+  }
+  require(locked.locked_rows() == lock.chart_rows, "the solver holds every chart row once");
+  double ev_difference = 0.0;
+  double gain_difference = 0.0;
+  for (std::uint8_t seat = 0U; seat < 3U; ++seat) {
+    const double average = locked.value(seat, cc::Mode::Average);
+    const double source_average = source.value(seat, cc::Mode::Average);
+    ev_difference = std::max(ev_difference, std::abs(average - source_average));
+    const double gain = locked.value(seat, cc::Mode::BestResponse) - average;
+    const double source_gain = source.value(seat, cc::Mode::BestResponse) - source_average;
+    gain_difference = std::max(gain_difference, std::abs(gain - source_gain));
+  }
+  require(ev_difference <= 5e-3 && gain_difference <= 5e-3,
+          "the locked charts reproduce the source's EVs and gains within 0.005 antes");
+  for (std::uint64_t iteration = 1U; iteration <= 2U; ++iteration) {
+    locked.iterate(iteration);
+  }
+  for (const auto &row : lock.lock.rows) {
+    require(locked.average_strategy(row.node, row.hand_class) == row.frequencies,
+            "every locked row stays the average strategy through iterations");
+  }
+  std::cout << game.config().id << " chart lock: " << lock.chart_rows << " chart rows (seats "
+            << locked_rows[0] << ", " << locked_rows[1] << ", " << locked_rows[2] << "), "
+            << lock.outside_range_rows << " outside the range, " << lock.fallback_rows
+            << " zero rows reached; largest row difference " << largest << ", EV " << ev_difference
+            << ", gain " << gain_difference << " antes\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
   try {
     const auto started = Clock::now();
     std::filesystem::path resources_dir;
+    std::filesystem::path scratch_dir =
+        std::filesystem::temp_directory_path() / "gtosd_checkdown_classes_tests";
     for (int index = 1; index + 1 < argc; index += 2) {
       const std::string_view name = argv[index];
       if (name == "--resources-dir") {
         resources_dir = argv[index + 1];
+      } else if (name == "--scratch-dir") {
+        scratch_dir = argv[index + 1];
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -777,6 +876,7 @@ int main(const int argc, char **argv) {
         if (convention == ca::FoldedCards::Dead) {
           test_three_way_deal_values(terminals);
           test_three_way_solver(game, terminals);
+          test_three_way_chart_lock(game, terminals, scratch_dir);
         }
       }
     }
@@ -787,7 +887,8 @@ int main(const int argc, char **argv) {
       test_three_way_rake_identity(game, terminals);
       test_three_way_solver(game, terminals);
     } else {
-      std::cout << "3-way rake identity, deal values and solves skipped: no complete table\n";
+      std::cout << "3-way rake identity, deal values, solves and chart lock skipped: no complete "
+                   "table\n";
     }
     std::cout << "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES_TESTS=PASS assertions=" << assertions
               << " seconds=" << std::chrono::duration<double>(Clock::now() - started).count()
