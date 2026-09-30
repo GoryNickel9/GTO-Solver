@@ -15,9 +15,13 @@
 // the FiniteGame oracle (test_river_key_oracle): the trainer computes the CFR
 // iterates of the abstract game whose rows pool the rivers of a turn, the
 // turns of a class or the orders of five cards, and its physical best
-// response is the brute-force NashConv of that policy.
+// response is the brute-force NashConv of that policy; the sampled alternating
+// update on key-"turn" rows is unbiased (test_river_key_alternating); gain_lower
+// under a locked preflop is the brute-force best response from the flop on
+// (test_river_key_gain_lower).
 #include "preflop_blueprint_test_support.hpp"
 
+#include "gtosd/card_abstraction/card_abstraction.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/preflop_blueprint/board_class_rows.hpp"
 #include "gtosd/preflop_blueprint/board_context.hpp"
@@ -1414,7 +1418,14 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
 //  A2  the trainer's exact physical best response (the joint river engine,
 //      which computes the river rows of either key independently of
 //      BoardContext) equals calculate_nash_conv of the lifted average on the
-//      lossless physical game within 1e-9 (EVs, best responses, NashConv);
+//      lossless physical game within 1e-9 (EVs, best responses, NashConv).
+//      This is the first validation of the in-training evaluation with
+//      board class rows (Trainer::estimate_exploitability ->
+//      evaluate_best_response on a board list), which the trainer CLI
+//      refuses because it had not been validated
+//      (benchmarks/preflop_blueprint_train.cpp:490-493). It is not the
+//      monker_values path: no canonical flops, flop images, policy file or
+//      source check;
 //  A3  the rows pool what the key says (non-vacuity): with one river group
 //      key "turn" puts two rivers of one turn in one river information set,
 //      turn-as-flop and TX2 two canonical turns, TX2 the turns of two
@@ -1550,6 +1561,366 @@ void test_river_key_oracle(const Resources &resources, const FoldedTables &table
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+// A4 (critic R3): HU50's update path, boards sampled from the list with
+// alternating updates, on key-"turn" rows. As in
+// test_alternating_conditional_expectation (trainer tests), conditional on
+// player 0 having drawn board A: the expectation over player 1's independent
+// draw (A or B, one half each) of player 1's update equals the exact update
+// of the FiniteGame oracle against player 0's updated policy, within 1e-10.
+// A and B share flop and turn (6s7d8c 6c, rivers Tc and Kc), so with one river
+// group both boards have the same river rows: player 0's pooled rows carry
+// what it learned on A into B. Variants: CO40-test with
+// turn-as-flop (1 and 6 river groups; the identity rows of CO40 are too large,
+// see test_river_key_oracle), HU10 reduced with the identity (1 group) and
+// TX2 (6 groups); hands TsTh, JsJh against QsQh, KsKh.
+void test_river_key_alternating(const Resources &resources, const FoldedTables &tables,
+                                const pb::BoardTextureMap &tx2) {
+  const auto started = Clock::now();
+  const auto &catalog = *resources.catalog;
+  pb::TrainingBoards boards;
+  boards.histories = {make_history({"6s", "7d", "8c", "6c", "Tc"}),
+                      make_history({"6s", "7d", "8c", "6c", "Kc"})};
+  boards.weights = {1.0, 1.0};
+  auto first_board = boards;
+  first_board.histories.resize(1U);
+  first_board.weights.resize(1U);
+  auto subsets = oracle_subsets();
+  for (auto &combos : subsets.combos) {
+    combos = {combos.front(), combos.back()};
+  }
+  const auto identity = pb::BoardTextureMap::identity();
+  const auto merged = turn_as_flop(catalog);
+  const auto river_one = folded_table(resources, *resources.river, 1U);
+  const auto hu10 =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto co40 = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(hu10.has_value() && co40.has_value(), "HU10 reduced and CO40-test compile");
+
+  struct AlternatingCase {
+    const char *name;
+    const pb::CompiledGame *game;
+    const pb::BoardTextureMap *map;
+    std::uint32_t river_groups;
+  };
+  const std::array<AlternatingCase, 4> cases{
+      {{"CO40-test turn_as_flop", &co40.value(), &merged, 1U},
+       {"CO40-test turn_as_flop", &co40.value(), &merged, 6U},
+       {"HU10 reduced identity", &hu10.value(), &identity, 1U},
+       {"HU10 reduced TX2", &hu10.value(), &tx2, 6U}}};
+  for (const auto &entry : cases) {
+    const auto case_started = Clock::now();
+    const auto &game = *entry.game;
+    const auto name = std::string(entry.name) + " key=turn river_groups=" +
+                      std::to_string(entry.river_groups);
+    const auto *river_table = entry.river_groups == 1U ? &river_one : &tables.river;
+    const pb::BoardClassRows rows(4U, 5U, entry.river_groups, *entry.map);
+    const StreetTables street_tables{&tables.flop, &tables.turn, river_table};
+    pb::AbstractionTables view;
+    view.catalog = &catalog;
+    view.flop = &tables.flop;
+    view.turn = &tables.turn;
+    view.river = river_table;
+    view.board_class_rows = &rows;
+    const auto counts = pooling_counts(game, resources, view, boards, subsets);
+    if (entry.river_groups == 1U) {
+      require(counts.river_rivers_of_one_turn > 0U,
+              "the two rivers of the turn share river information sets: " + name);
+    }
+
+    // Exact reference: player 0's update on board A alone, then player 1's
+    // update on both boards against it.
+    gtosd::SolverConfig reference_config;
+    reference_config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
+    reference_config.iterations = 1U;
+    FiniteGameBuilder first_builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+                                    street_tables);
+    const auto first_finite = first_builder.build(first_board, subsets);
+    const auto first = gtosd::solve_finite_game(first_finite, reference_config);
+    require(first.has_value(), "first player's conditional reference solves: " + name);
+    FiniteGameBuilder full_builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+                                   street_tables);
+    const auto full_finite = full_builder.build(boards, subsets);
+    const auto initial = gtosd::solve_finite_game(full_finite, reference_config);
+    require(initial.has_value(), "full conditional reference initializes: " + name);
+    auto checkpoint = initial.value().checkpoint;
+    checkpoint.completed_iterations = 0U;
+    for (auto &[key, buffer] : checkpoint.information_sets) {
+      std::fill(buffer.cumulative_strategy.begin(), buffer.cumulative_strategy.end(), 0.0);
+      std::fill(buffer.cumulative_regret.begin(), buffer.cumulative_regret.end(), 0.0);
+      const auto found = first.value().checkpoint.information_sets.find(key);
+      if (buffer.player == 0U && found != first.value().checkpoint.information_sets.end()) {
+        buffer.cumulative_regret = found->second.cumulative_regret;
+      }
+    }
+    const auto expected = gtosd::solve_finite_game(full_finite, reference_config, &checkpoint);
+    require(expected.has_value(), "conditional exact second-player update computes: " + name);
+
+    // Sampled alternating trainer: player 0 draws A, player 1 draws A, then B.
+    auto sampled_boards = boards;
+    sampled_boards.sample = true;
+    std::vector<double> mean_regret;
+    std::vector<double> mean_sum;
+    for (std::size_t second = 0U; second < 2U; ++second) {
+      std::uint64_t seed = 0U;
+      for (;; ++seed) {
+        ca::DeterministicRandom random(seed);
+        const bool first_is_a = random.uniform_unit() < 0.5;
+        const bool second_is_a = random.uniform_unit() < 0.5;
+        if (first_is_a && second_is_a == (second == 0U)) {
+          break;
+        }
+        require(seed < 1000U, "conditional seed found within a bounded search");
+      }
+      auto config = resources.config();
+      config.flop_capacity = rows.count(ca::BucketStreet::Flop);
+      config.turn_capacity = rows.count(ca::BucketStreet::Turn);
+      config.river_capacity = rows.count(ca::BucketStreet::River);
+      config.batch_boards = 1U;
+      config.training_seed = seed;
+      config.scheme = pb::WeightingScheme::Linear;
+      config.update_mode = pb::UpdateMode::Alternating;
+      auto training_resources = resources.view();
+      training_resources.flop = &tables.flop;
+      training_resources.turn = &tables.turn;
+      training_resources.river = river_table;
+      training_resources.board_class_rows = &rows;
+      auto trainer =
+          pb::Trainer::create(game, training_resources, config, &sampled_boards, &subsets);
+      require(trainer.has_value(), "conditional sampled board-class trainer creates: " + name);
+      const auto telemetry = trainer.value()->iterate();
+      require(telemetry.has_value(), "conditional sampled iteration succeeds");
+      require(telemetry.value().boards == 2U && trainer.value()->boards_processed() == 2U,
+              "telemetry counts the two independently drawn boards");
+      const auto &layout = trainer.value()->layout();
+      std::size_t index = 0U;
+      for (const auto &[key, buffer] : expected.value().checkpoint.information_sets) {
+        if (buffer.player != 1U) {
+          continue;
+        }
+        const auto parsed = parse_key(key);
+        const auto &node = game.nodes()[parsed.node];
+        require(node.kind == pb::NodeKind::Decision && node.actor == 1U &&
+                    buffer.actions.size() == node.action_count,
+                "oracle information set maps onto a compiled decision of player 1");
+        const auto offset = layout.offsets[parsed.node] +
+                            static_cast<std::uint64_t>(parsed.row) * node.action_count;
+        for (std::size_t action = 0U; action < node.action_count; ++action, ++index) {
+          if (second == 0U) {
+            mean_regret.push_back(0.0);
+            mean_sum.push_back(0.0);
+          }
+          mean_regret[index] += 0.5 * trainer.value()->regret(offset + action);
+          mean_sum[index] += 0.5 * trainer.value()->strategy_sum(offset + action);
+        }
+      }
+      require(index == mean_regret.size(), "both runs compare the same cells");
+    }
+    double max_error = 0.0;
+    double max_sum_error = 0.0;
+    double largest_update = 0.0;
+    std::size_t index = 0U;
+    for (const auto &[key, buffer] : expected.value().checkpoint.information_sets) {
+      static_cast<void>(key);
+      if (buffer.player != 1U) {
+        continue;
+      }
+      for (std::size_t action = 0U; action < buffer.actions.size(); ++action, ++index) {
+        max_error = std::max(max_error, std::abs(mean_regret[index] -
+                                                 buffer.cumulative_regret[action]));
+        max_sum_error = std::max(max_sum_error, std::abs(mean_sum[index] -
+                                                         buffer.cumulative_strategy[action]));
+        largest_update = std::max(largest_update, std::abs(buffer.cumulative_regret[action]));
+      }
+    }
+    std::cout << "  alternating conditional expectation " << name << ": " << index
+              << " player-1 cells, max regret error " << max_error
+              << ", max strategy-sum error " << max_sum_error << ", largest regret "
+              << largest_update << ", river information sets spanning rivers of one turn "
+              << counts.river_rivers_of_one_turn << ", "
+              << std::chrono::duration<double>(Clock::now() - case_started).count() << " s\n";
+    require(index > 0U && largest_update > 0.0,
+            "the conditional update of player 1 is not empty: " + name);
+    require(max_error < 1e-10,
+            "board-class conditional regret expectation equals the exact traversal: " + name);
+    require(max_sum_error < 1e-10,
+            "board-class conditional strategy-sum expectation equals the exact traversal: " +
+                name);
+  }
+  std::cout << "river-key alternating: sampled alternating updates on key-turn rows are "
+               "unbiased (4 cases), "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
+// Mixed preflop lock of every preflop decision and hand class: frequencies
+// proportional to 1 + (7 class + 3 node + 5 action) mod 11, all positive.
+pb::PreflopLock mixed_preflop_lock(const pb::CompiledGame &game) {
+  pb::PreflopLock lock;
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::Decision || node.street != gtosd::Street::Preflop) {
+      continue;
+    }
+    for (std::uint32_t hand_class = 0U; hand_class < ca::preflop_hand_classes; ++hand_class) {
+      pb::PreflopLockRow locked;
+      locked.node = node.id;
+      locked.hand_class = static_cast<std::uint8_t>(hand_class);
+      double total = 0.0;
+      for (std::uint32_t action = 0U; action < node.action_count; ++action) {
+        locked.frequencies.push_back(
+            1.0 + static_cast<double>((7U * hand_class + 3U * node.id + 5U * action) % 11U));
+        total += locked.frequencies.back();
+      }
+      for (auto &frequency : locked.frequencies) {
+        frequency /= total;
+      }
+      lock.rows.push_back(std::move(locked));
+    }
+  }
+  return lock;
+}
+
+// A5 (critic M3): gain_lower, the pass metric of the locked correctness runs
+// (V1L, V2L and the proposed locked runs), against brute force. gain_lower is
+// the gain of a hero who follows the average preflop and best-responds from
+// the flop on (best_response.hpp, best_response_lower). With both players'
+// preflop locked to mixed class-shaped charts the average preflop is the
+// lock, so gain_lower of each player is its best-response gain in the
+// physical game whose preflop decisions are chance nodes with the lock's
+// frequencies (FiniteGameBuilder with preflop_chance): calculate_nash_conv of
+// the lifted postflop average on that game, within 1e-9, per player and
+// summed; the EVs agree too. The same locked policy is also checked as in A2
+// (unrestricted physical best response = calculate_nash_conv of the lossless
+// game with preflop decisions), gain_lower never exceeds gain, and the
+// exported average preflop rows are the lock. 5 exact Linear iterations, so
+// the gains are large. Cases: HU10 reduced with TX2 (key "turn", HU50's
+// path) and with the identity river-board map (key "river-board", V2L's
+// path), CO40-test with turn-as-flop (several postflop entries: opened and
+// 3-bet pots), 6 river groups.
+void test_river_key_gain_lower(const Resources &resources, const FoldedTables &tables,
+                               const pb::BoardTextureMap &tx2) {
+  const auto started = Clock::now();
+  const auto &catalog = *resources.catalog;
+  const auto boards = river_key_boards();
+  const auto merged = turn_as_flop(catalog);
+  const auto river_board =
+      load_map(texture_directory() / "identity_river_board_texture_map.txt", catalog);
+  const auto hu10 =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto co40 = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(hu10.has_value() && co40.has_value(), "HU10 reduced and CO40-test compile");
+  auto co40_subsets = oracle_subsets();
+  for (auto &combos : co40_subsets.combos) {
+    combos = {combos.front(), combos.back()};
+  }
+  struct LockCase {
+    const char *name;
+    const pb::CompiledGame *game;
+    const pb::BoardTextureMap *map;
+    const pb::HandSubsets *subsets;
+  };
+  const auto hu10_subsets = oracle_subsets();
+  const std::array<LockCase, 3> cases{
+      {{"HU10 reduced TX2 key=turn", &hu10.value(), &tx2, &hu10_subsets},
+       {"HU10 reduced identity_river_board key=river-board", &hu10.value(), &river_board,
+        &hu10_subsets},
+       {"CO40-test turn_as_flop key=turn", &co40.value(), &merged, &co40_subsets}}};
+  constexpr std::uint64_t iterations = 5U;
+  for (const auto &entry : cases) {
+    const auto case_started = Clock::now();
+    const auto &game = *entry.game;
+    const std::string name = entry.name;
+    const auto lock = mixed_preflop_lock(game);
+    require(!lock.rows.empty(), "the lock covers the preflop decisions");
+    const pb::BoardClassRows rows(4U, 5U, 6U, *entry.map);
+    const StreetTables street_tables{&tables.flop, &tables.turn, &tables.river};
+    auto config = resources.config();
+    config.flop_capacity = rows.count(ca::BucketStreet::Flop);
+    config.turn_capacity = rows.count(ca::BucketStreet::Turn);
+    config.river_capacity = rows.count(ca::BucketStreet::River);
+    config.threads = 2U;
+    config.scheme = pb::WeightingScheme::Linear;
+    config.update_mode = pb::UpdateMode::Simultaneous;
+    auto training_resources = resources.view();
+    training_resources.flop = &tables.flop;
+    training_resources.turn = &tables.turn;
+    training_resources.river = &tables.river;
+    training_resources.board_class_rows = &rows;
+    training_resources.preflop_lock = &lock;
+    auto trainer = pb::Trainer::create(game, training_resources, config, &boards, entry.subsets);
+    require(trainer.has_value(), "locked board-class trainer creates: " + name + " " +
+                                     (trainer ? "" : pb::trainer_error_name(trainer.error())));
+    for (std::uint64_t iteration = 0; iteration < iterations; ++iteration) {
+      require(trainer.value()->iterate().has_value(), "locked iteration succeeds");
+    }
+    const auto exact = trainer.value()->estimate_exploitability(0U);
+    require(exact.has_value() && exact.value().exact,
+            "exact locked evaluation on the listed boards: " + name + " " +
+                (exact ? "" : pb::trainer_error_name(exact.error())));
+    const auto average = trainer.value()->average_policy();
+    for (const auto &locked : lock.rows) {
+      const auto exported = average.row(locked.node, locked.hand_class);
+      for (std::size_t action = 0U; action < locked.frequencies.size(); ++action) {
+        require(close(exported[action], locked.frequencies[action], 1e-12),
+                "the exported average preflop rows are the lock");
+      }
+    }
+
+    // The preflop as chance: the hero follows the lock, then best-responds.
+    FiniteGameBuilder restricted_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+                                         street_tables, &lock);
+    const auto restricted_game = restricted_builder.build(boards, *entry.subsets);
+    const auto restricted_summary = gtosd::validate_finite_game(restricted_game);
+    require(restricted_summary.has_value(),
+            "preflop-as-chance game validates: " + name + " " +
+                (restricted_summary ? ""
+                                    : gtosd::solver_error_name(restricted_summary.error())));
+    const auto restricted =
+        gtosd::calculate_nash_conv(restricted_game, restricted_builder.profile());
+    require(restricted.has_value(), "preflop-as-chance NashConv computes: " + name);
+    std::array<double, 2> oracle_gain{};
+    for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
+      oracle_gain[player] = restricted.value().best_response_value[player] -
+                            restricted.value().profile_value[player];
+      require(close(exact.value().ev[player], restricted.value().profile_value[player], 1e-9),
+              "locked EV equals the value of the preflop-as-chance game: " + name);
+      require(close(exact.value().gain_lower[player], oracle_gain[player], 1e-9),
+              "gain_lower equals the brute-force best response from the flop on: " + name);
+      require(exact.value().gain_lower[player] <= exact.value().gain[player] + 1e-9,
+              "gain_lower never exceeds gain");
+    }
+    require(close(exact.value().gain_lower[0] + exact.value().gain_lower[1],
+                  restricted.value().nash_conv, 1e-9),
+            "gain_lower[0] + gain_lower[1] equals the preflop-as-chance NashConv: " + name);
+    require(restricted.value().nash_conv > 1e-6,
+            "the locked policy is exploitable from the flop on (the check is not vacuous)");
+
+    // The same locked policy with the unrestricted physical best response.
+    FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+                                       street_tables);
+    const auto physical_game = physical_builder.build(boards, *entry.subsets);
+    const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
+    require(nash_conv.has_value(), "locked lossless FiniteGame NashConv computes: " + name);
+    require(close(exact.value().ev[0], nash_conv.value().profile_value[0], 1e-9) &&
+                close(exact.value().ev[1], nash_conv.value().profile_value[1], 1e-9) &&
+                close(exact.value().best_response[0], nash_conv.value().best_response_value[0],
+                      1e-9) &&
+                close(exact.value().best_response[1], nash_conv.value().best_response_value[1],
+                      1e-9) &&
+                close(exact.value().nashconv, nash_conv.value().nash_conv, 1e-9),
+            "locked physical best responses and NashConv match the lossless oracle: " + name);
+    std::cout << "  gain_lower " << name << ": [" << exact.value().gain_lower[0] << ", "
+              << exact.value().gain_lower[1] << "] (oracle [" << oracle_gain[0] << ", "
+              << oracle_gain[1] << "]), gain [" << exact.value().gain[0] << ", "
+              << exact.value().gain[1] << "], nashconv " << exact.value().nashconv
+              << " (oracle " << nash_conv.value().nash_conv << "), preflop-as-chance game "
+              << restricted_summary.value().nodes << " nodes, " << lock.rows.size()
+              << " locked rows, "
+              << std::chrono::duration<double>(Clock::now() - case_started).count() << " s\n";
+  }
+  std::cout << "river-key gain_lower: gain_lower = brute-force best response from the flop on "
+               "under a locked preflop (3 cases), "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -1591,6 +1962,8 @@ int main(const int argc, char **argv) {
     test_trainer(resources, tables, scratch_dir);
     test_river_board_key(resources, tables, scratch_dir);
     test_river_key_oracle(resources, tables, maps[3]);
+    test_river_key_alternating(resources, tables, maps[3]);
+    test_river_key_gain_lower(resources, tables, maps[3]);
     {
       // Suit symmetry of the river-board rows through BoardContext.
       const auto river_board = load_map(
