@@ -26,10 +26,12 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace pb_test {
@@ -238,16 +240,27 @@ public:
   // average policy the builder also records the lifted strategy profile.
   // The rows are those of BoardContext::build with the given row map (class,
   // history or board class rows, at most one) on the resources' bucket tables
-  // or on street_tables.
+  // or on street_tables. With preflop_chance (which must outlive the builder)
+  // every preflop decision whose (node, hand class of the actor) the lock
+  // lists is a chance node with the lock's frequencies instead (zero entries
+  // dropped, chance edges must be positive): the game in which both players
+  // follow the lock at the preflop and decide from the flop on.
   FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
                     const bool lossless = false, const pb::BucketPolicy *average = nullptr,
                     const pb::ClassBucketRows *class_rows = nullptr,
                     const pb::HistoryBucketRows *history_rows = nullptr,
                     const pb::BoardClassRows *board_class_rows = nullptr,
-                    const StreetTables street_tables = {})
+                    const StreetTables street_tables = {},
+                    const pb::PreflopLock *preflop_chance = nullptr)
       : game_(game), resources_(resources), lossless_(lossless), average_(average),
         class_rows_(class_rows), history_rows_(history_rows),
-        board_class_rows_(board_class_rows), street_tables_(street_tables) {}
+        board_class_rows_(board_class_rows), street_tables_(street_tables) {
+    if (preflop_chance != nullptr) {
+      for (const auto &locked : preflop_chance->rows) {
+        preflop_chance_[{locked.node, locked.hand_class}] = &locked.frequencies;
+      }
+    }
+  }
 
   [[nodiscard]] const gtosd::StrategyProfile &profile() const noexcept { return profile_; }
 
@@ -387,6 +400,29 @@ private:
     finite.player = node.actor;
     const auto acting_hand = node.actor == 0U ? hero_hand : opponent_hand;
     const auto row = context.row(node.street, acting_hand);
+    if (node.street == gtosd::Street::Preflop && !preflop_chance_.empty()) {
+      // The preflop row is the hand class of the acting hand.
+      const auto locked = preflop_chance_.find({node_id, static_cast<std::uint8_t>(row)});
+      if (locked != preflop_chance_.end()) {
+        const auto &frequencies = *locked->second;
+        gtosd::GameNode chance;
+        chance.kind = gtosd::GameNodeKind::Chance;
+        const auto id = add(std::move(chance));
+        const auto edges = game_.edges_of(node_id);
+        for (std::size_t action = 0; action < edges.size(); ++action) {
+          if (!(frequencies[action] > 0.0)) {
+            continue;
+          }
+          const auto child = subtree(edges[action].child, context, hero_hand, opponent_hand);
+          nodes_[id].edges.push_back(
+              {{static_cast<gtosd::GameActionId>(action),
+                std::to_string(static_cast<unsigned>(edges[action].action.type)) + ":" +
+                    std::to_string(edges[action].action.amount.units())},
+               child, frequencies[action]});
+        }
+        return id;
+      }
+    }
     if (lossless_) {
       std::string key = "p" + std::to_string(node.actor) + "|n" + std::to_string(node_id) + "|c" +
                         std::to_string(context.combo_ids()[acting_hand]);
@@ -437,6 +473,8 @@ private:
   const pb::HistoryBucketRows *history_rows_{nullptr};
   const pb::BoardClassRows *board_class_rows_{nullptr};
   StreetTables street_tables_{};
+  // Locked preflop frequencies by (node, hand class).
+  std::map<std::pair<std::uint32_t, std::uint8_t>, const std::vector<double> *> preflop_chance_;
   gtosd::StrategyProfile profile_;
   std::vector<gtosd::GameNode> nodes_;
 };
