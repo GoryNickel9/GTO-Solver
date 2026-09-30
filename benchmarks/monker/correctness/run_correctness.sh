@@ -18,6 +18,14 @@
 # HU50 value 64 these small trees are one work unit and skip the top/unit
 # reduction path of HU50), KEEP_POLICIES=1 keeps every snapshot's policy.bin
 # (default: deleted once its evaluation is cached in values.json).
+# LOCK_CHARTS=<chart dir> LOCK_NODES=<a,b> pass --lock-charts/--lock-nodes to the trainer
+# (e.g. benchmarks/monker/correctness/lock_limp_check with
+# CO/CO_strategy.txt,BTN/CO_Call_BTN_strategy.txt: every hand limps and is checked behind,
+# so every deal reaches the flop; gate those runs on the gain_lower columns).
+# Every segment's start event must carry the tree fingerprint of the config listed in
+# README.md (EXPECT_TREE overrides it; a config not in the table is not checked): an
+# executable folder without postflop_betting_streets (bin_correct/base) silently builds
+# the tree that bets on every street.
 # A file <run dir>/CANCEL stops the run before the next segment. Run a frozen
 # copy of this script (out/frozen/run_correctness.sh) for long runs.
 set -u
@@ -37,9 +45,23 @@ BIN="${BIN:-out/monker/bin_correct/c123}"
 RES="${RES:-out/preflop_blueprint_resources}"
 EVAL_THREADS="${EVAL_THREADS:-$THREADS}"
 PARTITION="${PARTITION:-4}"
+LOCK_ARGS=()
+if [ -n "${LOCK_CHARTS:-}" ] || [ -n "${LOCK_NODES:-}" ]; then
+  LOCK_ARGS=(--lock-charts "${LOCK_CHARTS:-}" --lock-nodes "${LOCK_NODES:-}")
+fi
+case "$(basename "$CFG")" in
+  HU6_all.json) TREE_DEFAULT="fnv1a64:fb76ddcd880fec5f" ;;
+  HU6_all_rake25cap2.json) TREE_DEFAULT="fnv1a64:f226b87d43f28215" ;;
+  HU6_V0_flop.json) TREE_DEFAULT="fnv1a64:cd66796bdbdac5c1" ;;
+  HU6_V1_flopturn.json) TREE_DEFAULT="fnv1a64:da5c6942354ad5ad" ;;
+  HU6_V2_river.json) TREE_DEFAULT="fnv1a64:2f109f6f1891d9f2" ;;
+  *) TREE_DEFAULT="" ;;
+esac
+EXPECT_TREE="${EXPECT_TREE:-$TREE_DEFAULT}"
 mkdir -p "$RUN/charts"
 echo "$(date '+%Y-%m-%d %H:%M:%S') correctness start: config $CFG buckets $BUCKETS map $MAP" \
-  "threads $THREADS eval $EVAL_THREADS partition $PARTITION bin $BIN targets $*" >> "$RUN/run.log"
+  "threads $THREADS eval $EVAL_THREADS partition $PARTITION bin $BIN lock ${LOCK_CHARTS:-none}" \
+  "${LOCK_NODES:-} tree ${EXPECT_TREE:-unchecked} targets $*" >> "$RUN/run.log"
 for N in "$@"; do
   if [ -f "$RUN/CANCEL" ]; then
     echo "$(date '+%H:%M:%S') cancelled before $N" >> "$RUN/run.log"
@@ -53,11 +75,17 @@ for N in "$@"; do
     --table-storage double --eval-every 0 --batch 32 --partition-target "$PARTITION" \
     --scheme dcfr --update alternating --batch-policy-refresh --lazy-discount \
     --progress-every 1000 --iterations "$N" --checkpoint "$RUN/state.ckpt" --chart-every "$N" \
-    --chart-dir "$RUN/charts" --policy-snapshots $resume \
+    --chart-dir "$RUN/charts" --policy-snapshots "${LOCK_ARGS[@]}" $resume \
     >> "$RUN/train.jsonl" 2>> "$RUN/train.stderr.log"
   rc=$?
   echo "$(date '+%H:%M:%S') segment $N rc $rc ($(( $(date +%s) - started )) s)" >> "$RUN/run.log"
   [ $rc -ne 0 ] && exit 1
+  tree=$(grep '"event": "start"' "$RUN/train.jsonl" | tail -1 \
+    | grep -o '"tree_fingerprint": "[^"]*"' | cut -d'"' -f4)
+  if [ -n "$EXPECT_TREE" ] && [ "$tree" != "$EXPECT_TREE" ]; then
+    echo "$(date '+%H:%M:%S') tree $tree is not the expected $EXPECT_TREE: stop" >> "$RUN/run.log"
+    exit 1
+  fi
   started=$(date +%s)
   BIN="$BIN" RES="$RES" python tools/monker_compare/convergence_curve.py "$RUN" --config "$CFG" \
     --buckets "$BUCKETS" --texture-map "$MAP" --threads "$EVAL_THREADS" \
