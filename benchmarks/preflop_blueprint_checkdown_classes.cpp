@@ -33,10 +33,19 @@
 // of the chosen chart nodes to the folder's charts (monker_chart_lock.hpp, any
 // number of seats); the other nodes train. An all-zero chart row of a class
 // that reaches the node under the charts (a reach rounded away by the three
-// decimals) stays unlocked and is reported. With every node locked and
-// --iterations 0 the run evaluates the chart set alone: every seat's EV and
-// best-response gain inside the checkdown game (how exploitable MonkerSolver's
-// preflop is there), unlocked rows uniform.
+// decimals) stays unlocked and is reported. Every class row of every locked
+// node must come out as a chart row, a row outside the range or such a zero
+// row (locked nodes x 81 in all), and the solver must hold every chart row.
+// With every node locked and --iterations 0 the run evaluates the chart set
+// alone: every seat's EV and best-response gain inside the checkdown game (how
+// exploitable MonkerSolver's preflop is there), the unlocked zero rows
+// uniform; --iterations 0 with a partial lock is refused (the other nodes
+// would play uniform, untrained), and so is --lock-nodes without
+// --lock-charts. --expect-summary <summary.json> [--expect-tolerance antes]
+// requires this run's EVs and best-response gains to be those of another run
+// of the same configuration within the tolerance (default 0.001 antes): the
+// charts of a run locked back on every node reproduce it up to their three
+// printed decimals.
 #include "checkdown_classes.hpp"
 #include "monker_chart_format.hpp"
 #include "monker_chart_lock.hpp"
@@ -114,6 +123,13 @@ std::string join(const std::vector<double> &values) {
   for (std::size_t index = 0; index < values.size(); ++index) {
     text << (index == 0U ? "" : ", ") << values[index];
   }
+  return text.str();
+}
+
+// A number as the summary prints it (1e-09, not std::to_string's 0.000000).
+std::string format_number(const double value) {
+  std::ostringstream text;
+  text << std::setprecision(12) << value;
   return text.str();
 }
 
@@ -230,6 +246,40 @@ Equivalence compare_with_reference(const pb::CompiledGame &game,
   return result;
 }
 
+// Largest differences between this run's EVs and best-response gains and
+// those of an expected summary.json (this program's, same configuration,
+// tree, seats and folded-card convention).
+struct Expectation {
+  double ev{0.0};
+  double gain{0.0};
+};
+
+Expectation compare_with_summary(const pb::CompiledGame &game,
+                                 const std::filesystem::path &expected,
+                                 const std::optional<std::string> &folded_cards,
+                                 const std::vector<double> &ev, const std::vector<double> &gain) {
+  const auto summary = Json::parse(read_file(expected));
+  if (summary.at("config_id").get<std::string>() != game.config().id ||
+      summary.at("tree_fingerprint").get<std::string>() != game.fingerprint()) {
+    throw std::runtime_error("the expected summary was solved on another configuration or tree");
+  }
+  const auto expected_ev = summary.at("ev_antes").get<std::vector<double>>();
+  const auto expected_gain = summary.at("gain_antes").get<std::vector<double>>();
+  if (expected_ev.size() != ev.size() || expected_gain.size() != gain.size()) {
+    throw std::runtime_error("the expected summary has another number of seats");
+  }
+  if (folded_cards &&
+      summary.at("terminal_source").at("folded_cards").get<std::string>() != *folded_cards) {
+    throw std::runtime_error("the expected summary used the other folded-card convention");
+  }
+  Expectation result;
+  for (std::size_t seat = 0; seat < ev.size(); ++seat) {
+    result.ev = std::max(result.ev, std::abs(ev[seat] - expected_ev[seat]));
+    result.gain = std::max(result.gain, std::abs(gain[seat] - expected_gain[seat]));
+  }
+  return result;
+}
+
 int run(const int argc, char **argv) {
   std::filesystem::path config_path;
   std::filesystem::path resources_dir;
@@ -246,6 +296,9 @@ int run(const int argc, char **argv) {
   std::optional<ca::FoldedCards> folded_cards;
   std::filesystem::path lock_dir;
   std::vector<std::string> lock_nodes{"all"};
+  bool lock_nodes_given = false;
+  std::filesystem::path expected_summary;
+  double expect_tolerance = 1e-3;
   for (int index = 1; index < argc; ++index) {
     const std::string_view name(argv[index]);
     if (index + 1 >= argc) {
@@ -292,6 +345,11 @@ int run(const int argc, char **argv) {
       lock_dir = value;
     } else if (name == "--lock-nodes") {
       lock_nodes = split_list(value);
+      lock_nodes_given = true;
+    } else if (name == "--expect-summary") {
+      expected_summary = value;
+    } else if (name == "--expect-tolerance") {
+      expect_tolerance = parse_double(value);
     } else {
       throw std::runtime_error("unknown argument " + std::string(name));
     }
@@ -301,6 +359,9 @@ int run(const int argc, char **argv) {
   }
   if (iterations == 0U && lock_dir.empty()) {
     throw std::runtime_error("--iterations must be positive (0 only evaluates --lock-charts)");
+  }
+  if (lock_nodes_given && lock_dir.empty()) {
+    throw std::runtime_error("--lock-nodes needs --lock-charts");
   }
   const auto started = Clock::now();
   const auto config = pb::parse_game_config_json(read_file(config_path));
@@ -330,6 +391,35 @@ int run(const int argc, char **argv) {
   if (seats == 3U && !reference_dir.empty()) {
     throw std::runtime_error("--reference needs a 2-player game (the combo-level program)");
   }
+  // The lock is read before the tables load. Every class row of every locked
+  // node is a chart row, a row outside the range or a zero row left unlocked:
+  // a node whose rows went missing (a seat skipped, a row on another node)
+  // breaks the count.
+  const auto chart_count = mc::chart_nodes(game).size();
+  std::optional<mc::ChartLock> lock;
+  std::size_t lock_rows = 0U;
+  if (!lock_dir.empty()) {
+    lock = mc::chart_lock_seats(game, lock_dir, lock_nodes, true);
+    lock_rows =
+        static_cast<std::size_t>(lock->chart_rows) + lock->outside_range_rows + lock->fallback_rows;
+    if (lock_rows != lock->files.size() * cc::class_count) {
+      throw std::runtime_error("the lock classified " + std::to_string(lock_rows) + " rows of " +
+                               std::to_string(lock->files.size()) + " charts, not " +
+                               std::to_string(cc::class_count) + " per chart");
+    }
+    if (iterations == 0U && lock->files.size() != chart_count) {
+      throw std::runtime_error(
+          "--iterations 0 evaluates a complete chart set: --lock-nodes locks " +
+          std::to_string(lock->files.size()) + " of " + std::to_string(chart_count) +
+          " chart nodes and the others would play uniform (lock all, or train them)");
+    }
+    std::cout << "lock: " << lock->files.size() << " of " << chart_count << " chart nodes from "
+              << lock_dir.generic_string() << ": " << lock_rows << " rows (" << lock->files.size()
+              << " x " << cc::class_count << ") = " << lock->chart_rows << " chart rows + "
+              << lock->outside_range_rows << " rows outside the range + " << lock->fallback_rows
+              << " zero rows reached under the charts (" << lock->fallback_reach_combos
+              << " combos) left unlocked\n";
+  }
   auto table = ca::AllInTable::load(resources_dir / "preflop_all_in_v1.bin");
   if (!table) {
     throw std::runtime_error("cannot load preflop_all_in_v1.bin");
@@ -355,17 +445,14 @@ int run(const int argc, char **argv) {
   const double load_seconds = seconds_since(started);
 
   cc::ClassSolver solver(game, terminals, alpha, beta, gamma, threads);
-  std::optional<mc::ChartLock> lock;
-  if (!lock_dir.empty()) {
-    lock = mc::chart_lock_seats(game, lock_dir, lock_nodes, true);
+  if (lock) {
     for (const auto &row : lock->lock.rows) {
       solver.lock_row(row.node, row.hand_class, row.frequencies);
     }
-    std::cout << "lock: " << lock->files.size() << " charts from " << lock_dir.generic_string()
-              << ", " << lock->chart_rows << " chart rows, " << lock->outside_range_rows
-              << " rows outside the range and " << lock->fallback_rows
-              << " zero rows reached under the charts (" << lock->fallback_reach_combos
-              << " combos) left unlocked\n";
+    if (solver.locked_rows() != lock->chart_rows) {
+      throw std::runtime_error("the solver holds " + std::to_string(solver.locked_rows()) +
+                               " locked rows, the charts give " + std::to_string(lock->chart_rows));
+    }
   }
   const double initial_pot =
       static_cast<double>(config.value().ante.units() *
@@ -452,6 +539,16 @@ int run(const int argc, char **argv) {
   const bool equivalent = equivalence.chart <= chart_tolerance + chart_print_slack &&
                           equivalence.ev <= ev_tolerance && equivalence.gain <= ev_tolerance &&
                           equivalence.rake <= ev_tolerance;
+  const std::string convention_name = convention == ca::FoldedCards::Dead ? "dead" : "ignore";
+  const bool expecting = !expected_summary.empty();
+  Expectation expectation;
+  if (expecting) {
+    expectation = compare_with_summary(
+        game, expected_summary,
+        seats == 3U ? std::optional<std::string>(convention_name) : std::nullopt, ev, gain);
+  }
+  const bool as_expected =
+      expectation.ev <= expect_tolerance && expectation.gain <= expect_tolerance;
   const double seconds = seconds_since(started);
   const auto &rake = config.value().rake;
   std::ofstream summary(output_dir / "summary.json", std::ios::binary);
@@ -467,8 +564,7 @@ int run(const int argc, char **argv) {
     summary << "  \"terminal_source\": {\"file\": \"" << ca::three_way_table_file_name
             << "\", \"fingerprint\": \"" << three_way_fingerprint << "\", \"heads_up_file\": \""
             << terminal_source << "\", \"heads_up_fingerprint\": \"" << terminal_fingerprint
-            << "\", \"folded_cards\": \""
-            << (convention == ca::FoldedCards::Dead ? "dead" : "ignore") << "\"},\n";
+            << "\", \"folded_cards\": \"" << convention_name << "\"},\n";
   }
   summary << "  \"threads\": " << threads << ",\n"
           << "  \"nodes\": " << game.nodes().size() << ",\n"
@@ -499,7 +595,8 @@ int run(const int argc, char **argv) {
           << "  \"charts\": " << written.size() << ",\n";
   if (lock) {
     summary << "  \"lock\": {\"charts_dir\": " << Json(lock_dir.generic_string()).dump()
-            << ", \"files\": " << lock->files.size() << ", \"chart_rows\": " << lock->chart_rows
+            << ", \"files\": " << lock->files.size() << ", \"chart_nodes\": " << chart_count
+            << ", \"rows\": " << lock_rows << ", \"chart_rows\": " << lock->chart_rows
             << ", \"outside_range_rows\": " << lock->outside_range_rows
             << ", \"fallback_rows\": " << lock->fallback_rows
             << ", \"fallback_reach_combos\": " << lock->fallback_reach_combos << "},\n";
@@ -527,6 +624,14 @@ int run(const int argc, char **argv) {
             << ", \"ev_tolerance_antes\": " << ev_tolerance
             << ", \"passed\": " << (equivalent ? "true" : "false") << "},\n";
   }
+  if (expecting) {
+    summary << "  \"expected_summary\": {\"file\": "
+            << Json(expected_summary.generic_string()).dump()
+            << ", \"ev_max_difference_antes\": " << expectation.ev
+            << ", \"gain_max_difference_antes\": " << expectation.gain
+            << ", \"tolerance_antes\": " << expect_tolerance
+            << ", \"passed\": " << (as_expected ? "true" : "false") << "},\n";
+  }
   summary << "  \"trajectory\": [\n" << trajectory.str() << "\n  ]\n}\n";
   summary.close();
   if (!summary) {
@@ -551,13 +656,23 @@ int run(const int argc, char **argv) {
               << " antes\n";
     if (!equivalent) {
       throw std::runtime_error("not equivalent to the reference within chart tolerance " +
-                               std::to_string(chart_tolerance) + " and EV tolerance " +
-                               std::to_string(ev_tolerance) + " antes");
+                               format_number(chart_tolerance) + " and EV tolerance " +
+                               format_number(ev_tolerance) + " antes");
+    }
+  }
+  if (expecting) {
+    std::cout << "expected summary " << expected_summary.generic_string()
+              << ": largest EV difference " << expectation.ev << ", gain difference "
+              << expectation.gain << " antes\n";
+    if (!as_expected) {
+      throw std::runtime_error("the EVs or gains differ from the expected summary by more than " +
+                               format_number(expect_tolerance) + " antes");
     }
   }
   std::cout << "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=" << seats
             << " charts=" << written.size() << " max_gain_pot_percent=" << largest(gain_percent)
-            << (compared ? " equivalence=PASS" : "") << '\n';
+            << (compared ? " equivalence=PASS" : "") << (expecting ? " expected_summary=PASS" : "")
+            << '\n';
   return 0;
 }
 

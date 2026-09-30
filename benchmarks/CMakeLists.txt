@@ -956,7 +956,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   # folded cards dead: a short smoke on 2 threads (needs the complete
   # preflop_three_way_v1.bin in the resources), its 54 charts against the
   # 3WAY50 manifest, and with rake the smoke's own charts locked on every node
-  # and evaluated without iterations (the path of the MonkerSolver evaluation).
+  # and evaluated without iterations (the path of the MonkerSolver
+  # evaluation): all 54 x 81 rows classified, and every seat's EV and
+  # best-response gain those of the smoke within 0.001 antes (the charts'
+  # three decimals move them by about 1e-4).
   foreach(variant IN ITEMS plain rake)
     if(variant STREQUAL "rake")
       set(three_way_config ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json)
@@ -997,12 +1000,56 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_rake_lock
       --iterations 0 --threads 2
       --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_rake/charts
-      --lock-nodes all)
+      --lock-nodes all
+      --expect-summary ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_3way50_rake/summary.json
+      --expect-tolerance 0.001)
   set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_3way50_rake_lock
     PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
                FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_3way50_rake_charts
                PASS_REGULAR_EXPRESSION
-                 "lock: 54 charts from .*PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=3 charts=54 ")
+                 "lock: 54 of 54 chart nodes from .*: 4374 rows \\(54 x 81\\) = [0-9]+ chart rows .*expected summary .*PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=3 charts=54 .*expected_summary=PASS")
+  # The lock's refusals, heads-up on the HU50 rake class charts: --iterations
+  # 0 with a partial lock (the other nodes would play uniform), --lock-nodes
+  # without --lock-charts, and a self-lock checked against its source summary
+  # with a tolerance below the three printed decimals.
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_partial_lock_refused
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_partial_lock
+      --iterations 0
+      --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_hu50_rake/charts
+      --lock-nodes CO/CO_strategy.txt)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_partial_lock_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_hu50_rake_charts
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL --iterations 0 evaluates a complete chart set: --lock-nodes locks 1 of 8 chart nodes")
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_lock_nodes_refused
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_lock_nodes
+      --iterations 10 --lock-nodes all)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_lock_nodes_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL --lock-nodes needs --lock-charts")
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_expect_summary_refused
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_expect_refused
+      --iterations 0
+      --lock-charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_hu50_rake/charts
+      --lock-nodes all
+      --expect-summary ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_hu50_rake/summary.json
+      --expect-tolerance 1e-12)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_expect_summary_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_hu50_rake_charts
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL the EVs or gains differ from the expected summary by more than 1e-12 antes")
   # --folded-cards is 3-way only.
   add_test(NAME gtosd_preflop_blueprint_checkdown_classes_folded_cards_refused
     COMMAND gtosd_preflop_blueprint_checkdown_classes
@@ -1016,6 +1063,9 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
                  "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL --folded-cards needs a 3-player game")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     foreach(three_way_test IN ITEMS gtosd_preflop_blueprint_checkdown_classes_3way50_rake_lock
+                                    gtosd_preflop_blueprint_checkdown_classes_partial_lock_refused
+                                    gtosd_preflop_blueprint_checkdown_classes_lock_nodes_refused
+                                    gtosd_preflop_blueprint_checkdown_classes_expect_summary_refused
                                     gtosd_preflop_blueprint_checkdown_classes_folded_cards_refused)
       set_tests_properties(${three_way_test} PROPERTIES
         ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
