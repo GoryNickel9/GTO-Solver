@@ -45,3 +45,18 @@ copy `out/frozen/run_correctness.sh` and frozen executables (`BIN`, default
 
 Memory measured on the smoke runs (trainer accounted bytes / evaluator peak commit): V0 0.18 /
 0.16 GB, V1 1.08 / 0.58 GB, V2 1.40 / 0.73 GB, HU6_all with 15x4 tables 0.25 / 0.19 GB.
+
+Locked-preflop variants (review of 30 September, D1). In these 6a games almost every hand folds
+or shoves preflop: at 32k iterations of `HU6_all` the flop is reached in about 0.3 % of the
+deals, so a postflop or river error moves the full NashConv very little. `lock_limp_check/`
+locks CO to limp and BTN to check behind for all 81 classes (`LOCK_CHARTS=benchmarks/monker/correctness/lock_limp_check
+LOCK_NODES=CO/CO_strategy.txt,BTN/CO_Call_BTN_strategy.txt` in the driver, i.e. the trainer's
+`--lock-charts/--lock-nodes`, the preflop lock of the HU50 lock runs): every deal reaches the
+flop with a 4a pot and full ranges. Gate those runs on the sum of the `gain_lower` columns (the
+responder follows the locked preflop and best-responds from the flop on, i.e. the postflop
+NashConv of the locked game); the full NashConv stays at the value of shoving against the lock.
+
+The driver checks every segment's start event against the tree fingerprints of the table above
+(`EXPECT_TREE` overrides): the pre-edit executables (`bin_correct/base`) ignore
+`postflop_betting_streets` and would silently train the tree that bets on every street.
+Long runs: frozen copy `out/frozen/run_correctness_lock.sh`.
