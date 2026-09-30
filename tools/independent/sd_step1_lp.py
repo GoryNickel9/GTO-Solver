@@ -26,8 +26,10 @@ Checks per case:
 - C  the combo-level certificate is tight: upper - lower <= --certificate-tolerance (1e-9 a).
 - W  the certified interval meets the engine window (a slack of 1e-11 a covers the summary's 12 printed
      digits); PASS also reports where v* lies in the window.
-- M  sensitivity (informative, --mutations): the value of three wrong games, which must fall outside the
-     window: no card removal in the chance weights, ties paid to the BTN, and stacks one ante shorter.
+- M  sensitivity (--mutations, default on): the value of three wrong games, which must fall outside the
+     window: no card removal in the chance weights, ties paid to the BTN, and stacks one ante shorter. When a
+     summary is given and a wrong game lands inside the window, W cannot tell the games apart and the case is
+     INCONCLUSIVE (exit 4), not PASS.
 
 Without a summary (e.g. HU6_all, whose step-1 run does not exist yet) the case reports the certified value
 only (status VALUE_ONLY). Raked configs are refused: the game is then general-sum and has no unique value.
@@ -258,9 +260,14 @@ def run_case(args, config: Path, summary_path: Path | None, out: step1.Outcomes,
             else:
                 entry["shift_exceeds_1.6e-6"] = abs(entry["shift"]) > 1.6e-6
         result["mutations"] = mutations
+        if summary is not None:
+            # Non-vacuity of W: a window wide enough to hold a wrong game proves nothing (e.g. an engine run
+            # with too few iterations). Such a case is INCONCLUSIVE, not PASS.
+            checks["M_window_rejects_mutations"] = all(entry.get("outside_engine_window", True)
+                                                       for entry in mutations.values())
 
     failed = [name for name, ok in checks.items() if not ok]
-    if not lp_ok or ("C_certificate_tight" in failed and len(failed) == 1):
+    if not lp_ok or (failed and set(failed) <= {"C_certificate_tight", "M_window_rejects_mutations"}):
         status = "INCONCLUSIVE"
     elif failed:
         status = "FAIL"
