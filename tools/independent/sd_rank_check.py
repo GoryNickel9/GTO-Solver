@@ -52,8 +52,10 @@ import numpy as np
 from sdref import cards as sdcards
 from sdref import ranking, resources
 
-DEFAULT_VALUES_JSON = resources.REPO_ROOT / "out" / "monker" / "correctness" / "V2" / "charts" / "it_250" / \
-    "values.json"
+# Any evaluator values.json carries the combo labels and classes; the P1 smoke snapshot is used (not a run
+# directory of the correctness runs, which the checks must not touch while they run or are archived).
+DEFAULT_VALUES_JSON = resources.REPO_ROOT / "out" / "monker" / "correctness" / "smoke" / "P1" / "charts" / \
+    "it_50" / "values.json"
 DEFAULT_OUT_DIR = resources.INDEPENDENT_OUT_DIR / "S1_rank"
 log = ranking.log_to_stderr
 
@@ -198,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--rank-table", type=Path, default=resources.RANK_TABLE_PATH)
     parser.add_argument("--values-json", default=None,
-                        help="values.json to compare combos with; default the V2 it_250 one if present, "
+                        help="values.json to compare combos with; default the P1 smoke it_50 one if present, "
                              "'' to skip")
     parser.add_argument("--out-dir", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--direct-sample", type=int, default=-1,
