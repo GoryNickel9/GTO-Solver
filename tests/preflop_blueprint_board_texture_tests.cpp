@@ -11,7 +11,11 @@
 // The best response with a texture is covered by the certifier tests
 // (test_board_texture_rows). River key "river-board" (the river class of the
 // unordered five-card board): its file, fingerprint, rows in BoardContext and
-// in the joint river engine, and a short training run.
+// in the joint river engine, and a short training run. Both river keys against
+// the FiniteGame oracle (test_river_key_oracle): the trainer computes the CFR
+// iterates of the abstract game whose rows pool the rivers of a turn, the
+// turns of a class or the orders of five cards, and its physical best
+// response is the brute-force NashConv of that policy.
 #include "preflop_blueprint_test_support.hpp"
 
 #include "gtosd/card_abstraction/deterministic_random.hpp"
@@ -27,6 +31,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <set>
@@ -1116,6 +1121,435 @@ void test_river_board_key(const Resources &resources, const FoldedTables &tables
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
 }
 
+// Key "p<player>|n<node>|r<row>" of FiniteGameBuilder::information_set (the
+// parser of the trainer tests).
+struct ParsedKey {
+  std::uint8_t player;
+  std::uint32_t node;
+  std::uint32_t row;
+};
+
+ParsedKey parse_key(const std::string &key) {
+  const auto node_position = key.find("|n");
+  const auto row_position = key.find("|r");
+  require(key.size() > 2U && key[0] == 'p' && node_position != std::string::npos &&
+              row_position != std::string::npos,
+          "information set key parses");
+  ParsedKey parsed;
+  parsed.player = static_cast<std::uint8_t>(std::stoul(key.substr(1, node_position - 1)));
+  parsed.node = static_cast<std::uint32_t>(
+      std::stoul(key.substr(node_position + 2, row_position - node_position - 2)));
+  parsed.row = static_cast<std::uint32_t>(std::stoul(key.substr(row_position + 2)));
+  return parsed;
+}
+
+// Boards of the river-key oracle, with distinct weights and no sampling. On
+// the flop 6s7d8c: the turn 9h with the rivers As, Ad and 6h, the turn 9c
+// with As and Ad (9h and 9c are two canonical turns in one TX2 class), a
+// suit-permuted copy of the first board (6s7c8d 9h As: the same canonical
+// turn and five-card board), the first board with turn and river swapped
+// (6s7d8c As 9h: another canonical turn, the same five cards); then 9h Ac on
+// the two-tone flops 6d7d8c and 6d7c8d (two canonical flops whose turns share
+// a TX2 class). The test checks these relations on the catalog before using
+// them. No ten to king, so the oracle subsets are live and uniform on every
+// board.
+pb::TrainingBoards river_key_boards() {
+  const std::array<std::array<std::string_view, 5>, 9> cards{{{"6s", "7d", "8c", "9h", "As"},
+                                                              {"6s", "7d", "8c", "9h", "Ad"},
+                                                              {"6s", "7d", "8c", "9h", "6h"},
+                                                              {"6s", "7d", "8c", "9c", "As"},
+                                                              {"6s", "7d", "8c", "9c", "Ad"},
+                                                              {"6s", "7c", "8d", "9h", "As"},
+                                                              {"6s", "7d", "8c", "As", "9h"},
+                                                              {"6d", "7d", "8c", "9h", "Ac"},
+                                                              {"6d", "7c", "8d", "9h", "Ac"}}};
+  pb::TrainingBoards boards;
+  for (const auto &texts : cards) {
+    boards.histories.push_back(make_history(texts));
+    boards.weights.push_back(static_cast<double>(boards.weights.size() + 1U));
+  }
+  boards.sample = false;
+  return boards;
+}
+
+// Canonical flop, flop+turn and five-card board indices of a history.
+using CanonicalBoard = std::array<std::uint32_t, 3>;
+
+CanonicalBoard canonical_board(const ca::BoardCatalog &catalog, const ca::BoardHistory &history) {
+  const std::array<gtosd::CardId, 5> five{history.flop[0], history.flop[1], history.flop[2],
+                                          history.turn, history.river};
+  return {catalog.lookup_flop(history.flop).value().index,
+          catalog.lookup_flop_turn(history.flop, history.turn).value().index,
+          catalog.lookup_river_board(five).value().index};
+}
+
+// Information sets of the abstract oracle game, (decision node, row of a
+// subset hand of the actor), with the canonical boards on which they occur.
+struct PoolingCounts {
+  std::uint64_t information_sets{0U};
+  std::array<std::uint64_t, 4> by_street{};
+  // River information sets spanning two canonical five-card boards of one
+  // canonical turn, two canonical turns, two canonical flops, two canonical
+  // five-card boards; turn information sets spanning two canonical turns.
+  std::uint64_t river_rivers_of_one_turn{0U};
+  std::uint64_t river_turns{0U};
+  std::uint64_t river_flops{0U};
+  std::uint64_t river_five_card_boards{0U};
+  std::uint64_t turn_turns{0U};
+};
+
+PoolingCounts pooling_counts(const pb::CompiledGame &game, const Resources &resources,
+                             const pb::AbstractionTables &view, const pb::TrainingBoards &boards,
+                             const pb::HandSubsets &subsets) {
+  std::map<std::uint64_t, std::set<CanonicalBoard>> boards_of;
+  for (const auto &history : boards.histories) {
+    const auto context = pb::BoardContext::build(history, *resources.ranks, &view);
+    require(context.has_value(), "river-key oracle context builds");
+    const auto canonical = canonical_board(*resources.catalog, history);
+    for (const auto &node : game.nodes()) {
+      if (node.kind != pb::NodeKind::Decision) {
+        continue;
+      }
+      for (const auto combo : subsets.combos[node.actor]) {
+        const auto hand = context.value().hand_index(combo);
+        require(hand != pb::no_hand, "subset hand is live on the oracle board");
+        const auto row = context.value().row(node.street, hand);
+        boards_of[(static_cast<std::uint64_t>(node.id) << 32U) | row].insert(canonical);
+      }
+    }
+  }
+  PoolingCounts counts;
+  for (const auto &[key, spanned] : boards_of) {
+    const auto street = game.nodes()[static_cast<std::uint32_t>(key >> 32U)].street;
+    ++counts.information_sets;
+    ++counts.by_street[static_cast<std::size_t>(street)];
+    std::array<bool, 3> differ{};
+    bool rivers_of_one_turn = false;
+    for (const auto &left : spanned) {
+      for (const auto &right : spanned) {
+        for (std::size_t part = 0; part < 3U; ++part) {
+          differ[part] = differ[part] || left[part] != right[part];
+        }
+        rivers_of_one_turn = rivers_of_one_turn || (left[1] == right[1] && left[2] != right[2]);
+      }
+    }
+    if (street == gtosd::Street::River) {
+      counts.river_rivers_of_one_turn += rivers_of_one_turn ? 1U : 0U;
+      counts.river_flops += differ[0] ? 1U : 0U;
+      counts.river_turns += differ[1] ? 1U : 0U;
+      counts.river_five_card_boards += differ[2] ? 1U : 0U;
+    } else if (street == gtosd::Street::Turn) {
+      counts.turn_turns += differ[1] ? 1U : 0U;
+    }
+  }
+  return counts;
+}
+
+struct RiverKeyVariant {
+  std::string name;
+  const pb::CompiledGame *game{nullptr};
+  const pb::BoardTextureMap *map{nullptr};
+  // Folded river table of river_groups groups (flop and turn: 4 and 5).
+  const ca::BucketTable *river{nullptr};
+  std::uint32_t river_groups{0U};
+  pb::HandSubsets subsets;
+};
+
+// One variant of the river-key oracle: A1 and A2 (see test_river_key_oracle);
+// returns the pooling counts of A3 after checking that they cover exactly the
+// oracle's information sets.
+PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &tables,
+                               const pb::TrainingBoards &boards, const RiverKeyVariant &variant) {
+  const auto started = Clock::now();
+  constexpr std::uint64_t iterations = 25U;
+  const auto &game = *variant.game;
+  const pb::BoardClassRows rows(4U, 5U, variant.river_groups, *variant.map);
+  const StreetTables street_tables{&tables.flop, &tables.turn, variant.river};
+  pb::AbstractionTables view;
+  view.catalog = &*resources.catalog;
+  view.flop = &tables.flop;
+  view.turn = &tables.turn;
+  view.river = variant.river;
+  view.board_class_rows = &rows;
+  const auto counts = pooling_counts(game, resources, view, boards, variant.subsets);
+
+  // The abstract game keyed by the BoardContext rows, solved by the
+  // independent scalar CFR.
+  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+                            street_tables);
+  const auto finite = builder.build(boards, variant.subsets);
+  const auto summary = gtosd::validate_finite_game(finite);
+  require(summary.has_value(), "river-key oracle game validates: " + variant.name + " " +
+                                   (summary ? "" : gtosd::solver_error_name(summary.error())));
+  require(counts.information_sets == summary.value().information_sets,
+          "the pooling counts cover exactly the oracle's information sets: " + variant.name);
+  gtosd::SolverConfig solver_config;
+  solver_config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
+  solver_config.iterations = iterations;
+  solver_config.thread_count = 1U;
+  const auto solved = gtosd::solve_finite_game(finite, solver_config);
+  require(solved.has_value(), "river-key oracle game solves: " + variant.name);
+
+  // The trainer in exact mode on the same boards and hand subsets.
+  auto config = resources.config();
+  config.flop_capacity = rows.count(ca::BucketStreet::Flop);
+  config.turn_capacity = rows.count(ca::BucketStreet::Turn);
+  config.river_capacity = rows.count(ca::BucketStreet::River);
+  config.threads = 2U;
+  config.scheme = pb::WeightingScheme::Linear;
+  config.update_mode = pb::UpdateMode::Simultaneous;
+  auto training_resources = resources.view();
+  training_resources.flop = &tables.flop;
+  training_resources.turn = &tables.turn;
+  training_resources.river = variant.river;
+  training_resources.board_class_rows = &rows;
+  auto trainer =
+      pb::Trainer::create(game, training_resources, config, &boards, &variant.subsets);
+  require(trainer.has_value(), "river-key oracle trainer creates: " + variant.name + " " +
+                                   (trainer ? "" : pb::trainer_error_name(trainer.error())));
+  for (std::uint64_t iteration = 0; iteration < iterations; ++iteration) {
+    require(trainer.value()->iterate().has_value(), "river-key oracle iteration succeeds");
+  }
+  // The physical evaluation first: it holds its own dense copy of the average
+  // policy only for the duration of the call.
+  const auto exact = trainer.value()->estimate_exploitability(0U);
+  require(exact.has_value() && exact.value().exact,
+          "exact physical evaluation on the listed boards: " + variant.name + " " +
+              (exact ? "" : pb::trainer_error_name(exact.error())));
+  const auto &trained_state = *trainer.value();
+  const auto &layout = trained_state.layout();
+  const auto average = trainer.value()->average_policy();
+
+  // A1: regrets, strategy sums and average of the trainer are the oracle's.
+  std::vector<std::uint8_t> covered(trained_state.cell_count(), 0U);
+  double maximum_regret_error = 0.0;
+  double maximum_strategy_error = 0.0;
+  std::uint64_t compared = 0U;
+  for (const auto &[key, buffer] : solved.value().checkpoint.information_sets) {
+    const auto parsed = parse_key(key);
+    const auto &node = game.nodes()[parsed.node];
+    require(node.kind == pb::NodeKind::Decision && node.actor == parsed.player &&
+                buffer.actions.size() == node.action_count,
+            "oracle information set maps onto a compiled decision");
+    const auto offset =
+        layout.offsets[parsed.node] + static_cast<std::uint64_t>(parsed.row) * node.action_count;
+    const auto average_row = average.row(parsed.node, parsed.row);
+    const auto &oracle_average = solved.value().average_strategy.at(key);
+    for (std::size_t action = 0; action < node.action_count; ++action) {
+      const auto cell = offset + action;
+      const double regret = trained_state.regret(cell);
+      const double strategy_sum = trained_state.strategy_sum(cell);
+      covered[cell] = 1U;
+      maximum_regret_error =
+          std::max(maximum_regret_error, std::abs(regret - buffer.cumulative_regret[action]));
+      maximum_strategy_error = std::max(
+          maximum_strategy_error, std::abs(strategy_sum - buffer.cumulative_strategy[action]));
+      if (!close(regret, buffer.cumulative_regret[action], 1e-9)) {
+        std::cout << "first mismatch " << variant.name << " " << key << " action=" << action
+                  << " regret=" << regret << " reference=" << buffer.cumulative_regret[action]
+                  << std::endl;
+      }
+      require(close(regret, buffer.cumulative_regret[action], 1e-9),
+              "board-class cumulative regret equals the FiniteGame oracle within 1e-9");
+      require(close(strategy_sum, buffer.cumulative_strategy[action], 1e-9),
+              "board-class cumulative strategy equals the FiniteGame oracle within 1e-9");
+      require(close(average_row[action], oracle_average.probabilities[action], 1e-9),
+              "board-class average strategy equals the FiniteGame oracle within 1e-9");
+      ++compared;
+    }
+  }
+  for (std::uint64_t cell = 0; cell < covered.size(); ++cell) {
+    if (covered[cell] == 0U) {
+      require(trained_state.regret(cell) == 0.0 && trained_state.strategy_sum(cell) == 0.0,
+              "board-class cells outside the reduced game stay untouched");
+    }
+  }
+
+  // A2: the trainer's physical best response (joint river engine) is the
+  // brute-force NashConv of the lifted average on the lossless physical game.
+  const auto bucket_value =
+      gtosd::evaluate_strategy_profile(finite, solved.value().average_strategy);
+  require(bucket_value.has_value(), "board-class bucket profile evaluates");
+  FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+                                     street_tables);
+  const auto physical_game = physical_builder.build(boards, variant.subsets);
+  const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
+  require(nash_conv.has_value(), "board-class lossless FiniteGame NashConv computes");
+  require(close(bucket_value.value()[0], nash_conv.value().profile_value[0], 1e-9) &&
+              close(bucket_value.value()[1], nash_conv.value().profile_value[1], 1e-9),
+          "lifting the board-class policy preserves both profile values");
+  require(close(exact.value().ev[0], nash_conv.value().profile_value[0], 1e-9) &&
+              close(exact.value().ev[1], nash_conv.value().profile_value[1], 1e-9),
+          "board-class exact profile values equal calculate_nash_conv within 1e-9: " +
+              variant.name);
+  require(
+      close(exact.value().best_response[0], nash_conv.value().best_response_value[0], 1e-9) &&
+          close(exact.value().best_response[1], nash_conv.value().best_response_value[1], 1e-9) &&
+          close(exact.value().nashconv, nash_conv.value().nash_conv, 1e-9),
+      "board-class physical best responses and NashConv match the lossless oracle: " +
+          variant.name);
+  std::cout << "  " << variant.name << ": finite game " << summary.value().nodes << " nodes, "
+            << summary.value().information_sets << " information sets (river "
+            << counts.by_street[3] << ": " << counts.river_rivers_of_one_turn
+            << " span rivers of one turn, " << counts.river_turns << " turns, "
+            << counts.river_flops << " flops, " << counts.river_five_card_boards
+            << " five-card boards; turn " << counts.by_street[2] << ": " << counts.turn_turns
+            << " span turns), " << compared << " cells compared of " << trained_state.cell_count()
+            << ", max regret error " << maximum_regret_error << ", max strategy error "
+            << maximum_strategy_error << ", nashconv " << exact.value().nashconv << " (oracle "
+            << nash_conv.value().nash_conv << "), EV [" << exact.value().ev[0] << ", "
+            << exact.value().ev[1] << "], "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  return counts;
+}
+
+// River keys against the FiniteGame oracle (correctness tests of 30 September
+// 2026, gap (a) of HU50's key "turn", whose river rows pool every river of a
+// turn and, with a texture, the turns of a class). The existing oracle
+// (test_finite_game_oracle, trainer tests) with board class rows:
+//  A1  25 exact Linear Simultaneous iterations on a board list with hand
+//      subsets give the regrets, strategy sums and average of
+//      gtosd::solve_finite_game (LinearCfr) on the abstract game keyed by the
+//      BoardContext rows, within 1e-9, and leave every other cell at zero;
+//  A2  the trainer's exact physical best response (the joint river engine,
+//      which computes the river rows of either key independently of
+//      BoardContext) equals calculate_nash_conv of the lifted average on the
+//      lossless physical game within 1e-9 (EVs, best responses, NashConv);
+//  A3  the rows pool what the key says (non-vacuity): with one river group
+//      key "turn" puts two rivers of one turn in one river information set,
+//      turn-as-flop and TX2 two canonical turns, TX2 the turns of two
+//      canonical flops; the identity never spans two canonical turns, the
+//      identity and turn-as-flop never two canonical flops; "river-board"
+//      never spans two canonical five-card boards and pools the same five
+//      cards after another turn; with one river group the two keys have
+//      different river information-set counts.
+// Variants: HU10 reduced with key "turn" under the identity, turn-as-flop and
+// TX2 maps and key "river-board" (identity map), each with 6 and 1 river
+// groups (flop 4, turn 5 groups), on the nine boards of river_key_boards and
+// the oracle subsets (T, J against Q, K). CO40-test (40 antes: non-all-in bets
+// and bet-call lines reach the river) with turn-as-flop only, 2 x 2 hands:
+// its 637-node tree has 1,110,048 cells at 200/500/1000 rows (trainer start
+// logs of that tree: 9,702,552 state bytes in float32 storage and 18,582,936
+// in double, 8 bytes per cell apart), so turn-as-flop (2,292 / 2,865 / 3,438
+// rows, at most 11.5 times as many) stays under 12.7 M cells (0.2 GB of
+// state), while the identity (68,805 turn rows, 138 times) could reach 153 M
+// cells (2.4 GB) and TX2 (22,410 turn rows) 50 M.
+void test_river_key_oracle(const Resources &resources, const FoldedTables &tables,
+                           const pb::BoardTextureMap &tx2) {
+  const auto started = Clock::now();
+  const auto &catalog = *resources.catalog;
+  const auto boards = river_key_boards();
+  std::vector<CanonicalBoard> canonical;
+  for (const auto &history : boards.histories) {
+    canonical.push_back(canonical_board(catalog, history));
+  }
+  require(tx2.name() == "TX2_recommended", "the oracle's merged map is TX2");
+  require(canonical[3][0] == canonical[0][0] && canonical[3][1] != canonical[0][1] &&
+              tx2.turn_class(canonical[3][1]) == tx2.turn_class(canonical[0][1]),
+          "9h and 9c are two canonical turns of 6s7d8c in one TX2 class");
+  require(canonical[5] == canonical[0],
+          "the suit-permuted copy has the canonical boards of the first board");
+  require(canonical[6][0] == canonical[0][0] && canonical[6][1] != canonical[0][1] &&
+              canonical[6][2] == canonical[0][2],
+          "turn and river swapped: another canonical turn, the same five-card board");
+  require(canonical[7][0] != canonical[8][0] &&
+              tx2.turn_class(canonical[7][1]) == tx2.turn_class(canonical[8][1]),
+          "9h on two canonical two-tone flops in one TX2 class");
+
+  const auto identity = pb::BoardTextureMap::identity();
+  const auto merged = turn_as_flop(catalog);
+  const auto river_board =
+      load_map(texture_directory() / "identity_river_board_texture_map.txt", catalog);
+  require(river_board.river_key() == pb::RiverKey::RiverBoard, "the river-board map has its key");
+  const auto river_one = folded_table(resources, *resources.river, 1U);
+  const auto hu10 =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto co40 = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(hu10.has_value() && co40.has_value(), "HU10 reduced and CO40-test compile");
+  auto co40_subsets = oracle_subsets();
+  for (auto &combos : co40_subsets.combos) {
+    combos = {combos.front(), combos.back()};
+  }
+
+  struct MapCase {
+    const char *name;
+    const pb::BoardTextureMap *map;
+    bool co40_game;
+  };
+  const std::array<MapCase, 5> cases{{{"identity", &identity, false},
+                                      {"turn_as_flop", &merged, false},
+                                      {"TX2", &tx2, false},
+                                      {"identity_river_board", &river_board, false},
+                                      {"turn_as_flop", &merged, true}}};
+  std::array<std::uint64_t, 2> identity_river_sets{};
+  std::array<std::uint64_t, 2> river_board_river_sets{};
+  std::uint32_t variants = 0U;
+  for (const auto &entry : cases) {
+    const bool river_board_key = entry.map->river_key() == pb::RiverKey::RiverBoard;
+    for (const std::uint32_t groups : {6U, 1U}) {
+      RiverKeyVariant variant;
+      variant.name = std::string(entry.co40_game ? "CO40-test " : "HU10 reduced ") +
+                     entry.name + (river_board_key ? " key=river-board" : " key=turn") +
+                     " river_groups=" + std::to_string(groups);
+      variant.game = entry.co40_game ? &co40.value() : &hu10.value();
+      variant.map = entry.map;
+      variant.river = groups == 1U ? &river_one : &tables.river;
+      variant.river_groups = groups;
+      variant.subsets = entry.co40_game ? co40_subsets : oracle_subsets();
+      const auto counts = river_key_oracle(resources, tables, boards, variant);
+      ++variants;
+
+      // A3: non-vacuity of the pooling.
+      require(counts.by_street[3] > 0U, "the oracle game has river information sets");
+      if (river_board_key) {
+        require(counts.river_five_card_boards == 0U,
+                "river key river-board: no river information set spans two canonical "
+                "five-card boards");
+        require(counts.river_turns > 0U,
+                "river key river-board: the same five cards after another turn share the "
+                "river information sets");
+      } else {
+        if (groups == 1U) {
+          require(counts.river_rivers_of_one_turn > 0U,
+                  "river key turn: a river information set spans two rivers of one turn");
+        }
+        if (entry.map->is_identity()) {
+          require(counts.river_turns == 0U && counts.turn_turns == 0U,
+                  "identity: no information set spans two canonical turns");
+        } else if (groups == 1U) {
+          require(counts.river_turns > 0U,
+                  "a merged texture puts two canonical turns in one river information set");
+        }
+        if (entry.map == &tx2) {
+          if (groups == 1U) {
+            require(counts.river_flops > 0U,
+                    "TX2 puts turns of two canonical flops in one river information set");
+          }
+        } else {
+          require(counts.river_flops == 0U,
+                  "identity and turn-as-flop never span two canonical flops");
+        }
+      }
+      if (!entry.co40_game && entry.map == &identity) {
+        identity_river_sets[groups == 1U ? 1U : 0U] = counts.by_street[3];
+      }
+      if (!entry.co40_game && entry.map == &river_board) {
+        river_board_river_sets[groups == 1U ? 1U : 0U] = counts.by_street[3];
+      }
+    }
+  }
+  // One river group: a river row per class, 5 canonical turns against 7
+  // canonical five-card boards per river decision.
+  require(identity_river_sets[1] != river_board_river_sets[1],
+          "the two river keys give different river information-set counts");
+  std::cout << "river-key oracle: " << variants
+            << " variants, trainer = FiniteGame LinearCfr and physical best response = "
+               "calculate_nash_conv within 1e-9, river information sets key turn / river-board "
+            << identity_river_sets[0] << " / " << river_board_river_sets[0] << " (6 groups), "
+            << identity_river_sets[1] << " / " << river_board_river_sets[1] << " (1 group), "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
 } // namespace
 
 int main(const int argc, char **argv) {
@@ -1156,6 +1590,7 @@ int main(const int argc, char **argv) {
     test_texture_row_formula(resources, tables, maps[3]);
     test_trainer(resources, tables, scratch_dir);
     test_river_board_key(resources, tables, scratch_dir);
+    test_river_key_oracle(resources, tables, maps[3]);
     {
       // Suit symmetry of the river-board rows through BoardContext.
       const auto river_board = load_map(
