@@ -75,6 +75,7 @@ With 19a stacks the limped-pot shapes are HU50's: `check;bet_4;all_in`, `fold;ca
 | `HU19_B0_flop.json` | 19a | flop (`bet_4`, `raise_16`, all-in) | 73 | 4 / 12 / 10 check-only / 10 check-only | `fnv1a64:b58f4ac0e4cf68b1` |
 | `HU19_B2_river.json` | 19a | river (same shapes) | 49 | 4 / 2 check-only / 2 check-only / 12 | `fnv1a64:23b83f3f3b18d1c0` |
 | `HU8_B1_flopturn.json` | 8a | flop, turn (turn after a flop bet-call, donk all-in) | 85 | 4 / 8 / 16 / 10 check-only | `fnv1a64:5269db409b4bcf45` |
+| `HU19_B0M_flop.json` | 19a | flop; pot-size open, 3 postflop entries (see B0M below) | 163 | 8 / 28 / 22 check-only / 22 check-only | `fnv1a64:194fd41496666162` |
 
 | Run | Game | Tables | Texture map | Why lossless | Control (one id on the deciding street) |
 |---|---|---|---|---|---|
@@ -83,7 +84,18 @@ With 19a stacks the limped-pot shapes are HU50's: `check;bet_4;all_in`, `fold;ca
 | B1L | `HU8_B1_flopturn` | `v1_flopturn_exact` | `identity_texture_map.txt` | exact flop and turn rows; river check-only | B1LG1: `v1g_flopexact_turn1x1` |
 
 All six run locked (`LOCK_CHARTS`/`LOCK_NODES` as above) and are gated on the sum of the
-`gain_lower` columns. Start-event smoke values: capacities B0 `[302544, 13761, 206415]`, B2
+`gain_lower` columns.
+
+**B0M: several postflop entries and class-shaped ranges** (`HU19_B0M_flop.json`, tree
+`fnv1a64:194fd41496666162`): B0 with a pot-size open (`preflop_open_sizes_basis_points [10000]`,
+label `raise_5`, chart column `5.0ante`), so the tree has 3 postflop entries (limp-check 4a,
+open-call 12a with `check;bet_12;all_in`, limp-iso-call). 163 nodes, decisions 8 / 28 / 22
+check-only / 22 check-only. Lock `lock_b0m/` (`LOCK_NODES=CO/CO_strategy.txt,BTN/CO_Call_BTN_strategy.txt,BTN/CO_5.0ante_BTN_strategy.txt`):
+CO opens 26 classes (4 of them half and half with a limp), limps about 40 % of the classes and
+folds the rest, ranked by V2's shove value; BTN checks behind every limp and calls every open.
+Two entries are reached with non-uniform CO ranges and the full BTN range. Tables
+`v1g_flopexact_turn1x1` (exact flop), identity map; control B0MG1 on `g1x1`. Smoke values:
+capacities `[302544, 13761, 206415]`, `preflop_lock.rows` 243, state 0.45 GB (control 0.012 GB). Start-event smoke values: capacities B0 `[302544, 13761, 206415]`, B2
 `[34380, 825660, 9299070]` (texture `river-key=river-board`), B1 `[302544, 6825456, 206415]`;
 `preflop_lock.rows` 162. Trainer state (double, 16 B per cell + 2 B per row), trainer peak about
 state + 0.11 GB: B0 0.20 GB, B2 5.02 GB, B1 4.29 GB; evaluator about policy (8 B per cell) +

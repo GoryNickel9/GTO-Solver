@@ -71,6 +71,7 @@ case "$(basename "$CFG")" in
   HU19_B0_flop.json) TREE_DEFAULT="fnv1a64:b58f4ac0e4cf68b1" ;;
   HU19_B2_river.json) TREE_DEFAULT="fnv1a64:23b83f3f3b18d1c0" ;;
   HU8_B1_flopturn.json) TREE_DEFAULT="fnv1a64:5269db409b4bcf45" ;;
+  HU19_B0M_flop.json) TREE_DEFAULT="fnv1a64:194fd41496666162" ;;
   *) TREE_DEFAULT="" ;;
 esac
 EXPECT_TREE="${EXPECT_TREE:-$TREE_DEFAULT}"
