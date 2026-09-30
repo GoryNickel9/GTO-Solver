@@ -1999,6 +1999,453 @@ void test_betting_streets_trees() {
   }
 }
 
+// Rake of the raked correctness runs (rake study R1, 30 September 2026):
+// 2.5 %, cap 2 antes, no flop no drop, no minimum pot.
+gtosd::RakeConfig correctness_rake() {
+  gtosd::RakeConfig rake;
+  rake.enabled = true;
+  rake.percentage = gtosd::RangeWeight::from_basis_points(250).value();
+  rake.cap = antes(2);
+  rake.no_flop_no_drop = true;
+  rake.minimum_pot = units(0);
+  return rake;
+}
+
+// Two compilations of one tree under a different rake: every node, edge,
+// public state and postflop entry is identical; only the payoffs and the
+// fingerprint (which includes the configuration) may differ.
+void require_same_tree(const pb::CompiledGame &left, const pb::CompiledGame &right,
+                       const std::string &label) {
+  require(left.nodes().size() == right.nodes().size() &&
+              left.edges().size() == right.edges().size() &&
+              left.states().size() == right.states().size() &&
+              left.postflop_entries() == right.postflop_entries(),
+          label + ": same node, edge and state counts and the same postflop entries");
+  for (std::size_t index = 0; index < left.nodes().size(); ++index) {
+    const auto &a = left.nodes()[index];
+    const auto &b = right.nodes()[index];
+    require(a.id == b.id && a.parent == b.parent && a.subtree_end == b.subtree_end &&
+                a.first_edge == b.first_edge && a.payoff_offset == b.payoff_offset &&
+                a.postflop_entry == b.postflop_entry && a.depth == b.depth && a.kind == b.kind &&
+                a.street == b.street && a.actor == b.actor && a.action_count == b.action_count &&
+                a.active_mask == b.active_mask &&
+                a.remaining_board_cards == b.remaining_board_cards && a.level == b.level &&
+                a.limped_pot == b.limped_pot,
+            label + ": node " + std::to_string(index) + " is identical");
+    require(left.states()[index] == right.states()[index],
+            label + ": public state " + std::to_string(index) + " is identical");
+  }
+  for (std::size_t index = 0; index < left.edges().size(); ++index) {
+    require(left.edges()[index].action == right.edges()[index].action &&
+                left.edges()[index].child == right.edges()[index].child,
+            label + ": edge " + std::to_string(index) + " is identical");
+  }
+}
+
+// Every payoff of two node-identical trees: every seat at every fold, every
+// winner subset at every showdown.
+bool same_payoffs(const pb::CompiledGame &left, const pb::CompiledGame &right) {
+  const auto players = left.config().player_count;
+  const auto equal = [players](const std::span<const std::int64_t> first,
+                               const std::span<const std::int64_t> second) {
+    for (std::uint8_t player = 0; player < players; ++player) {
+      if (first[player] != second[player]) {
+        return false;
+      }
+    }
+    return true;
+  };
+  for (const auto &node : left.nodes()) {
+    if (node.kind == pb::NodeKind::TerminalFold &&
+        !equal(left.fold_payoffs(node.id), right.fold_payoffs(node.id))) {
+      return false;
+    }
+    if (node.kind != pb::NodeKind::TerminalShowdown) {
+      continue;
+    }
+    for (std::uint8_t winners = 1U; winners <= node.active_mask; ++winners) {
+      if ((winners & static_cast<std::uint8_t>(~node.active_mask)) != 0U) {
+        continue;
+      }
+      if (!equal(left.showdown_payoffs(node.id, winners),
+                 right.showdown_payoffs(node.id, winners))) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// The HU6 correctness games by hand, from the rules of the game and not from
+// settle_terminal. Stacks 6a, of which the 1a ante is dead; BTN posts a live
+// 1a blind, so the pot is 3a with 5a (CO) and 4a (BTN) behind, and the only
+// preflop raise, like the only postflop bet, is the all-in. CO acts first on
+// every postflop street. The called pot is what both players put in once an
+// uncalled excess has gone back:
+//   CO folds at the root: 2a, the antes (BTN's blind comes back); BTN +1a,
+//     CO -1a.
+//   A fold facing an all-in: 4a, the antes, the blind and the limp or the
+//     blind matched (the excess comes back); +2a / -2a.
+//   An all-in called: 12a, both stacks; +6a / -6a, a tie 0 each.
+//   The river checked down: 4a; +2a / -2a, a tie 0 each.
+// Rake 2.5 %, cap 2a, no flop no drop: nothing on the three preflop folds
+// (no flop), 0.1a on a 4a pot after the flop, 0.3a on a 12a pot (a called
+// preflop all-in deals the board, so it is raked). The winners pay it:
+// 4a -> +1.9a / -2a, a tie -0.05a each; 12a -> +5.7a / -6a, a tie -0.15a
+// each. The cap never binds, nothing rounds and no tie has an odd unit.
+
+// Net result in units of a sole winner, of the loser, and of each seat on a
+// tie (showdowns only).
+struct HandNet {
+  std::int64_t winner{0};
+  std::int64_t loser{0};
+  std::int64_t tie{0};
+};
+
+struct HandDerivedTerminal {
+  // Actions from the root: f fold, x check, c call (an all-in call
+  // included), a the all-in (bet or raise), / a street transition.
+  std::string path;
+  gtosd::Street street{gtosd::Street::Preflop};
+  // Seat mask of the player who wins a fold (CO 1, BTN 2); 0 at a showdown.
+  std::uint8_t fold_winner{0U};
+  // Board cards still to come at a showdown.
+  std::uint8_t remaining_board_cards{0U};
+  std::int64_t pot{0};
+  std::int64_t rake{0};
+  HandNet unraked;
+  HandNet raked;
+};
+
+// The 18 terminals of HU6_all (bets on every street) or the 10 of
+// HU6_V2_river (check-only flop and turn).
+std::vector<HandDerivedTerminal> hu6_hand_derived_terminals(const bool bets_before_river) {
+  constexpr HandNet fold_2a{10'000, -10'000, 0};
+  constexpr HandNet unraked_4a{20'000, -20'000, 0};
+  constexpr HandNet raked_4a{19'000, -20'000, -500};
+  constexpr HandNet unraked_12a{60'000, -60'000, 0};
+  constexpr HandNet raked_12a{57'000, -60'000, -1'500};
+  std::vector<HandDerivedTerminal> terminals = {
+      {"f", gtosd::Street::Preflop, 0b10U, 0U, 20'000, 0, fold_2a, fold_2a},
+      {"caf", gtosd::Street::Preflop, 0b10U, 0U, 40'000, 0, unraked_4a, unraked_4a},
+      {"af", gtosd::Street::Preflop, 0b01U, 0U, 40'000, 0, unraked_4a, unraked_4a},
+      {"ac", gtosd::Street::Preflop, 0U, 5U, 120'000, 3'000, unraked_12a, raked_12a},
+      {"cac", gtosd::Street::Preflop, 0U, 5U, 120'000, 3'000, unraked_12a, raked_12a}};
+  std::string prefix = "cx/";
+  for (const auto street : {gtosd::Street::Flop, gtosd::Street::Turn, gtosd::Street::River}) {
+    if (bets_before_river || street == gtosd::Street::River) {
+      const auto remaining = static_cast<std::uint8_t>(street == gtosd::Street::Flop   ? 2U
+                                                       : street == gtosd::Street::Turn ? 1U
+                                                                                       : 0U);
+      terminals.push_back({prefix + "xaf", street, 0b10U, 0U, 40'000, 1'000, unraked_4a, raked_4a});
+      terminals.push_back({prefix + "af", street, 0b01U, 0U, 40'000, 1'000, unraked_4a, raked_4a});
+      terminals.push_back(
+          {prefix + "xac", street, 0U, remaining, 120'000, 3'000, unraked_12a, raked_12a});
+      terminals.push_back(
+          {prefix + "ac", street, 0U, remaining, 120'000, 3'000, unraked_12a, raked_12a});
+    }
+    prefix += street == gtosd::Street::River ? "xx" : "xx/";
+  }
+  terminals.push_back({prefix, gtosd::Street::River, 0U, 0U, 40'000, 1'000, unraked_4a, raked_4a});
+  return terminals;
+}
+
+std::int64_t hand_net(const HandNet &net, const std::uint8_t winners, const std::uint8_t player) {
+  if (winners == 0b11U) {
+    return net.tie;
+  }
+  return ((winners >> player) & 1U) != 0U ? net.winner : net.loser;
+}
+
+char action_symbol(const gtosd::Action &action) {
+  if (pb::is_aggressive(action)) {
+    return 'a';
+  }
+  if (action.type == gtosd::ActionType::Fold) {
+    return 'f';
+  }
+  if (action.type == gtosd::ActionType::Check) {
+    return 'x';
+  }
+  return action.type == gtosd::ActionType::Call ? 'c' : '?';
+}
+
+// Terminals of a compiled tree by their line of actions (the symbols of
+// HandDerivedTerminal::path). Every aggressive action must put the actor
+// all-in: in the HU6 games the all-in is the only raise and the only bet.
+void collect_terminal_paths(const pb::CompiledGame &game, const std::uint32_t node,
+                            const std::string &path,
+                            std::map<std::string, std::uint32_t> &terminals) {
+  const auto &compiled = game.nodes()[node];
+  if (compiled.kind == pb::NodeKind::TerminalFold ||
+      compiled.kind == pb::NodeKind::TerminalShowdown) {
+    require(terminals.emplace(path, node).second, "terminal lines are unique: " + path);
+    return;
+  }
+  if (compiled.kind == pb::NodeKind::Chance) {
+    collect_terminal_paths(game, game.edges_of(node)[0].child, path + "/", terminals);
+    return;
+  }
+  for (const auto &edge : game.edges_of(node)) {
+    const auto symbol = action_symbol(edge.action);
+    if (symbol == 'a') {
+      require(game.states()[edge.child].remaining_stacks[compiled.actor].units() == 0,
+              "the only raise and the only bet is the all-in: " + path + symbol);
+    }
+    collect_terminal_paths(game, edge.child, path + symbol, terminals);
+  }
+}
+
+// U1: every terminal of an HU6 pair (the same tree without and with the
+// correctness rake) has the hand-derived payoffs above, and the rake moves
+// only the winners: raked - unraked = -rake at a sole winner, -rake / 2 at
+// each seat of a tie, 0 at the loser.
+void check_hand_derived_terminals(const pb::CompiledGame &plain, const pb::CompiledGame &raked,
+                                  const bool bets_before_river, const std::string &label) {
+  const auto expected = hu6_hand_derived_terminals(bets_before_river);
+  std::map<std::string, std::uint32_t> paths;
+  collect_terminal_paths(plain, plain.root(), "", paths);
+  std::map<std::string, std::uint32_t> raked_paths;
+  collect_terminal_paths(raked, raked.root(), "", raked_paths);
+  require(paths == raked_paths, label + ": both games reach the same terminals by the same lines");
+  require(paths.size() == expected.size() &&
+              paths.size() == plain.stats().terminal_folds + plain.stats().terminal_showdowns,
+          label + ": the tree has exactly the hand-derived terminals, " +
+              std::to_string(paths.size()) + " found");
+  for (const auto &terminal : expected) {
+    const auto found = paths.find(terminal.path);
+    require(found != paths.end(), label + ": terminal " + terminal.path + " exists");
+    const auto id = found->second;
+    const auto &node = plain.nodes()[id];
+    const bool showdown = terminal.fold_winner == 0U;
+    const auto what = label + " " + terminal.path;
+    require(node.kind == (showdown ? pb::NodeKind::TerminalShowdown : pb::NodeKind::TerminalFold) &&
+                node.street == terminal.street &&
+                (showdown ? node.remaining_board_cards == terminal.remaining_board_cards
+                          : plain.states()[id].terminal_winner_mask == terminal.fold_winner),
+            what + ": terminal kind, street, and cards to come or fold winner");
+    require(plain.states()[id].pot.units() == terminal.pot &&
+                raked.states()[id].pot.units() == terminal.pot,
+            what + ": called pot " + std::to_string(terminal.pot) + ", got " +
+                std::to_string(plain.states()[id].pot.units()));
+    const auto rows = showdown ? std::vector<std::uint8_t>{1U, 2U, 3U}
+                               : std::vector<std::uint8_t>{terminal.fold_winner};
+    for (const auto winners : rows) {
+      const auto unraked_payoffs =
+          showdown ? plain.showdown_payoffs(id, winners) : plain.fold_payoffs(id);
+      const auto raked_payoffs =
+          showdown ? raked.showdown_payoffs(id, winners) : raked.fold_payoffs(id);
+      for (std::uint8_t player = 0U; player < 2U; ++player) {
+        const auto seat =
+            what + " winners " + std::to_string(winners) + " seat " + std::to_string(player);
+        require(unraked_payoffs[player] == hand_net(terminal.unraked, winners, player),
+                seat + ": unraked payoff equals the hand-derived value, got " +
+                    std::to_string(unraked_payoffs[player]));
+        require(raked_payoffs[player] == hand_net(terminal.raked, winners, player),
+                seat + ": raked payoff equals the hand-derived value, got " +
+                    std::to_string(raked_payoffs[player]));
+        const std::int64_t share = winners == 0b11U                   ? terminal.rake / 2
+                                   : ((winners >> player) & 1U) != 0U ? terminal.rake
+                                                                      : 0;
+        require(raked_payoffs[player] - unraked_payoffs[player] == -share,
+                seat + ": the rake comes out of the winners' share only");
+      }
+    }
+  }
+}
+
+// Census of check_raked_payoffs on the HU6 pairs: 3 preflop folds (never
+// raked), 2 called preflop all-ins, 2 folds and 2 called all-ins per betting
+// street, the river checkdown; every terminal after the flop is raked below
+// the cap, nothing is odd.
+RakeCensus hu6_expected_census(const bool bets_before_river, const bool raked) {
+  const std::uint64_t betting_streets = bets_before_river ? 3U : 1U;
+  RakeCensus census;
+  census.preflop_folds = 3U;
+  census.preflop_showdowns = 2U;
+  census.postflop_folds = 2U * betting_streets;
+  // The two called river all-ins and the river checkdown.
+  census.postflop_showdowns = 3U;
+  // Called all-ins on the flop and the turn.
+  census.postflop_all_ins = 2U * (betting_streets - 1U);
+  const auto flop_dealt = census.preflop_showdowns + census.postflop_folds +
+                          census.postflop_showdowns + census.postflop_all_ins;
+  census.flop_unraked = raked ? 0U : flop_dealt;
+  census.below_cap = raked ? flop_dealt : 0U;
+  census.cap_binding = 0U;
+  census.preflop_fold_rake = 0;
+  census.postflop_fold_minimum_rake = raked ? 1'000 : 0;
+  census.odd_ties = 0U;
+  return census;
+}
+
+void require_census(const RakeCensus &actual, const RakeCensus &expected,
+                    const std::string &label) {
+  require(actual.preflop_folds == expected.preflop_folds &&
+              actual.preflop_showdowns == expected.preflop_showdowns &&
+              actual.postflop_folds == expected.postflop_folds &&
+              actual.postflop_showdowns == expected.postflop_showdowns &&
+              actual.postflop_all_ins == expected.postflop_all_ins,
+          label + ": terminal census (preflop folds, preflop all-ins, postflop folds, river "
+                  "showdowns, postflop all-ins)");
+  require(actual.flop_unraked == expected.flop_unraked && actual.below_cap == expected.below_cap &&
+              actual.cap_binding == expected.cap_binding &&
+              actual.preflop_fold_rake == expected.preflop_fold_rake &&
+              actual.postflop_fold_minimum_rake == expected.postflop_fold_minimum_rake &&
+              actual.odd_ties == expected.odd_ties,
+          label + ": rake census, flop unraked " + std::to_string(actual.flop_unraked) +
+              ", below the cap " + std::to_string(actual.below_cap) + ", cap binding " +
+              std::to_string(actual.cap_binding) + ", odd ties " + std::to_string(actual.odd_ties));
+}
+
+// U1 of the rake study: the payoffs of the HU6 correctness games against a
+// table derived by hand, independently of settle_terminal (which
+// test_payoffs compares with), for HU6_all and its raked twin (the literal
+// P3 config) and for HU6_V2_river and its raked twin V2R (built here; the
+// config file, when it exists, must be the same game). The raked and the
+// unraked tree are identical node by node.
+void test_hu6_rake_payoffs() {
+  const auto directory = std::filesystem::path("benchmarks") / "monker" / "correctness";
+  const auto all_config = load_config(directory / "HU6_all.json");
+  const auto all_raked_config = load_config(directory / "HU6_all_rake25cap2.json");
+  auto expected_raked = all_config;
+  expected_raked.id = all_raked_config.id;
+  expected_raked.rake = correctness_rake();
+  require(all_raked_config == expected_raked,
+          "HU6_all_rake25cap2.json is HU6_all.json with 2.5 %, cap 2 antes, no flop no drop");
+
+  const auto v2_config = load_config(directory / "HU6_V2_river.json");
+  auto v2_raked_config = v2_config;
+  v2_raked_config.id = "CORRECTNESS-HU6-V2-RIVER-RAKE25-CAP2-001";
+  v2_raked_config.rake = correctness_rake();
+  require(pb::validate_game_config(v2_raked_config).has_value(), "the raked V2 twin validates");
+  const auto v2_raked_file = directory / "HU6_V2_river_rake25cap2.json";
+  if (std::filesystem::exists(std::filesystem::path(GTOSD_SOURCE_DIR) / v2_raked_file)) {
+    auto loaded = load_config(v2_raked_file);
+    loaded.id = v2_raked_config.id;
+    require(loaded == v2_raked_config,
+            "HU6_V2_river_rake25cap2.json is HU6_V2_river.json with 2.5 %, cap 2 antes, no flop "
+            "no drop");
+  }
+
+  struct Twin {
+    std::string_view label;
+    const pb::GameConfig *plain;
+    const pb::GameConfig *raked;
+    bool bets_before_river;
+    std::uint64_t nodes;
+  };
+  for (const auto &twin : {Twin{"HU6_all", &all_config, &all_raked_config, true, 37U},
+                           Twin{"HU6_V2_river", &v2_config, &v2_raked_config, false, 25U}}) {
+    const std::string label(twin.label);
+    const auto plain = compile(*twin.plain);
+    const auto raked = compile(*twin.raked);
+    require(plain.stats().node_count == twin.nodes, label + ": node count");
+    require_same_tree(plain, raked, label + " raked");
+    require(plain.fingerprint() != raked.fingerprint(),
+            label + ": the rake enters the tree fingerprint through the configuration");
+    check_hand_derived_terminals(plain, raked, twin.bets_before_river, label);
+    const auto raked_census = check_raked_payoffs(raked);
+    require_census(raked_census, hu6_expected_census(twin.bets_before_river, true),
+                   label + " raked");
+    require_census(check_raked_payoffs(plain), hu6_expected_census(twin.bets_before_river, false),
+                   label + " unraked");
+    std::cout << label << " hand-derived payoffs: "
+              << hu6_hand_derived_terminals(twin.bets_before_river).size()
+              << " terminals, raked tree " << raked.fingerprint() << ", preflop folds "
+              << raked_census.preflop_folds << " unraked, below the cap " << raked_census.below_cap
+              << ", cap binding " << raked_census.cap_binding << ", odd ties "
+              << raked_census.odd_ties << '\n';
+  }
+}
+
+// U2 of the rake study: the correctness rake with a minimum pot above every
+// pot (13a; the largest pot is 12a, both stacks) is enabled but never taken,
+// so every payoff equals the unraked one and only the fingerprints move. The
+// same rake with no minimum pot does change the payoffs, and a minimum pot of
+// exactly 12a leaves the 4a pots unraked and rakes the 12a ones (the minimum
+// is inclusive). HU6_V2_river_rakeinert.json, when it exists, must be the
+// V2 game with such an inert rake.
+void test_hu6_rake_inert() {
+  const auto directory = std::filesystem::path("benchmarks") / "monker" / "correctness";
+  struct Inert {
+    std::string_view plain;
+    std::string_view id;
+    std::string_view file;
+    bool bets_before_river;
+    // Terminals after the flop with a 4a and a 12a pot.
+    std::uint64_t small_pots;
+    std::uint64_t large_pots;
+  };
+  for (const auto &inert :
+       {Inert{"HU6_all.json", "CORRECTNESS-HU6-ALL-RAKEINERT-001", "", true, 7U, 8U},
+        Inert{"HU6_V2_river.json", "CORRECTNESS-HU6-V2-RIVER-RAKEINERT-001",
+              "HU6_V2_river_rakeinert.json", false, 3U, 4U}}) {
+    const std::string label(inert.plain);
+    const auto plain_config = load_config(directory / std::string(inert.plain));
+    const auto plain = compile(plain_config);
+    std::int64_t largest_pot = 0;
+    for (const auto &node : plain.nodes()) {
+      if (node.kind == pb::NodeKind::TerminalFold || node.kind == pb::NodeKind::TerminalShowdown) {
+        largest_pot = std::max<std::int64_t>(largest_pot, plain.states()[node.id].pot.units());
+      }
+    }
+    require(largest_pot == 120'000, label + ": the largest pot is 12a, both stacks");
+
+    auto inert_config = plain_config;
+    inert_config.id = std::string(inert.id);
+    inert_config.rake = correctness_rake();
+    inert_config.rake.minimum_pot = antes(13);
+    require(pb::validate_game_config(inert_config).has_value(),
+            label + ": a minimum pot above every pot is a valid rake");
+    std::vector<pb::GameConfig> inert_configs{inert_config};
+    if (!inert.file.empty()) {
+      const auto relative = directory / std::string(inert.file);
+      if (std::filesystem::exists(std::filesystem::path(GTOSD_SOURCE_DIR) / relative)) {
+        const auto loaded = load_config(relative);
+        require(loaded.rake.enabled && loaded.rake.minimum_pot.units() > largest_pot,
+                std::string(inert.file) + ": the rake is enabled with a minimum pot above 12a");
+        auto normalized = loaded;
+        normalized.id = plain_config.id;
+        normalized.rake = plain_config.rake;
+        require(normalized == plain_config,
+                std::string(inert.file) + " is " + label + " plus an inert rake");
+        inert_configs.push_back(loaded);
+      }
+    }
+    for (const auto &config : inert_configs) {
+      const auto game = compile(config);
+      require_same_tree(plain, game, config.id);
+      require(same_payoffs(plain, game),
+              config.id + ": every payoff equals the unraked one element by element");
+      require(pb::game_config_fingerprint(config) != pb::game_config_fingerprint(plain_config),
+              config.id + ": only the configuration, hence the fingerprint, differs");
+      require_census(check_raked_payoffs(game), hu6_expected_census(inert.bets_before_river, false),
+                     config.id);
+      std::cout << config.id << " (minimum pot " << config.rake.minimum_pot.units()
+                << " units): payoffs identical to " << label << ", tree " << game.fingerprint()
+                << " vs " << plain.fingerprint() << '\n';
+    }
+
+    // Power of the check: the same rake without the minimum pot is taken.
+    auto active = inert_config;
+    active.rake.minimum_pot = units(0);
+    const auto active_game = compile(active);
+    require(!same_payoffs(plain, active_game),
+            label + ": without the minimum pot the same rake changes the payoffs");
+    // The boundary: a pot equal to the minimum is raked.
+    auto boundary = inert_config;
+    boundary.rake.minimum_pot = antes(12);
+    const auto boundary_census = check_raked_payoffs(compile(boundary));
+    require(boundary_census.flop_unraked == inert.small_pots &&
+                boundary_census.below_cap == inert.large_pots &&
+                boundary_census.cap_binding == 0U && boundary_census.preflop_fold_rake == 0,
+            label + ": a 12a minimum pot leaves the 4a pots unraked and rakes the 12a pots, got " +
+                std::to_string(boundary_census.flop_unraked) + " unraked and " +
+                std::to_string(boundary_census.below_cap) + " raked");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -2027,6 +2474,8 @@ int main() {
     test_checkdown_rake();
     test_rake_fingerprints();
     test_three_way_rake();
+    test_hu6_rake_payoffs();
+    test_hu6_rake_inert();
     test_betting_streets_config_key();
     test_betting_streets_trees();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
