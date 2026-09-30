@@ -341,6 +341,26 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
 endif()
 
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  add_executable(gtosd_preflop_blueprint_three_way_table preflop_blueprint_three_way_table.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_three_way_table
+    PRIVATE gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_three_way_table)
+  # Smoke on a subset (one pair, one suited, one offsuit hero class): the
+  # identities, the per-combo invariance of AA and two brute-force triples. The
+  # full table (--hero-classes all) is built on demand, not by CTest.
+  add_test(NAME gtosd_preflop_blueprint_three_way_table_smoke
+    COMMAND gtosd_preflop_blueprint_three_way_table
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --hero-classes AA,AKs,AKo --threads 2 --invariance AA --brute-force 2)
+  set_tests_properties(gtosd_preflop_blueprint_three_way_table_smoke
+    PROPERTIES LABELS "preflop_blueprint;three_way;resources")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_three_way_table_smoke PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_preflop_blueprint_buckets preflop_blueprint_buckets.cpp)
   target_link_libraries(gtosd_preflop_blueprint_buckets PRIVATE gtosd::card_abstraction)
   gtosd_set_warnings(gtosd_preflop_blueprint_buckets)

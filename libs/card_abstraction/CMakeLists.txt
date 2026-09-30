@@ -7,7 +7,8 @@ add_library(gtosd_card_abstraction
   src/exact_features.cpp
   src/rank_table.cpp
   src/resource_file.cpp
-  src/showdown_counts.cpp)
+  src/showdown_counts.cpp
+  src/three_way_table.cpp)
 add_library(gtosd::card_abstraction ALIAS gtosd_card_abstraction)
 
 target_include_directories(gtosd_card_abstraction
