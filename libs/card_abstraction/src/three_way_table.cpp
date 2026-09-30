@@ -859,7 +859,25 @@ void ThreeWayTable::finalize(const std::string &rank_fingerprint) {
   fingerprint_ = "fnv1a64:" + detail::hex64(hash);
 }
 
+bool ThreeWayTable::canonical_file_name(const std::filesystem::path &path) {
+  // Native characters (wide on Windows), compared without ASCII case: the
+  // Windows file system does not tell PREFLOP_THREE_WAY_V1.BIN apart.
+  const auto name = path.filename().native();
+  const auto lower = [](const std::uint32_t character) -> std::uint32_t {
+    return character >= 0x41U && character <= 0x5AU ? character + 0x20U : character;
+  };
+  return std::equal(name.begin(), name.end(), three_way_table_file_name.begin(),
+                    three_way_table_file_name.end(), [&](const auto left, const char right) {
+                      return lower(static_cast<std::uint32_t>(left)) ==
+                             lower(static_cast<unsigned char>(right));
+                    });
+}
+
 Result<bool, ResourceError> ThreeWayTable::save(const std::filesystem::path &path) const {
+  // The canonical name promises the complete table to every reader.
+  if (!complete() && canonical_file_name(path)) {
+    return Result<bool, ResourceError>::failure(ResourceError::InvalidInput);
+  }
   try {
     return detail::write_resource(path, resource_kind, format_version, fingerprint_, payload());
   } catch (const std::bad_alloc &) {
@@ -867,7 +885,8 @@ Result<bool, ResourceError> ThreeWayTable::save(const std::filesystem::path &pat
   }
 }
 
-Result<ThreeWayTable, ResourceError> ThreeWayTable::load(const std::filesystem::path &path) {
+Result<ThreeWayTable, ResourceError> ThreeWayTable::load(const std::filesystem::path &path,
+                                                         const ThreeWayLoad partial) {
   using Loaded = Result<ThreeWayTable, ResourceError>;
   try {
     const auto resource = detail::read_resource(path, resource_kind, format_version);
@@ -914,6 +933,10 @@ Result<ThreeWayTable, ResourceError> ThreeWayTable::load(const std::filesystem::
                       [](const ThreeWayEntry &entry) { return entry != ThreeWayEntry{}; })) {
         return Loaded::failure(ResourceError::IntegrityFailure);
       }
+    }
+    // A valid subset file, but its unbuilt rows would read as zero.
+    if (partial == ThreeWayLoad::CompleteOnly && !table.complete()) {
+      return Loaded::failure(ResourceError::InvalidInput);
     }
     table.fingerprint_ = resource.value().fingerprint;
     return Loaded::success(std::move(table));

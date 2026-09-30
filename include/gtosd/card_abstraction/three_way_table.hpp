@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Exact three-player showdown outcomes at the granularity of the 81 preflop
@@ -31,6 +32,16 @@ inline constexpr std::uint32_t three_way_entry_count =
 inline constexpr std::uint32_t three_way_runout_count = 142'506U;
 // Representative of a hero class that a subset build left out.
 inline constexpr std::uint16_t three_way_unbuilt_hero = 0xFFFFU;
+// File name of the complete table in a resources directory. A subset build is
+// never saved under this name (compared without ASCII case).
+inline constexpr std::string_view three_way_table_file_name = "preflop_three_way_v1.bin";
+
+// Whether ThreeWayTable::load accepts a table that a subset build left
+// incomplete, whose unbuilt hero rows read as zero.
+enum class ThreeWayLoad : std::uint8_t {
+  CompleteOnly, // every one of the 81 hero classes built (the default)
+  AllowPartial  // subset builds: timing probes, smokes, tests
+};
 
 // The hero's result against one opponent on one runout.
 enum class Versus : std::uint8_t { Better = 0U, Tie = 1U, Worse = 2U };
@@ -121,8 +132,15 @@ public:
   [[nodiscard]] static Result<std::vector<ThreeWayEntry>, ResourceError>
   build_hero_rows(const RankTable &ranks, std::uint16_t hero_combo, unsigned threads,
                   bool board_symmetry);
-  [[nodiscard]] static Result<ThreeWayTable, ResourceError> load(const std::filesystem::path &path);
+  // An incomplete table fails with InvalidInput unless `partial` is
+  // AllowPartial.
+  [[nodiscard]] static Result<ThreeWayTable, ResourceError>
+  load(const std::filesystem::path &path, ThreeWayLoad partial = ThreeWayLoad::CompleteOnly);
+  // An incomplete table under three_way_table_file_name fails with
+  // InvalidInput and writes nothing.
   [[nodiscard]] Result<bool, ResourceError> save(const std::filesystem::path &path) const;
+  // Whether the file name of `path` is three_way_table_file_name.
+  [[nodiscard]] static bool canonical_file_name(const std::filesystem::path &path);
 
   // Lowest combo id of a class.
   [[nodiscard]] static std::uint16_t representative_of(std::uint8_t hand_class) noexcept;

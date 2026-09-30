@@ -8,11 +8,16 @@
 // --threads, --board-symmetry on|off (one board per suit orbit of the hero,
 // identical output), --compare-plain on also builds the subset without the
 // symmetry and requires identical bytes. --input PATH validates a saved table
-// instead of building; --output PATH saves and reloads it.
+// instead of building (a subset table only with --allow-partial on); --output
+// PATH saves and reloads it. A subset build is never written under the name of
+// the complete table, preflop_three_way_v1.bin: the program stops before
+// building.
 //
 // Validation (the phase 2a gate): the integer identities V1-V6 (V6 against
 // preflop_all_in_v1.bin from --resources-dir, with the largest equity shift
-// between folded cards dead and ignored as a diagnostic); --invariance
+// between folded cards dead and ignored as a diagnostic; without that file the
+// program stops before building, unless --skip-v6 on leaves V6 out, which the
+// report and stderr say); --invariance
 // NAME,... rebuilds every other combo of the classes as hero and requires the
 // representative's entries (V7); --brute-force N compares N class triples with
 // every pair and runout through gtosd::evaluate_showdown (V8). --dump-path
@@ -159,7 +164,9 @@ struct Options {
   bool board_symmetry = true;
   bool compare_plain = false;
   std::filesystem::path input;
+  bool allow_partial = false;
   std::filesystem::path output;
+  bool skip_v6 = false;
   std::vector<std::uint8_t> invariance_classes;
   std::uint64_t brute_force = 0U;
   std::uint64_t dump_triples = 0U;
@@ -188,8 +195,12 @@ Options parse_options(const int argc, char **argv) {
       options.compare_plain = parse_switch(name, value);
     } else if (name == "--input") {
       options.input = value;
+    } else if (name == "--allow-partial") {
+      options.allow_partial = parse_switch(name, value);
     } else if (name == "--output") {
       options.output = value;
+    } else if (name == "--skip-v6") {
+      options.skip_v6 = parse_switch(name, value);
     } else if (name == "--invariance") {
       options.invariance_classes = parse_classes(value);
     } else if (name == "--brute-force") {
@@ -209,6 +220,13 @@ Options parse_options(const int argc, char **argv) {
   if ((options.dump_triples != 0U || options.dump_class_triples != 0U) &&
       options.dump_path.empty()) {
     throw std::runtime_error("--dump-triples and --dump-class-triples need --dump-path");
+  }
+  // Checked before a build of hours, not by the save at its end.
+  if (options.input.empty() && options.hero_classes.size() != class_count &&
+      !options.output.empty() && ca::ThreeWayTable::canonical_file_name(options.output)) {
+    throw std::runtime_error("a subset build (--hero-classes) is not saved as " +
+                             std::string{ca::three_way_table_file_name} +
+                             ", the name of the complete table: choose another --output");
   }
   return options;
 }
@@ -334,15 +352,31 @@ int main(const int argc, char **argv) {
 
     std::optional<ca::RankTable> ranks;
     std::optional<ca::AllInTable> heads_up;
+    std::string heads_up_missing = "no --resources-dir";
     if (!options.resources_dir.empty()) {
       auto loaded = ca::RankTable::load(options.resources_dir / "rank_table_v1.bin");
       if (loaded) {
         ranks.emplace(std::move(loaded.value()));
       }
-      auto loaded_heads_up = ca::AllInTable::load(options.resources_dir / "preflop_all_in_v1.bin");
-      if (loaded_heads_up) {
-        heads_up.emplace(std::move(loaded_heads_up.value()));
+      if (!options.skip_v6) {
+        auto loaded_heads_up =
+            ca::AllInTable::load(options.resources_dir / "preflop_all_in_v1.bin");
+        if (loaded_heads_up) {
+          heads_up.emplace(std::move(loaded_heads_up.value()));
+        } else {
+          heads_up_missing = ca::resource_error_name(loaded_heads_up.error());
+        }
       }
+    }
+    // V6 is part of the gate: without its table the program stops here,
+    // before the build, unless --skip-v6 on says to leave it out.
+    if (!heads_up && !options.skip_v6) {
+      throw std::runtime_error("V6 needs the heads-up table preflop_all_in_v1.bin in "
+                               "--resources-dir (" +
+                               heads_up_missing + "); --skip-v6 on leaves V6 out");
+    }
+    if (options.skip_v6) {
+      std::cerr << "warning: V6 (heads-up consistency) skipped by --skip-v6 on\n";
     }
     report["rank_table"] = ranks ? "loaded" : "built";
     if (!ranks) {
@@ -352,16 +386,23 @@ int main(const int argc, char **argv) {
       }
       ranks.emplace(std::move(built.value()));
     }
-    report["heads_up_table"] = heads_up ? heads_up->fingerprint() : std::string{"absent"};
+    report["heads_up_table"] =
+        heads_up ? heads_up->fingerprint() : std::string{"skipped (--skip-v6 on)"};
 
     // Build or load.
     std::optional<ca::ThreeWayTable> table;
     if (!options.input.empty()) {
       auto phase = Clock::now();
-      auto loaded = ca::ThreeWayTable::load(options.input);
+      auto loaded = ca::ThreeWayTable::load(options.input, options.allow_partial
+                                                               ? ca::ThreeWayLoad::AllowPartial
+                                                               : ca::ThreeWayLoad::CompleteOnly);
       if (!loaded) {
-        throw std::runtime_error(std::string{"cannot load "} + options.input.string() + ": " +
-                                 ca::resource_error_name(loaded.error()));
+        throw std::runtime_error(
+            std::string{"cannot load "} + options.input.string() + ": " +
+            ca::resource_error_name(loaded.error()) +
+            (!options.allow_partial && loaded.error() == ca::ResourceError::InvalidInput
+                 ? " (an incomplete table, a subset build, needs --allow-partial on)"
+                 : ""));
       }
       table.emplace(std::move(loaded.value()));
       report["load_seconds"] = seconds_since(phase);
@@ -432,11 +473,14 @@ int main(const int argc, char **argv) {
       const auto saved = table->save(options.output);
       bool verified = false;
       if (saved) {
-        const auto reloaded = ca::ThreeWayTable::load(options.output);
+        const auto reloaded = ca::ThreeWayTable::load(
+            options.output, table->complete() ? ca::ThreeWayLoad::CompleteOnly
+                                              : ca::ThreeWayLoad::AllowPartial);
         verified = reloaded && reloaded.value() == table.value();
       }
       report["output"] = Json{
           {"path", options.output.generic_string()},
+          {"saved", saved ? "yes" : ca::resource_error_name(saved.error())},
           {"file_bytes", saved ? std::filesystem::file_size(options.output) : std::uintmax_t{0}},
           {"reload_verified", verified},
           {"seconds", seconds_since(phase)}};
@@ -460,6 +504,8 @@ int main(const int argc, char **argv) {
       identity_report["max_folded_equity_shift"] = identities.max_folded_equity_shift;
       identity_report["max_folded_equity_shift_at"] = Json::array(
           {gtosd::class_name(where[0]), gtosd::class_name(where[1]), gtosd::class_name(where[2])});
+    } else {
+      identity_report["v6_heads_up"]["skipped"] = "--skip-v6 on";
     }
     report["identities"] = identity_report;
     ok = ok && identities.passed();

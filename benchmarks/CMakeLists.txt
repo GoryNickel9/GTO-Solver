@@ -354,9 +354,32 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
       --hero-classes AA,AKs,AKo --threads 2 --invariance AA --brute-force 2)
   set_tests_properties(gtosd_preflop_blueprint_three_way_table_smoke
     PROPERTIES LABELS "preflop_blueprint;three_way;resources")
+  # Refusals, both before any build: a subset under the name of the complete
+  # table, and a gate run without the heads-up table of V6 (no --skip-v6 on).
+  add_test(NAME gtosd_preflop_blueprint_three_way_table_subset_name_refused
+    COMMAND gtosd_preflop_blueprint_three_way_table
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --hero-classes AA --threads 1
+      --output ${CMAKE_CURRENT_BINARY_DIR}/three_way_subset_refused/preflop_three_way_v1.bin)
+  set_tests_properties(gtosd_preflop_blueprint_three_way_table_subset_name_refused
+    PROPERTIES LABELS "preflop_blueprint;three_way"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_THREE_WAY_TABLE=FAIL a subset build \\(--hero-classes\\) is not saved as preflop_three_way_v1.bin")
+  add_test(NAME gtosd_preflop_blueprint_three_way_table_v6_required
+    COMMAND gtosd_preflop_blueprint_three_way_table
+      --resources-dir ${CMAKE_CURRENT_BINARY_DIR}/three_way_no_resources
+      --hero-classes AA --threads 1)
+  set_tests_properties(gtosd_preflop_blueprint_three_way_table_v6_required
+    PROPERTIES LABELS "preflop_blueprint;three_way"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_THREE_WAY_TABLE=FAIL V6 needs the heads-up table preflop_all_in_v1.bin")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-    set_tests_properties(gtosd_preflop_blueprint_three_way_table_smoke PROPERTIES
-      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    foreach(three_way_test IN ITEMS gtosd_preflop_blueprint_three_way_table_smoke
+                                    gtosd_preflop_blueprint_three_way_table_subset_name_refused
+                                    gtosd_preflop_blueprint_three_way_table_v6_required)
+      set_tests_properties(${three_way_test} PROPERTIES
+        ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+    endforeach()
   endif()
 endif()
 

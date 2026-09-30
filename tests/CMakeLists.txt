@@ -520,8 +520,9 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_executable(gtosd_card_abstraction_three_way_tests card_abstraction_three_way_tests.cpp)
   target_link_libraries(gtosd_card_abstraction_three_way_tests PRIVATE gtosd::card_abstraction)
   gtosd_set_warnings(gtosd_card_abstraction_three_way_tests)
-  # The rank table is rebuilt when the P2 resources are absent; the heads-up
-  # consistency check (V6) runs only with preflop_all_in_v1.bin present.
+  # The rank and heads-up tables are built when the P2 resources lack them, so
+  # V6 always runs; when the resources hold the complete table
+  # (preflop_three_way_v1.bin) it is loaded and its rows compared with the subset.
   add_test(NAME gtosd_card_abstraction_three_way_tests
     COMMAND gtosd_card_abstraction_three_way_tests
       --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
