@@ -1,0 +1,73 @@
+#!/bin/bash
+# Correctness runs of the HU50 step-2 path (design of 30 September 2026): train
+# a small game of this directory with the literal HU50 command line (board
+# class rows, a texture map, DCFR alternating, 32 boards, lazy discount,
+# policy snapshots) in resumed segments ending at the given iteration targets,
+# and evaluate every snapshot with the exact physical best response
+# (tools/monker_compare/convergence_curve.py -> gtosd_preflop_blueprint_monker_values
+# --all-flops). The NashConv curve is <run>/convergence.txt (and .json).
+#
+# Usage (from anywhere; paths relative to the repository root):
+#   run_correctness.sh <run dir> <config> <bucket dir> <texture map> <threads> <target>...
+# e.g. run_correctness.sh out/monker/correctness/V0 benchmarks/monker/correctness/HU6_V0_flop.json \
+#        out/monker/buckets_flopexact_15x4 benchmarks/monker/textures/identity_texture_map.txt \
+#        2 250 500 1000 2000 4000 8000 16000 32000 64000
+# Environment: BIN (executables, default out/monker/bin_correct/c123: run a
+# frozen copy, never the build tree), RES (out/preflop_blueprint_resources),
+# EVAL_THREADS (evaluation threads, default <threads>), PARTITION (4: with the
+# HU50 value 64 these small trees are one work unit and skip the top/unit
+# reduction path of HU50), KEEP_POLICIES=1 keeps every snapshot's policy.bin
+# (default: deleted once its evaluation is cached in values.json).
+# A file <run dir>/CANCEL stops the run before the next segment. Run a frozen
+# copy of this script (out/frozen/run_correctness.sh) for long runs.
+set -u
+# The repository root, also from a frozen copy under out/frozen.
+cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)" || exit 1
+if [ $# -lt 6 ]; then
+  echo "usage: $0 <run dir> <config> <bucket dir> <texture map> <threads> <target>..." >&2
+  exit 2
+fi
+RUN="$1"
+CFG="$2"
+BUCKETS="$3"
+MAP="$4"
+THREADS="$5"
+shift 5
+BIN="${BIN:-out/monker/bin_correct/c123}"
+RES="${RES:-out/preflop_blueprint_resources}"
+EVAL_THREADS="${EVAL_THREADS:-$THREADS}"
+PARTITION="${PARTITION:-4}"
+mkdir -p "$RUN/charts"
+echo "$(date '+%Y-%m-%d %H:%M:%S') correctness start: config $CFG buckets $BUCKETS map $MAP" \
+  "threads $THREADS eval $EVAL_THREADS partition $PARTITION bin $BIN targets $*" >> "$RUN/run.log"
+for N in "$@"; do
+  if [ -f "$RUN/CANCEL" ]; then
+    echo "$(date '+%H:%M:%S') cancelled before $N" >> "$RUN/run.log"
+    exit 3
+  fi
+  resume=""
+  [ -f "$RUN/state.ckpt" ] && resume="--resume"
+  started=$(date +%s)
+  "$BIN/gtosd_preflop_blueprint_train.exe" --config "$CFG" --resources-dir "$RES" \
+    --buckets-dir "$BUCKETS" --board-class-rows --board-texture-map "$MAP" --threads "$THREADS" \
+    --table-storage double --eval-every 0 --batch 32 --partition-target "$PARTITION" \
+    --scheme dcfr --update alternating --batch-policy-refresh --lazy-discount \
+    --progress-every 1000 --iterations "$N" --checkpoint "$RUN/state.ckpt" --chart-every "$N" \
+    --chart-dir "$RUN/charts" --policy-snapshots $resume \
+    >> "$RUN/train.jsonl" 2>> "$RUN/train.stderr.log"
+  rc=$?
+  echo "$(date '+%H:%M:%S') segment $N rc $rc ($(( $(date +%s) - started )) s)" >> "$RUN/run.log"
+  [ $rc -ne 0 ] && exit 1
+  started=$(date +%s)
+  BIN="$BIN" RES="$RES" python tools/monker_compare/convergence_curve.py "$RUN" --config "$CFG" \
+    --buckets "$BUCKETS" --texture-map "$MAP" --threads "$EVAL_THREADS" \
+    >> "$RUN/curve.log" 2>&1
+  rc=$?
+  echo "$(date '+%H:%M:%S') evaluation $N rc $rc ($(( $(date +%s) - started )) s)" >> "$RUN/run.log"
+  [ $rc -ne 0 ] && exit 1
+  snap="$RUN/charts/it_$N"
+  if [ "${KEEP_POLICIES:-0}" != "1" ] && [ -f "$snap/values.json" ]; then
+    rm -f "$snap/policy.bin"
+  fi
+done
+echo "$(date '+%H:%M:%S') done" >> "$RUN/run.log"
