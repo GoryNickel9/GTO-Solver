@@ -707,6 +707,8 @@ def load_tree(args, name: str, config: Path, work: Path) -> tuple[Tree, dict]:
     elif args.tree != "referee" and args.game_exe is not None and args.game_exe.exists():
         dump = work / f"{name}.nodes.jsonl"
         work.mkdir(parents=True, exist_ok=True)
+        if dump.exists():
+            dump.unlink()  # never a stale dump from an earlier run
         completed = subprocess.run([str(args.game_exe), "--config", str(config), "--dump-nodes", str(dump)],
                                    capture_output=True, text=True, check=False)
         if completed.returncode != 0:
