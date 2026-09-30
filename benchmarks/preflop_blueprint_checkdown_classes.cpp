@@ -12,19 +12,37 @@
 // --reference checks the equivalence against the combo-level program's output
 // for the same configuration and iterations: every chart row within
 // --chart-tolerance, the EVs, the best-response gains and the expected rake
-// within --ev-tolerance antes. The 3-way terminals (three-player class table,
-// folded cards dead or ignored) are phase 2b part 2.
+// within --ev-tolerance antes. With 3 seats the terminal tensors come from the
+// complete three-player class table (preflop_three_way_v1.bin), with the
+// folded hand's cards dead at a 2-way showdown after a fold (--folded-cards
+// dead, MonkerSolver's convention) or ignored (--folded-cards ignore: the
+// heads-up table weighted by the folded hand's disjoint combos); the 3-way
+// step-1 runs use the 3WAY50_donk(_rake) configurations, whose postflop
+// settings the checkdown tree never reads. --threads spreads the terminal
+// contractions of every traversal (values independent of the thread count).
 //
 // With 3 players CFR has no Nash guarantee: the quality measure is each seat's
 // exact best-response gain against the others' average strategies, in antes
-// and in % of the initial pot. With rake the game is not zero-sum: the sum of
-// the EVs is minus the expected rake, checked against the rake of every
-// terminal weighted by its reach (the check holds without rake too, where
-// both are zero).
+// and in % of the initial pot, with the local gain of every chart node (the
+// actor's gain from its best action there alone). With rake the game is not
+// zero-sum: the sum of the EVs is minus the expected rake, checked against the
+// rake of every terminal weighted by its reach (the check holds without rake
+// too, where both are zero).
+//
+// --lock-charts <folder> [--lock-nodes all|<chart>,<chart>,...] fixes the rows
+// of the chosen chart nodes to the folder's charts (monker_chart_lock.hpp, any
+// number of seats); the other nodes train. An all-zero chart row of a class
+// that reaches the node under the charts (a reach rounded away by the three
+// decimals) stays unlocked and is reported. With every node locked and
+// --iterations 0 the run evaluates the chart set alone: every seat's EV and
+// best-response gain inside the checkdown game (how exploitable MonkerSolver's
+// preflop is there), unlocked rows uniform.
 #include "checkdown_classes.hpp"
 #include "monker_chart_format.hpp"
+#include "monker_chart_lock.hpp"
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
+#include "gtosd/card_abstraction/three_way_table.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
 #include "gtosd/preflop_blueprint/game_model.hpp"
@@ -41,6 +59,7 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -97,6 +116,33 @@ std::string join(const std::vector<double> &values) {
   }
   return text.str();
 }
+
+std::vector<std::string> split_list(const std::string_view text) {
+  std::vector<std::string> items;
+  std::size_t start = 0U;
+  while (start <= text.size()) {
+    const auto comma = text.find(',', start);
+    const auto item = text.substr(start, comma == std::string_view::npos ? std::string_view::npos
+                                                                         : comma - start);
+    if (!item.empty()) {
+      items.emplace_back(item);
+    }
+    if (comma == std::string_view::npos) {
+      break;
+    }
+    start = comma + 1U;
+  }
+  return items;
+}
+
+// A preflop decision node's chart, actor, own reach under the average profile
+// (combos) and local gain.
+struct NodeReport {
+  std::string chart;
+  std::uint8_t seat{0U};
+  double reach_combos{0.0};
+  double local_gain{0.0};
+};
 
 // Largest differences between this run and the combo-level program's output.
 struct Equivalence {
@@ -196,6 +242,10 @@ int run(const int argc, char **argv) {
   double gamma = 2.0;
   double ev_tolerance = 1e-6;
   double chart_tolerance = 1e-3;
+  unsigned threads = 1U;
+  std::optional<ca::FoldedCards> folded_cards;
+  std::filesystem::path lock_dir;
+  std::vector<std::string> lock_nodes{"all"};
   for (int index = 1; index < argc; ++index) {
     const std::string_view name(argv[index]);
     if (index + 1 >= argc) {
@@ -224,6 +274,24 @@ int run(const int argc, char **argv) {
       ev_tolerance = parse_double(value);
     } else if (name == "--chart-tolerance") {
       chart_tolerance = parse_double(value);
+    } else if (name == "--threads") {
+      const auto parsed = parse_unsigned(value);
+      if (parsed == 0U || parsed > 256U) {
+        throw std::runtime_error("--threads takes 1 to 256");
+      }
+      threads = static_cast<unsigned>(parsed);
+    } else if (name == "--folded-cards") {
+      if (value == "dead") {
+        folded_cards = ca::FoldedCards::Dead;
+      } else if (value == "ignore") {
+        folded_cards = ca::FoldedCards::Ignored;
+      } else {
+        throw std::runtime_error("--folded-cards takes dead or ignore");
+      }
+    } else if (name == "--lock-charts") {
+      lock_dir = value;
+    } else if (name == "--lock-nodes") {
+      lock_nodes = split_list(value);
     } else {
       throw std::runtime_error("unknown argument " + std::string(name));
     }
@@ -231,8 +299,8 @@ int run(const int argc, char **argv) {
   if (config_path.empty() || resources_dir.empty() || output_dir.empty()) {
     throw std::runtime_error("--config, --resources-dir and --output-dir are required");
   }
-  if (iterations == 0U) {
-    throw std::runtime_error("--iterations must be positive");
+  if (iterations == 0U && lock_dir.empty()) {
+    throw std::runtime_error("--iterations must be positive (0 only evaluates --lock-charts)");
   }
   const auto started = Clock::now();
   const auto config = pb::parse_game_config_json(read_file(config_path));
@@ -256,20 +324,49 @@ int run(const int argc, char **argv) {
     throw std::runtime_error("the checkdown tree still has postflop entries");
   }
   cc::check_terminal_rake(game);
-  if (seats != 2U) {
-    throw std::runtime_error(
-        "3-player terminal tensors are not built yet (phase 2b part 2, three-player class table)");
+  if (seats == 2U && folded_cards) {
+    throw std::runtime_error("--folded-cards needs a 3-player game");
+  }
+  if (seats == 3U && !reference_dir.empty()) {
+    throw std::runtime_error("--reference needs a 2-player game (the combo-level program)");
   }
   auto table = ca::AllInTable::load(resources_dir / "preflop_all_in_v1.bin");
   if (!table) {
     throw std::runtime_error("cannot load preflop_all_in_v1.bin");
   }
-  const auto terminals = cc::heads_up_terminals(game, table.value());
   const std::string terminal_source = "preflop_all_in_v1.bin";
   const std::string terminal_fingerprint = table.value().fingerprint();
+  const auto convention = folded_cards.value_or(ca::FoldedCards::Dead);
+  // With 3 seats: the three-player table's fingerprint, the tensors built.
+  std::string three_way_fingerprint;
+  const auto terminals = [&] {
+    if (seats == 2U) {
+      return cc::heads_up_terminals(game, table.value());
+    }
+    const auto three_way =
+        ca::ThreeWayTable::load(resources_dir / std::string(ca::three_way_table_file_name));
+    if (!three_way) {
+      throw std::runtime_error("cannot load the complete " +
+                               std::string(ca::three_way_table_file_name));
+    }
+    three_way_fingerprint = three_way.value().fingerprint();
+    return cc::three_way_terminals(game, three_way.value(), table.value(), convention);
+  }();
   const double load_seconds = seconds_since(started);
 
-  cc::ClassSolver solver(game, terminals, alpha, beta, gamma);
+  cc::ClassSolver solver(game, terminals, alpha, beta, gamma, threads);
+  std::optional<mc::ChartLock> lock;
+  if (!lock_dir.empty()) {
+    lock = mc::chart_lock_seats(game, lock_dir, lock_nodes, true);
+    for (const auto &row : lock->lock.rows) {
+      solver.lock_row(row.node, row.hand_class, row.frequencies);
+    }
+    std::cout << "lock: " << lock->files.size() << " charts from " << lock_dir.generic_string()
+              << ", " << lock->chart_rows << " chart rows, " << lock->outside_range_rows
+              << " rows outside the range and " << lock->fallback_rows
+              << " zero rows reached under the charts (" << lock->fallback_reach_combos
+              << " combos) left unlocked\n";
+  }
   const double initial_pot =
       static_cast<double>(config.value().ante.units() *
                               static_cast<std::int64_t>(config.value().player_count) +
@@ -283,24 +380,30 @@ int run(const int argc, char **argv) {
   const auto largest = [](const std::vector<double> &values) {
     return *std::max_element(values.begin(), values.end());
   };
+  const auto report = [&](const std::uint64_t iteration) {
+    for (std::size_t seat = 0; seat < seats; ++seat) {
+      const auto hero = static_cast<std::uint8_t>(seat);
+      ev[seat] = solver.value(hero, cc::Mode::Average);
+      gain[seat] = solver.value(hero, cc::Mode::BestResponse) - ev[seat];
+    }
+    const double seconds = seconds_since(started);
+    std::cerr << "iteration " << iteration << " gain " << join(gain) << " a ("
+              << 100.0 * largest(gain) / initial_pot << " % of the pot) ev " << join(ev)
+              << " seconds " << seconds << '\n';
+    trajectory << (first_report ? "    " : ",\n    ") << "{\"iteration\": " << iteration
+               << ", \"gain\": [" << join(gain) << "], \"seconds\": " << seconds << "}";
+    first_report = false;
+  };
   for (std::uint64_t iteration = 1; iteration <= iterations; ++iteration) {
     const auto iteration_started = Clock::now();
     solver.iterate(iteration);
     iteration_seconds += seconds_since(iteration_started);
     if (iteration % report_every == 0U || iteration == iterations) {
-      for (std::size_t seat = 0; seat < seats; ++seat) {
-        const auto hero = static_cast<std::uint8_t>(seat);
-        ev[seat] = solver.value(hero, cc::Mode::Average);
-        gain[seat] = solver.value(hero, cc::Mode::BestResponse) - ev[seat];
-      }
-      const double seconds = seconds_since(started);
-      std::cerr << "iteration " << iteration << " gain " << join(gain) << " a ("
-                << 100.0 * largest(gain) / initial_pot << " % of the pot) ev " << join(ev)
-                << " seconds " << seconds << '\n';
-      trajectory << (first_report ? "    " : ",\n    ") << "{\"iteration\": " << iteration
-                 << ", \"gain\": [" << join(gain) << "], \"seconds\": " << seconds << "}";
-      first_report = false;
+      report(iteration);
     }
+  }
+  if (iterations == 0U) {
+    report(0U);
   }
   // Minus the sum of the EVs is the expected rake per hand (zero without
   // rake); the traversal is exact, so it equals the rake by reach.
@@ -308,7 +411,8 @@ int run(const int argc, char **argv) {
   for (const auto value : ev) {
     ev_sum += value;
   }
-  const double direct_rake = cc::expected_rake_by_reach(game, terminals, solver.own_reach());
+  const auto own_reach = solver.own_reach();
+  const double direct_rake = cc::expected_rake_by_reach(game, terminals, own_reach);
   if (std::abs(direct_rake + ev_sum) > 1e-9) {
     throw std::runtime_error("the expected rake by reach differs from minus the sum of the EVs");
   }
@@ -318,6 +422,26 @@ int run(const int argc, char **argv) {
   for (std::size_t seat = 0; seat < seats; ++seat) {
     gain_percent[seat] = 100.0 * gain[seat] / initial_pot;
   }
+  // Every chart node with its actor's own reach and local gain (from the
+  // last report's average traversals), largest gain first.
+  const auto masses = cc::class_masses();
+  std::vector<NodeReport> node_reports;
+  for (const auto &chart : mc::chart_nodes(game)) {
+    NodeReport entry;
+    entry.chart = chart.relative;
+    entry.seat = game.nodes()[chart.node].actor;
+    for (std::size_t hand_class = 0; hand_class < cc::class_count; ++hand_class) {
+      entry.reach_combos += masses[hand_class] * own_reach[chart.node][entry.seat][hand_class];
+    }
+    entry.local_gain = solver.local_gain(chart.node);
+    node_reports.push_back(std::move(entry));
+  }
+  std::stable_sort(node_reports.begin(), node_reports.end(),
+                   [](const NodeReport &left, const NodeReport &right) {
+                     return left.local_gain > right.local_gain;
+                   });
+  const double seconds_per_iteration =
+      iterations == 0U ? 0.0 : iteration_seconds / static_cast<double>(iterations);
   const std::vector<double> dcfr{alpha, beta, gamma};
   const bool compared = !reference_dir.empty();
   Equivalence equivalence;
@@ -335,9 +459,18 @@ int run(const int argc, char **argv) {
           << "  \"schema\": \"gtosd.preflop_blueprint_checkdown_classes.v1\",\n"
           << "  \"config_id\": \"" << config.value().id << "\",\n"
           << "  \"tree_fingerprint\": \"" << game.fingerprint() << "\",\n"
-          << "  \"seats\": " << seats << ",\n"
-          << "  \"terminal_source\": {\"file\": \"" << terminal_source << "\", \"fingerprint\": \""
-          << terminal_fingerprint << "\"},\n"
+          << "  \"seats\": " << seats << ",\n";
+  if (seats == 2U) {
+    summary << "  \"terminal_source\": {\"file\": \"" << terminal_source
+            << "\", \"fingerprint\": \"" << terminal_fingerprint << "\"},\n";
+  } else {
+    summary << "  \"terminal_source\": {\"file\": \"" << ca::three_way_table_file_name
+            << "\", \"fingerprint\": \"" << three_way_fingerprint << "\", \"heads_up_file\": \""
+            << terminal_source << "\", \"heads_up_fingerprint\": \"" << terminal_fingerprint
+            << "\", \"folded_cards\": \""
+            << (convention == ca::FoldedCards::Dead ? "dead" : "ignore") << "\"},\n";
+  }
+  summary << "  \"threads\": " << threads << ",\n"
           << "  \"nodes\": " << game.nodes().size() << ",\n"
           << "  \"terminals\": {\"folds\": " << terminals.fold_terminals
           << ", \"showdowns\": " << terminals.showdown_terminals
@@ -362,9 +495,25 @@ int run(const int argc, char **argv) {
           << "  \"seconds\": " << seconds << ",\n"
           << "  \"load_seconds\": " << load_seconds << ",\n"
           << "  \"iteration_seconds\": " << iteration_seconds << ",\n"
-          << "  \"seconds_per_iteration\": " << iteration_seconds / static_cast<double>(iterations)
-          << ",\n"
+          << "  \"seconds_per_iteration\": " << seconds_per_iteration << ",\n"
           << "  \"charts\": " << written.size() << ",\n";
+  if (lock) {
+    summary << "  \"lock\": {\"charts_dir\": " << Json(lock_dir.generic_string()).dump()
+            << ", \"files\": " << lock->files.size() << ", \"chart_rows\": " << lock->chart_rows
+            << ", \"outside_range_rows\": " << lock->outside_range_rows
+            << ", \"fallback_rows\": " << lock->fallback_rows
+            << ", \"fallback_reach_combos\": " << lock->fallback_reach_combos << "},\n";
+  }
+  summary << "  \"chart_nodes\": [\n";
+  for (std::size_t index = 0; index < node_reports.size(); ++index) {
+    const auto &entry = node_reports[index];
+    summary << "    {\"chart\": " << Json(entry.chart).dump()
+            << ", \"seat\": " << static_cast<unsigned>(entry.seat)
+            << ", \"own_reach_combos\": " << entry.reach_combos
+            << ", \"local_gain_antes\": " << entry.local_gain << "}"
+            << (index + 1U < node_reports.size() ? ",\n" : "\n");
+  }
+  summary << "  ],\n";
   if (compared) {
     summary << "  \"equivalence\": {\"reference\": " << Json(reference_dir.generic_string()).dump()
             << ", \"files\": " << equivalence.files << ", \"rows\": " << equivalence.rows
@@ -386,7 +535,13 @@ int run(const int argc, char **argv) {
   std::cout << std::setprecision(12) << "EV [" << join(ev) << "] antes, expected rake -(sum EV) "
             << -ev_sum << ", by reach " << direct_rake << " antes\n"
             << "gain [" << join(gain) << "] antes, [" << join(gain_percent) << "] % of the pot; "
-            << iteration_seconds / static_cast<double>(iterations) << " s per iteration\n";
+            << seconds_per_iteration << " s per iteration\n";
+  std::cout << "largest local gains:";
+  for (std::size_t index = 0; index < std::min<std::size_t>(5U, node_reports.size()); ++index) {
+    std::cout << (index == 0U ? " " : "; ") << node_reports[index].chart << ' '
+              << node_reports[index].local_gain << " a";
+  }
+  std::cout << '\n';
   if (compared) {
     std::cout << "equivalence: " << equivalence.files << " charts, " << equivalence.rows
               << " rows, largest chart difference " << equivalence.chart << " ("

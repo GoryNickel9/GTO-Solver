@@ -32,15 +32,22 @@ struct ChartLock {
   std::vector<std::string> files;
   std::uint32_t chart_rows{0U};
   std::uint32_t outside_range_rows{0U};
+  // With allow_fallback: all-zero rows of classes that do reach the node
+  // under the charts, left unlocked, and the combos that reach them.
+  std::uint32_t fallback_rows{0U};
+  double fallback_reach_combos{0.0};
 };
 
-// `files` are relative chart paths ("CO/CO_strategy.txt") or "all".
-inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
-                            const std::filesystem::path &directory,
-                            const std::vector<std::string> &files) {
-  if (game.config().player_count != 2U) {
-    throw std::runtime_error("the preflop chart lock is heads-up only");
-  }
+// `files` are relative chart paths ("CO/CO_strategy.txt") or "all". Any
+// number of seats: the rows of every seat follow from its own charts (the
+// class-level checkdown solver locks 3-way charts with it). With
+// allow_fallback an all-zero row that the class reaches under the charts is
+// left unlocked and counted instead of refusing the lock (a chart printed
+// with three decimals can round a small reach to a zero row).
+inline ChartLock chart_lock_seats(const preflop_blueprint::CompiledGame &game,
+                                  const std::filesystem::path &directory,
+                                  const std::vector<std::string> &files,
+                                  const bool allow_fallback = false) {
   const auto nodes = chart_nodes(game);
   std::map<std::string, std::size_t> chart_of_name;
   for (std::size_t index = 0; index < nodes.size(); ++index) {
@@ -79,7 +86,7 @@ inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
   for (const auto &[hand_class, label] : classes.label_by_class) {
     labels.at(hand_class) = label;
   }
-  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
+  for (std::uint8_t hero = 0; hero < game.config().player_count; ++hero) {
     std::vector<std::uint32_t> hero_nodes;
     std::vector<std::size_t> chart_index;
     for (std::size_t index = 0; index < nodes.size(); ++index) {
@@ -131,6 +138,12 @@ inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
           ++result.outside_range_rows;
           break;
         case RowSource::Fallback:
+          if (allow_fallback) {
+            ++result.fallback_rows;
+            result.fallback_reach_combos +=
+                class_combos()[hand_class] * strategy.reach[slot][hand_class];
+            break;
+          }
           throw std::runtime_error("chart " + nodes[index].relative + " has no row for " +
                                    labels[hand_class] +
                                    ", which can reach the node: lock the earlier nodes of " +
@@ -140,6 +153,16 @@ inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
     }
   }
   return result;
+}
+
+// The trainer's lock (TrainerResources::preflop_lock): heads-up only.
+inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
+                            const std::filesystem::path &directory,
+                            const std::vector<std::string> &files) {
+  if (game.config().player_count != 2U) {
+    throw std::runtime_error("the preflop chart lock is heads-up only");
+  }
+  return chart_lock_seats(game, directory, files);
 }
 
 } // namespace gtosd::monker_charts
