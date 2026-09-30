@@ -859,7 +859,21 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         --iterations 50 --report-every 25)
     set_tests_properties(gtosd_preflop_blueprint_checkdown_${variant}_smoke
       PROPERTIES LABELS "preflop_blueprint;research;monker"
-                 PASS_REGULAR_EXPRESSION "${checkdown_pass}")
+                 PASS_REGULAR_EXPRESSION "${checkdown_pass}"
+                 FIXTURES_SETUP preflop_blueprint_checkdown_${variant}_charts)
+    # The checkdown charts are named by chart_nodes: the Monker tree check
+    # finds exactly one file per preflop decision node with its columns, and
+    # the manifest written from them reads back.
+    add_test(NAME gtosd_preflop_blueprint_monker_tree_checkdown_${variant}_charts
+      COMMAND gtosd_preflop_blueprint_monker_tree
+        --config ${checkdown_config}
+        --charts ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_${variant}_smoke/charts
+        --write-manifest
+          ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_${variant}_manifest.tsv)
+    set_tests_properties(gtosd_preflop_blueprint_monker_tree_checkdown_${variant}_charts
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 FIXTURES_REQUIRED preflop_blueprint_checkdown_${variant}_charts
+                 PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=PASS")
   endforeach()
   # Per-board bucket tables with an exact flop (one id per suit orbit), the
   # 15x4 turn and the 15-level river, checked by

@@ -5,11 +5,15 @@
 // Heads-up only. Vector DCFR over the 630 combos with full traversals and
 // alternating updates, exact best response of the average profile, and charts
 // in the MonkerSolver text format: one file per decision node, one row per
-// hand class, the frequency of every action. A configuration with rake
+// hand class, the frequency of every action, named and ordered by chart_nodes
+// (monker_chart_format.hpp) like every other chart writer, so a multiway tree
+// gets MonkerSolver's fold rule. A configuration with rake
 // settles the checkdown leaves and the preflop all-ins with the rake (the
 // flop is dealt), and the preflop folds without it under no flop, no drop;
 // the summary then reports both EVs and the expected rake, -(EV0 + EV1),
 // checked against the rake of every terminal weighted by its reach.
+#include "monker_chart_format.hpp"
+
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
@@ -28,6 +32,7 @@
 #include <iostream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -38,6 +43,7 @@
 namespace {
 
 namespace ca = gtosd::card_abstraction;
+namespace mc = gtosd::monker_charts;
 namespace pb = gtosd::preflop_blueprint;
 
 constexpr std::size_t hands = ca::combo_count;
@@ -72,27 +78,6 @@ double parse_double(const std::string_view text) {
     throw std::runtime_error("invalid number " + std::string(text));
   }
   return value;
-}
-
-// Hand class label of a combo: "AA", "AKs", "AKo" (short deck ranks 6..A).
-std::string class_label(const std::array<std::uint8_t, 2> &cards) {
-  static constexpr std::string_view rank_chars = "6789TJQKA";
-  const auto first_rank = static_cast<std::size_t>(cards[0] / 4U);
-  const auto second_rank = static_cast<std::size_t>(cards[1] / 4U);
-  const auto high = std::max(first_rank, second_rank);
-  const auto low = std::min(first_rank, second_rank);
-  std::string label{rank_chars[high], rank_chars[low]};
-  if (high != low) {
-    label += (cards[0] % 4U) == (cards[1] % 4U) ? 's' : 'o';
-  }
-  return label;
-}
-
-std::string format_antes(const std::int64_t units) {
-  std::ostringstream text;
-  text << std::fixed << std::setprecision(1) << static_cast<double>(units) / units_per_ante
-       << "ante";
-  return text.str();
 }
 
 enum class Mode : std::uint8_t { Update, Average, BestResponse };
@@ -336,130 +321,43 @@ private:
   std::vector<double> strategy_sum_;
 };
 
-std::string action_token(const pb::CompiledGame &game, const std::uint8_t actor,
-                         const pb::CompiledEdge &edge) {
-  switch (edge.action.type) {
-  case gtosd::ActionType::Fold:
-    return "Fold";
-  case gtosd::ActionType::Check:
-    return "Check";
-  case gtosd::ActionType::Call:
-    return "Call";
-  case gtosd::ActionType::AllIn:
-    return "AllIn";
-  case gtosd::ActionType::Bet:
-  case gtosd::ActionType::Raise:
-    return format_antes(game.states()[edge.child].committed_this_street[actor].units());
-  }
-  return "Unknown";
-}
-
-// MonkerSolver column order: all-in, raise sizes in increasing order, call,
-// check, fold.
-int column_rank(const std::string &token) {
-  if (token == "AllIn") {
-    return 0;
-  }
-  if (token == "Call") {
-    return 2;
-  }
-  if (token == "Check") {
-    return 3;
-  }
-  if (token == "Fold") {
-    return 4;
-  }
-  return 1;
-}
-
-struct ChartSummary {
-  std::string file;
-};
-
-void write_charts(const pb::CompiledGame &game, const CheckdownSolver &solver,
-                  const std::filesystem::path &directory, std::vector<ChartSummary> &written) {
-  const auto &config = game.config();
-  const auto &combos = ca::combo_table();
-  std::vector<std::string> labels(hands);
-  std::map<std::string, std::vector<std::size_t>> classes;
-  for (std::size_t hand = 0; hand < hands; ++hand) {
-    labels[hand] = class_label(combos.cards[hand]);
-    classes[labels[hand]].push_back(hand);
+// One chart per preflop decision node through mc::write_charts, which names
+// the files and orders the columns by chart_nodes. The row of a hand class is
+// the average strategy of its combos weighted by their own reach.
+std::vector<std::string> write_charts(const pb::CompiledGame &game, const CheckdownSolver &solver,
+                                      const std::filesystem::path &directory) {
+  const auto classes = mc::hand_classes();
+  std::vector<std::string> labels;
+  for (const auto &entry : classes.combos_by_label) {
+    labels.push_back(entry.first);
   }
   const auto reach = solver.own_reach();
-  // Depth-first walk that carries the MonkerSolver line prefix.
-  std::vector<std::pair<std::uint32_t, std::string>> stack{{game.root(), std::string{}}};
-  while (!stack.empty()) {
-    const auto [node_id, prefix] = stack.back();
-    stack.pop_back();
-    const auto &node = game.nodes()[node_id];
-    if (node.kind != pb::NodeKind::Decision) {
-      continue;
+  const mc::ClassStrategy strategy =
+      [&](const std::uint32_t node_id,
+          const std::string &label) -> std::optional<std::vector<double>> {
+    const auto &members = classes.combos_by_label.at(label);
+    const auto &own = reach[node_id][game.nodes()[node_id].actor];
+    double weight = 0.0;
+    for (const auto hand : members) {
+      weight += own[hand];
     }
-    const auto &position = config.positions.at(node.actor);
-    const auto edges = game.edges_of(node_id);
-    std::vector<std::string> tokens;
-    for (const auto &edge : edges) {
-      tokens.push_back(action_token(game, node.actor, edge));
-      stack.emplace_back(edge.child, prefix + position + "_" + tokens.back() + "_");
+    // Like MonkerSolver, a class outside the acting range at this node is
+    // written as an all-zero row. DCFR averaging from a uniform start never
+    // gives an exactly zero reach, hence the threshold on the mean reach.
+    if (weight / static_cast<double>(members.size()) < out_of_range_reach) {
+      return std::nullopt;
     }
-    std::vector<std::size_t> order(tokens.size());
-    for (std::size_t index = 0; index < order.size(); ++index) {
-      order[index] = index;
-    }
-    std::stable_sort(order.begin(), order.end(), [&](const std::size_t left, const std::size_t right) {
-      const auto left_rank = column_rank(tokens[left]);
-      const auto right_rank = column_rank(tokens[right]);
-      if (left_rank != right_rank) {
-        return left_rank < right_rank;
+    std::vector<double> frequency(game.edges_of(node_id).size(), 0.0);
+    for (const auto hand : members) {
+      const auto average = solver.average_strategy(node_id, hand);
+      const double share = own[hand] / weight;
+      for (std::size_t action = 0; action < average.size(); ++action) {
+        frequency[action] += share * average[action];
       }
-      return game.states()[edges[left].child].committed_this_street[node.actor].units() <
-             game.states()[edges[right].child].committed_this_street[node.actor].units();
-    });
-    const auto folder = directory / position;
-    std::filesystem::create_directories(folder);
-    const auto name = prefix + position + "_strategy.txt";
-    std::ofstream output(folder / name, std::ios::binary);
-    if (!output) {
-      throw std::runtime_error("cannot write " + (folder / name).string());
     }
-    output << "Combination";
-    for (const auto index : order) {
-      output << '\t' << tokens[index];
-    }
-    output << "\tTotal\n" << std::fixed << std::setprecision(3);
-    const auto &own = reach[node_id][node.actor];
-    for (const auto &[label, members] : classes) {
-      std::vector<double> frequency(tokens.size(), 0.0);
-      double weight = 0.0;
-      for (const auto hand : members) {
-        weight += own[hand];
-      }
-      // Like MonkerSolver, a class outside the acting range at this node is
-      // written as an all-zero row. DCFR averaging from a uniform start never
-      // gives an exactly zero reach, hence the threshold on the mean reach.
-      if (weight / static_cast<double>(members.size()) >= out_of_range_reach) {
-        for (const auto hand : members) {
-          const auto strategy = solver.average_strategy(node_id, hand);
-          const double share = own[hand] / weight;
-          for (std::size_t action = 0; action < strategy.size(); ++action) {
-            frequency[action] += share * strategy[action];
-          }
-        }
-      }
-      double total = 0.0;
-      output << label;
-      for (const auto index : order) {
-        output << '\t' << frequency[index];
-        total += frequency[index];
-      }
-      output << '\t' << total << '\n';
-    }
-    if (!output) {
-      throw std::runtime_error("cannot write " + (folder / name).string());
-    }
-    written.push_back({(std::filesystem::path(position) / name).generic_string()});
-  }
+    return frequency;
+  };
+  return mc::write_charts(game, labels, strategy, directory);
 }
 
 int run(const int argc, char **argv) {
@@ -619,8 +517,7 @@ int run(const int argc, char **argv) {
       throw std::runtime_error("the expected rake by reach differs from -(EV0 + EV1)");
     }
   }
-  std::vector<ChartSummary> written;
-  write_charts(game, solver, output_dir / "charts", written);
+  const auto written = write_charts(game, solver, output_dir / "charts");
   const double seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
   std::ofstream summary(output_dir / "summary.json", std::ios::binary);
