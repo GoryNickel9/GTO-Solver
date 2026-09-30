@@ -724,6 +724,25 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_export_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Class-level checkdown solver (benchmarks/checkdown_classes.hpp): the
+  # aggregation of the heads-up all-in table to 81 x 81 classes, the terminal
+  # tensors against the combo-level values, the 3-seat layout.
+  add_executable(gtosd_preflop_blueprint_checkdown_classes_tests
+    preflop_blueprint_checkdown_classes_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_checkdown_classes_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_checkdown_classes_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_checkdown_classes_tests)
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_tests
+    COMMAND gtosd_preflop_blueprint_checkdown_classes_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_tests
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests
     preflop_blueprint_monker_values_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_monker_values_tests

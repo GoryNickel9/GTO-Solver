@@ -879,6 +879,78 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
                  FIXTURES_REQUIRED preflop_blueprint_checkdown_${variant}_charts
                  PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=PASS")
   endforeach()
+  # The class-level checkdown solver (81 classes, 2 or 3 seats) against the
+  # combo-level one on HU50 without and with rake, 100 iterations each: every
+  # chart row within 0.001, the EVs, best-response gains and expected rake
+  # within 1e-9 antes (the EV sum is checked against the rake by reach inside
+  # the run). Its charts then pass the tree check against the HU50 manifest.
+  foreach(variant IN ITEMS plain rake)
+    if(variant STREQUAL "rake")
+      set(equivalence_config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json)
+    else()
+      set(equivalence_config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json)
+    endif()
+    set(combo_output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_hu50_${variant}_reference)
+    set(class_output ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_hu50_${variant})
+    add_test(NAME gtosd_preflop_blueprint_checkdown_hu50_${variant}_reference
+      COMMAND gtosd_preflop_blueprint_checkdown
+        --config ${equivalence_config}
+        --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+        --output-dir ${combo_output}
+        --iterations 100 --report-every 100)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_hu50_${variant}_reference
+      PROPERTIES LABELS "preflop_blueprint;research;monker"
+                 PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_CHECKDOWN=PASS"
+                 FIXTURES_SETUP preflop_blueprint_checkdown_hu50_${variant}_reference)
+    add_test(NAME gtosd_preflop_blueprint_checkdown_classes_hu50_${variant}_equivalence
+      COMMAND gtosd_preflop_blueprint_checkdown_classes
+        --config ${equivalence_config}
+        --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+        --output-dir ${class_output}
+        --iterations 100 --report-every 100
+        --reference ${combo_output} --ev-tolerance 1e-9 --chart-tolerance 0.001)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_hu50_${variant}_equivalence
+      PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+                 PASS_REGULAR_EXPRESSION
+                   "equivalence: 8 charts, 648 rows.*PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=PASS seats=2 charts=8 .*equivalence=PASS"
+                 FIXTURES_REQUIRED preflop_blueprint_checkdown_hu50_${variant}_reference
+                 FIXTURES_SETUP preflop_blueprint_checkdown_classes_hu50_${variant}_charts)
+    add_test(NAME gtosd_preflop_blueprint_monker_tree_checkdown_classes_hu50_${variant}_charts
+      COMMAND gtosd_preflop_blueprint_monker_tree
+        --config ${equivalence_config}
+        --charts ${class_output}/charts
+        --manifest ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_tree_manifest.tsv)
+    set_tests_properties(gtosd_preflop_blueprint_monker_tree_checkdown_classes_hu50_${variant}_charts
+      PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+                 FIXTURES_REQUIRED preflop_blueprint_checkdown_classes_hu50_${variant}_charts
+                 PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=PASS nodes=8 files=8")
+    if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+      foreach(equivalence_test IN ITEMS
+          gtosd_preflop_blueprint_checkdown_hu50_${variant}_reference
+          gtosd_preflop_blueprint_checkdown_classes_hu50_${variant}_equivalence)
+        set_tests_properties(${equivalence_test} PROPERTIES
+          ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+      endforeach()
+    endif()
+  endforeach()
+  # A reference solved on another configuration (HU50 without rake for the
+  # rake run) is refused before any comparison.
+  add_test(NAME gtosd_preflop_blueprint_checkdown_classes_reference_mismatch_refused
+    COMMAND gtosd_preflop_blueprint_checkdown_classes
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --output-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_classes_mismatch
+      --iterations 100 --report-every 100
+      --reference ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_checkdown_hu50_plain_reference)
+  set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_reference_mismatch_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way"
+               FIXTURES_REQUIRED preflop_blueprint_checkdown_hu50_plain_reference
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_CHECKDOWN_CLASSES=FAIL the reference was solved on another configuration or tree")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_reference_mismatch_refused
+      PROPERTIES ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   # Per-board bucket tables with an exact flop (one id per suit orbit), the
   # 15x4 turn and the 15-level river, checked by
   # gtosd_preflop_blueprint_monker_buckets_tests.
