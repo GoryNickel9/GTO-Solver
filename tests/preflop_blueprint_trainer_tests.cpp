@@ -159,13 +159,39 @@ void test_diagnostic_contracts(const Resources &resources) {
 // Condition on player 0 having sampled board A. The expectation of player 1's
 // update must then equal an exact traversal against that updated policy, with
 // chance still averaging A and B. Reusing A makes player 1's target biased.
-void test_alternating_conditional_expectation(const Resources &resources, const int stack) {
+// rake: the rake of the raked correctness runs (2.5 %, cap 2 antes, no flop
+// no drop; rake study U3), a general-sum game: the exact reference updates
+// player 1 on its own payoff, so a sampled alternating update that used
+// minus the opponent's payoff would show as a mismatch.
+void test_alternating_conditional_expectation(const Resources &resources, const int stack,
+                                              const bool rake = false) {
   auto fixture = load_fixture("preflop_blueprint_co40_test_v1.json");
   fixture.effective_stack =
       gtosd::Money::from_units(static_cast<std::int64_t>(stack) * gtosd::Money::units_per_ante)
           .value();
+  if (rake) {
+    fixture.rake.enabled = true;
+    fixture.rake.percentage = gtosd::RangeWeight::from_basis_points(250).value();
+    fixture.rake.cap = gtosd::Money::from_antes(2).value();
+    fixture.rake.no_flop_no_drop = true;
+    fixture.rake.minimum_pot = gtosd::Money{};
+  }
   const auto game = pb::CompiledGame::compile(fixture);
   require(game.has_value(), "conditional-expectation game compiles");
+  std::uint64_t raked_showdowns = 0U;
+  std::uint64_t capped_showdowns = 0U;
+  if (rake) {
+    for (const auto &node : game.value().nodes()) {
+      if (node.kind != pb::NodeKind::TerminalShowdown) {
+        continue;
+      }
+      const auto payoffs = game.value().showdown_payoffs(node.id, std::uint8_t{1});
+      const auto taken = -(payoffs[0] + payoffs[1]);
+      raked_showdowns += taken > 0 ? 1U : 0U;
+      capped_showdowns += taken == fixture.rake.cap.units() ? 1U : 0U;
+    }
+    require(raked_showdowns > 0U, "the raked conditional-expectation game is general-sum");
+  }
   pb::TrainingBoards boards;
   boards.histories = {make_history({"6s", "7d", "8c", "6c", "Tc"}),
                       make_history({"6s", "7d", "8c", "6c", "Kc"})};
@@ -247,8 +273,12 @@ void test_alternating_conditional_expectation(const Resources &resources, const 
                                                        buffer.cumulative_strategy[action]));
     }
   }
-  std::cout << "alternating conditional expectation stack=" << stack
-            << ": max regret error=" << max_error << " max strategy-sum error=" << max_sum_error
+  std::cout << "alternating conditional expectation stack=" << stack;
+  if (rake) {
+    std::cout << " rake 2.5% cap 2a (raked showdowns " << raked_showdowns << ", at the cap "
+              << capped_showdowns << ")";
+  }
+  std::cout << ": max regret error=" << max_error << " max strategy-sum error=" << max_sum_error
             << std::endl;
   require(max_error < 1e-10, "conditional regret expectation equals the exact traversal");
   require(max_sum_error < 1e-10, "conditional strategy-sum expectation equals the exact traversal");
@@ -1743,6 +1773,11 @@ int main(const int argc, char **argv) {
     test_physical_best_response(resources);
     test_finite_game_oracle(resources, 0, false, false, true);
     test_physical_best_response(resources, 0, false, true);
+    // The alternating sampled update with rake: at 40a the largest pot (80a)
+    // is raked exactly the 2a cap, at 100a the cap binds (up to 200a).
+    for (const int stack : {40, 100}) {
+      test_alternating_conditional_expectation(resources, stack, true);
+    }
     test_exploitability_decreases(resources);
     std::cout << "PREFLOP_BLUEPRINT_TRAINER_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
