@@ -1,0 +1,28 @@
+{
+  "schema": "gtosd.preflop_blueprint_game.v1",
+  "id": "CORRECTNESS-HU6-ALL-001",
+  "monetary_contract_revision": 2,
+  "ante_accounting": "dead_initial_pot_contribution",
+  "preflop_target_basis": "live_commitment_excluding_dead_ante",
+  "player_count": 2,
+  "positions": [
+    "CO",
+    "BTN"
+  ],
+  "effective_stack_units": 60000,
+  "ante_units": 10000,
+  "button_blind_units": 10000,
+  "open_target_units": [],
+  "response_target_units": [],
+  "preflop_open_sizes_basis_points": [
+    10000
+  ],
+  "allow_configured_incomplete_raise": false,
+  "postflop_sizes_basis_points": [
+    10000
+  ],
+  "postflop_minimum_bet_units": 10000,
+  "include_all_in": true,
+  "raise_termination": "natural_stack",
+  "rake_mode": "disabled"
+}

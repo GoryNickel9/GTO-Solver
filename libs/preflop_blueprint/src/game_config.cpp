@@ -214,6 +214,20 @@ OrderedJson to_ordered_json(const GameConfig &config) {
     root["rake_no_flop_no_drop"] = config.rake.no_flop_no_drop;
     root["rake_minimum_pot_units"] = config.rake.minimum_pot.units();
   }
+  // Emitted only when a street does not bet: a configuration that bets on
+  // every postflop street keeps its serialization and fingerprint.
+  if (!config.postflop_betting_streets.all()) {
+    OrderedJson streets = OrderedJson::array();
+    for (const auto &[name, bets] :
+         {std::pair<std::string_view, bool>{"flop", config.postflop_betting_streets.flop},
+          std::pair<std::string_view, bool>{"turn", config.postflop_betting_streets.turn},
+          std::pair<std::string_view, bool>{"river", config.postflop_betting_streets.river}}) {
+      if (bets) {
+        streets.push_back(std::string(name));
+      }
+    }
+    root["postflop_betting_streets"] = std::move(streets);
+  }
   return root;
 }
 
@@ -235,7 +249,8 @@ bool operator==(const GameConfig &left, const GameConfig &right) {
          left.rake.enabled == right.rake.enabled &&
          left.rake.percentage == right.rake.percentage && left.rake.cap == right.rake.cap &&
          left.rake.no_flop_no_drop == right.rake.no_flop_no_drop &&
-         left.rake.minimum_pot == right.rake.minimum_pot;
+         left.rake.minimum_pot == right.rake.minimum_pot &&
+         left.postflop_betting_streets == right.postflop_betting_streets;
 }
 
 Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
@@ -346,6 +361,10 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
                                               : default_rake(config.rake);
   if (!valid_rake) {
     return Validation::failure(ConfigError::InvalidValue);
+  }
+  // At least one postflop street bets (the list is never empty).
+  if (config.postflop_betting_streets.none()) {
+    return Validation::failure(ConfigError::InvalidStructure);
   }
   return Validation::success(true);
 }
@@ -566,6 +585,33 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
       config.rake.cap = cap.value();
       config.rake.no_flop_no_drop = no_flop_no_drop.value();
       config.rake.minimum_pot = minimum_pot.value();
+    }
+    // Optional: a missing key bets on every postflop street, the behaviour of
+    // every configuration written before it. Otherwise a non-empty list of
+    // distinct street names in street order.
+    if (root.contains("postflop_betting_streets")) {
+      const auto &streets = root.at("postflop_betting_streets");
+      if (!streets.is_array() || streets.empty()) {
+        return Parsed::failure(ConfigError::InvalidStructure);
+      }
+      PostflopBettingStreets betting{false, false, false};
+      int previous = -1;
+      for (const auto &street : streets) {
+        if (!street.is_string()) {
+          return Parsed::failure(ConfigError::InvalidValue);
+        }
+        const auto name = street.get<std::string>();
+        const int position = name == "flop" ? 0 : name == "turn" ? 1 : name == "river" ? 2 : -1;
+        if (position < 0) {
+          return Parsed::failure(ConfigError::InvalidValue);
+        }
+        if (position <= previous) {
+          return Parsed::failure(ConfigError::InvalidStructure);
+        }
+        previous = position;
+        (position == 0 ? betting.flop : position == 1 ? betting.turn : betting.river) = true;
+      }
+      config.postflop_betting_streets = betting;
     }
 
     const auto valid = validate_game_config(config);

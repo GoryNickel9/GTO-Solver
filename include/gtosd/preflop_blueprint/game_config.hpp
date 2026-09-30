@@ -38,6 +38,34 @@ inline constexpr std::size_t maximum_preflop_targets = 4U;
 // The core accepts at most three percentage sizes per decision.
 inline constexpr std::size_t maximum_preflop_sizes = 3U;
 
+// Postflop streets on which the players may bet (GameConfig::
+// postflop_betting_streets). On a street outside the set every decision is a
+// check, so the street is checked through; all three streets bet by default.
+struct PostflopBettingStreets {
+  bool flop{true};
+  bool turn{true};
+  bool river{true};
+
+  [[nodiscard]] bool all() const noexcept { return flop && turn && river; }
+  [[nodiscard]] bool none() const noexcept { return !flop && !turn && !river; }
+  // Preflop is not a postflop street: always true.
+  [[nodiscard]] bool bets_on(const Street street) const noexcept {
+    switch (street) {
+    case Street::Flop:
+      return flop;
+    case Street::Turn:
+      return turn;
+    case Street::River:
+      return river;
+    case Street::Preflop:
+      break;
+    }
+    return true;
+  }
+  friend bool operator==(const PostflopBettingStreets &,
+                         const PostflopBettingStreets &) = default;
+};
+
 struct GameConfig {
   std::string id;
   std::uint8_t player_count{2U};
@@ -104,6 +132,16 @@ struct GameConfig {
   // except a preflop fold (a called preflop all-in and a checkdown leaf are
   // raked).
   RakeConfig rake{};
+  // Postflop streets with betting, serialized as "postflop_betting_streets"
+  // (a non-empty list of "flop", "turn", "river" in street order) only when a
+  // street is missing, so every configuration that bets on all three streets
+  // keeps its serialization and fingerprint. A street outside the set is
+  // checked through (check-only decisions, like a forbidden donk bet). Not a
+  // MonkerSolver option: small lossless games of the correctness tests of 30
+  // September 2026 (a river-only game keeps the river information set equal
+  // to the unordered five-card board). Last field: positional initializers of
+  // GameConfig stay valid.
+  PostflopBettingStreets postflop_betting_streets{};
 };
 
 [[nodiscard]] bool operator==(const GameConfig &left, const GameConfig &right);

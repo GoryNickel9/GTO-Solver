@@ -248,8 +248,10 @@ action_config_at(const GameConfig &config, const PublicState &state, const Aggre
   if (state.street != Street::Preflop) {
     ActionConfig result;
     result.minimum_bet = config.postflop_minimum_bet;
-    if (donk_bet_forbidden(config, state, previous_round_aggressor)) {
-      // No size and no all-in: the check is the only legal action.
+    if (donk_bet_forbidden(config, state, previous_round_aggressor) ||
+        !config.postflop_betting_streets.bets_on(state.street)) {
+      // No size and no all-in: the check is the only legal action (on a
+      // street without betting nobody bets, so nobody ever faces a bet).
       return ConfigResult::success(std::move(result));
     }
     result.aggressive_sizes.assign(config.postflop_sizes.begin(), config.postflop_sizes.end());

@@ -1862,6 +1862,143 @@ void test_three_way_rake() {
             << preflop_all_ins << ", raked postflop terminals " << postflop_raked << '\n';
 }
 
+// postflop_betting_streets: optional list of the postflop streets with
+// betting, serialized only when a street does not bet.
+void test_betting_streets_config_key() {
+  const auto all = load_hu50();
+  require(all.postflop_betting_streets.all(),
+          "a configuration without the key bets on every postflop street");
+  require(pb::serialize_game_config_json(all).find("postflop_betting_streets") ==
+              std::string::npos,
+          "betting on every street is not serialized, so existing fingerprints do not move");
+
+  auto flop_turn = all;
+  flop_turn.postflop_betting_streets.river = false;
+  require(flop_turn != all, "configuration equality sees the betting streets");
+  require(pb::game_config_fingerprint(flop_turn) != pb::game_config_fingerprint(all),
+          "the betting streets enter the configuration fingerprint");
+  const auto flop_turn_json = pb::serialize_game_config_json(flop_turn);
+  const auto key_position = flop_turn_json.find("\"postflop_betting_streets\": [");
+  require(key_position != std::string::npos, "a street without betting is serialized");
+  const auto key_end = flop_turn_json.find(']', key_position);
+  require(key_end != std::string::npos, "the betting streets are a list");
+  const auto reparsed = pb::parse_game_config_json(flop_turn_json);
+  require(reparsed.has_value() && reparsed.value() == flop_turn,
+          "the betting streets survive a serialization round trip");
+
+  const auto parse_with_value = [&](const std::string_view value) {
+    auto text = flop_turn_json;
+    text.replace(key_position, key_end + 1U - key_position,
+                 std::string("\"postflop_betting_streets\": ") + std::string(value));
+    return pb::parse_game_config_json(text);
+  };
+  const auto explicit_all = parse_with_value(R"(["flop", "turn", "river"])");
+  require(explicit_all.has_value() && explicit_all.value() == all &&
+              pb::game_config_fingerprint(explicit_all.value()) ==
+                  pb::game_config_fingerprint(all),
+          "an explicit list of the three streets is the default and keeps the fingerprint");
+  const auto river_only = parse_with_value(R"(["river"])");
+  require(river_only.has_value() && !river_only.value().postflop_betting_streets.flop &&
+              !river_only.value().postflop_betting_streets.turn &&
+              river_only.value().postflop_betting_streets.river,
+          "a river-only list parses");
+  for (const std::string_view invalid :
+       {std::string_view("[]"), std::string_view(R"(["turn", "flop"])"),
+        std::string_view(R"(["flop", "flop"])"), std::string_view(R"("flop")"),
+        std::string_view("null")}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidStructure,
+            "an empty, unordered, repeated or non-list postflop_betting_streets is rejected as "
+            "an invalid structure: " +
+                std::string(invalid));
+  }
+  for (const std::string_view invalid : {std::string_view(R"(["preflop"])"),
+                                         std::string_view(R"(["Flop"])"), std::string_view("[1]")}) {
+    const auto parsed = parse_with_value(invalid);
+    require(!parsed.has_value() && parsed.error() == pb::ConfigError::InvalidValue,
+            "an unknown street name is rejected as an invalid value: " + std::string(invalid));
+  }
+  auto none = all;
+  none.postflop_betting_streets = pb::PostflopBettingStreets{false, false, false};
+  const auto validated = pb::validate_game_config(none);
+  require(!validated.has_value() && validated.error() == pb::ConfigError::InvalidStructure,
+          "a configuration without any betting street is invalid");
+  require(!pb::CompiledGame::compile(none).has_value(),
+          "a configuration without any betting street does not compile");
+}
+
+// The small games of the correctness tests (benchmarks/monker/correctness,
+// 30 September 2026): HU, 6a stacks, the all-in as the only preflop raise and
+// the only postflop bet. The betting streets change only the postflop: every
+// decision on a street without betting is check-only, no decision on a
+// betting street is (donk bets allowed), and the preflop part is that of the
+// all-street game. Counts and fingerprints frozen for the correctness runs.
+void test_betting_streets_trees() {
+  struct Expected {
+    std::string_view path;
+    std::string_view config;
+    std::string_view tree;
+    std::uint32_t nodes;
+    std::array<std::uint32_t, 4> decisions;
+    std::array<bool, 3> betting;
+  };
+  const auto directory = std::filesystem::path("benchmarks") / "monker" / "correctness";
+  const auto all = compile(load_config(directory / "HU6_all.json"));
+  for (const auto &expected : {
+           Expected{"HU6_all.json", "fnv1a64:d6c6d57c0522a56a", "fnv1a64:fb76ddcd880fec5f", 37U, {4U, 4U, 4U, 4U},
+                    {true, true, true}},
+           Expected{"HU6_all_rake25cap2.json", "fnv1a64:8daa713dbe98e149", "fnv1a64:f226b87d43f28215", 37U, {4U, 4U, 4U, 4U},
+                    {true, true, true}},
+           Expected{"HU6_V0_flop.json", "fnv1a64:73fc810af0c52da4", "fnv1a64:cd66796bdbdac5c1", 25U, {4U, 4U, 2U, 2U},
+                    {true, false, false}},
+           Expected{"HU6_V1_flopturn.json", "fnv1a64:ddbc481fbc3f6d4b", "fnv1a64:da5c6942354ad5ad", 31U, {4U, 4U, 4U, 2U},
+                    {true, true, false}},
+           Expected{"HU6_V2_river.json", "fnv1a64:65c8bbbcf1d4df6c", "fnv1a64:2f109f6f1891d9f2", 25U, {4U, 2U, 2U, 4U},
+                    {false, false, true}},
+       }) {
+    const auto config = load_config(directory / std::string(expected.path));
+    const auto game = compile(config);
+    test_structure_and_transitions(game, false);
+    test_payoffs(game);
+    require(legacy_preflop_fingerprint(game) == legacy_preflop_fingerprint(all) ||
+                config.rake.enabled,
+            std::string(expected.path) + ": the preflop part is that of the all-street game");
+    std::array<std::uint32_t, 4> decisions{};
+    std::array<std::uint32_t, 4> check_only_count{};
+    for (const auto &node : game.nodes()) {
+      if (node.kind != pb::NodeKind::Decision) {
+        continue;
+      }
+      const auto street = static_cast<std::size_t>(node.street);
+      ++decisions[street];
+      check_only_count[street] += check_only(game, node.id) ? 1U : 0U;
+    }
+    require(check_only_count[0] == 0U, std::string(expected.path) + ": no check-only preflop");
+    for (std::size_t street = 1U; street < 4U; ++street) {
+      require(expected.betting[street - 1U]
+                  ? check_only_count[street] == 0U
+                  : check_only_count[street] == decisions[street],
+              std::string(expected.path) + ": check-only decisions exactly on the streets "
+                                           "without betting");
+      require(config.postflop_betting_streets.bets_on(static_cast<gtosd::Street>(street)) ==
+                  expected.betting[street - 1U],
+              std::string(expected.path) + ": betting streets of the configuration");
+    }
+    std::cout << expected.path << ": config=" << pb::game_config_fingerprint(config)
+              << " tree=" << game.fingerprint() << " nodes=" << game.stats().node_count
+              << " decisions=" << decisions[0] << '/' << decisions[1] << '/' << decisions[2]
+              << '/' << decisions[3] << " check-only=" << check_only_count[1] << '/'
+              << check_only_count[2] << '/' << check_only_count[3] << '\n';
+    require(decisions == expected.decisions,
+            std::string(expected.path) + ": decisions per street");
+    require(game.stats().node_count == expected.nodes,
+            std::string(expected.path) + ": node count");
+    require(pb::game_config_fingerprint(config) == expected.config,
+            std::string(expected.path) + ": configuration fingerprint");
+    require(game.fingerprint() == expected.tree, std::string(expected.path) + ": tree fingerprint");
+  }
+}
+
 } // namespace
 
 int main() {
@@ -1890,6 +2027,8 @@ int main() {
     test_checkdown_rake();
     test_rake_fingerprints();
     test_three_way_rake();
+    test_betting_streets_config_key();
+    test_betting_streets_trees();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
     std::cout << "PREFLOP_BLUEPRINT_GAME_TESTS=PASS assertions=" << assertions << '\n';
     return 0;
