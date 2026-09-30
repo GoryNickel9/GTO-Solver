@@ -1439,8 +1439,9 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
 // groups (flop 4, turn 5 groups), on the nine boards of river_key_boards and
 // the oracle subsets (T, J against Q, K). CO40-test (40 antes: non-all-in bets
 // and bet-call lines reach the river) with turn-as-flop only, 2 x 2 hands:
-// its 637-node tree has 1,110,048 cells at 200/500/1000 rows (trainer start
-// logs of that tree: 9,702,552 state bytes in float32 storage and 18,582,936
+// its tree (604 public nodes in the ctest log of 30 September; the older
+// 637-node tree of the CO40 trainer start logs had 1,110,048 cells at
+// 200/500/1000 rows: 9,702,552 state bytes in float32 storage and 18,582,936
 // in double, 8 bytes per cell apart), so turn-as-flop (2,292 / 2,865 / 3,438
 // rows, at most 11.5 times as many) stays under 12.7 M cells (0.2 GB of
 // state), while the identity (68,805 turn rows, 138 times) could reach 153 M
