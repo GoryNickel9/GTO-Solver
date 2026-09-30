@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://gtosd.local/schemas/preflop_blueprint_game.schema.json",
   "title": "GTOSD preflop blueprint game configuration",
-  "description": "Declarative Short Deck preflop game for the vector CFR blueprint solver. Dead antes for every player, one live button blind posted by the BTN, live commitment targets for the first raise and its index-matched re-raise, variable-length postflop size lists, an optional rake (percentage, cap, no flop no drop, minimum pot). Cross-field constraints (strictly increasing targets, response above open, positions ending with BTN) are enforced by the C++ loader.",
+  "description": "Declarative Short Deck preflop game for the vector CFR blueprint solver. Dead antes for every player, one live button blind posted by the BTN, live commitment targets for the first raise and its index-matched re-raise or pot-relative sizes for the first raise (preflop_open_sizes_basis_points, MonkerSolver trees), variable-length postflop size lists, an optional rake (percentage, cap, no flop no drop, minimum pot). Cross-field constraints (strictly increasing targets, response above open, positions ending with BTN) are enforced by the C++ loader.",
   "type": "object",
   "additionalProperties": false,
   "required": [

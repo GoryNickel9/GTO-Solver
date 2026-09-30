@@ -443,6 +443,19 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   set_tests_properties(gtosd_preflop_blueprint_monker_tree_mismatch PROPERTIES
     LABELS "preflop_blueprint;research;monker"
     PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=FAIL missing=[1-9]")
+  # --write-manifest refuses a chart folder with an unreadable file (a header
+  # without actions): its manifest line would be rejected by --manifest.
+  set(unreadable_charts ${CMAKE_CURRENT_BINARY_DIR}/monker_tree_unreadable_charts)
+  file(WRITE ${unreadable_charts}/CO/CO_strategy.txt "Combination\n")
+  add_test(NAME gtosd_preflop_blueprint_monker_tree_unreadable_manifest_refused
+    COMMAND gtosd_preflop_blueprint_monker_tree
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
+      --charts ${unreadable_charts}
+      --write-manifest ${CMAKE_CURRENT_BINARY_DIR}/monker_tree_unreadable_manifest.tsv)
+  set_tests_properties(gtosd_preflop_blueprint_monker_tree_unreadable_manifest_refused
+    PROPERTIES LABELS "preflop_blueprint;research;monker"
+               PASS_REGULAR_EXPRESSION
+                 "PREFLOP_BLUEPRINT_MONKER_TREE=FAIL --write-manifest refused: 1 chart file")
 endif()
 
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)

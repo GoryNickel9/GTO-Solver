@@ -13,6 +13,7 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -1804,6 +1805,63 @@ void test_rake_fingerprints() {
   }
 }
 
+// Rake in the 3-way payoffs (3WAY50_donk_rake: 5 %, cap 3 antes, no flop no
+// drop): every terminal of the full tree, at every winner subset of its active
+// players, sums to minus the rake recomputed from its pot; the 25 preflop
+// folds pay none, and the 36 preflop all-ins (called pots of 101a to 150a,
+// flop dealt) pay the 3a cap.
+void test_three_way_rake() {
+  const auto game = compile(load_monker("3WAY50_donk_rake.json"));
+  const auto &rake = game.config().rake;
+  require(rake.enabled && rake.cap == antes(3) && rake.percentage.basis_points() == 500U &&
+              rake.no_flop_no_drop,
+          "3WAY50_donk_rake: 5 %, cap 3 antes, no flop no drop");
+  test_payoffs(game);
+  std::uint64_t preflop_folds = 0U;
+  std::uint64_t preflop_all_ins = 0U;
+  std::uint64_t postflop_raked = 0U;
+  const auto players = game.config().player_count;
+  for (const auto &node : game.nodes()) {
+    if (node.kind != pb::NodeKind::TerminalFold && node.kind != pb::NodeKind::TerminalShowdown) {
+      continue;
+    }
+    const auto pot = game.states()[node.id].pot.units();
+    const bool preflop = node.street == gtosd::Street::Preflop;
+    const bool flop_dealt = !preflop || node.kind == pb::NodeKind::TerminalShowdown;
+    const auto raked = expected_rake(rake, pot, flop_dealt);
+    const auto sum = [&](const std::span<const std::int64_t> payoffs) {
+      std::int64_t total = 0;
+      for (std::uint8_t player = 0; player < players; ++player) {
+        total += payoffs[player];
+      }
+      return total;
+    };
+    if (node.kind == pb::NodeKind::TerminalFold) {
+      require(sum(game.fold_payoffs(node.id)) == -raked, "3-way: a fold pays the recomputed rake");
+      preflop_folds += preflop ? 1U : 0U;
+      require(!preflop || raked == 0, "3-way: a preflop fold is not raked");
+    } else {
+      for (std::uint8_t winners = 1U; winners <= node.active_mask; ++winners) {
+        if ((winners & static_cast<std::uint8_t>(~node.active_mask)) != 0U) {
+          continue;
+        }
+        require(sum(game.showdown_payoffs(node.id, winners)) == -raked,
+                "3-way: every winner subset pays the recomputed rake");
+      }
+      if (preflop) {
+        ++preflop_all_ins;
+        require(raked == 30'000 && pot >= 1'010'000,
+                "3-way: a preflop all-in (101a to 150a) pays the 3a cap");
+      }
+    }
+    postflop_raked += (!preflop && raked > 0) ? 1U : 0U;
+  }
+  require(preflop_folds == 25U && preflop_all_ins == 36U && postflop_raked > 0U,
+          "3-way rake: 25 unraked preflop folds, 36 capped preflop all-ins, raked postflop");
+  std::cout << "3-way rake: preflop folds " << preflop_folds << ", preflop all-ins "
+            << preflop_all_ins << ", raked postflop terminals " << postflop_raked << '\n';
+}
+
 } // namespace
 
 int main() {
@@ -1831,6 +1889,7 @@ int main() {
     test_raked_payoffs();
     test_checkdown_rake();
     test_rake_fingerprints();
+    test_three_way_rake();
     std::cout << "CO40 tree fingerprint " << co40.fingerprint() << '\n';
     std::cout << "PREFLOP_BLUEPRINT_GAME_TESTS=PASS assertions=" << assertions << '\n';
     return 0;

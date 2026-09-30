@@ -20,7 +20,9 @@
 // A manifest (written by --write-manifest from a chart folder) holds one line
 // per chart file, "path<TAB>column,column,..." in the file's column order,
 // and '#' comments: the tree structure without frequencies, so a CTest does
-// not need the chart folder.
+// not need the chart folder. --write-manifest writes only what --manifest
+// reads back: it refuses a folder with an unreadable chart (no columns to
+// list) before creating the file, and checks the round trip after writing.
 #include "monker_chart_format.hpp"
 
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
@@ -158,20 +160,53 @@ std::string folder_title(const std::filesystem::path &directory) {
   return parts[parts.size() - 2U] + "/" + parts.back();
 }
 
+// Writes the manifest of a chart folder. Every line must read back through
+// read_manifest: an unreadable chart has no columns, and a path or a column
+// holding a separator would not split back, so such a folder is refused
+// before the file is created; the written file is then read back and compared.
 void write_manifest(const std::filesystem::path &path, const std::string &title,
                     const Columns &columns) {
-  std::ofstream output(path, std::ios::binary);
-  if (!output) {
-    throw std::runtime_error("cannot write " + path.string());
-  }
-  output << "# MonkerSolver preflop tree (" << title
-         << "): chart path <TAB> action columns in file order (header without "
-            "Combination/Total)\n";
+  std::vector<std::string> problems;
   for (const auto &[file, tokens] : columns) {
-    output << file << '\t' << joined(tokens) << '\n';
+    if (tokens.empty()) {
+      problems.push_back(file + ": unreadable chart, no columns to list");
+      continue;
+    }
+    if (file.empty() || file.front() == '#' || file.find_first_of("\t\r\n") != std::string::npos) {
+      problems.push_back(file + ": the path cannot be a manifest key");
+    }
+    for (const auto &token : tokens) {
+      if (token.empty() || token.find_first_of(",\t\r\n") != std::string::npos) {
+        problems.push_back(file + ": the column '" + token + "' cannot be listed");
+      }
+    }
   }
-  if (!output) {
-    throw std::runtime_error("cannot write " + path.string());
+  if (!problems.empty()) {
+    std::string message = "--write-manifest refused: " + std::to_string(problems.size()) +
+                          " chart file(s) that --manifest could not read back";
+    for (const auto &problem : problems) {
+      message += "\n  " + problem;
+    }
+    throw std::runtime_error(message);
+  }
+  {
+    std::ofstream output(path, std::ios::binary);
+    if (!output) {
+      throw std::runtime_error("cannot write " + path.string());
+    }
+    output << "# MonkerSolver preflop tree (" << title
+           << "): chart path <TAB> action columns in file order (header without "
+              "Combination/Total)\n";
+    for (const auto &[file, tokens] : columns) {
+      output << file << '\t' << joined(tokens) << '\n';
+    }
+    if (!output) {
+      throw std::runtime_error("cannot write " + path.string());
+    }
+  }
+  if (read_manifest(path) != columns) {
+    throw std::runtime_error("the manifest " + path.string() +
+                             " does not read back to the chart folder");
   }
 }
 

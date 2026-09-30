@@ -457,6 +457,7 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_hu30_test_v1.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_allin5x.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY100_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
