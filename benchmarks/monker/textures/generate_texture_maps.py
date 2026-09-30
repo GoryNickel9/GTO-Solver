@@ -22,6 +22,8 @@ Rules (key of a canonical flop+turn entry):
   TX1_fallback     flop texture x rank relation x flop cards sharing the turn's suit x straight effect
   TX2_recommended  flop texture x rank relation x flush now x straight effect
   TX3_aggressive   flop texture x which card the turn pairs x flush now x (min(d1, 1), d3)
+  TXM_monker_like  rank multiset x suit pattern of the unordered 4-card board
+  TXM2_monker_like TXM plus which ranks share each suit on 2+2 boards
 where flop texture = flop ranks x flop suit pattern (merges the three suit
 variants of an unpaired two-tone flop), rank relation = which flop rank the
 turn pairs, or the gap index among the distinct flop ranks with an
@@ -30,11 +32,26 @@ count of the turn board if 3 or 4, and straight effect = (windows newly
 holding 3+ board ranks capped at 2, two-card straight rank pairs bucketed
 0 / 1-2 / 3-4 / 5+, single ranks completing a straight capped at 2).
 
+TXM_monker_like imitates MonkerSolver's turn textures as far as they are
+known (research of 30 September 2026): classes global per street, blind to
+the card order and to the flop. The key pools the flop and the turn card:
+the sorted multiset of the 4 ranks and the suit pattern, the sorted suit
+counts (4 / 3+1 / 2+2 / 2+1+1 / 1+1+1+1), without which ranks share a suit.
+It has 1,899 classes (3,663 unordered suit-canonical turn boards; the scaled
+estimate of Monker's "Large" is about 1,990). Keeping the ranks of a 2+2
+pair of suits gives 2,151 (TXM2_monker_like: its Hold'em analogue gives 8,996 classes,
+0.6 % from MonkerSolver's 8,942 "Large", against 7,566 for the plain rule), keeping the
+ranks of a 3+ card suit 2,277.
+Monker's river classes depend on the 5-card board (about 540-760 classes
+estimated for short deck); the engine only supports river key "turn", so
+here the river takes the class of its 4-card turn board.
+
 Usage: python generate_texture_maps.py [--out-dir DIR] [--check]
   --check compares the regenerated files with the ones in the output
   directory (default: this script's directory) instead of writing them.
 Takes a few seconds; the files are byte-identical to the 28 September 2026
-originals (sha256 in README.md).
+originals and the TXM_monker_like map of 30 September 2026 (sha256 in
+README.md).
 """
 import argparse
 import itertools
@@ -192,6 +209,26 @@ def rule_tx3(entry):
             (min(completes, 1), singles))
 
 
+def rule_txm(entry):
+    cards = entry["flop"] + [entry["turn"]]
+    return (tuple(sorted(ranks_of(cards), reverse=True)),
+            tuple(sorted(suit_counts(cards).values(), reverse=True)))
+
+
+def rule_txm2(entry):
+    # TXM plus, on 2+2 boards only, which ranks share each suit: the Hold'em analogue of this rule
+    # gives 8,996 turn classes against MonkerSolver's 8,942 "Large" (the plain rule gives 7,566).
+    cards = entry["flop"] + [entry["turn"]]
+    pattern = tuple(sorted(suit_counts(cards).values(), reverse=True))
+    detail = None
+    if pattern == (2, 2):
+        by_suit = {}
+        for card in cards:
+            by_suit.setdefault(card % 4, []).append(card // 4)
+        detail = tuple(sorted(tuple(sorted(ranks, reverse=True)) for ranks in by_suit.values()))
+    return (tuple(sorted(ranks_of(cards), reverse=True)), pattern, detail)
+
+
 # file name, name line, rule (None = identity), expected turn classes
 MAPS = [
     ("identity_texture_map.txt", "identity", None, 13761),
@@ -199,6 +236,8 @@ MAPS = [
     ("texture_map_TX1_fallback.txt", "TX1_fallback", rule_tx1, 6768),
     ("texture_map_TX2_recommended.txt", "TX2_recommended", rule_tx2, 4482),
     ("texture_map_TX3_aggressive.txt", "TX3_aggressive", rule_tx3, 2680),
+    ("texture_map_TXM_monker_like.txt", "TXM_monker_like", rule_txm, 1899),
+    ("texture_map_TXM2_monker_like.txt", "TXM2_monker_like", rule_txm2, 2151),
 ]
 
 
