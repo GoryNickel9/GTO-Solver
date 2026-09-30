@@ -8,7 +8,10 @@ with --dump it reads an existing dump of one config.
 
 Checks, per config:
 - D  dump structure: header (schema, config id, players, positions, units), end record and node count,
-     preorder ids, parent / edge_index / child consistency, every path = parent path + incoming edge.
+     preorder ids, parent / edge_index / child consistency, every path = parent path + incoming edge; and the
+     header's tree_fingerprint equals the one recorded for the runs (RECORDED_TREE_FINGERPRINTS, the HU6
+     family of benchmarks/monker/correctness/README.md, plus --expect-tree), so that the conclusions on the
+     new build transfer to the runs (critic S-b).
 - R  replay of every engine path from the config JSON with the rules R1-R13, edge by edge, independent of
      the action abstraction:
      R-legal   every engine action is legal (fold / check / call amount = min(to call, stack), bet >= minimum
@@ -64,6 +67,16 @@ except ImportError:  # the package __init__ imports numpy; rules.py itself needs
 DUMP_SCHEMA = "gtosd.preflop_blueprint_game_nodes.v1"
 MODES = ("full", "preflop_only", "checkdown")
 MODE_FLAGS = {"full": [], "preflop_only": ["--preflop-only"], "checkdown": ["--checkdown"]}
+# Tree fingerprints recorded for the training / certification runs (benchmarks/monker/correctness/README.md).
+# The dump comes from a new build, so its conclusions transfer to those runs only if the dump's tree_fingerprint
+# equals the recorded one (critic S-b, plan 3.5). Key: (config file stem, mode). More with --expect-tree.
+RECORDED_TREE_FINGERPRINTS = {
+    ("HU6_all", "full"): "fnv1a64:fb76ddcd880fec5f",
+    ("HU6_all_rake25cap2", "full"): "fnv1a64:f226b87d43f28215",
+    ("HU6_V0_flop", "full"): "fnv1a64:cd66796bdbdac5c1",
+    ("HU6_V1_flopturn", "full"): "fnv1a64:da5c6942354ad5ad",
+    ("HU6_V2_river", "full"): "fnv1a64:2f109f6f1891d9f2",
+}
 
 
 # ---------------------------------------------------------------------------------------------- model
@@ -549,6 +562,11 @@ def referee_case(args, config: Path, mode: str, index: int) -> dict:
     base = referee_check(rules, R.Conventions(), mode, header, records)
     failures, mismatches, partial = classify_findings(rules, mode, header, records, base,
                                                       not args.no_classify)
+    recorded = args.expected_trees.get((config.stem, mode))
+    if recorded is not None and header.get("tree_fingerprint") != recorded:
+        failures.append({"category": "dump", "check": "recorded_tree_fingerprint", "where": "header",
+                         "path": None, "detail": f"dump {header.get('tree_fingerprint')}, recorded {recorded}: "
+                                                 "the built benchmark compiles another tree than the runs"})
     rule = [f for f in failures if f["category"] in ("rule", "dump")]
     abstraction = [f for f in failures if f["category"] == "abstraction"]
     labels = [f for f in failures if f["category"] == "convention"]
@@ -567,7 +585,7 @@ def referee_case(args, config: Path, mode: str, index: int) -> dict:
               f"{entry['engine_behaves_as']!r} ({entry['explains']} failures explained)")
     return {
         "config": str(config), "config_id": rules.config_id, "mode": mode, "dump": str(dump),
-        "tree_fingerprint": header.get("tree_fingerprint"),
+        "tree_fingerprint": header.get("tree_fingerprint"), "recorded_tree_fingerprint": recorded,
         "config_fingerprint": header.get("config_fingerprint"), "compared": counts,
         "rule_failures": summarize(rule, args.examples),
         "abstraction_failures": summarize(abstraction, args.examples),
@@ -593,7 +611,17 @@ def main() -> int:
     parser.add_argument("--report", type=Path, help="write the JSON report here")
     parser.add_argument("--examples", type=int, default=12, help="failures listed per category")
     parser.add_argument("--no-classify", action="store_true", help="skip the convention re-runs")
+    parser.add_argument("--expect-tree", action="append", default=[], metavar="STEM[#MODE]=FINGERPRINT",
+                        help="recorded tree fingerprint the dump of that config must carry (adds to the "
+                             "built-in README list)")
     args = parser.parse_args()
+    args.expected_trees = dict(RECORDED_TREE_FINGERPRINTS)
+    for item in args.expect_tree:
+        case, _, fingerprint = item.partition("=")
+        stem, _, mode = case.partition("#")
+        if not stem or not fingerprint or (mode or "full") not in MODES:
+            parser.error(f"--expect-tree {item!r}: expected STEM[#MODE]=FINGERPRINT")
+        args.expected_trees[(stem, mode or "full")] = fingerprint
     cases = [parse_case(text) for text in args.cases]
     if args.dump is not None and len(cases) != 1:
         parser.error("--dump takes exactly one config")
