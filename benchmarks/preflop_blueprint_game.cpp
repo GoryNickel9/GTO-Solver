@@ -129,6 +129,11 @@ int main(const int argc, char **argv) {
         options.preflop_only = true;
         continue;
       }
+      // The step-1 (checkdown) tree: every postflop entry settles as a showdown.
+      if (name == "--checkdown") {
+        options.checkdown_at_flop = true;
+        continue;
+      }
       if (name == "--actions") {
         actions = true;
         continue;
@@ -183,6 +188,7 @@ int main(const int argc, char **argv) {
               << "  \"player_count\": " << static_cast<unsigned>(config.value().player_count)
               << ",\n"
               << "  \"preflop_only\": " << (options.preflop_only ? "true" : "false") << ",\n"
+              << (options.checkdown_at_flop ? "  \"checkdown\": true,\n" : "")
               << "  \"tree_fingerprint\": \"" << game.fingerprint() << "\",\n"
               << "  \"node_count\": " << stats.node_count << ", \"edge_count\": " << stats.edge_count
               << ", \"decision_nodes\": " << stats.decision_nodes

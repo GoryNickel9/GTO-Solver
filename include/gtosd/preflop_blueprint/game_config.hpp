@@ -35,6 +35,8 @@ inline constexpr std::size_t maximum_players = gtosd::maximum_players;
 // Fold/check/call plus sizes plus all-in must fit the compiled action arrays.
 inline constexpr std::size_t maximum_postflop_sizes = 3U;
 inline constexpr std::size_t maximum_preflop_targets = 4U;
+// The core accepts at most three percentage sizes per decision.
+inline constexpr std::size_t maximum_preflop_sizes = 3U;
 
 struct GameConfig {
   std::string id;
@@ -47,8 +49,21 @@ struct GameConfig {
   // Live blind posted by the BTN; the incremental call of the first actor
   // equals this amount.
   Money button_blind{};
-  // Live commitment targets available to the first raiser, strictly increasing.
+  // Live commitment targets available to the first raiser, strictly increasing;
+  // empty when open_sizes is set.
   std::vector<Money> open_targets;
+  // Sizes of the first raise of the hand (aggression level 0: the open, the
+  // isolation over limpers, the BTN raise over limps) in basis points of the
+  // pot after the call, MonkerSolver's pot-relative convention: raise to =
+  // current bet + size x (pot + amount to call), dead antes included in the pot
+  // (10000 = a pot raise: 6a UTG open, 7a isolation over one limp and BTN raise
+  // over two limps in the 3-way 50a trees). Strictly increasing, at most
+  // maximum_preflop_sizes. Mutually exclusive with open_targets, which must be
+  // empty when this list is set; the response to that raise is then fold, call
+  // or all-in only (response_targets empty, limp_response_targets absent or
+  // empty), so allow_configured_incomplete_raise is never read. Serialized,
+  // and therefore part of the fingerprint, only when set.
+  std::vector<PotPercentage> open_sizes;
   // Index-matched re-raise target available when facing open_targets[i].
   // After that re-raise only fold, call and all-in remain.
   std::vector<Money> response_targets;

@@ -107,6 +107,17 @@ ConfigResult target_config(const GameConfig &config, const PublicState &state,
   return ConfigResult::success(std::move(result));
 }
 
+// Pot-relative first raise (MonkerSolver trees, open_sizes): the core raises
+// to current bet + size x (pot + call), half up; a size that reaches the
+// stack becomes the all-in, which all_in_config offers anyway. With nothing
+// to call (the BTN over limps) it is a bet of at least the button blind.
+ActionConfig pot_size_config(const GameConfig &config) {
+  auto result = all_in_config(config);
+  result.raise_depth = maximum_core_raise_depth;
+  result.aggressive_sizes.assign(config.open_sizes.begin(), config.open_sizes.end());
+  return result;
+}
+
 // Donk-bet rule of a configuration with postflop_donk_bets false. Postflop
 // streets are played in seat order (decision D10), so before the first bet of
 // the street the aggressor acts later than the actor exactly when its seat is
@@ -263,10 +274,14 @@ action_config_at(const GameConfig &config, const PublicState &state, const Aggre
     return ConfigResult::success(passive_config(config));
   }
   if (level == 0U) {
+    if (!config.open_sizes.empty()) {
+      return ConfigResult::success(pot_size_config(config));
+    }
     return target_config(config, state, config.open_targets, false);
   }
   if (level == 1U) {
     // In a limped pot the responder uses its own list when one is configured.
+    // Pot mode validates with both lists empty: fold, call or all-in.
     const auto &targets = (limped_pot && config.limp_response_targets.has_value())
                               ? config.limp_response_targets.value()
                               : config.response_targets;

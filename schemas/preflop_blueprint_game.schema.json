@@ -25,6 +25,16 @@
     "raise_termination",
     "rake_mode"
   ],
+  "dependentSchemas": {
+    "preflop_open_sizes_basis_points": {
+      "description": "Pot mode: the first raise is sized in percent of the pot, so there is no open target and no re-raise target (the answer to the raise is fold, call or all-in).",
+      "properties": {
+        "open_target_units": {"maxItems": 0},
+        "response_target_units": {"maxItems": 0},
+        "limp_response_target_units": {"maxItems": 0}
+      }
+    }
+  },
   "properties": {
     "schema": {"const": "gtosd.preflop_blueprint_game.v1"},
     "id": {"type": "string", "minLength": 1},
@@ -43,8 +53,9 @@
     "ante_units": {"type": "integer", "minimum": 1},
     "button_blind_units": {"type": "integer", "minimum": 1},
     "open_target_units": {
+      "description": "Live commitment targets of the first raise, strictly increasing; empty exactly when preflop_open_sizes_basis_points is set.",
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "maxItems": 4,
       "items": {"type": "integer", "minimum": 1}
     },
@@ -60,6 +71,13 @@
       "minItems": 0,
       "maxItems": 4,
       "items": {"type": "integer", "minimum": 1}
+    },
+    "preflop_open_sizes_basis_points": {
+      "description": "Optional (pot mode, MonkerSolver trees). Sizes of the first raise of the hand (open, isolation over limpers, BTN raise over limps) in basis points of the pot after the call, strictly increasing: raise to = current bet + size x (pot + call), dead antes in the pot (10000 = pot raise). Requires open_target_units [] and response_target_units []; the answer to the raise is fold, call or all-in. Absent means the live targets of open_target_units.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {"type": "integer", "minimum": 1, "maximum": 100000}
     },
     "allow_configured_incomplete_raise": {"type": "boolean"},
     "postflop_sizes_basis_points": {

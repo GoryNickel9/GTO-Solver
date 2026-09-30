@@ -43,6 +43,13 @@ def main() -> int:
         if responses and len(document.get("open_target_units", [])) != len(responses):
             failures += 1
             print(f"{fixture.name}: response_target_units must match open_target_units")
+        # The first raise is a live target or a pot-relative size, never both
+        # (the schema already requires empty response lists in pot mode).
+        if bool(document.get("open_target_units")) == bool(
+                document.get("preflop_open_sizes_basis_points")):
+            failures += 1
+            print(f"{fixture.name}: exactly one of open_target_units and "
+                  "preflop_open_sizes_basis_points must be non-empty")
         if len(document.get("positions", [])) != document.get("player_count"):
             failures += 1
             print(f"{fixture.name}: positions must have player_count entries")

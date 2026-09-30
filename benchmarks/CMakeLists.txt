@@ -392,6 +392,37 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_game_report PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # The preflop trees of the MonkerSolver chart sets against their manifests
+  # (benchmarks/monker/*_tree_manifest.tsv, written from the chart folders by
+  # --write-manifest): the 3-way 50a and 100a trees in pot mode and the HU50
+  # tree, whose names the multiway fold rule of chart_nodes must not change.
+  # The last run checks that a wrong tree fails.
+  add_executable(gtosd_preflop_blueprint_monker_tree preflop_blueprint_monker_tree.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_monker_tree
+    PRIVATE gtosd::preflop_blueprint nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_monker_tree)
+  foreach(tree IN ITEMS "3WAY50;3WAY50_donk;54" "3WAY100;3WAY100_donk;54" "HU50;HU50;8")
+    list(GET tree 0 manifest)
+    list(GET tree 1 tree_config)
+    list(GET tree 2 tree_nodes)
+    string(TOLOWER ${manifest} tree_name)
+    add_test(NAME gtosd_preflop_blueprint_monker_tree_${tree_name}
+      COMMAND gtosd_preflop_blueprint_monker_tree
+        --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/${tree_config}.json
+        --manifest ${PROJECT_SOURCE_DIR}/benchmarks/monker/${manifest}_tree_manifest.tsv
+        --json ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_monker_tree_${tree_name}.json)
+    set_tests_properties(gtosd_preflop_blueprint_monker_tree_${tree_name} PROPERTIES
+      LABELS "preflop_blueprint;research;monker"
+      PASS_REGULAR_EXPRESSION
+        "PREFLOP_BLUEPRINT_MONKER_TREE=PASS nodes=${tree_nodes} files=${tree_nodes}")
+  endforeach()
+  add_test(NAME gtosd_preflop_blueprint_monker_tree_mismatch
+    COMMAND gtosd_preflop_blueprint_monker_tree
+      --config ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
+      --manifest ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_tree_manifest.tsv)
+  set_tests_properties(gtosd_preflop_blueprint_monker_tree_mismatch PROPERTIES
+    LABELS "preflop_blueprint;research;monker"
+    PASS_REGULAR_EXPRESSION "PREFLOP_BLUEPRINT_MONKER_TREE=FAIL missing=[1-9]")
 endif()
 
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)

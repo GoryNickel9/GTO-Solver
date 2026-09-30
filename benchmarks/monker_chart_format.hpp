@@ -123,26 +123,43 @@ struct ChartNode {
 };
 
 // Every preflop decision node with its chart, in the order write_charts
-// writes them (depth first, last edge first).
+// writes them (depth first, last edge first). MonkerSolver leaves a fold out
+// of the line when it is the player's first action of the hand
+// (UTG_6.0ante_BTN: UTG raises, CO folds, BTN acts) and writes later folds
+// (..._UTG_Fold_CO). A first-action fold ends a heads-up hand, so heads-up
+// names do not change. Throws if two nodes would share a file.
 inline std::vector<ChartNode> chart_nodes(const preflop_blueprint::CompiledGame &game) {
   const auto &config = game.config();
   std::vector<ChartNode> charts;
-  std::vector<std::pair<std::uint32_t, std::string>> stack{{game.root(), std::string{}}};
+  struct Pending {
+    std::uint32_t node{0U};
+    std::string prefix;
+    // Seats that already acted on the line.
+    std::uint8_t acted{0U};
+  };
+  std::vector<Pending> stack{{game.root(), std::string{}, 0U}};
+  std::map<std::string, std::uint32_t> node_of_file;
   while (!stack.empty()) {
-    const auto [node_id, prefix] = stack.back();
+    const auto pending = std::move(stack.back());
     stack.pop_back();
-    const auto &node = game.nodes()[node_id];
+    const auto &node = game.nodes()[pending.node];
     if (node.kind != preflop_blueprint::NodeKind::Decision || node.street != Street::Preflop) {
       continue;
     }
     ChartNode chart;
-    chart.node = node_id;
+    chart.node = pending.node;
     chart.position = config.positions.at(node.actor);
-    const auto edges = game.edges_of(node_id);
+    const auto edges = game.edges_of(pending.node);
+    const auto actor_bit = static_cast<std::uint8_t>(1U << node.actor);
+    const bool first_action = (pending.acted & actor_bit) == 0U;
     auto &tokens = chart.tokens;
     for (const auto &edge : edges) {
       tokens.push_back(action_token(game, node.actor, edge));
-      stack.emplace_back(edge.child, prefix + chart.position + "_" + tokens.back() + "_");
+      const bool omitted = edge.action.type == ActionType::Fold && first_action;
+      stack.push_back(
+          {edge.child,
+           omitted ? pending.prefix : pending.prefix + chart.position + "_" + tokens.back() + "_",
+           static_cast<std::uint8_t>(pending.acted | actor_bit)});
     }
     auto &order = chart.columns;
     order.resize(tokens.size());
@@ -162,8 +179,13 @@ inline std::vector<ChartNode> chart_nodes(const preflop_blueprint::CompiledGame 
                                                  .committed_this_street[node.actor]
                                                  .units();
                      });
-    chart.name = prefix + chart.position + "_strategy.txt";
+    chart.name = pending.prefix + chart.position + "_strategy.txt";
     chart.relative = (std::filesystem::path(chart.position) / chart.name).generic_string();
+    if (!node_of_file.emplace(chart.relative, pending.node).second) {
+      throw std::runtime_error("preflop nodes " + std::to_string(node_of_file[chart.relative]) +
+                               " and " + std::to_string(pending.node) + " share the chart " +
+                               chart.relative);
+    }
     charts.push_back(std::move(chart));
   }
   return charts;

@@ -82,6 +82,26 @@ ConfigResult<std::vector<Money>> money_list_field(const Json &root, const std::s
   return ConfigResult<std::vector<Money>>::success(std::move(result));
 }
 
+// An array of integer basis points, each within PotPercentage's range.
+ConfigResult<std::vector<PotPercentage>> pot_percentage_list(const Json &value) {
+  if (!value.is_array()) {
+    return ConfigResult<std::vector<PotPercentage>>::failure(ConfigError::InvalidValue);
+  }
+  std::vector<PotPercentage> result;
+  result.reserve(value.size());
+  for (const auto &entry : value) {
+    if (!entry.is_number_integer()) {
+      return ConfigResult<std::vector<PotPercentage>>::failure(ConfigError::InvalidValue);
+    }
+    const auto percentage = PotPercentage::from_basis_points(entry.get<std::int64_t>());
+    if (!percentage) {
+      return ConfigResult<std::vector<PotPercentage>>::failure(ConfigError::InvalidValue);
+    }
+    result.push_back(percentage.value());
+  }
+  return ConfigResult<std::vector<PotPercentage>>::success(std::move(result));
+}
+
 ConfigResult<bool> bool_field(const Json &root, const std::string_view key) {
   const auto value = field(root, key);
   if (!value) {
@@ -158,6 +178,14 @@ OrderedJson to_ordered_json(const GameConfig &config) {
     }
     root["limp_response_target_units"] = std::move(limp_targets);
   }
+  // Emitted only when set (pot mode, whose open_target_units is then []).
+  if (!config.open_sizes.empty()) {
+    OrderedJson open_sizes = OrderedJson::array();
+    for (const auto size : config.open_sizes) {
+      open_sizes.push_back(size.basis_points());
+    }
+    root["preflop_open_sizes_basis_points"] = std::move(open_sizes);
+  }
   root["allow_configured_incomplete_raise"] = config.allow_configured_incomplete_raise;
   OrderedJson sizes = OrderedJson::array();
   for (const auto size : config.postflop_sizes) {
@@ -195,7 +223,7 @@ bool operator==(const GameConfig &left, const GameConfig &right) {
   return left.id == right.id && left.player_count == right.player_count &&
          left.positions == right.positions && left.effective_stack == right.effective_stack &&
          left.ante == right.ante && left.button_blind == right.button_blind &&
-         left.open_targets == right.open_targets &&
+         left.open_targets == right.open_targets && left.open_sizes == right.open_sizes &&
          left.response_targets == right.response_targets &&
          left.limp_response_targets == right.limp_response_targets &&
          left.allow_configured_incomplete_raise == right.allow_configured_incomplete_raise &&
@@ -233,9 +261,31 @@ Result<bool, ConfigError> validate_game_config(const GameConfig &config) {
       !(config.postflop_minimum_bet > zero) || config.button_blind >= config.effective_stack) {
     return Validation::failure(ConfigError::InvalidValue);
   }
+  // The first raise is a live commitment target (open_targets) or a size in
+  // basis points of the pot (open_sizes): exactly one of the two lists is set.
+  if (config.open_targets.empty() == config.open_sizes.empty()) {
+    return Validation::failure(ConfigError::InvalidStructure);
+  }
+  if (!config.open_sizes.empty()) {
+    // Pot mode (MonkerSolver trees): the answer to the first raise is fold,
+    // call or all-in, so no response list may name a target.
+    if (config.open_sizes.size() > maximum_preflop_sizes || !config.response_targets.empty() ||
+        (config.limp_response_targets.has_value() &&
+         !config.limp_response_targets.value().empty())) {
+      return Validation::failure(ConfigError::InvalidStructure);
+    }
+    for (std::size_t index = 0; index < config.open_sizes.size(); ++index) {
+      if (config.open_sizes[index].basis_points() == 0U ||
+          (index > 0U && config.open_sizes[index].basis_points() <=
+                             config.open_sizes[index - 1U].basis_points())) {
+        return Validation::failure(ConfigError::InvalidValue);
+      }
+    }
+  }
   // An empty response list means that the only re-raise over an open is the
-  // all-in; otherwise there is one response target per open target.
-  if (config.open_targets.empty() || config.open_targets.size() > maximum_preflop_targets ||
+  // all-in; otherwise there is one response target per open target (pot mode
+  // has no open target, and the checks below find nothing to check).
+  if (config.open_targets.size() > maximum_preflop_targets ||
       (!config.response_targets.empty() &&
        config.response_targets.size() != config.open_targets.size())) {
     return Validation::failure(ConfigError::InvalidStructure);
@@ -421,6 +471,20 @@ Result<GameConfig, ConfigError> parse_game_config_json(const std::string_view js
         return Parsed::failure(limp_targets.error());
       }
       config.limp_response_targets = limp_targets.value();
+    }
+    // Optional: pot-relative sizes of the first raise. A missing key keeps the
+    // live targets of open_target_units, the behaviour of every configuration
+    // written before it; an empty list would read as a missing key and is
+    // rejected instead.
+    if (root.contains("preflop_open_sizes_basis_points")) {
+      const auto open_sizes = pot_percentage_list(root.at("preflop_open_sizes_basis_points"));
+      if (!open_sizes) {
+        return Parsed::failure(open_sizes.error());
+      }
+      if (open_sizes.value().empty()) {
+        return Parsed::failure(ConfigError::InvalidStructure);
+      }
+      config.open_sizes = open_sizes.value();
     }
     config.allow_configured_incomplete_raise = allow_incomplete.value();
     config.include_all_in = include_all_in.value();
