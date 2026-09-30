@@ -885,7 +885,10 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     # referee written from the rules (tools/independent/sdref/rules.py):
     # every action's legality and amount, pots, contributions, uncalled
     # returns and every terminal payoff row incl. rake; path sets against the
-    # referee's own enumeration. Exit 3 = only named conventions differ.
+    # referee's own enumeration. Exit 3 = only named conventions differ. The
+    # correctness games include the three raked V2 twins (V2R5 is the only
+    # correctness game where the cap binds) and the bets-and-raises games
+    # B0, B0M, B2 and HU8_B1 (plan section 3.5).
     add_test(NAME gtosd_preflop_blueprint_independent_referee
       COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py
@@ -897,6 +900,13 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V0_flop.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V1_flopturn.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V2_river.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V2_river_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V2_river_rake5cap05.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU6_V2_river_rakeinert.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU19_B0_flop.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU19_B0M_flop.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU19_B2_river.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/correctness/HU8_B1_flopturn.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_allin5x.json
