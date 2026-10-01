@@ -3,7 +3,8 @@
 Documento del programma avviato il 28 settembre: riprodurre il modo in cui MonkerSolver costruisce
 le chart preflop, verificarlo contro le chart MonkerSolver che l'utente possiede, e usarlo come base
 del solver multiway. Branch `feat/monker-step1-checkdown` (da `feat/preflop-phase1-time`), commit
-`e576396` (passo 1) e `7ff711b` (passo 2).
+`e576396` (passo 1) e `7ff711b` (passo 2). Il passo 2 a tre giocatori (fase 3a del 3-way) è entrato nel branch con il
+merge `238a41e` del 1° ottobre (9.7).
 
 ## 1. Decisioni dell'utente del 28 settembre
 
@@ -1594,7 +1595,8 @@ rake), B con rake, test 5M, 5E, 5F e 5D (preflop bloccato con altri bucket) (5.1
 1 (9.4, 9.5). Fatti il 30 settembre dalle 09:30 alle 14:40: run 30 × 4 con rake 2,5 % / cap 2a, test 7 e sua estensione,
 studio I/N, ricerca sulle texture di MonkerSolver e mappe TXM e TXM2, opzione A preparata, lettore dei file .tree (5.11);
 run finiti spostati su F: (sezione 6); specifica della fase 3 del 3-way (9.6). In corso alle 14:40: estensione del 30 × 4
-fino a 64.000 iterazioni, poi il run TXM2 (in coda). Stato dei punti aperti il 28 (i punti 1 e 3 del 28 sono superati dalle
+fino a 64.000 iterazioni, poi il run TXM2 (in coda). Fatti il 1° ottobre: batteria di correttezza HU chiusa (10.13); fase 3a del
+3-way, merge e primo run 3WAY50 in coda per le 00:00 del 2 ottobre (9.7). Stato dei punti aperti il 28 (i punti 1 e 3 del 28 sono superati dalle
 misure e dalle decisioni del 29):
 
 1. **Configurazione HU di riferimento: decisa il 29 settembre.** G1: astrazione compatta 15 livelli × 4 +
@@ -1669,6 +1671,8 @@ misure e dalle decisioni del 29):
    salvataggi distanti 4.000 iterazioni, minimo 16.000 e tetto 48.000 (D3). È la soglia equivalente agli arresti HU: al loro
    arresto a 0,005 sulla media di tutte le chart, le chart HU non all-in cambiavano ancora di 0,0073-0,0085; nel 3-way 36
    delle 54 chart affrontano un all-in e una media su 54 a 0,005 sarebbe più larga della regola HU. Da decidere con l'utente.
+   **Aggiornamento del 1° ottobre (9.7)**: l'utente ha accettato la D3 (0,008 sulle 18 chart non all-in, minimo 16.000, tetto
+   48.000); è la regola del primo run 3WAY50, in coda per le 00:00 del 2 ottobre.
 6. **3-way 50a, fase 1 rinviata** (decisione dell'utente delle 20:00 del 29: si parte quando il problema della
    radice è capito meglio, probabilmente dopo le 3 del 30 settembre): albero identico a quello
    delle chart 3-way a 50a dell'utente (54 file di chart); raise al 100 % del piatto nel costruttore, regole
@@ -1690,6 +1694,9 @@ misure e dalle decisioni del 29):
    indipendenti (19 rilievi accolti): percorso a tre posti separato nel trainer (HU identico byte per byte), 26-36 ore di
    agente, 2-4,5 s per iterazione sull'i3 (stima), primo run a 15 × 4 in double sull'i3 (picco circa 14,8 GB); il codice parte
    dopo le decisioni D1-D7 (punto 9).
+   **Aggiornamento del 1° ottobre sera (9.7)**: fase 3a fatta (codice in tre corsie, review, gate 3a tutto PASS tranne la clausola
+   della traiettoria di V7, accettata come limite del disegno del test), merge `238a41e`; primo run 3WAY50 a 15 × 4 (1,5 s per
+   iterazione misurati, picco 14,86 GB) in coda per le 00:00 del 2 ottobre.
 7. **Risultati in attesa (30 settembre)**: test 6, 6b e 6c (preflop di MonkerSolver bloccato nei tre giochi con
    rake), test B con rake, test 5 con i bucket M, E, F e D (5.9). Da questi: configurazione HU di riferimento e
    scelta del rake (punto 1). **Arrivati la mattina del 30 (5.10)**, con il test 6d in più; esito nei punti 1, 2 e 4.
@@ -1716,6 +1723,10 @@ misure e dalle decisioni del 29):
    punto 5), D4 ambito della valutazione (proposta: parte A), D5 server a noleggio per 2-3 giorni dall'1/10 (senza server,
    ambito ridotto sull'i3), D6 build fino alle 24:00 del 30, D7 conferme (carte foldate morte, aggiornamenti alternati, cache
    per classi, seed di default, igiene dei run). La specifica prevede il codice da circa le 15:00 del 30.
+
+   **Aggiornamento del 1° ottobre (9.7).** D1-D4 e D7 prese la mattina come proposte, D5 senza server (ambito ridotto sull'i3), D6
+   superata; verso le 18:00 la D7 è cambiata con un checkpoint ogni 16.000 iterazioni. Push del branch il 1° ottobre alle 09:10 e
+   alle 10:29 (10.13); al merge delle 18:11, 12 commit locali.
 10. **Opzione A e run in corso** (5.11): l'opzione A (Linear CFR, DCFR con un board per batch, Linear simultaneo con un board
     per batch, sul gioco G1) è pronta (runner congelato, smoke passati) e aspetta la decisione dell'utente; se parte, sul
     gioco del 30 × 4 con rake se questo diventa il riferimento. Alle 14:40 gira l'estensione del 30 × 4 fino a 64.000
@@ -1729,7 +1740,7 @@ subito, in parallelo alle prove HU (revoca il rinvio delle 20:00 del 29); le imp
 aspettano l'HU. Lavoro in due rami di lavoro separati (fase 1; fase 2a), poi integrato nel ramo
 `feat/monker-step1-checkdown` dopo il commit del rake. Specifiche di progetto, così come scritte, con le loro
 critiche indipendenti: [fase 1](threeway/PHASE1_SPEC_2026-09-29.md), [fase 2a](threeway/PHASE2A_SPEC_2026-09-30.md),
-[fase 3](threeway/PHASE3_SPEC_2026-09-30.md) (9.6).
+[fase 3](threeway/PHASE3_SPEC_2026-09-30.md) (9.6). Codice, gate, merge e primo run della fase 3a: 9.7.
 
 ### 9.1 Fase 1: l'albero delle chart
 
@@ -2043,6 +2054,182 @@ rake 2,5 % / cap 2a, e non lo contraddice (il rake abbassa ancora il guadagno de
 dei run bloccati a 30 × 4 (48.000) va rivisto confrontando 24.000 e 48.000, e il guadagno del CO non cambia (1,04 -> 1,03 %).
 Le cifre HU della specifica che venivano dai run del pomeriggio (0,057 di distanza, preferenza suited uguale a MonkerSolver)
 sono confermate dai file (5.11).
+
+### 9.7 Fase 3a: codice, gate 3a, merge e primo run in coda (1° ottobre, dalle 09:24 alle 18:12)
+
+Rapporti nella cartella temporanea della sessione, `threeway/phase3a/`: `gate3a.md` (integrazione, 12:22-14:25), `review.md`
+(review indipendente, 14:20-14:56), `deferred_tests.md`, `gate3a_final.md` (16:30-17:25), `final_chain.log` e
+`final_chain_run2.out` (controlli a 15 × 4, 18:00-18:11); in `threeway/run1/`: `NOT_READY.md`, `final_freeze.sh`,
+`queue_3way50_15x4.sh` e le prove della coda (`qtest2/driver.log`). Codice nel worktree
+`C:/Users/GoryNickel/Documents/GitHub/GTO-Solver-phase3`, branch `feat/threeway-step2` (da `d0796f8`). Cronologia nel diario
+(PROGRESS_LOG, voci del 1° ottobre dalle 08:00 alle 16:30 e della sera). [V] = verificato (misurato, o letto nei file, nei log
+o nel codice); [I] = inferito (calcolo, stima o ragionamento).
+
+**Decisioni dell'utente sulla specifica (9.6)**, prese la mattina del 1° ottobre come proposte, salvo dove è scritto
+altrimenti [V, diario]:
+
+| # | Decisione |
+|---|---|
+| D1 | 15 × 4 in double sull'i3 |
+| D2 | Rake 2,5 % / cap 2a, poi 5 % / cap 0,75a; con l'ambito ridotto (D5) un solo rake: il 2,5 % / cap 2a del primo run |
+| D3 | Arresto a 0,008 sulla media delle 18 chart non all-in fra salvataggi distanti 4.000 iterazioni, minimo 16.000, tetto 48.000 |
+| D4 | Parte A, campionata sull'i3 |
+| D5 | Niente server, quindi l'ambito ridotto sull'i3: parte A campionata su 64 flop fisici, un solo rake, test del blocco solo a 15 × 4, nessun run 30 × 4 |
+| D6 | Superata (riguardava le build della sera del 30) |
+| D7 | Confermata (carte foldate morte, aggiornamenti alternati UTG → CO → BTN, cache per classi, seed di default, igiene dei run). **Cambiata verso le 18:00** (domanda della sessione principale): un checkpoint ogni 16.000 iterazioni, per non perdere il lavoro in un crash o in un riavvio di Windows Update, al posto di "niente checkpoint periodici sull'i3" |
+
+Altre decisioni del giorno [V, diario]: il rake serve solo a riprodurre le chart di MonkerSolver (nelle soluzioni sue l'utente
+sceglierà il proprio); prima di un run della fase 3, proporre una batteria di correttezza 3-way; il 02/10 senza la finestra solita
+(dal 03/10 di nuovo run 00:00-20:00 con pausa alle 19:40); primo run alle 00:00 del 02/10 se i controlli rinviati sono verdi.
+
+**Cosa è stato costruito** [V, log del worktree e `review.md`]. Dieci commit: sette nelle tre corsie (10:37-11:38), due di
+integrazione (13:16 e 13:59), uno della review (14:53).
+
+| Corsia | Commit | Contenuto |
+|---|---|---|
+| K (kernel) | `86dd104`, `2ebc4a5` | Kernel multiway a tre seggi: showdown a tre attivi con inclusione-esclusione sulle carte condivise, terminali a due attivi con il foldato come insieme statico (carte morte); forma statica G della massa multiway dei deal (K4) |
+| T (trainer) | `306464a`, `161758d`, `fef4305` | Cache delle classi preflop a tre giocatori (scala 0,512140); percorso a 3 seggi del trainer con funzioni proprie, così che l'HU resti identico byte per byte; scorciatoia per l'eroe che ha foldato presa prima della ricerca dell'unità |
+| C (strumenti) | `12492c3`, `4e4bce3` | Metrica di arresto 3-way (`non_all_in_mean_distance` in `compare_charts.py`), impostazioni del runner e pausa giornaliera; CLI di training, chart e blocco delle chart a 3 seggi |
+| Integrazione | `726c112`, `6ec3016` | Test K5 (V8 attraverso `terminal3`, V13, V9b a livello dei terminali) e T3 (V4-V7, V9, V9b, V12 smoke); nessuna correzione fra le corsie |
+| Review | `12fe441` | Tre difetti minori corretti (sotto) |
+
+**Review indipendente** (14:20-14:56; 9 commit, 27 file, +8.737 / −191, tutto letto) [V, `review.md`]:
+
+- nessun difetto di correttezza: mappa dei seggi, carte foldate morte, ordine della scorciatoia, D3, peso delle coppie, scala
+  0,512140, rake per insieme di vincitori, identità e determinismo controllati alla lettura;
+- quattro mutazioni di prova, mai committate (buffer di unità stantio, foldato letto dal bit sbagliato, vettore congelato
+  sbagliato a due attivi, trasposizione sbagliata nella cache), prese ciascuna dal test atteso (una con un crash);
+- corretti in `12fe441`: `--canonical-river-boards` rifiutato senza `--checkdown` (su un albero con il postflop distorcerebbe la
+  legge del caso), errore esplicito della CLI per la scorciatoia spenta a 3 giocatori senza `board_kernels`, byte delle liste di
+  unità nella telemetria della memoria; più un commento;
+- rilievi informativi, fra cui il file di pausa letto prima di quello di stop: una finestra di secondi al giorno in cui il run va
+  in pausa senza `policy.bin` e l'arresto slitta allo snapshot seguente, fino a 4.000 iterazioni dopo.
+
+**Gate 3a, controllo per controllo** [V, `gate3a.md`, `gate3a_final.md`, `final_chain.log`, `final_chain_run2.out`].
+All'integrazione (12:22-14:25) i controlli sono girati sugli alberi e sul codice di produzione ma con le tabelle piccole
+200/500/1000 per board (circa 5 milioni di celle invece di 847 milioni), perché la coda HU lasciava 5,8-8 GB liberi; la sera
+sono girati la build finale a `12fe441`, la ctest, V1, la gamba 3-way di V9 e i controlli a 15 × 4.
+
+| Controllo | Cosa verifica | Esito |
+|---|---|---|
+| Build e ctest | Build della suite a `12fe441` (16:30:42-16:33:49, nessun warning con /W4 /WX); ctest `preflop_blueprint` e `card_abstraction` (16:36:47-16:44:47, 480,3 s) | **PASS**, 101/101 |
+| V1 | Output HU identico byte per byte | **PASS**: IDENTICAL contro `v1_baseline` e `v1_c123` sulla build finale, 13 campi × 3 fixture (g1, rake, hu10): identità, fingerprint di policy e stato, sha256 di `state.ckpt` e `policy.bin`, 18 chart |
+| V2 | Kernel contro forza bruta | **PASS**: 4,4e-15; con i seggi scambiati falliscono tutti i 66 + 156 casi distinguibili |
+| V3 | HU più una terza mano foldata uniforme = HU | **PASS**: 351 × masse HU, 2,8e-15 |
+| V4 | Cache delle classi | **PASS**: 115 tensori identici byte per byte al passo 1, scala esatta 0,512140 su tutti i 278.256 board |
+| V5 | Payoff dei perdenti e dei foldati | **PASS**: quattro giochi alterati rifiutati, la copia esatta accettata |
+| V6 | Scorciatoia accesa e spenta | **PASS**: 4,6e-15 della scala (soglia 1e-12), stati identici a 2 e 8 thread |
+| V7 | Harness a tre seggi = HU (G1 / HU50 con rake) | **Parziale, accettato**: un'iterazione da zero a 2,0e-13 / 4,1e-13 della scala, un'iterazione alternata da una policy densa a 0,076 / 0,045 della tolleranza; la clausola della traiettoria a 100 iterazioni (0,001 sulle chart, 1e-6 a sull'EV) non è rispettata: 0,46 / 0,33 sulle righe preflop, 0,028 / 0,019 a sull'EV |
+| V8 | Identità del rake | **PASS**: 1,65e-15 attraverso `terminal3` (3 fixture × 3.701 terminali postflop × 20 board, ogni seggio come eroe) |
+| V9 | Uguale al passo 1 per classi sull'albero checkdown (19.998 board canonici, 6 iterazioni) | **PASS**: gamba HU 6,9e-14 / 8,4e-14 all'iterazione 1 (soglia 1e-9). Gamba 3-way (16:45-16:50, `board_kernels`, 8 thread, 27,5-27,7 s per iterazione), `3WAY50_donk_rake` / `_rake25cap2`: 1,45e-12 / 5,64e-12 all'iterazione 1, righe medie 2,8e-11 / 3,5e-12 (soglia 0,001), EV 1,2e-13 / 4,6e-13 a e guadagno 2,9e-13 / 5,3e-13 a (soglia 1e-6 a). È l'unico oracolo indipendente della traversata preflop a 3 seggi e del calendario alternato dei tre eroi |
+| V9b | Cache = kernel | **PASS**: 5,2e-14 ai terminali (200 termini, 19.998 board), 2,7e-11 / 4,5e-12 sulla passata |
+| V10 | Determinismo dei thread | **PASS** a tabelle piccole (stato `fnv1a64:25f269dcb61ae069` a 1, 2 e 8 thread) e a 15 × 4 (18:05-18:09, 20 iterazioni, `--validation`): stato `fnv1a64:6a94a517133aa13a` a 8, 2 e 1 thread, 54 chart con lo stesso digest `9da6182ae65102c6`, 0 file non finiti |
+| V11 | Parte A | Fuori dal gate 3a: è il gate 3b |
+| V12 | Albero, chart e blocco | **PASS** a tabelle piccole e a 15 × 4 (18:09-18:11): albero `nodes=54 files=54`; blocco alle chart 3-way 50a di MonkerSolver 2.681 righe + 1.688 fuori range + 5 di ripiego; ritorno 54 file, differenza massima 0,0010, 0 righe oltre k × 0,0005 + 0,0005 e, a 15 × 4, 0 righe con un altro stato di zero (a tabelle piccole erano 2, UTG AKs, per le chart stampate a tre decimali) |
+| V13 | Forza bruta a livello del trainer | **PASS**: 1,2e-14 sui valori delle azioni (soglia 1e-12), 2.301 decisioni dell'eroe tracciate, 45 unità saltate attraversate |
+
+**La clausola della traiettoria di V7.** Dopo l'iterazione 1 del run campionato 122 celle di regret sono esattamente 0 su un solo
+percorso e 122 hanno il segno opposto (per esempio −3,1e-23 contro +4,0e-23): il percorso a tre seggi calcola le masse per
+inclusione-esclusione, e un pareggio esatto lascia un residuo di arrotondamento dove i kernel HU danno 0. Il regret matching ne fa
+righe diverse dall'iterazione 2 e le traiettorie campionate si separano come quelle di due seed. Il gate e la review lo giudicano
+un limite del disegno del test, non un difetto: la clausola presumeva che l'arrotondamento restasse piccolo attraverso il regret
+matching. In produzione tocca righe senza segnale su quel board, che i board seguenti sovrascrivono [I, review]. Il V7 statistico
+suggerito dalla review (distanza harness-HU contro la distanza fra due seed HU dopo qualche migliaio di iterazioni) non è stato
+fatto: non serve al gate.
+
+**Il blocco della memoria (16:50-18:03)** [V, `gate3a_final.md`, `final_chain_run2.out`]. I controlli a 15 × 4 e il run vogliono
+almeno 18.874.368 KB liberi (14,8 GB del trainer più 3 di margine) e nessun altro training. Dalle 16:50:41 lo smoke ha aspettato 30
+minuti ed è uscito per timeout alle 17:21:26: memoria libera fra 14,7 e 16,0 GB senza nessun nostro processo. La tenevano le
+applicazioni dell'utente (memoria privata alle 16:58: Brave 4,2 GB in 33 processi, Claude 2,8, ChatGPT 1,8, Steam 1,0, Telegram
+0,9, Discord 0,8). Verso le 18:00 l'utente ha chiuso Brave; alle 18:00:35 i KB liberi erano 18.700.448, appena sotto, e alle
+18:03:39 il gate si è aperto con 19.051.048.
+
+**Misure a 15 × 4** [V, `train.jsonl` di `out/final_smoke_t8` e `out/final_smoke_t4` nel worktree, `final_chain_run2.out`].
+3WAY50, 15 × 4 + TX2, double, rake 2,5 % / cap 2a, 32 board per eroe e 96 per iterazione:
+
+| Misura | Valore |
+|---|---|
+| Smoke a 8 thread, 20 iterazioni | **1,499 s per iterazione**; preparazione 7,3 s; uscita 0 in 54 s |
+| Smoke a 4 thread, 10 iterazioni | 1,766 s per iterazione |
+| V10 (`--validation`), 20 iterazioni | 1,418 s per iterazione a 8 thread, 2,825 a 2, 5,022 a 1 |
+| Stato | 14.324.289.748 byte (14,32 GB) |
+| Picco del working set | 14.864.637.952 byte (14,86 GB) a 8 thread; 14.856.216.576 a 4 |
+| Picco del commit privato | 14.910.541.824 byte a 8 thread |
+
+- Rispetto alla specifica (9.6): 1,5 s per iterazione, sotto la forbice stimata di 2-4,5 s e sotto i 2,6 s misurati a 8 thread
+  con le tabelle piccole sulla macchina carica; il picco è quello stimato (circa 14,8 GB).
+- **Scala con i thread** [I, rapporti dei tempi della tabella; il punto a 4 thread viene dallo smoke, gli altri da V10]: da 1 a 2
+  thread 1,78 volte, da 1 a 4 2,84, da 1 a 8 3,54. Un fit di Amdahl dà circa il 12 % di lavoro non parallelo; su 48 core fisici
+  sarebbero circa 0,5-0,8 s per iterazione (la specifica stimava 0,4-1,0 s su un server).
+
+**Guardie del 30** (10.12). Verso le 17:58 la sessione principale ha fermato `ext/stop_ext_1958.ps1` e
+`night2/stop_night2_1958.ps1`: alle 19:40 avrebbero scritto file CANCEL nelle cartelle dei loro run, già archiviate su F:
+attraverso le junction [V, sessione principale].
+
+**Merge e congelamento** [V, `git log`, file `SOURCE.txt`, `queue.log`]:
+
+- 18:11:32, merge `238a41e` di `feat/threeway-step2` (`12fe441`) in `feat/monker-step1-checkdown`. `git diff 12fe441 238a41e`
+  su `libs`, `benchmarks`, `tests` e `tools` è vuoto: il codice del branch è quello del gate. Al merge il branch è 12 commit avanti a
+  origin, non pushato.
+- 18:11:39-18:11:40, `run1/final_freeze.sh` (FREEZE_OK e DRY_RUN_OK [V, sessione principale]), che aggiunge solo file nuovi nel
+  checkout principale e rifiuta di sovrascrivere:
+  - `out/monker/bin_3way_step2/`: train (sha256 `12c0dd6b8ccd…`) e monker_tree (`274505865911…`) della build del gate, con
+    `SOURCE.txt`;
+  - `out/frozen/threeway_step2_12fe441/`: runner, `compare_charts.py`, configurazione, manifest dell'albero e mappa TX2 estratti
+    con `git show 12fe441`, sha256 in `SOURCE.txt`. La copia è autosufficiente: il runner lavora dalla propria radice, e il
+    `compare_charts.py` del checkout principale prima del merge non aveva `non_all_in_mean_distance` (con quello il cambiamento
+    sarebbe sempre `na` e il run andrebbe al tetto);
+  - `out/frozen/queue_3way50_15x4.sh` (sha256 `7581f0f8…`).
+
+**Il primo run e la sua coda** [V, `queue.log` e script della coda, salvo dove è segnato I]:
+
+- **Configurazione**: `3WAY50_donk_rake25cap2.json` (3 giocatori, 50a, rake 2,5 % / cap 2a, no flop no drop),
+  `out/monker/buckets_15x4`, mappa TX2, le 54 chart 3-way 50a di MonkerSolver; 8 thread, double, DCFR con aggiornamenti alternati,
+  batch 32; chart ogni 4.000 iterazioni, arresto a 0,008 sulle 18 chart non all-in, minimo 16.000, tetto 48.000; **checkpoint ogni
+  16.000** (decisione dell'utente delle 18:00), policy ogni 16.000 con una riserva di 40 GB, pausa attiva. Uscita
+  `out/monker/step2_3way/3WAY50_15x4_rake25cap2`.
+- **Lancio**: coda partita alle 18:11:54 (pid 1644 in `queue.lock`, nessun override), tutti i controlli ok (sha256 fissate di
+  trainer, runner, `compare_charts.py`, configurazione e mappa; contenuto della configurazione; 54 chart; cartella nuova su C:;
+  267 GB liberi), in attesa delle 00:00 del 02/10.
+- **Memoria**: prima di ogni (ri)partenza il gate (almeno 18.874.368 KB liberi, nessun trainer); se è chiuso la coda aspetta e
+  scrive nel log ogni 10 minuti.
+- **Finestra**: il 02/10 è un giorno libero e il run gira senza pausa. Dal 03/10 il file PAUSE resta presente dalle 19:40: il
+  trainer scrive il solo checkpoint ed esce PAUSED, la coda riparte alle 00:00 dallo `state.ckpt`, e dopo le 19:40 non parte nessun
+  giro.
+- **Fine e arresti**: la coda finisce con STOPPED (regola di arresto) o ITERATION_LIMIT (tetto); un errore la chiude senza nuovi
+  tentativi. Arresto a mano con `QUEUE_CANCEL` (pausa pulita con checkpoint). Nessun archivio su F: prima della parte A.
+- **Prove della coda** con un trainer finto (`qtest2/driver.log`, 17:41-17:54): T1 (giorno libero, arresto al minimo di 16.000),
+  T2 (nessuna partenza dopo le 19:40), T3 (PAUSE tenuto durante l'avvio, PAUSED, ripresa fissata alle 00:00), T4 (annullamento →
+  PAUSED a 8.600, annullamento rimasto → rifiuto, ripresa → STOPPED), T5 (errore → fine senza nuovi tentativi), T6 (cartella
+  estranea rifiutata), T7 (junction nel percorso di uscita rifiutata, dopo una correzione del driver) tutti PASS; cartella delle
+  chart di MonkerSolver invariata. Un primo giro dalle 17:39 non era valido: il driver leggeva i codici di uscita in una subshell.
+  Le stesse prove hanno riprodotto due volte un difetto della versione della coda del pomeriggio (PAUSE scritto una volta sola e
+  cancellato dall'avvio del runner o del trainer: il run avrebbe girato oltre le 19:40), corretto nella versione congelata. Alle
+  16:51-16:57 la pausa era stata provata con il trainer vero su HU G1 (pausa a 1.668, ripresa da 1.668, annullamento durante il run
+  → pausa a 2.840).
+- **Limite**: le prove sono state fatte con `CHECKPOINT_EVERY=0`, prima della decisione delle 18:00. Il checkpoint periodico è il
+  percorso del runner che i run HU usano già (default 20.000), ma con questa coda non è stato provato. Un crash o un riavvio fermano
+  anche la coda: si rilancia lo stesso comando, dopo aver controllato che il PID di `queue.lock` non esista più e averlo tolto, e il
+  run riparte dall'ultimo checkpoint [I].
+
+**Fine prevista** [I]. A 1,5 s per iterazione (± 30 %): 16.000 iterazioni in circa 7 ore; l'arresto atteso dalla specifica, fra
+24.000 e 40.000, in circa 10-17 ore, cioè il 02/10 fra le 10:30 e le 17:30; il tetto di 48.000 in circa 20 ore. Secondo
+`gate3a_final.md`, sotto 3,4 s per iterazione l'intero run, tetto compreso, finisce prima della prima pausa (03/10 alle 19:40). Il
+costo dei checkpoint ogni 16.000 (14,32 GB di stato ciascuno) non è misurato.
+
+**Cosa resta.**
+
+1. Il risultato del run 1: iterazione dell'arresto, curve delle tre medie (54, 36 e 18 chart), distanza e differenza di range
+   dalle 54 chart di MonkerSolver (`run.log`).
+2. La fase 3b: parte A (valori con la policy fissa, migliore risposta preflop per posto, chart di MonkerSolver nel nostro gioco),
+   V11 e gate 3b; 6,5-9 ore di agente secondo la specifica [I]. Poi la parte A campionata su 64 flop fisici sul run 1 (0,9-2 ore
+   sull'i3 secondo la specifica [I]), prima dell'archivio su F:.
+3. Il test del blocco: preflop delle chart 3-way di MonkerSolver bloccato a 15 × 4, soglia 0 e 24.000 iterazioni (D3); circa 10
+   ore a 1,5 s per iterazione [I].
+4. La proposta della batteria di correttezza 3-way chiesta dall'utente la mattina (oracolo esatto contro un CFR indipendente,
+   regole e payoff indipendenti, guadagni di deviazione per giocatore): non è nei file letti per questa sezione.
+5. Il push del branch (12 commit locali al merge, più gli aggiornamenti dei documenti), quando l'utente lo chiede. La parte B (migliore risposta completa, NashConv) resta la
+   fase 3c su un server, fuori dall'ambito ridotto.
 
 ## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre pomeriggio)
 
