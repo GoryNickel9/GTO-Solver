@@ -18,8 +18,11 @@
 // response is the brute-force NashConv of that policy; on boards where the
 // river changes the showdown winner the river key changes the solution and a
 // policy read with the other key's rows or pooling has another brute-force
-// NashConv (test_river_key_decisive: the power of that check); the sampled
-// alternating update on key-"turn" rows is unbiased
+// NashConv (test_river_key_decisive: the power of that check); under a locked
+// preflop the trainer's regrets, strategy sums and average on trained river
+// rows are those of the FiniteGame with the preflop as chance, up to the
+// lock factors of the exact relation (test_river_key_locked_oracle); the
+// sampled alternating update on key-"turn" rows is unbiased
 // (test_river_key_alternating); gain_lower under a locked preflop is the
 // brute-force best response from the flop on (test_river_key_gain_lower).
 #include "preflop_blueprint_test_support.hpp"
@@ -1791,7 +1794,10 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
 //      the river cells it compares are counted (printed), and the river rows
 //      that pool two canonical boards must carry cumulative regrets and
 //      strategy sums above 1e-6: the average plays the river uniformly here,
-//      the river regrets and sums that A1 checks are not zero;
+//      the river regrets and sums that A1 checks are not zero, but they come
+//      from the uniform first iteration only (from iteration 2 on the trained
+//      preflop no longer reaches the river: review of c50ff3c); A1 on
+//      trained river rows is test_river_key_locked_oracle;
 //  A2  the trainer's exact physical best response (the joint river engine,
 //      which computes the river rows of either key independently of
 //      BoardContext) equals calculate_nash_conv of the lifted average on the
@@ -2085,8 +2091,9 @@ pb::PreflopLock mixed_preflop_lock(const pb::CompiledGame &game);
 // preflop decisions, whose rows are the lock (EVs, best responses, NashConv
 // within 1e-9); then the mutated lifts. No A1 here: the trainer keeps a
 // locked frequency in the player's own reach, a FiniteGame with the preflop
-// as chance in the counterfactual reach, so cumulative regrets and strategy
-// sums differ by a factor per hand wherever a row pools preflop classes.
+// as chance in the chance reach, so cumulative regrets and strategy sums
+// differ by a factor per hand wherever a row pools preflop classes (the
+// exact relation and A1 under the lock: river_key_locked_oracle).
 void river_key_locked(const Resources &resources, const FoldedTables &tables,
                       const pb::TrainingBoards &boards, const RiverKeyVariant &variant,
                       RiverKeyEvaluation &evaluation) {
@@ -2154,6 +2161,378 @@ void river_key_locked(const Resources &resources, const FoldedTables &tables,
             << ", " << exact.value().ev[1] << "] (oracle [" << nash_conv.value().profile_value[0]
             << ", " << nash_conv.value().profile_value[1] << "]), "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+}
+
+// Lock factors of the A1 relation under a preflop lock
+// (river_key_locked_oracle): for every compiled node and player, the product
+// of the locked frequencies of that player's preflop actions on the path from
+// the root to the node, for the player's preflop class (1 above the first
+// preflop decision of the player).
+std::array<std::vector<double>, 2> lock_factors(const pb::CompiledGame &game,
+                                                const pb::PreflopLock &lock,
+                                                const std::array<std::uint8_t, 2> &classes) {
+  std::map<std::pair<std::uint32_t, std::uint8_t>, const std::vector<double> *> locked;
+  for (const auto &row : lock.rows) {
+    locked[{row.node, row.hand_class}] = &row.frequencies;
+  }
+  const auto count = game.nodes().size();
+  std::array<std::vector<double>, 2> factors{std::vector<double>(count, 0.0),
+                                             std::vector<double>(count, 0.0)};
+  std::vector<std::uint8_t> visited(count, 0U);
+  factors[0][game.root()] = 1.0;
+  factors[1][game.root()] = 1.0;
+  std::vector<std::uint32_t> pending{game.root()};
+  while (!pending.empty()) {
+    const auto id = pending.back();
+    pending.pop_back();
+    require(visited[id] == 0U, "the compiled game is a tree (one path to every node)");
+    visited[id] = 1U;
+    const auto &node = game.nodes()[id];
+    const auto edges = game.edges_of(id);
+    for (std::size_t action = 0U; action < edges.size(); ++action) {
+      std::array<double, 2> factor{factors[0][id], factors[1][id]};
+      if (node.kind == pb::NodeKind::Decision && node.street == gtosd::Street::Preflop) {
+        const auto found = locked.find({id, classes[node.actor]});
+        require(found != locked.end() && found->second->size() == edges.size(),
+                "every preflop decision of the subsets' classes is locked");
+        factor[node.actor] *= (*found->second)[action];
+      }
+      factors[0][edges[action].child] = factor[0];
+      factors[1][edges[action].child] = factor[1];
+      pending.push_back(edges[action].child);
+    }
+  }
+  return factors;
+}
+
+// Counts of one variant of A1 under the preflop lock (river_key_locked_oracle).
+struct LockedOracleCounts {
+  std::uint64_t compared{0U};
+  // River cells compared (the trainer's values), all and on pooled rows.
+  RiverCells river;
+  RiverCells pooled_river;
+  std::uint64_t river_sets{0U};
+  std::uint64_t pooled_river_sets{0U};
+  // Compared river cells whose regret or strategy sum after the last
+  // iteration differs from the value after iteration 1 by more than 1e-6
+  // (relative to max(1, |value after iteration 1|)).
+  std::uint64_t river_regret_changed{0U};
+  std::uint64_t river_sum_changed{0U};
+  std::uint64_t pooled_regret_changed{0U};
+  std::uint64_t pooled_sum_changed{0U};
+  // River information sets whose trainer average leaves uniform by more
+  // than 1e-6 in some action.
+  std::uint64_t river_not_uniform{0U};
+  std::uint64_t pooled_not_uniform{0U};
+  // Largest |trainer - relation| of regret, strategy sum and average.
+  double regret_error{0.0};
+  double strategy_error{0.0};
+  double average_error{0.0};
+  // Largest |trainer - oracle| without the factors, and largest relation
+  // error with the two factors swapped (both must exceed 1e-6).
+  double unscaled_regret{0.0};
+  double unscaled_sum{0.0};
+  double swapped_error{0.0};
+  // Range of the lock factors of the compared information sets.
+  double smallest_factor{1.0};
+  double largest_factor{0.0};
+};
+
+void add_locked_counts(LockedOracleCounts &total, const LockedOracleCounts &counts) {
+  total.compared += counts.compared;
+  add_cells(total.river, counts.river);
+  add_cells(total.pooled_river, counts.pooled_river);
+  total.river_sets += counts.river_sets;
+  total.pooled_river_sets += counts.pooled_river_sets;
+  total.river_regret_changed += counts.river_regret_changed;
+  total.river_sum_changed += counts.river_sum_changed;
+  total.pooled_regret_changed += counts.pooled_regret_changed;
+  total.pooled_sum_changed += counts.pooled_sum_changed;
+  total.river_not_uniform += counts.river_not_uniform;
+  total.pooled_not_uniform += counts.pooled_not_uniform;
+  total.regret_error = std::max(total.regret_error, counts.regret_error);
+  total.strategy_error = std::max(total.strategy_error, counts.strategy_error);
+  total.average_error = std::max(total.average_error, counts.average_error);
+  total.unscaled_regret = std::max(total.unscaled_regret, counts.unscaled_regret);
+  total.unscaled_sum = std::max(total.unscaled_sum, counts.unscaled_sum);
+  total.swapped_error = std::max(total.swapped_error, counts.swapped_error);
+  total.smallest_factor = std::min(total.smallest_factor, counts.smallest_factor);
+  total.largest_factor = std::max(total.largest_factor, counts.largest_factor);
+}
+
+// A1 under the preflop lock (review of c50ff3c): in the unlocked variants no
+// river regret or strategy sum changes after iteration 1 (the trained preflop
+// stops reaching the river), so A1 there checks the river arithmetic of the
+// uniform first iteration only. Here both preflops are locked to
+// mixed_preflop_lock (every preflop line is played in every iteration), so
+// the river rows are trained, and the trainer is compared with the FiniteGame
+// whose preflop decisions are chance nodes with the lock's frequencies
+// (FiniteGameBuilder preflop_chance), solved by LinearCfr. The two account
+// for a locked frequency differently:
+//  - the trainer plays a locked row as the actor's own strategy: it enters
+//    the actor's own reach (the strategy-sum weight board weight x hand
+//    probability x t x own reach) and the opponent's reach (the
+//    counterfactual values of the opponent's regrets), never the actor's own
+//    regret weight;
+//  - the FiniteGame solver (traverse_full) weights a regret by opponent reach
+//    x chance reach and a strategy sum by own reach x chance reach, and a
+//    locked frequency of either player is chance there.
+// So at a postflop decision n of player i (opponent o), with F_p(n, c) the
+// product of the locked frequencies of player p's preflop actions on the
+// path to n for class c, the contribution of one hand h of player i on one
+// board is, per iteration:
+//    oracle regret term = F_i(n, class(h)) x trainer regret term,
+//    oracle strategy-sum term = mean of F_o(n, class(g)) over the opponent
+//                               hands g compatible with h x trainer term
+// (the factor the trainer keeps, F_o in the regret and F_i in the strategy
+// sum, is in both). A row pools hands of several classes with different
+// F_i, so its cumulative regret is a sum of terms with different factors and
+// regret matching then gives different current strategies: no relation holds
+// between the cells after iteration 1. With one preflop class per player
+// (here TsJs, ThJh against QdKd, QcKc: TJs against KQs) the factors depend on
+// the node only, f_p(n), the current strategies stay equal (regret matching
+// does not see a positive factor) and for every cell, every iteration:
+//    trainer regret       = oracle regret / f_i(n),
+//    trainer strategy sum = oracle strategy sum / f_o(n),
+//    trainer average      = oracle average,
+// which is compared within 1e-9 (25 exact Linear Simultaneous iterations).
+// Asserted besides: every other cell (also the locked preflop cells) stays
+// zero; the factors are not vacuous (without them, and with the two factors
+// swapped, the difference exceeds 1e-6); and the river play is trained: some
+// pooled river cell's regret and strategy sum change after iteration 1 and
+// some pooled river average is not uniform.
+LockedOracleCounts river_key_locked_oracle(const Resources &resources, const FoldedTables &tables,
+                                           const pb::TrainingBoards &boards,
+                                           const RiverKeyVariant &variant) {
+  const auto started = Clock::now();
+  constexpr std::uint64_t iterations = 25U;
+  const auto &game = *variant.game;
+  const auto lock = mixed_preflop_lock(game);
+  require(!lock.rows.empty(), "the lock covers the preflop decisions");
+  const pb::BoardClassRows rows(4U, 5U, variant.river_groups, *variant.map);
+  const StreetTables street_tables{&tables.flop, &tables.turn, variant.river};
+  pb::AbstractionTables view;
+  view.catalog = &*resources.catalog;
+  view.flop = &tables.flop;
+  view.turn = &tables.turn;
+  view.river = variant.river;
+  view.board_class_rows = &rows;
+  const auto pooling = pooling_counts(game, resources, view, boards, variant.subsets);
+
+  // One preflop class per player, the row of every combo at the preflop.
+  std::array<std::uint8_t, 2> classes{};
+  for (std::size_t player = 0U; player < 2U; ++player) {
+    std::set<std::uint32_t> seen;
+    for (const auto &history : boards.histories) {
+      const auto context = pb::BoardContext::build(history, *resources.ranks, &view);
+      require(context.has_value(), "locked oracle context builds");
+      for (const auto combo : variant.subsets.combos[player]) {
+        const auto hand = context.value().hand_index(combo);
+        require(hand != pb::no_hand &&
+                    context.value().row(gtosd::Street::Preflop, hand) ==
+                        context.value().hand_classes()[hand],
+                "the preflop row of a subset hand is its class");
+        seen.insert(context.value().row(gtosd::Street::Preflop, hand));
+      }
+    }
+    require(seen.size() == 1U, "locked A1: each player's subset is one preflop class");
+    classes[player] = static_cast<std::uint8_t>(*seen.begin());
+  }
+  const auto factors = lock_factors(game, lock, classes);
+
+  // The oracle: the abstract game with the locked preflop as chance.
+  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+                            street_tables, &lock);
+  const auto finite = builder.build(boards, variant.subsets);
+  const auto summary = gtosd::validate_finite_game(finite);
+  require(summary.has_value(), "locked oracle game validates: " + variant.name + " " +
+                                   (summary ? "" : gtosd::solver_error_name(summary.error())));
+  require(pooling.information_sets - pooling.by_street[0] == summary.value().information_sets,
+          "the locked oracle's information sets are the postflop rows: " + variant.name);
+  gtosd::SolverConfig solver_config;
+  solver_config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
+  solver_config.iterations = iterations;
+  solver_config.thread_count = 1U;
+  const auto solved = gtosd::solve_finite_game(finite, solver_config);
+  require(solved.has_value(), "locked oracle game solves: " + variant.name);
+
+  // The trainer with the lock, exact on the same boards and hand subsets.
+  auto config = resources.config();
+  config.flop_capacity = rows.count(ca::BucketStreet::Flop);
+  config.turn_capacity = rows.count(ca::BucketStreet::Turn);
+  config.river_capacity = rows.count(ca::BucketStreet::River);
+  config.threads = 2U;
+  config.scheme = pb::WeightingScheme::Linear;
+  config.update_mode = pb::UpdateMode::Simultaneous;
+  auto training_resources = resources.view();
+  training_resources.flop = &tables.flop;
+  training_resources.turn = &tables.turn;
+  training_resources.river = variant.river;
+  training_resources.board_class_rows = &rows;
+  training_resources.preflop_lock = &lock;
+  auto trainer = pb::Trainer::create(game, training_resources, config, &boards, &variant.subsets);
+  require(trainer.has_value(), "locked oracle trainer creates: " + variant.name + " " +
+                                   (trainer ? "" : pb::trainer_error_name(trainer.error())));
+  const auto &layout = trainer.value()->layout();
+  // The first cell of every oracle information set, in the checkpoint's order.
+  std::vector<std::uint64_t> offsets;
+  for (const auto &[key, buffer] : solved.value().checkpoint.information_sets) {
+    const auto parsed = parse_key(key);
+    const auto &node = game.nodes()[parsed.node];
+    require(node.kind == pb::NodeKind::Decision && node.actor == parsed.player &&
+                node.street != gtosd::Street::Preflop &&
+                buffer.actions.size() == node.action_count,
+            "locked oracle information set maps onto a postflop compiled decision");
+    offsets.push_back(layout.offsets[parsed.node] +
+                      static_cast<std::uint64_t>(parsed.row) * node.action_count);
+  }
+  // The trainer's values of the compared cells after iteration 1.
+  require(trainer.value()->iterate().has_value(), "locked oracle iteration succeeds");
+  std::vector<double> first_regret;
+  std::vector<double> first_sum;
+  {
+    std::size_t index = 0U;
+    for (const auto &[key, buffer] : solved.value().checkpoint.information_sets) {
+      static_cast<void>(key);
+      for (std::size_t action = 0U; action < buffer.actions.size(); ++action) {
+        first_regret.push_back(trainer.value()->regret(offsets[index] + action));
+        first_sum.push_back(trainer.value()->strategy_sum(offsets[index] + action));
+      }
+      ++index;
+    }
+  }
+  for (std::uint64_t iteration = 1U; iteration < iterations; ++iteration) {
+    require(trainer.value()->iterate().has_value(), "locked oracle iteration succeeds");
+  }
+  const auto &trained_state = *trainer.value();
+  const auto average = trainer.value()->average_policy();
+
+  LockedOracleCounts counts;
+  const auto tally = [](RiverCells &cells, const double regret, const double strategy_sum) {
+    ++cells.compared;
+    cells.regret_nonzero += regret != 0.0 ? 1U : 0U;
+    cells.regret_above += std::abs(regret) > 1e-6 ? 1U : 0U;
+    cells.sum_nonzero += strategy_sum != 0.0 ? 1U : 0U;
+    cells.sum_above += std::abs(strategy_sum) > 1e-6 ? 1U : 0U;
+    cells.largest_regret = std::max(cells.largest_regret, std::abs(regret));
+  };
+  std::vector<std::uint8_t> covered(trained_state.cell_count(), 0U);
+  std::size_t index = 0U;
+  std::size_t cell_index = 0U;
+  for (const auto &[key, buffer] : solved.value().checkpoint.information_sets) {
+    const auto parsed = parse_key(key);
+    const auto &node = game.nodes()[parsed.node];
+    const double own = factors[node.actor][parsed.node];
+    const double other = factors[1U - node.actor][parsed.node];
+    require(own > 0.0 && own < 1.0 && other > 0.0 && other < 1.0,
+            "the lock factors of a postflop decision lie strictly between 0 and 1");
+    counts.smallest_factor = std::min({counts.smallest_factor, own, other});
+    counts.largest_factor = std::max({counts.largest_factor, own, other});
+    const bool river = node.street == gtosd::Street::River;
+    const bool pooled =
+        river && pooling.pooled_river_rows.contains(
+                     (static_cast<std::uint64_t>(parsed.node) << 32U) | parsed.row);
+    const auto average_row = average.row(parsed.node, parsed.row);
+    const auto &oracle_average = solved.value().average_strategy.at(key);
+    const double uniform = 1.0 / static_cast<double>(node.action_count);
+    bool not_uniform = false;
+    for (std::size_t action = 0U; action < node.action_count; ++action, ++cell_index) {
+      const auto cell = offsets[index] + action;
+      covered[cell] = 1U;
+      const double regret = trained_state.regret(cell);
+      const double strategy_sum = trained_state.strategy_sum(cell);
+      const double oracle_regret = buffer.cumulative_regret[action];
+      const double oracle_sum = buffer.cumulative_strategy[action];
+      const double expected_regret = oracle_regret / own;
+      const double expected_sum = oracle_sum / other;
+      counts.regret_error = std::max(counts.regret_error, std::abs(regret - expected_regret));
+      counts.strategy_error = std::max(counts.strategy_error, std::abs(strategy_sum - expected_sum));
+      counts.average_error = std::max(
+          counts.average_error, std::abs(average_row[action] - oracle_average.probabilities[action]));
+      counts.unscaled_regret = std::max(counts.unscaled_regret, std::abs(regret - oracle_regret));
+      counts.unscaled_sum = std::max(counts.unscaled_sum, std::abs(strategy_sum - oracle_sum));
+      counts.swapped_error =
+          std::max({counts.swapped_error, std::abs(regret - oracle_regret / other),
+                    std::abs(strategy_sum - oracle_sum / own)});
+      if (!close(regret, expected_regret, 1e-9) || !close(strategy_sum, expected_sum, 1e-9)) {
+        std::cout << "first locked mismatch " << variant.name << " " << key
+                  << " action=" << action << " regret=" << regret
+                  << " expected=" << expected_regret << " sum=" << strategy_sum
+                  << " expected=" << expected_sum << std::endl;
+      }
+      require(close(regret, expected_regret, 1e-9),
+              "locked: trainer cumulative regret = oracle regret / actor's lock factor within "
+              "1e-9");
+      require(close(strategy_sum, expected_sum, 1e-9),
+              "locked: trainer cumulative strategy = oracle strategy sum / opponent's lock "
+              "factor within 1e-9");
+      require(close(average_row[action], oracle_average.probabilities[action], 1e-9),
+              "locked: trainer average strategy = oracle average within 1e-9");
+      not_uniform = not_uniform || std::abs(average_row[action] - uniform) > 1e-6;
+      if (river) {
+        const bool regret_changed = !close(regret, first_regret[cell_index], 1e-6);
+        const bool sum_changed = !close(strategy_sum, first_sum[cell_index], 1e-6);
+        tally(counts.river, regret, strategy_sum);
+        counts.river_regret_changed += regret_changed ? 1U : 0U;
+        counts.river_sum_changed += sum_changed ? 1U : 0U;
+        if (pooled) {
+          tally(counts.pooled_river, regret, strategy_sum);
+          counts.pooled_regret_changed += regret_changed ? 1U : 0U;
+          counts.pooled_sum_changed += sum_changed ? 1U : 0U;
+        }
+      }
+      ++counts.compared;
+    }
+    if (river) {
+      ++counts.river_sets;
+      counts.river_not_uniform += not_uniform ? 1U : 0U;
+      if (pooled) {
+        ++counts.pooled_river_sets;
+        counts.pooled_not_uniform += not_uniform ? 1U : 0U;
+      }
+    }
+    ++index;
+  }
+  for (std::uint64_t cell = 0; cell < covered.size(); ++cell) {
+    if (covered[cell] == 0U) {
+      require(trained_state.regret(cell) == 0.0 && trained_state.strategy_sum(cell) == 0.0,
+              "locked: cells outside the oracle (locked preflop rows included) stay zero");
+    }
+  }
+  require(counts.unscaled_regret > 1e-6 && counts.unscaled_sum > 1e-6,
+          "locked: without the lock factors the trainer's regrets and strategy sums are not "
+          "the oracle's: " + variant.name);
+  require(counts.swapped_error > 1e-6,
+          "locked: the relation fails with the two lock factors swapped: " + variant.name);
+  require(counts.pooled_river_sets > 0U,
+          "locked: the oracle compares pooled river rows: " + variant.name);
+  require(counts.pooled_regret_changed > 0U && counts.pooled_sum_changed > 0U,
+          "locked: some pooled river cell's regret and strategy sum change after iteration 1: " +
+              variant.name);
+  require(counts.pooled_not_uniform > 0U,
+          "locked: some pooled river average is not uniform: " + variant.name);
+  std::cout << "  " << variant.name << ": classes " << static_cast<unsigned>(classes[0]) << " / "
+            << static_cast<unsigned>(classes[1]) << ", finite game " << summary.value().nodes
+            << " nodes, " << summary.value().information_sets << " information sets ("
+            << pooling.by_street[0] << " preflop rows locked as chance), " << counts.compared
+            << " cells compared of " << trained_state.cell_count() << ", max error regret "
+            << counts.regret_error << ", strategy sum " << counts.strategy_error << ", average "
+            << counts.average_error << "; without the factors " << decimal(counts.unscaled_regret)
+            << " / " << decimal(counts.unscaled_sum) << ", factors swapped "
+            << decimal(counts.swapped_error) << ", lock factors " << decimal(counts.smallest_factor)
+            << " .. " << decimal(counts.largest_factor) << ", "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  std::cout << "    locked A1 river cells of " << variant.name << ": all river rows ("
+            << counts.river_sets << " information sets, " << counts.river_not_uniform
+            << " averages not uniform) " << cells_summary(counts.river)
+            << ", changed after iteration 1: regret " << counts.river_regret_changed
+            << ", strategy sum " << counts.river_sum_changed << "; pooled river rows ("
+            << counts.pooled_river_sets << " information sets, " << counts.pooled_not_uniform
+            << " averages not uniform) " << cells_summary(counts.pooled_river)
+            << ", changed after iteration 1: regret " << counts.pooled_regret_changed
+            << ", strategy sum " << counts.pooled_sum_changed << ", largest regret "
+            << decimal(counts.pooled_river.largest_regret) << "\n";
+  return counts;
 }
 
 void print_evaluation(const std::string &name, const RiverKeyEvaluation &evaluation,
@@ -2715,6 +3094,91 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
             << cells_summary(unlocked_pooled_river_cells) << "\n";
 }
 
+// A1 on trained river rows (review of c50ff3c): river_key_locked_oracle on
+// the decisive boards with one preflop class per player (TsJs, ThJh against
+// QdKd, QcKc: TJs against KQs, the CO40-test subsets of
+// test_river_key_decisive; the river still changes their winner: W on 7c and
+// Qs, L on 6h, L against QdKd and W against QcKc on 7d, L on 9h, W on 7s).
+// Variants: HU10 reduced with key "turn" under the identity (TX2 keeps these
+// turns apart, so it has the same rows) and turn-as-flop, key "river-board"
+// (identity_river_board) for contrast, and CO40-test with turn-as-flop; 6 and
+// 1 river groups each. Pooled river rows: key "turn" pools the rivers of a
+// turn (and with turn-as-flop the turns), key "river-board" the two orders
+// of 9s8s6d Ad Qs.
+void test_river_key_locked_oracle(const Resources &resources, const FoldedTables &tables) {
+  const auto started = Clock::now();
+  const auto &catalog = *resources.catalog;
+  const auto boards = river_decisive_boards();
+  auto subsets = river_decisive_subsets();
+  for (auto &combos : subsets.combos) {
+    combos = {combos.front(), combos.back()};
+  }
+  const auto identity = pb::BoardTextureMap::identity();
+  const auto merged = turn_as_flop(catalog);
+  const auto river_board =
+      load_map(texture_directory() / "identity_river_board_texture_map.txt", catalog);
+  require(river_board.river_key() == pb::RiverKey::RiverBoard, "the river-board map has its key");
+  const auto river_one = folded_table(resources, *resources.river, 1U);
+  const auto hu10 =
+      pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
+  const auto co40 = pb::CompiledGame::compile(load_fixture("preflop_blueprint_co40_test_v1.json"));
+  require(hu10.has_value() && co40.has_value(), "HU10 reduced and CO40-test compile");
+
+  struct MapCase {
+    const char *name;
+    const pb::BoardTextureMap *map;
+    bool co40_game;
+  };
+  const std::array<MapCase, 4> cases{{{"identity", &identity, false},
+                                      {"turn_as_flop", &merged, false},
+                                      {"identity_river_board", &river_board, false},
+                                      {"turn_as_flop", &merged, true}}};
+  std::uint32_t variants = 0U;
+  LockedOracleCounts total;
+  double smallest_unscaled = 1.0e300;
+  double smallest_swapped = 1.0e300;
+  for (const auto &entry : cases) {
+    const bool river_board_key = entry.map->river_key() == pb::RiverKey::RiverBoard;
+    for (const std::uint32_t groups : {6U, 1U}) {
+      RiverKeyVariant variant;
+      variant.name = std::string("locked A1 ") +
+                     (entry.co40_game ? "CO40-test " : "HU10 reduced ") + entry.name +
+                     (river_board_key ? " key=river-board" : " key=turn") +
+                     " river_groups=" + std::to_string(groups);
+      variant.game = entry.co40_game ? &co40.value() : &hu10.value();
+      variant.map = entry.map;
+      variant.river = groups == 1U ? &river_one : &tables.river;
+      variant.river_groups = groups;
+      variant.subsets = subsets;
+      const auto counts = river_key_locked_oracle(resources, tables, boards, variant);
+      ++variants;
+      add_locked_counts(total, counts);
+      smallest_unscaled =
+          std::min({smallest_unscaled, counts.unscaled_regret, counts.unscaled_sum});
+      smallest_swapped = std::min(smallest_swapped, counts.swapped_error);
+    }
+  }
+  std::cout << "river-key locked A1: " << variants
+            << " variants under mixed_preflop_lock with one preflop class per player, trainer "
+               "regret x actor's lock factor, strategy sum x opponent's lock factor and average "
+               "= FiniteGame LinearCfr (preflop as chance) within 1e-9 (max errors "
+            << total.regret_error << " / " << total.strategy_error << " / "
+            << total.average_error << "; every variant differs from the relation by at least "
+            << decimal(smallest_unscaled) << " without the factors and "
+            << decimal(smallest_swapped) << " with the factors swapped), "
+            << total.compared << " cells compared, "
+            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  std::cout << "river-key locked A1 river cells (" << variants << " variants): all river rows "
+            << cells_summary(total.river) << ", changed after iteration 1: regret "
+            << total.river_regret_changed << ", strategy sum " << total.river_sum_changed
+            << ", averages not uniform " << total.river_not_uniform << " of " << total.river_sets
+            << " information sets; pooled river rows " << cells_summary(total.pooled_river)
+            << ", changed after iteration 1: regret " << total.pooled_regret_changed
+            << ", strategy sum " << total.pooled_sum_changed << ", averages not uniform "
+            << total.pooled_not_uniform << " of " << total.pooled_river_sets
+            << " information sets\n";
+}
+
 // A4 (critic R3): HU50's update path, boards sampled from the list with
 // alternating updates, on key-"turn" rows. As in
 // test_alternating_conditional_expectation (trainer tests), conditional on
@@ -3117,6 +3581,7 @@ int main(const int argc, char **argv) {
     test_river_board_key(resources, tables, scratch_dir);
     test_river_key_oracle(resources, tables, maps[3]);
     test_river_key_decisive(resources, tables, maps[3]);
+    test_river_key_locked_oracle(resources, tables);
     test_river_key_alternating(resources, tables, maps[3]);
     test_river_key_gain_lower(resources, tables, maps[3]);
     {
