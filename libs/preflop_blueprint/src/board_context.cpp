@@ -72,8 +72,17 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
   for (std::size_t position = 0; position < live_hand_count; ++position) {
     if (position == 0U || context.ranks_[context.order_[position]] !=
                               context.ranks_[context.order_[position - 1U]]) {
+      context.group_starts_[context.rank_groups_] = static_cast<std::uint16_t>(position);
       ++context.rank_groups_;
     }
+  }
+  context.group_starts_[context.rank_groups_] = static_cast<std::uint16_t>(live_hand_count);
+  context.pair_hand_.fill(no_hand);
+  for (std::uint16_t hand = 0; hand < live_hand_count; ++hand) {
+    const auto first = static_cast<std::size_t>(context.cards_[hand][0]);
+    const auto second = static_cast<std::size_t>(context.cards_[hand][1]);
+    context.pair_hand_[first * 36U + second] = hand;
+    context.pair_hand_[second * 36U + first] = hand;
   }
 
   std::array<std::uint8_t, 36> incidence{};

@@ -155,14 +155,15 @@ inline ChartLock chart_lock_seats(const preflop_blueprint::CompiledGame &game,
   return result;
 }
 
-// The trainer's lock (TrainerResources::preflop_lock): heads-up only.
+// The trainer's lock (TrainerResources::preflop_lock). Heads-up refuses an
+// all-zero row that the class reaches (as before); with 3 or more seats such
+// rows are left unlocked and counted (allow_fallback): MonkerSolver's 3-way
+// 50a charts round a few reached rows to zero (CO KQo, A9s, KJs: 5 rows, 0.056
+// combos), and those rows train (phase 3 spec, section 6.3).
 inline ChartLock chart_lock(const preflop_blueprint::CompiledGame &game,
                             const std::filesystem::path &directory,
                             const std::vector<std::string> &files) {
-  if (game.config().player_count != 2U) {
-    throw std::runtime_error("the preflop chart lock is heads-up only");
-  }
-  return chart_lock_seats(game, directory, files);
+  return chart_lock_seats(game, directory, files, game.config().player_count >= 3U);
 }
 
 } // namespace gtosd::monker_charts

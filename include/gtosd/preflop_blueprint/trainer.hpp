@@ -58,9 +58,37 @@
 // every export (average, current, snapshots, charts) returns the locked row.
 // Reaches of both players flow through the locked strategy normally. The lock
 // is part of the identity, so a checkpoint cannot resume with another lock.
+//
+// Three seats (phase 3, PHASE3_SPEC_2026-09-30 sections 3.1-3.3, 3.9, 3.12).
+// A 3-player game runs through a separate set of member functions (pass3,
+// top_down_reach3, traverse3, terminal3); the heads-up path above is left
+// byte-for-byte as it was, so a later fix in one path must be checked against
+// the other (spec section 8.4, risk 2). Per board B and hero hand h, with the
+// other seats' hands o1 (lower seat) and o2 (higher seat) mutually disjoint
+// and disjoint from B:
+//   R[n][b(h)][a] += w_B P(h) P(o1,o2|h) (v_a[h] - v[h]),  P(h) = 1/465,
+//                    P(o1,o2|h) = 1/(406 * 351)
+//   v[h] = sum over ordered pairs of r_lower(o1) r_higher(o2) u_hero(h,o1,o2,B)
+// Every iteration makes one pass per hero in seat order (0, 1, 2); in
+// alternating mode every hero after the first draws a fresh batch and every
+// hero refreshes the compact policy. Each unit and traversal level carries
+// three reach vectors; a non-hero decision splits only its actor's vector, so
+// a folded seat keeps its frozen reach (its cards are dead). Once the hero
+// folds, its value is the constant folded payoff times the joint disjoint
+// mass D3 of the other two seats: the shortcut is taken at the hero's own
+// decision node before any unit lookup, so the units of hero-inactive
+// subtrees are neither prepared nor run (unit_skipped). Preflop terminals come
+// from the per-pass class cache (exact over the runouts, scaled to the
+// board-conditioned weight) or, in the validation-only board_kernels mode,
+// from the multiway kernels on the listed board.
+namespace gtosd::card_abstraction {
+class ThreeWayTable;
+}
+
 namespace gtosd::preflop_blueprint {
 
 class ParallelExecutor;
+class PreflopClassCache;
 
 enum class TrainerError : std::uint8_t {
   InvalidConfiguration,
@@ -79,6 +107,17 @@ enum class UpdateMode : std::uint8_t { Simultaneous, Alternating };
 // in double; a narrower storage rounds only when the cell is written
 // (storage error), never inside a reduction.
 enum class TableStorage : std::uint8_t { Double, MixedFloatSums, Float32 };
+
+// Source of the preflop terminal values of the 3-seat path (spec 3.9).
+//  - ClassCache (production): every preflop all-in, preflop fold and hero-folded
+//    preflop child takes its value from the per-pass class cache, exact over all
+//    runouts with folded cards dead, scaled by C(30,5)/C(34,5) so that it is
+//    unbiased under the board-conditioned weight.
+//  - BoardKernels (validation only, needs TrainerConfig::validation and an
+//    exact board list): every preflop showdown (all-ins and checkdown leaves)
+//    is evaluated on the listed board, which is its runout, with the multiway
+//    kernels; preflop folds use the board-restricted D3.
+enum class PreflopTerminals : std::uint8_t { ClassCache, BoardKernels };
 
 struct TrainerConfig {
   std::uint32_t flop_capacity{200U};
@@ -125,6 +164,34 @@ struct TrainerConfig {
   // Nodes per parallel work unit; 0 selects max(256, nodes / 128). The
   // partition never depends on the thread count.
   std::uint32_t partition_target_nodes{0U};
+
+  // ---- 3-seat path (phase 3). A heads-up game ignores these fields unless
+  // three_seat_harness is set; with their defaults its identity is unchanged.
+  // Preflop terminal source of a 3-player game (see PreflopTerminals). Part of
+  // the identity when it is BoardKernels; must stay ClassCache for 2 seats.
+  PreflopTerminals preflop_terminals{PreflopTerminals::ClassCache};
+  // Diagnostic configurations (BoardKernels, the shortcut switched off) are
+  // refused without it. Part of the identity when set.
+  bool validation{false};
+  // Debug: before each hero pass the value buffers of the units that hero
+  // skips are filled with NaN, so a read of a skipped unit becomes visible in
+  // the values. Cannot change a correct result; excluded from the identity.
+  bool poison_skipped_units{false};
+  // Validation only (V6): false walks the subtrees below a hero fold like any
+  // other (every unit is prepared and run, and terminals where the hero is
+  // inactive pay its folded payoff times D3) instead of the shortcut. Part of
+  // the identity when false; needs `validation` and, for 3 players,
+  // PreflopTerminals::BoardKernels (in class-cache mode the shortcut of a
+  // preflop fold is a board-free class value, equal to the walk only in
+  // expectation).
+  bool hero_folded_shortcut{true};
+  // Diagnostic of V7 ("3-way with a seat that never plays" = heads-up):
+  // allowed only on a heads-up game. The game runs through the 3-seat code
+  // path with a virtual third seat (seat 2) that never acts, has reach 1 on
+  // every live hand, is inactive everywhere (folded cards dead) and never is a
+  // hero; the pair weight is 1/(406 * 351). Preflop all-ins use the heads-up
+  // pair table (times 351), preflop folds the board D3. Part of the identity.
+  bool three_seat_harness{false};
 };
 
 // One locked preflop row: the frequencies of the node's edges (edge order, sum
@@ -153,6 +220,11 @@ struct TrainerResources {
   const BoardClassRows *board_class_rows{nullptr};
   // Optional fixed preflop rows (see the contract above). Must outlive trainer.
   const PreflopLock *preflop_lock{nullptr};
+  // Three-player class table (preflop_three_way_v1.bin, complete): required by a
+  // 3-player game with preflop showdowns in PreflopTerminals::ClassCache mode,
+  // where the trainer builds its class cache from it at creation. Need not
+  // outlive create().
+  const card_abstraction::ThreeWayTable *three_way{nullptr};
 };
 
 // Exact-mode hook: explicit boards with weights. With sample = false every
@@ -261,6 +333,19 @@ struct IterationTelemetry {
   std::uint64_t policy_rows_read{0U};
   std::uint64_t regret_cells_written{0U};
   std::uint64_t strategy_cells_written{0U};
+  // 3-seat path with detailed_profile, per hero, summed over the boards of the
+  // iteration. Every terminal of the tree is, in each board pass of a hero,
+  // visited, inside a subtree pruned for zero reach, or inside a subtree the
+  // hero-folded shortcut skips: census x boards = visited + pruned + skipped.
+  std::array<std::uint64_t, 3> terminals_visited_by_hero{};
+  std::array<std::uint64_t, 3> terminals_pruned_by_hero{};
+  std::array<std::uint64_t, 3> terminals_shortcut_by_hero{};
+  // Units each hero ran and skipped (hero-folded shortcut), summed over boards.
+  std::array<std::uint64_t, 3> units_run_by_hero{};
+  std::array<std::uint64_t, 3> units_skipped_by_hero{};
+  // Seconds spent computing the preflop class values of the 3-seat path (class
+  // reach walk and cache contraction), once per hero pass.
+  double class_cache_seconds{0.0};
   // Per-batch policy accounting (always on: computed per pass, not per hand).
   // Rows and cells of the compact table built for the passes of this
   // iteration, by street; hand-row lookups count every (board, hand, street)
@@ -297,6 +382,11 @@ struct MemoryBreakdown {
   std::uint64_t rank_table_bytes{0U};
   std::uint64_t catalog_bytes{0U};
   std::uint64_t all_in_table_bytes{0U};
+  // 3-seat path: the preflop class cache (tensors, class reach and per-pass
+  // values), and the trainer's per-node tables of the path (folded payoffs,
+  // terminal counts, preflop indices, zero-reach flags); 0 for 2 seats.
+  std::uint64_t class_cache_bytes{0U};
+  std::uint64_t class_values_bytes{0U};
   std::array<std::uint64_t, 4> cells_by_street{};
   std::array<std::uint64_t, 4> rows_by_street{};
   std::uint32_t regret_bytes_per_cell{8U};
@@ -307,7 +397,8 @@ struct MemoryBreakdown {
            discount_offset_bytes + all_in_dense_bytes + board_batch_bytes + workspace_bytes +
            unit_bytes + layout_offset_bytes + partition_bytes + board_list_bytes +
            hand_mask_bytes + tree_bytes + history_map_resident_bytes + bucket_table_bytes +
-           rank_table_bytes + catalog_bytes + all_in_table_bytes;
+           rank_table_bytes + catalog_bytes + all_in_table_bytes + class_cache_bytes +
+           class_values_bytes;
   }
 };
 
@@ -413,6 +504,16 @@ public:
     return lock_fingerprint_;
   }
   [[nodiscard]] std::uint32_t preflop_locked_rows() const noexcept { return lock_row_count_; }
+  // Reach vectors of the traversal: 3 for a 3-player game and for the V7
+  // harness, 2 on the heads-up path.
+  [[nodiscard]] std::uint8_t traversal_seats() const noexcept { return traversal_seats_; }
+  // Heroes updated per iteration (the game's players, in seat order).
+  [[nodiscard]] std::uint8_t heroes() const noexcept { return heroes_; }
+  // Units whose root is inactive for the hero (skipped by the hero-folded
+  // shortcut); fixed by the tree and the partition. 0 on the heads-up path.
+  [[nodiscard]] std::uint32_t skipped_unit_count(const std::uint8_t hero) const noexcept {
+    return hero < 3U ? static_cast<std::uint32_t>(unit_skipped_[hero].size()) : 0U;
+  }
 
   // Atomic checkpoint (temporary file then rename) with checksum and identity.
   [[nodiscard]] Result<bool, TrainerError> save_checkpoint(const std::filesystem::path &path);
@@ -432,7 +533,13 @@ private:
   struct BoardWork;
   struct Workspace;
   struct Unit;
+  // 3-seat path: a unit with three reach vectors, and the test trace (defined
+  // in trainer.cpp; null in production).
+  struct Unit3;
+  struct Trace3;
   using ActiveRows = std::array<std::vector<std::uint32_t>, 4>;
+  // Reach vector of every seat (seat order) at a node of the 3-seat traversal.
+  using SeatReach = std::array<const double *, 3>;
 
   Trainer(const CompiledGame &game, const TrainerResources &resources, const TrainerConfig &config);
   Result<bool, TrainerError> initialize(const TrainingBoards *boards, const HandSubsets *subsets,
@@ -489,6 +596,41 @@ private:
                      double *lose) const noexcept;
   [[nodiscard]] const double *policy_row(std::uint32_t node, std::uint16_t hand,
                                          const BoardWork &board) const noexcept;
+
+  // ---- 3-seat path (separate from the heads-up functions above).
+  // Seats, partition skips, folded payoffs and creation checks of a 3-seat
+  // traversal; called by initialize() after the partition is built.
+  Result<bool, TrainerError> initialize_three_seat();
+  // Class-cache mode: class reach of every seat at every preflop node from the
+  // compact policy's preflop rows (lock applied), the zero-reach flags, and the
+  // hero's class values (cache contraction). Call after refresh_policy, once
+  // per hero pass.
+  void prepare_preflop_classes3(std::uint8_t hero);
+  // Fills the value buffers of the units the hero skips with NaN (debug).
+  void poison_skipped_units3(std::uint8_t hero);
+  void pass3(const BoardWork &board, std::uint8_t hero, double iteration_weight,
+             IterationTelemetry *telemetry = nullptr);
+  void top_down_reach3(std::uint32_t node, const SeatReach &reach, std::uint8_t hero,
+                       const BoardWork &board, Workspace &workspace, std::uint32_t depth);
+  void traverse3(std::uint32_t node, std::uint32_t depth, const SeatReach &reach, double *values,
+                 std::uint8_t hero, const BoardWork &board, Workspace &workspace, bool top_phase);
+  // Hero values at a terminal the hero reaches (active, or inactive with the
+  // shortcut off); others_zero has been ruled out by the caller.
+  void terminal3(const CompiledNode &node, const SeatReach &reach, double *values, double *scratch,
+                 std::uint8_t hero, const BoardWork &board, Workspace &workspace) const;
+  // D3[h]: joint disjoint mass of the two other seats at a node (board kernel,
+  // or the scaled class D3 of a preflop node in class-cache mode).
+  void deal_mass3(const CompiledNode &node, const SeatReach &reach, double *out, std::uint8_t hero,
+                  const BoardWork &board, Workspace &workspace) const;
+  // Class-cache mode: the hero's 81 class values at a preflop node (a preflop
+  // terminal, or the node right after a preflop fold of the hero), or nullptr.
+  [[nodiscard]] const double *class_values3(std::uint32_t node, std::uint8_t hero) const noexcept;
+  // Either other seat's reach is zero, so every hero value at the node is 0:
+  // class-level at preflop decisions and terminals in class-cache mode (the
+  // cache values are board-free), board-level elsewhere.
+  [[nodiscard]] bool others_zero3(const CompiledNode &node, const SeatReach &reach,
+                                  std::uint8_t hero) const noexcept;
+  [[nodiscard]] bool class_cache_active() const noexcept;
   card_abstraction::BoardHistory sample_history(card_abstraction::DeterministicRandom &random,
                                                 double &weight,
                                                 std::size_t *index_out = nullptr) const;
@@ -573,6 +715,42 @@ private:
   std::uint32_t lock_row_count_{0U};
   std::string lock_fingerprint_;
   HeadsUpShowdownKernel kernel_;
+
+  // ---- 3-seat path (traversal_seats_ == 3).
+  std::uint8_t traversal_seats_{2U};
+  std::uint8_t heroes_{2U};
+  bool harness_{false};
+  std::vector<Unit3> units3_;
+  // Per hero: the units to run (in partition order) and the units it skips.
+  std::array<std::vector<std::uint32_t>, 3> unit_work_{};
+  std::array<std::vector<std::uint32_t>, 3> unit_skipped_{};
+  // folded_payoff_[3 node + seat]: the seat's payoff (antes) at every terminal
+  // below a node where it is inactive, checked constant at creation; NaN where
+  // the seat is active.
+  std::vector<double> folded_payoff_;
+  // Terminals in the subtree of every node, and [3 node + hero] at a top node
+  // those below it that no unit run by the hero counts (telemetry of prunes
+  // and skips: census = visited + pruned + shortcut-skipped, per board pass).
+  std::vector<std::uint32_t> terminal_count_;
+  std::vector<std::uint32_t> top_uncounted_terminals_;
+  // Preflop decisions and terminals: index among them (no_unit otherwise).
+  std::vector<std::uint32_t> preflop_index_;
+  std::vector<std::uint32_t> preflop_nodes_;
+  // Class-cache mode, per pass: the all-zero flag of each seat's class reach
+  // [preflop index][seat], and the hero whose class values the cache holds.
+  std::vector<std::uint8_t> class_zero3_;
+  std::uint8_t class_values_hero_{0xFFU};
+  std::unique_ptr<PreflopClassCache> class_cache_;
+  // Kernel arithmetic of the 3-seat path (multiway_kernels.hpp), e.g.
+  // "multiway-kernel-v1/avx2": part of the identity, since the scalar and AVX2
+  // paths agree only to rounding.
+  std::string multiway_kernel_tag_;
+  // Reach 1 on every live hand: the initial reach of every seat (and the
+  // reach of the V7 harness's virtual seat throughout).
+  std::vector<double> ones3_;
+  // Hero values at the root of a 3-seat pass (diagnostics).
+  std::vector<double> root_values3_;
+  Trace3 *trace3_{nullptr};
 };
 
 [[nodiscard]] std::uint64_t process_working_set_bytes() noexcept;

@@ -458,6 +458,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_allin5x.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake5cap075.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY100_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
@@ -567,6 +569,26 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;p5;kernels")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     set_tests_properties(gtosd_preflop_blueprint_kernel_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  # Phase 3 lane K: three-seat kernels against O(n^3) references (V2), V3, V8 (kernel API).
+  add_executable(gtosd_preflop_blueprint_multiway_kernel_tests
+    preflop_blueprint_multiway_kernel_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_multiway_kernel_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_multiway_kernel_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_multiway_kernel_tests)
+  add_test(NAME gtosd_preflop_blueprint_multiway_kernel_tests
+    COMMAND gtosd_preflop_blueprint_multiway_kernel_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_multiway_kernel_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_multiway_kernel_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
 endif()
@@ -744,6 +766,105 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;research;monker;three_way")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  # Phase 3 (3-way step 2), V4 at the level of the preflop class cache
+  # (preflop_class_cache.hpp): census of the terms on the step-2 and
+  # checkdown-compiled 3WAY50 trees, tensors byte-identical to step 1's
+  # three_way_terminals, compute_reach and contract against step 1, and the
+  # C(30,5)/C(34,5) scale against a brute force over every board. Needs the
+  # complete three-player table (SKIP, exit 77, without the resources).
+  add_executable(gtosd_preflop_blueprint_class_cache_tests
+    preflop_blueprint_class_cache_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_class_cache_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_class_cache_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_class_cache_tests)
+  add_test(NAME gtosd_preflop_blueprint_class_cache_tests
+    COMMAND gtosd_preflop_blueprint_class_cache_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_class_cache_tests
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way;phase3" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_class_cache_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  # Phase 3 lane T (T1): smoke of the 3-seat trainer path on 3WAY50 with the
+  # 200/500/1000 buckets: census of visited, pruned and shortcut-skipped
+  # terminals, thread determinism, poisoned skipped units, shortcut on/off
+  # (board_kernels on a listed board set), the heads-up harness against the
+  # heads-up path, the checkdown tree in both preflop modes, the zero-sum
+  # identity through terminal3. SKIP (exit 77) without the three-way table.
+  add_executable(gtosd_preflop_blueprint_trainer3_path_tests
+    preflop_blueprint_trainer3_path_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_path_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_path_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_path_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_path_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_path_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_path_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_path_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  # Phase 3 K5 (gate 3a): independent oracles of the 3-seat path on 3WAY50 with
+  # the 200/500/1000 buckets: V13 (scalar walker with the equity evaluator
+  # against TrainerAccess::subtree_values3 at 7 subtree roots, heroes 0-2), V8
+  # through terminal3 (rake identity per winner set, every seat as hero), V9b at
+  # the terminal level (class cache = board-weighted kernel values over the
+  # 19,998 canonical boards). SKIP (exit 77) without the three-way table.
+  add_executable(gtosd_preflop_blueprint_trainer3_oracle_tests
+    preflop_blueprint_trainer3_oracle_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_oracle_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::equity gtosd::solver
+            gtosd::best_response gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_oracle_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_oracle_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_oracle_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_oracle_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_oracle_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_oracle_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  # Phase 3 T3 (gate 3a): V4 (trainer level), V5, V6, V7 and the V12 smoke on
+  # 3WAY50 / HU50 with the 200/500/1000 buckets. The long entry (label
+  # phase3_long only, about 30-60 min at 2 threads) runs V9b at the pass level
+  # and both legs of V9 against the step-1 class solver over the 19,998
+  # canonical 5-card boards.
+  add_executable(gtosd_preflop_blueprint_trainer3_tests preflop_blueprint_trainer3_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_long_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_tests --long
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_long_tests
+    PROPERTIES LABELS "phase3_long" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_tests
+      gtosd_preflop_blueprint_trainer3_long_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests

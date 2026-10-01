@@ -22,6 +22,14 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   target_compile_definitions(gtosd_short_deck_constrained_audit PRIVATE
     GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
   gtosd_set_warnings(gtosd_short_deck_constrained_audit)
+  # Phase 3 K4: three-seat kernel microbenchmark.
+  add_executable(gtosd_preflop_blueprint_multiway_kernel_bench
+    preflop_blueprint_multiway_kernel_bench.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_multiway_kernel_bench PRIVATE
+    gtosd::preflop_blueprint)
+  target_compile_definitions(gtosd_preflop_blueprint_multiway_kernel_bench PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_multiway_kernel_bench)
 endif()
 
 add_executable(gtosd_benchmark_smoke benchmark_smoke.cpp)
