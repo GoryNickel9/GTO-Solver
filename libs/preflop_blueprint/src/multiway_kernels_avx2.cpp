@@ -113,6 +113,44 @@ void cross_four_avx2(const CardPairSums &b1, const CardPairSums &g1, const CardP
   }
 }
 
+void pair_product_avx2(const CardPairSums &first, const CardPairSums &second,
+                       const std::uint8_t *live, const std::size_t live_count, double *g,
+                       double *q_first, double *q_second) noexcept {
+  constexpr std::size_t chunks = deck_cards / 4U;
+  for (std::size_t row = 0; row < live_count; ++row) {
+    const std::size_t a = live[row];
+    const double *first_row = first.pair + a * deck_cards;
+    const double *second_row = second.pair + a * deck_cards;
+    __m256d acc[chunks];
+    for (std::size_t chunk = 0; chunk < chunks; ++chunk)
+      acc[chunk] = _mm256_setzero_pd();
+    for (std::size_t column = 0; column < live_count; ++column) {
+      const std::size_t c = live[column];
+      const double weight = first_row[c];
+      // Exact zeros add nothing (fmadd(0, x, acc) == acc for finite x): skip them.
+      if (weight == 0.0)
+        continue;
+      const __m256d broadcast = _mm256_set1_pd(weight);
+      const double *source = second.pair + c * deck_cards;
+      for (std::size_t chunk = 0; chunk < chunks; ++chunk)
+        acc[chunk] = _mm256_fmadd_pd(broadcast, _mm256_loadu_pd(source + 4U * chunk), acc[chunk]);
+    }
+    double *target = g + a * deck_cards;
+    for (std::size_t chunk = 0; chunk < chunks; ++chunk)
+      _mm256_storeu_pd(target + 4U * chunk, acc[chunk]);
+    __m256d dot_first = _mm256_setzero_pd();
+    __m256d dot_second = _mm256_setzero_pd();
+    for (std::size_t chunk = 0; chunk < chunks; ++chunk) {
+      dot_first = _mm256_fmadd_pd(_mm256_loadu_pd(first_row + 4U * chunk),
+                                  _mm256_loadu_pd(second.card + 4U * chunk), dot_first);
+      dot_second = _mm256_fmadd_pd(_mm256_loadu_pd(second_row + 4U * chunk),
+                                   _mm256_loadu_pd(first.card + 4U * chunk), dot_second);
+    }
+    q_first[a] = horizontal_sum(dot_first);
+    q_second[a] = horizontal_sum(dot_second);
+  }
+}
+
 #else
 
 // Not x86-64: the dispatcher never selects AVX2; forward to the scalar loops.
@@ -132,6 +170,11 @@ void cross_four_avx2(const CardPairSums &b1, const CardPairSums &g1, const CardP
                      const std::size_t count, double *bb, double *gb, double *bg,
                      double *gg) noexcept {
   cross_four_scalar(b1, g1, b2, g2, cards, hands, count, bb, gb, bg, gg);
+}
+void pair_product_avx2(const CardPairSums &first, const CardPairSums &second,
+                       const std::uint8_t *live, const std::size_t live_count, double *g,
+                       double *q_first, double *q_second) noexcept {
+  pair_product_scalar(first, second, live, live_count, g, q_first, q_second);
 }
 
 #endif

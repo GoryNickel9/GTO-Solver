@@ -35,6 +35,11 @@ struct MultiwayScratch::Storage {
   double cross[4][padded_hands];
   // Masses of the value kernels.
   double masses[5][padded_hands];
+  // Static G form of the deal mass (spec 3.4): G = Pm1 * Pm2 and the products of each pair
+  // matrix with the other set's per-card sums.
+  double g[deck_cards * deck_cards];
+  double q_first[deck_cards];
+  double q_second[deck_cards];
 };
 
 namespace {
@@ -105,19 +110,7 @@ double excluded(const CardPairSums &set, const std::size_t x, const std::size_t 
   return set.card[card] - set.pair[x * deck_cards + card] - set.pair[y * deck_cards + card];
 }
 
-// The two terms c in h of the full 36-card sum, subtracted after the inner loop.
-double own_cards(const CardPairSums &first, const CardPairSums &second, const std::size_t x,
-                 const std::size_t y) noexcept {
-  return excluded(first, x, y, x) * excluded(second, x, y, x) +
-         excluded(first, x, y, y) * excluded(second, x, y, y);
-}
-
-// Mass of a set disjoint from h; `member` is the reach of h itself when h is in the set, else 0.
-double disjoint_total(const CardPairSums &set, const std::size_t x, const std::size_t y,
-                      const double member) noexcept {
-  return set.total - set.card[x] - set.card[y] + member;
-}
-
+// Product mass of a set disjoint from h; `member` is r1(h) r2(h) when h is in the set, else 0.
 double disjoint_total(const ProductSums &set, const std::size_t x, const std::size_t y,
                       const double member) noexcept {
   return set.total - set.card[x] - set.card[y] + member;
@@ -153,30 +146,51 @@ void cross_four(const MultiwayKernelIsa isa, const CardPairSums &b1, const CardP
     multiway_detail::cross_four_scalar(b1, g1, b2, g2, cards, hands, count, bb, gb, bg, gg);
 }
 
-// The hands 0..464 in index order, for the passes over every hand.
-const std::array<std::uint16_t, live_hand_count> &all_hands() noexcept {
-  static const auto hands = [] {
-    std::array<std::uint16_t, live_hand_count> list{};
-    for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
-      list[hand] = hand;
-    return list;
-  }();
-  return hands;
-}
-
-// deal[h] = M(All, All)[h] with the full sets `first` and `second` and their product sums.
-void deal_pass(const MultiwayKernelIsa isa, const BoardContext &context, const CardPairSums &first,
-               const CardPairSums &second, const ProductSums &product, const ConstHandSpan r1,
-               const ConstHandSpan r2, double *cross, const HandSpan deal) noexcept {
+// deal[h] = M(All, All)[h] for the full sets `first` (reach r1) and `second` (r2), by the static
+// G form of spec 3.4: with G = Pm1 * Pm2, Q1 = Pm1 * C2 and Q2 = Pm2 * C1, the 36-card sum is
+//   sum_c a1(c) a2(c) = S0 - Q1[x] - Q1[y] - Q2[x] - Q2[y] + G[x][x] + G[x][y] + G[y][x] + G[y][y]
+// (S0 = sum_c C1[c] C2[c]); its two terms c in h are (C1[c] - r1(h)) (C2[c] - r2(h)), and the
+// product mass of a card is the diagonal of G (Pc[x] = G[x][x]).
+void deal_full(const MultiwayKernelIsa isa, const BoardContext &context, const CardPairSums &first,
+               const CardPairSums &second, const ConstHandSpan r1, const ConstHandSpan r2,
+               MultiwayScratch::Storage &s, const HandSpan deal) noexcept {
+  std::array<std::uint8_t, deck_cards> live{};
+  std::size_t live_count = 0U;
+  for (std::size_t card = 0U; card < deck_cards; ++card)
+    if (context.card_is_live(static_cast<std::uint8_t>(card)))
+      live[live_count++] = static_cast<std::uint8_t>(card);
+  if (isa == MultiwayKernelIsa::Avx2)
+    multiway_detail::pair_product_avx2(first, second, live.data(), live_count, s.g, s.q_first,
+                                       s.q_second);
+  else
+    multiway_detail::pair_product_scalar(first, second, live.data(), live_count, s.g, s.q_first,
+                                         s.q_second);
+  double s0 = 0.0;
+  double diagonal = 0.0;
+  for (std::size_t index = 0; index < live_count; ++index) {
+    const std::size_t card = live[index];
+    s0 += first.card[card] * second.card[card];
+    diagonal += s.g[card * deck_cards + card];
+  }
+  const double product_total = 0.5 * diagonal;
   const auto cards = context.cards();
-  cross_one(isa, first, second, card_bytes(context), all_hands().data(), live_hand_count, cross);
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
     const std::size_t x = cards[hand][0];
     const std::size_t y = cards[hand][1];
-    const double a = disjoint_total(first, x, y, r1[hand]);
-    const double b = disjoint_total(second, x, y, r2[hand]);
-    const double both = disjoint_total(product, x, y, r1[hand] * r2[hand]);
-    deal[hand] = a * b - (cross[hand] - own_cards(first, second, x, y)) + both;
+    const double r1h = r1[hand];
+    const double r2h = r2[hand];
+    const double c1x = first.card[x];
+    const double c1y = first.card[y];
+    const double c2x = second.card[x];
+    const double c2y = second.card[y];
+    const double gxx = s.g[x * deck_cards + x];
+    const double gyy = s.g[y * deck_cards + y];
+    const double full = s0 - s.q_first[x] - s.q_first[y] - s.q_second[x] - s.q_second[y] + gxx +
+                        s.g[x * deck_cards + y] + s.g[y * deck_cards + x] + gyy;
+    const double own = (c1x - r1h) * (c2x - r2h) + (c1y - r1h) * (c2y - r2h);
+    const double a = first.total - c1x - c1y + r1h;
+    const double b = second.total - c2x - c2y + r2h;
+    deal[hand] = a * b - (full - own) + (product_total - gxx - gyy + r1h * r2h);
   }
 }
 
@@ -279,6 +293,36 @@ void cross_four_scalar(const CardPairSums &b1, const CardPairSums &g1, const Car
   }
 }
 
+void pair_product_scalar(const CardPairSums &first, const CardPairSums &second,
+                         const std::uint8_t *live, const std::size_t live_count, double *g,
+                         double *q_first, double *q_second) noexcept {
+  for (std::size_t row = 0; row < live_count; ++row) {
+    const std::size_t a = live[row];
+    const double *first_row = first.pair + a * deck_cards;
+    const double *second_row = second.pair + a * deck_cards;
+    double *target = g + a * deck_cards;
+    std::fill(target, target + deck_cards, 0.0);
+    for (std::size_t column = 0; column < live_count; ++column) {
+      const std::size_t c = live[column];
+      const double weight = first_row[c];
+      if (weight == 0.0)
+        continue;
+      const double *source = second.pair + c * deck_cards;
+      for (std::size_t b = 0; b < deck_cards; ++b)
+        target[b] += weight * source[b];
+    }
+    std::array<double, 4> dot_first{};
+    std::array<double, 4> dot_second{};
+    for (std::size_t card = 0; card < deck_cards; card += 4U)
+      for (std::size_t lane = 0; lane < 4U; ++lane) {
+        dot_first[lane] += first_row[card + lane] * second.card[card + lane];
+        dot_second[lane] += second_row[card + lane] * first.card[card + lane];
+      }
+    q_first[a] = combine(dot_first);
+    q_second[a] = combine(dot_second);
+  }
+}
+
 } // namespace multiway_detail
 
 bool multiway_kernel_avx2_available() noexcept {
@@ -329,12 +373,10 @@ void three_seat_deal_mass(const BoardContext &context, const ConstHandSpan first
     const auto y = cards[hand][1];
     insert(s.b1, x, y, first[hand]);
     insert(s.b2, x, y, second[hand]);
-    insert(s.below_product, x, y, first[hand] * second[hand]);
   }
-  deal_pass(scratch.isa(), context, s.b1, s.b2, s.below_product, first, second, s.cross[0], deal);
+  deal_full(scratch.isa(), context, s.b1, s.b2, first, second, s, deal);
   clear_full(s.b1, context);
   clear_full(s.b2, context);
-  clear_full(s.below_product);
 }
 
 void three_active_masses(const BoardContext &context, const ConstHandSpan lower,
@@ -368,19 +410,29 @@ void three_active_masses(const BoardContext &context, const ConstHandSpan lower,
       const auto hand = order[position];
       const std::size_t x = cards[hand][0];
       const std::size_t y = cards[hand][1];
-      // h is never in Below; G and B are disjoint, so M(G,B) and M(B,G) have no P term.
-      const double a_below = disjoint_total(s.b1, x, y, 0.0);
-      const double b_below = disjoint_total(s.b2, x, y, 0.0);
-      out.win[hand] = a_below * b_below - (bb[hand] - own_cards(s.b1, s.b2, x, y)) +
+      const double r1h = lower[hand];
+      const double r2h = higher[hand];
+      // h is never in Below; G and B are disjoint, so M(G,B) and M(B,G) have no P term. The two
+      // terms c in h of each 36-card sum: a_B(c) = C_B[c] and a_G(c) = C_G[c] - r(h).
+      const double b1x = s.b1.card[x];
+      const double b1y = s.b1.card[y];
+      const double b2x = s.b2.card[x];
+      const double b2y = s.b2.card[y];
+      const double a_below = s.b1.total - b1x - b1y;
+      const double b_below = s.b2.total - b2x - b2y;
+      out.win[hand] = a_below * b_below - (bb[hand] - (b1x * b2x + b1y * b2y)) +
                       disjoint_total(s.below_product, x, y, 0.0);
       if (count > 1U) {
-        const double a_group = disjoint_total(s.g1, x, y, lower[hand]);
-        const double b_group = disjoint_total(s.g2, x, y, higher[hand]);
-        out.tie_lower[hand] = a_group * b_below - (gb[hand] - own_cards(s.g1, s.b2, x, y));
-        out.tie_higher[hand] = a_below * b_group - (bg[hand] - own_cards(s.b1, s.g2, x, y));
-        out.tie_both[hand] =
-            a_group * b_group - (gg[hand] - own_cards(s.g1, s.g2, x, y)) +
-            disjoint_total(s.group_product, x, y, lower[hand] * higher[hand]);
+        const double g1x = s.g1.card[x] - r1h;
+        const double g1y = s.g1.card[y] - r1h;
+        const double g2x = s.g2.card[x] - r2h;
+        const double g2y = s.g2.card[y] - r2h;
+        const double a_group = s.g1.total - s.g1.card[x] - s.g1.card[y] + r1h;
+        const double b_group = s.g2.total - s.g2.card[x] - s.g2.card[y] + r2h;
+        out.tie_lower[hand] = a_group * b_below - (gb[hand] - (g1x * b2x + g1y * b2y));
+        out.tie_higher[hand] = a_below * b_group - (bg[hand] - (b1x * g2x + b1y * g2y));
+        out.tie_both[hand] = a_group * b_group - (gg[hand] - (g1x * g2x + g1y * g2y)) +
+                             disjoint_total(s.group_product, x, y, r1h * r2h);
       } else {
         // h alone in its group: no other hand ties it.
         out.tie_lower[hand] = 0.0;
@@ -404,7 +456,7 @@ void three_active_masses(const BoardContext &context, const ConstHandSpan lower,
     s.group_product.total = 0.0;
   }
   // Below now holds every live hand: the deal mass, then the losses by difference.
-  deal_pass(isa, context, s.b1, s.b2, s.below_product, lower, higher, s.cross[0], out.lose);
+  deal_full(isa, context, s.b1, s.b2, lower, higher, s, out.lose);
   for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
     out.lose[hand] = out.lose[hand] - out.win[hand] - out.tie_lower[hand] - out.tie_higher[hand] -
                      out.tie_both[hand];
@@ -445,15 +497,25 @@ void two_active_masses(const BoardContext &context, const ConstHandSpan opponent
       const auto hand = order[position];
       const std::size_t x = cards[hand][0];
       const std::size_t y = cards[hand][1];
-      const double fixed = disjoint_total(s.b2, x, y, folded[hand]);
-      out.win[hand] = disjoint_total(s.b1, x, y, 0.0) * fixed -
-                      (win_cross[hand] - own_cards(s.b1, s.b2, x, y)) +
+      const double ro = opponent[hand];
+      const double rf = folded[hand];
+      // The folded seat's set holds h: a_F(c) = C_F[c] - r_f(h) at c in h.
+      const double fx = s.b2.card[x] - rf;
+      const double fy = s.b2.card[y] - rf;
+      const double fixed = s.b2.total - s.b2.card[x] - s.b2.card[y] + rf;
+      const double bx = s.b1.card[x];
+      const double by = s.b1.card[y];
+      out.win[hand] = (s.b1.total - bx - by) * fixed - (win_cross[hand] - (bx * fx + by * fy)) +
                       disjoint_total(s.below_product, x, y, 0.0);
-      out.tie[hand] = count > 1U
-                          ? disjoint_total(s.g1, x, y, opponent[hand]) * fixed -
-                                (tie_cross[hand] - own_cards(s.g1, s.b2, x, y)) +
-                                disjoint_total(s.group_product, x, y, opponent[hand] * folded[hand])
-                          : 0.0;
+      if (count > 1U) {
+        const double gx = s.g1.card[x] - ro;
+        const double gy = s.g1.card[y] - ro;
+        out.tie[hand] = (s.g1.total - s.g1.card[x] - s.g1.card[y] + ro) * fixed -
+                        (tie_cross[hand] - (gx * fx + gy * fy)) +
+                        disjoint_total(s.group_product, x, y, ro * rf);
+      } else {
+        out.tie[hand] = 0.0;
+      }
     }
     for (std::size_t position = begin; position < end; ++position) {
       const auto hand = order[position];
@@ -467,7 +529,7 @@ void two_active_masses(const BoardContext &context, const ConstHandSpan opponent
     s.g1.total = 0.0;
     s.group_product.total = 0.0;
   }
-  deal_pass(isa, context, s.b1, s.b2, s.below_product, opponent, folded, s.cross[0], out.lose);
+  deal_full(isa, context, s.b1, s.b2, opponent, folded, s, out.lose);
   for (std::size_t hand = 0; hand < live_hand_count; ++hand)
     out.lose[hand] = out.lose[hand] - out.win[hand] - out.tie[hand];
   clear_full(s.b1, context);
@@ -623,16 +685,19 @@ void two_active_masses_reference(const BoardContext &context, const ConstHandSpa
 }
 
 MultiwayKernelFlops multiway_kernel_flops_per_hand() noexcept {
-  // Per card: a_S(c) is two subtractions, a product-accumulate two flops. Per hand the O(1) part
-  // (disjoint totals, the two own-card terms per product, the final combination) is counted
-  // approximately: 30 flops for the deal pass, 70 for a tied group, 20 for a singleton, 40 for the
-  // two-active sweep.
+  // Sweeps, per card: a_S(c) is two subtractions, a product-accumulate two flops. The deal mass
+  // (G form): G = Pm1 * Pm2 over the 31 live cards (31 x 30 x 36 multiply-adds) and the two
+  // products with the card sums (2 x 31 x 36), spread over the 465 hands, plus about 30 flops per
+  // hand. The O(1) part of the sweeps is counted approximately: 40 flops for a tied group, 12 for
+  // a singleton, 24 for the two-active sweep.
   constexpr double cards = static_cast<double>(deck_cards);
+  constexpr double live = 31.0;
+  constexpr double hands = static_cast<double>(live_hand_count);
   MultiwayKernelFlops flops;
-  flops.deal = cards * 6.0 + 30.0;
-  flops.three_active_group = cards * 16.0 + 70.0 + flops.deal + 4.0;
-  flops.three_active_singleton = cards * 6.0 + 20.0 + flops.deal + 4.0;
-  flops.two_active = cards * 10.0 + 40.0 + flops.deal + 2.0;
+  flops.deal = 2.0 * (live * (live - 1.0) * cards + 2.0 * live * cards) / hands + 30.0;
+  flops.three_active_group = cards * 16.0 + 40.0 + flops.deal + 4.0;
+  flops.three_active_singleton = cards * 6.0 + 12.0 + flops.deal + 4.0;
+  flops.two_active = cards * 10.0 + 24.0 + flops.deal + 2.0;
   return flops;
 }
 

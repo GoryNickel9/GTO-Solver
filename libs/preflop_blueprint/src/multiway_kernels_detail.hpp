@@ -52,7 +52,20 @@ void cross_four_scalar(const CardPairSums &b1, const CardPairSums &g1, const Car
                        const std::uint16_t *hands, std::size_t count, double *bb, double *gb,
                        double *bg, double *gg) noexcept;
 
+// Static G form of two full sets (spec 3.4), for every live card a (live: the live cards in
+// increasing order), with Pm1 = first.pair and Pm2 = second.pair (symmetric):
+//   g[a * 36 + b] = sum over live c of Pm1[a][c] * Pm2[c][b]   (every b; rows of board cards
+//                   are not written),
+//   q_first[a]    = sum over c of Pm1[a][c] * second.card[c],
+//   q_second[a]   = sum over c of Pm2[a][c] * first.card[c].
+void pair_product_scalar(const CardPairSums &first, const CardPairSums &second,
+                         const std::uint8_t *live, std::size_t live_count, double *g,
+                         double *q_first, double *q_second) noexcept;
+
 // The same with AVX2 and FMA. Defined only for x86-64; call only when the CPU supports them.
+void pair_product_avx2(const CardPairSums &first, const CardPairSums &second,
+                       const std::uint8_t *live, std::size_t live_count, double *g,
+                       double *q_first, double *q_second) noexcept;
 void cross_one_avx2(const CardPairSums &first, const CardPairSums &second,
                     const std::uint8_t *cards, const std::uint16_t *hands, std::size_t count,
                     double *out) noexcept;
