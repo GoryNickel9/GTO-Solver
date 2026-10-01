@@ -130,6 +130,19 @@ public:
     return card_is_live_[card];
   }
   [[nodiscard]] std::uint16_t distinct_rank_groups() const noexcept { return rank_groups_; }
+  // Rank groups of order_by_rank(): group g (ascending rank) covers the positions
+  // [starts[g], starts[g + 1]); the span has distinct_rank_groups() + 1 entries and ends with
+  // live_hand_count. Used by the ascending sweeps of the multiway kernels.
+  [[nodiscard]] std::span<const std::uint16_t> rank_group_starts() const noexcept {
+    return std::span<const std::uint16_t>(group_starts_.data(),
+                                          static_cast<std::size_t>(rank_groups_) + 1U);
+  }
+  // Live hand holding the cards `first` and `second` (either order, both below 36); no_hand when
+  // a card is on the board or the two cards are equal.
+  [[nodiscard]] std::uint16_t pair_hand(const std::uint8_t first,
+                                        const std::uint8_t second) const noexcept {
+    return pair_hand_[static_cast<std::size_t>(first) * 36U + second];
+  }
 
 private:
   bool has_history_rows_{false};
@@ -149,6 +162,8 @@ private:
   std::array<std::array<std::uint16_t, hands_per_card>, 36> hands_with_card_{};
   std::array<bool, 36> card_is_live_{};
   std::uint16_t rank_groups_{0U};
+  std::array<std::uint16_t, live_hand_count + 1U> group_starts_{};
+  std::array<std::uint16_t, 36U * 36U> pair_hand_{};
 };
 
 [[nodiscard]] const char *kernel_error_name(KernelError error) noexcept;

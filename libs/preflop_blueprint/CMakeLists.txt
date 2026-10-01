@@ -10,6 +10,8 @@ add_library(gtosd_preflop_blueprint
   src/history_bucket_rows.cpp
   src/decision_gap.cpp
   src/kernels.cpp
+  src/multiway_kernels.cpp
+  src/multiway_kernels_avx2.cpp
   src/traversal.cpp
   src/river_engine.cpp
   src/trainer.cpp
@@ -24,6 +26,12 @@ add_library(gtosd_preflop_blueprint
   src/postflop_tree_export.cpp
   src/query_worker.cpp)
 add_library(gtosd::preflop_blueprint ALIAS gtosd_preflop_blueprint)
+# The AVX2 inner loops of the multiway kernels, selected at run time (multiway_kernels.hpp).
+if(MSVC)
+  set_source_files_properties(src/multiway_kernels_avx2.cpp PROPERTIES COMPILE_OPTIONS /arch:AVX2)
+else()
+  set_source_files_properties(src/multiway_kernels_avx2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+endif()
 if(WIN32)
   # process_memory_peaks() uses GetProcessMemoryInfo.
   target_link_libraries(gtosd_preflop_blueprint PRIVATE psapi)

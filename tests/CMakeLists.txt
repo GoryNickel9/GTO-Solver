@@ -574,6 +574,26 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
 endif()
 
 if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
+  # Phase 3 lane K: three-seat kernels against O(n^3) references (V2), V3, V8 (kernel API).
+  add_executable(gtosd_preflop_blueprint_multiway_kernel_tests
+    preflop_blueprint_multiway_kernel_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_multiway_kernel_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_multiway_kernel_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_multiway_kernel_tests)
+  add_test(NAME gtosd_preflop_blueprint_multiway_kernel_tests
+    COMMAND gtosd_preflop_blueprint_multiway_kernel_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_multiway_kernel_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;kernels")
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_multiway_kernel_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+endif()
+
+if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   # Oracle: the standalone postflop solver is linked by this test only (D5).
   add_executable(gtosd_preflop_blueprint_oracle_tests preflop_blueprint_oracle_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_oracle_tests
