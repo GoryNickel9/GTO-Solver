@@ -40,7 +40,7 @@ Il destinatario è un agent coder che non ha mai visto questo progetto. Il docum
 
 | # | Domanda | Opzioni e contesto | Default proposto | Risposta |
 |---|---|---|---|---|
-| D1 | Dove sta il codice dell'app? | `tools/solver-ui/`, oppure `apps/solver-ui/`. Nel secondo caso il glob CMake del target `format-check` scansiona la cartella a ogni configure. In più, `apps/` contiene già le GUI desktop Qt/ImGui (sezione 4.6). | `tools/solver-ui/` | |
+| D1 | Dove sta il codice dell'app? | `tools/solver-ui/`, oppure `apps/solver-ui/`. Nel secondo caso il glob CMake del target `format-check` scansiona la cartella a ogni configure. In più, `apps/` contiene `gto_cli` (le GUI desktop sono state tolte il 02/10, sezione 4.6). | `tools/solver-ui/` | |
 | D2 | Da quale branch parte il worktree e dove lo metto? | Il worktree non tocca il checkout principale. | HEAD corrente di `feat/monker-step1-checkdown`; worktree in `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver-solver-ui`, branch `feat/solver-ui` | |
 | D3 | Bin set frozen: come rendere lanciabili step 1, tree check e validazione? | Nessun set contiene tutti i tool (Appendice G). `bin_correct/{base,c123}` hanno `game`, `monker_buckets`, `monker_values` e `train`, con README e SHA256SUMS. `checkdown` esiste solo in `bin_rake`; `checkdown_classes` e `monker_tree` solo in `bin_3way_step1`. Nessuno di questi due ha README o SHA256SUMS. **(a)** L'utente, in una finestra build, fa costruire un set frozen completo con tutti i tool usati dalla UI (`train`, `monker_values`, `game`, `checkdown`, `checkdown_classes`, `monker_tree`, `monker_buckets`), con README e SHA256SUMS. **(b)** I set vecchi si registrano con hash calcolati alla registrazione e confermati dall'utente; i tool si risolvono per tool e si registra il commit, se noto. | (a). Finché il set completo non esiste, M2 lancia solo `step2` (con `c123`) e `validate`; gli altri kind restano in mock. | |
 | D4 | Posso leggere le run archiviate su `F:` (sottocartelle di `out/monker/variants`, `out/monker/step2`, `out/monker/smoke_*`, tutte junction)? | Solo lettura di file di testo, mai scansioni ricorsive all'avvio. Senza questa lettura VIEW RESULTS non ha nessuna run HU50 step 2 da confrontare con Monker: stanno tutte su `F:`. I giochi di correttezza su `C:` non hanno un riferimento Monker. | Sì, in sola lettura | |
@@ -333,7 +333,7 @@ speed = 50
 
 **Posizione (D1).** Il default raccomandato è `tools/solver-ui/`, per tre motivi [V]:
 - `CMakeLists.txt:64-69` esegue `file(GLOB_RECURSE GTOSD_FORMAT_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/apps/*.cpp ...)` per il target `format-check`. Sotto `apps/`, `node_modules` e i venv verrebbero riscansionati a ogni build, e ogni `.cpp` dentro un pacchetto entrerebbe nel controllo clang-format.
-- `apps/` contiene già le app desktop `gto_cli`, `gto_gui`, `gui_qt_prototype` e `gui_imgui_prototype` (`CMakeLists.txt:104-117`). Non c'entrano con questo lavoro e non vanno toccate.
+- `apps/` contiene l'eseguibile `gto_cli` (`CMakeLists.txt:104-117`). Le app desktop `gto_gui`, `gui_qt_prototype` e `gui_imgui_prototype` sono state tolte il 02/10 per decisione dell'utente (commit `921f424`..`c2e9138` di `feat/threeway-step2`, non ancora nel branch principale). Il codice C++ di `gto_cli` non va toccato da questo lavoro; come la UI lo usa è scritto in `WEB_UI_ADDENDUM_ENGINES_2026-10-02.md`.
 - Nessun glob scansiona `tools/`.
 
 Non modificare `CMakeLists.txt`.

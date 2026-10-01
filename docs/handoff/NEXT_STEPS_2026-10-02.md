@@ -676,6 +676,8 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
      dell'utente.
   3. **Rimozione del codice legacy** (libs `isomorphism`, `solver`, `postflop`, ..., `apps/gto_*`, test e strumenti legacy;
      audit §3.1-3.5): l'utente ha detto **"non ancora"** [INFERRED: dal brief del task, non trovato nei file]. Non toccarlo.
+     Il 02/10 ha anche deciso che `gto_cli` resta come motore del postflop HU esatto e riceverà i tre comandi nuovi (T17.6):
+     `gto_cli` e le librerie da cui dipende non sono più candidati alla rimozione.
      Eccezione già avvenuta: le GUI desktop, tolte in `WT` dai 4 commit del 02/10 (sezione 4), secondo il messaggio di
      `921f424` su decisione dell'utente.
   4. **`docs/specifications/`** (17 file), il README e la ROADMAP del prodotto legacy. Descrivono il contratto "HU postflop
@@ -738,7 +740,10 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
 
    L'utente ha già il worktree `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver-solver-ui`, branch `feat/solver-ui`,
    `99e492a`, 4 commit suoi [VERIFIED: `git log`; audit §1.1]. Probabilmente ha già scelto alcune risposte [INFERRED].
-   Chiedere e non toccare il suo worktree. Dopo T9 il prompt va corretto (riferimenti a `tools/preflop_suite` e `--history-rows`).
+   **Aggiornamento delle 02:00 del 02/10:** su richiesta dell'utente un agente lavora ora in quel worktree, solo in mock
+   mode, sull'addendum (`WEB_UI_ADDENDUM_ENGINES_2026-10-02.md`): merge di `feat/monker-step1-checkdown` in
+   `feat/solver-ui`, registro dei motori, difetti F1-F8, 3-way, adattatore di `gto_cli` e vista del postflop dello step 2.
+   Commit solo su `feat/solver-ui`, nessun push. Le risposte QA dell'addendum sono nella sua sezione 8. Dopo T9 il prompt va corretto (riferimenti a `tools/preflop_suite` e `--history-rows`).
 4. **Studio di fattibilità 4-6-way, dopo il 3-way.** Albero 6-way a regole HU: 0,47 M nodi (30a) - 1,5 M (40a). history7 è
    impossibile lì, e ora rimossa. Il solo bucket 500/1000/2000 darebbe 4,5-16 GiB a 6-way [VERIFIED:
    `MEM/preflop-product-target.md`].
@@ -747,7 +752,22 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
      criteri di qualità per seggio.
    - Si parte dopo il "fatto" della fase 3, salvo diversa indicazione dell'utente.
 5. **Push.** Di `feat/monker-step1-checkdown` dopo i merge, e di `feat/threeway-step2` se l'utente lo vuole: solo su richiesta.
-6. **Facoltativi** [VERIFIED: `MONKER_RECIPE` §9.7, `P3B/referee3.md` §3]:
+6. **Postflop e web UI: decisioni dell'utente del 02/10, verso le 01:40** [VERIFIED: `MEM/ui-postflop-decisions-2026-10-02.md`;
+   `docs/solver-ui/WEB_UI_ADDENDUM_ENGINES_2026-10-02.md` §8]:
+   - **Test legacy del postflop** (`phase7`, `phase10`, `gto_plus_reference` e gli altri fuori dal preflop blueprint): si
+     rifanno nel ciclo di build e test dopo il run 1, con `SP/gui_removal/post_run_ctest.cmd` (passo 2, `legacy`, e lo smoke
+     di `gto_cli`). Non girano dal cambio di `libs/core` del 28/09. I guasti si correggono prima che la UI usi davvero
+     `gto_cli`.
+   - **Lettore del postflop dello step 2.** Uno strumento C++ che legge e mostra la parte postflop di una policy dello step
+     2 (HU e 3-way: il postflop sparso con le righe per classe di board), anche se è approssimato. Oggi si esportano solo le
+     chart preflop. La UI lo mostrerà; il formato dei dati lo fissa il contratto finto scritto dall'agente UI.
+   - **I tre comandi nuovi di `gto_cli`** (solve con range dell'utente e target di precisione, eventi JSONL di avanzamento,
+     un worker `serve` di lunga durata per le query): **dentro `gto_cli`**, scritti dopo la chiusura del 3-way.
+   - **Ordine** [INFERRED dalla nota di memoria]: dopo le milestone del 3-way, prima il lettore dello step 2, poi i comandi di
+     `gto_cli`, salvo diversa indicazione dell'utente.
+   - **QA5.** La UI fa girare il solver vero per i propri test solo quando nessun run di training è attivo; l'osservazione in
+     sola lettura dei run vivi è sempre permessa.
+7. **Facoltativi** [VERIFIED: `MONKER_RECIPE` §9.7, `P3B/referee3.md` §3]:
    - V7 statistico (distanza harness-HU contro due seed HU);
    - una config 3-way che eserciti C9;
    - 3WAY100;
@@ -781,7 +801,7 @@ Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa pri
 | U7 | Pulizia: esecuzione degli script; binari HU50 del passo 2; `main`/`origin/main`; codice legacy ("non ancora"); `docs/specifications`; sandbox | T15 |
 | U8 | Push dei branch | T10, T17 |
 | U9 | Decisioni HU aperte: configurazione di riferimento, TXM2, criterio in EV, opzione A, radice del CO, test della migliore risposta contro un postflop esatto, HU40 | T17 |
-| U10 | Decisioni D1-D8 della web UI | T17 |
+| U10 | Decisioni D1-D8 della web UI; QA3, QA6 e QA7 dell'addendum (QA1, QA2, QA4 e QA5 hanno già risposta) | T17 |
 | U11 | Correzione del calcolatore di equity nel suo repository | T17 |
 | U12 | Partenza dello studio 4-6-way | T17 |
 
