@@ -352,15 +352,19 @@ inline std::optional<std::vector<double>> chart_row(const ChartNode &node, const
 using RowStrategy =
     std::function<std::vector<double>(std::uint32_t node, std::uint8_t hand_class)>;
 
-// Heads-up charts from preflop rows: the own reach of each seat per node and
-// hand class follows the rows, and a class whose reach at the node is below
-// out_of_range_reach is written as an all-zero row (outside the range).
+// Charts from preflop rows, any number of seats (heads-up and the 3-way step
+// 2): the own reach of each seat per node and hand class follows the rows, and
+// a class whose own reach at the node is below out_of_range_reach is written
+// as an all-zero row (outside the range), as the class-level checkdown solver
+// writes its charts (checkdown_classes.hpp, write_class_charts). Heads-up
+// output is byte-identical to the former heads-up-only version.
 inline std::vector<std::string> write_row_charts(const preflop_blueprint::CompiledGame &game,
                                                  const RowStrategy &row,
                                                  const std::filesystem::path &directory,
                                                  const double out_of_range_reach = 5e-4) {
-  if (game.config().player_count != 2U) {
-    throw std::runtime_error("the chart export is heads-up only");
+  const auto seats = static_cast<std::size_t>(game.config().player_count);
+  if (seats < 2U) {
+    throw std::runtime_error("the chart export needs at least 2 seats");
   }
   const auto classes = hand_classes();
   std::map<std::string, std::uint8_t> class_of_label;
@@ -372,9 +376,10 @@ inline std::vector<std::string> write_row_charts(const preflop_blueprint::Compil
     labels.push_back(entry.first);
   }
   const auto class_count = classes.label_by_class.size();
-  std::map<std::uint32_t, std::array<std::vector<double>, 2>> reach;
-  std::function<void(std::uint32_t, const std::array<std::vector<double>, 2> &)> forward =
-      [&](const std::uint32_t node_id, const std::array<std::vector<double>, 2> &node_reach) {
+  using SeatReach = std::vector<std::vector<double>>;
+  std::map<std::uint32_t, SeatReach> reach;
+  std::function<void(std::uint32_t, const SeatReach &)> forward =
+      [&](const std::uint32_t node_id, const SeatReach &node_reach) {
         const auto &node = game.nodes()[node_id];
         if (node.kind != preflop_blueprint::NodeKind::Decision || node.street != Street::Preflop) {
           return;
@@ -393,8 +398,7 @@ inline std::vector<std::string> write_row_charts(const preflop_blueprint::Compil
           forward(edges[action].child, next);
         }
       };
-  forward(game.root(), {std::vector<double>(class_count, 1.0),
-                        std::vector<double>(class_count, 1.0)});
+  forward(game.root(), SeatReach(seats, std::vector<double>(class_count, 1.0)));
   const ClassStrategy strategy =
       [&](const std::uint32_t node, const std::string &label) -> std::optional<std::vector<double>> {
     const auto hand_class = class_of_label.at(label);

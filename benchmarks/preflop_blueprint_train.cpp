@@ -3,12 +3,27 @@
 // input is --target-pot-percent (default 1): internal checkpoints double from
 // 250 iterations, a full physical best response validates a candidate, and
 // a stalled curve exits as PLATEAU. --iterations remains a research override.
+//
+// Three players (phase 3, step 2 of the 3-way reproduction): the same command
+// line with a 3-player configuration and --iterations (the in-training
+// evaluation and the certificate are heads-up only, so --eval-every 0 and no
+// --certificate-out). The preflop terminals come from the class cache built
+// on --three-way-table (default <resources-dir>/preflop_three_way_v1.bin,
+// complete only); charts (--chart-every) and the chart lock (--lock-charts,
+// all-zero rows the class reaches are left unlocked and counted) work for 3
+// seats. Validation switches: --checkdown (empty postflop), an exact board
+// list (--boards-file, --canonical-river-boards), --validation (refused
+// diagnostics become available and skipped units are poisoned with NaN),
+// --preflop-terminals board_kernels, --hero-folded-shortcut off and
+// --three-seat-harness. --pause-file makes a daily stop: the checkpoint only.
 
 #include "gtosd/card_abstraction/all_in_table.hpp"
 #include "gtosd/card_abstraction/bucket_tables.hpp"
 #include "gtosd/card_abstraction/canonical_boards.hpp"
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/card_abstraction/rank_table.hpp"
+#include "gtosd/card_abstraction/three_way_table.hpp"
+#include "gtosd/core/cards.hpp"
 #include "gtosd/preflop_blueprint/board_texture.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/certifier.hpp"
@@ -30,6 +45,7 @@
 #include <iterator>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -100,6 +116,83 @@ std::string array_text(const std::array<std::uint64_t, 4> &values) {
     text += std::to_string(values[index]);
   }
   return text + "]";
+}
+
+// An exact weighted board list from a text file: one board per line, the
+// flop, turn and river cards ("Ah Kd 7c 9s 6h", any order within the flop)
+// and an optional positive weight (default 1); '#' starts a comment.
+pb::TrainingBoards read_boards_file(const std::filesystem::path &path) {
+  std::istringstream input(read_file(path));
+  pb::TrainingBoards boards;
+  boards.sample = false;
+  std::string line;
+  std::size_t number = 0U;
+  while (std::getline(input, line)) {
+    ++number;
+    if (const auto hash = line.find('#'); hash != std::string::npos)
+      line.erase(hash);
+    std::istringstream fields(line);
+    std::vector<std::string> tokens;
+    for (std::string token; fields >> token;)
+      tokens.push_back(token);
+    if (tokens.empty())
+      continue;
+    const auto where = path.string() + ":" + std::to_string(number);
+    if (tokens.size() != 5U && tokens.size() != 6U)
+      throw std::runtime_error(where + ": a board line has 5 cards and an optional weight");
+    std::array<gtosd::CardId, 5> cards{};
+    std::uint64_t mask = 0U;
+    for (std::size_t index = 0; index < 5U; ++index) {
+      const auto card = gtosd::parse_card(tokens[index]);
+      if (!card)
+        throw std::runtime_error(where + ": invalid card " + tokens[index]);
+      cards[index] = card.value();
+      const auto bit = std::uint64_t{1} << card.value().value();
+      if ((mask & bit) != 0U)
+        throw std::runtime_error(where + ": a card appears twice");
+      mask |= bit;
+    }
+    const double weight = tokens.size() == 6U ? parse_decimal(tokens[5]) : 1.0;
+    if (!(weight > 0.0))
+      throw std::runtime_error(where + ": the weight must be positive");
+    ca::BoardHistory history;
+    history.flop = {cards[0], cards[1], cards[2]};
+    std::sort(history.flop.begin(), history.flop.end());
+    history.turn = cards[3];
+    history.river = cards[4];
+    boards.histories.push_back(history);
+    boards.weights.push_back(weight);
+  }
+  if (boards.histories.empty())
+    throw std::runtime_error("no board in " + path.string());
+  return boards;
+}
+
+// The 19,998 suit-canonical 5-card boards weighted by their orbit sizes (total
+// 376,992): exact for a checkdown tree, where only the five cards matter, and
+// for class rows (V9). Flop = the three lowest cards.
+pb::TrainingBoards canonical_river_board_list(const ca::BoardCatalog &catalog) {
+  pb::TrainingBoards boards;
+  boards.sample = false;
+  for (const auto &board : catalog.river_boards()) {
+    auto cards = board.cards;
+    std::sort(cards.begin(), cards.end());
+    ca::BoardHistory history;
+    history.flop = {cards[0], cards[1], cards[2]};
+    history.turn = cards[3];
+    history.river = cards[4];
+    boards.histories.push_back(history);
+    boards.weights.push_back(static_cast<double>(board.multiplicity));
+  }
+  return boards;
+}
+
+template <std::size_t Size>
+nlohmann::json seat_array(const std::array<std::uint64_t, Size> &values, const std::size_t seats) {
+  nlohmann::json result = nlohmann::json::array();
+  for (std::size_t seat = 0; seat < seats && seat < Size; ++seat)
+    result.push_back(values[seat]);
+  return result;
 }
 
 nlohmann::json memory_breakdown_json(const pb::MemoryBreakdown &breakdown) {
@@ -205,6 +298,27 @@ int main(const int argc, char **argv) {
     // iteration and evaluated exactly.
     std::uint32_t fixed_boards = 0U;
     bool permute_suits = false;
+    // Phase 3 (3 players). The three-player class table of the preflop class
+    // cache; default <resources-dir>/preflop_three_way_v1.bin (complete only).
+    std::filesystem::path three_way_table_path;
+    // Compile with checkdown_at_flop (MonkerSolver's empty postflop; V9).
+    bool checkdown = false;
+    // Exact weighted board list processed in full every iteration: a file
+    // (read_boards_file) or the 19,998 canonical 5-card boards.
+    std::filesystem::path boards_file;
+    bool canonical_river_boards = false;
+    // Validation-only trainer settings (part of the identity where they change
+    // the result; see TrainerConfig). --validation also poisons the buffers of
+    // skipped units with NaN.
+    bool validation = false;
+    std::optional<pb::PreflopTerminals> preflop_terminals;
+    std::optional<bool> hero_folded_shortcut;
+    bool three_seat_harness = false;
+    // Daily stop of a multi-day run: when this file appears the run writes its
+    // checkpoint only (no --policy-out, no --current-policy-out) and exits
+    // PAUSED; a --resume continues bit-identically. The --stop-file ends the run
+    // and writes every output.
+    std::filesystem::path pause_file;
     // Evaluate the (resumed) state once with --eval-flops and exit: used to
     // compare checkpoints on the same evaluation flops (same --eval-seed).
     bool evaluate_only = false;
@@ -258,6 +372,22 @@ int main(const int argc, char **argv) {
       }
       if (name == "--policy-snapshots") {
         policy_snapshots = true;
+        continue;
+      }
+      if (name == "--checkdown") {
+        checkdown = true;
+        continue;
+      }
+      if (name == "--canonical-river-boards") {
+        canonical_river_boards = true;
+        continue;
+      }
+      if (name == "--validation") {
+        validation = true;
+        continue;
+      }
+      if (name == "--three-seat-harness") {
+        three_seat_harness = true;
         continue;
       }
       if (index + 1 >= argc) {
@@ -373,6 +503,36 @@ int main(const int argc, char **argv) {
         config.partition_target_nodes = static_cast<std::uint32_t>(parse_unsigned(value));
       } else if (name == "--fixed-boards") {
         fixed_boards = static_cast<std::uint32_t>(parse_unsigned(value));
+      } else if (name == "--three-way-table") {
+        three_way_table_path = std::filesystem::path(value);
+      } else if (name == "--boards-file") {
+        boards_file = std::filesystem::path(value);
+      } else if (name == "--pause-file") {
+        pause_file = std::filesystem::path(value);
+      } else if (name == "--preflop-terminals") {
+        if (value == "class_cache") {
+          preflop_terminals = pb::PreflopTerminals::ClassCache;
+        } else if (value == "board_kernels") {
+          preflop_terminals = pb::PreflopTerminals::BoardKernels;
+        } else {
+          throw std::runtime_error("unknown preflop terminal source " + std::string{value} +
+                                   " (class_cache or board_kernels)");
+        }
+      } else if (name == "--hero-folded-shortcut") {
+        if (value == "on") {
+          hero_folded_shortcut = true;
+        } else if (value == "off") {
+          hero_folded_shortcut = false;
+        } else {
+          throw std::runtime_error("--hero-folded-shortcut takes on or off");
+        }
+      } else if (name == "--folded-cards") {
+        // Folded cards are dead under board-first sampling; the step-1 "ignore"
+        // convention has no step-2 form (phase 3 spec, section 11 item 11).
+        if (value != "dead") {
+          throw std::runtime_error("--folded-cards " + std::string{value} +
+                                   " is not supported: the step-2 trainer has folded cards dead");
+        }
       } else {
         throw std::runtime_error("unknown argument " + std::string{name});
       }
@@ -405,6 +565,23 @@ int main(const int argc, char **argv) {
     }
     if (!(policy_snapshot_reserve_gb >= 0.0 && policy_snapshot_reserve_gb <= 1.0e9))
       throw std::runtime_error("--policy-snapshot-reserve-gb must be in [0, 1e9]");
+    const bool exact_list = fixed_boards > 0U || !boards_file.empty() || canonical_river_boards;
+    if ((fixed_boards > 0U ? 1 : 0) + (boards_file.empty() ? 0 : 1) +
+            (canonical_river_boards ? 1 : 0) > 1)
+      throw std::runtime_error("choose one of --fixed-boards, --boards-file, --canonical-river-boards");
+    if (preflop_terminals == pb::PreflopTerminals::BoardKernels && (!validation || !exact_list))
+      throw std::runtime_error("--preflop-terminals board_kernels requires --validation and an "
+                               "exact board list (--boards-file, --canonical-river-boards or "
+                               "--fixed-boards)");
+    if (hero_folded_shortcut == false && !validation)
+      throw std::runtime_error("--hero-folded-shortcut off requires --validation");
+    if (three_seat_harness && !validation)
+      throw std::runtime_error("--three-seat-harness requires --validation");
+    if (!pause_file.empty() && std::filesystem::exists(pause_file)) {
+      // A pause file left by the last daily stop would pause the resumed run at once.
+      std::filesystem::remove(pause_file);
+      std::cerr << "removed the stale pause file " << pause_file.string() << '\n';
+    }
     if (!stop_file.empty() && std::filesystem::exists(stop_file)) {
       // A stop file left by an earlier run would end this one after one iteration.
       std::filesystem::remove(stop_file);
@@ -432,13 +609,44 @@ int main(const int argc, char **argv) {
       throw std::runtime_error(std::string("configuration rejected: ") +
                                pb::config_error_name(game_config.error()));
     }
-    const auto compiled = pb::CompiledGame::compile(game_config.value());
+    pb::CompileOptions compile_options;
+    compile_options.checkdown_at_flop = checkdown;
+    const auto compiled = pb::CompiledGame::compile(game_config.value(), compile_options);
     if (!compiled) {
       throw std::runtime_error("compile failed");
     }
-    if (chart_every > 0U && compiled.value().config().player_count != 2U) {
-      throw std::runtime_error("--chart-every writes heads-up charts only");
+    const auto players = static_cast<std::size_t>(compiled.value().config().player_count);
+    if (players != 2U && players != 3U)
+      throw std::runtime_error("the trainer supports 2 or 3 players");
+    if (players == 3U) {
+      // The physical best response, the certifier and the automatic target are
+      // heads-up only (part A of phase 3 evaluates 3-way policies separately).
+      if (automatic_target)
+        throw std::runtime_error("a 3-player game needs --iterations (the automatic target "
+                                 "evaluates heads-up only)");
+      if (evaluate_every > 0U || evaluate_only || !certificate_path.empty())
+        throw std::runtime_error("a 3-player game needs --eval-every 0, no --eval-only and no "
+                                 "--certificate-out (heads-up evaluation only)");
+      if (three_seat_harness)
+        throw std::runtime_error("--three-seat-harness runs a heads-up game only");
+    } else if (!three_way_table_path.empty() ||
+               preflop_terminals == pb::PreflopTerminals::BoardKernels ||
+               (hero_folded_shortcut.has_value() && !three_seat_harness)) {
+      throw std::runtime_error("--three-way-table, --preflop-terminals board_kernels and "
+                               "--hero-folded-shortcut need a 3-player game (or, for the "
+                               "last, --three-seat-harness)");
     }
+    // Any phase-3 feature in use: the start and end events then report it.
+    const bool phase3_report = players == 3U || checkdown || !boards_file.empty() ||
+                               canonical_river_boards || validation || three_seat_harness ||
+                               !pause_file.empty();
+    config.validation = validation;
+    config.poison_skipped_units = validation;
+    config.three_seat_harness = three_seat_harness;
+    if (preflop_terminals)
+      config.preflop_terminals = *preflop_terminals;
+    if (hero_folded_shortcut)
+      config.hero_folded_shortcut = *hero_folded_shortcut;
     auto ranks = ca::RankTable::load(resources_dir / "rank_table_v1.bin");
     auto all_in = ca::AllInTable::load(resources_dir / "preflop_all_in_v1.bin");
     auto flop = ca::BucketTable::load(buckets_dir / "flop_buckets_v1.bin");
@@ -510,8 +718,33 @@ int main(const int argc, char **argv) {
       config.turn_capacity = board_class_rows->count(ca::BucketStreet::Turn);
       config.river_capacity = board_class_rows->count(ca::BucketStreet::River);
     }
+    // The three-player class table of the class cache: read by Trainer::create
+    // only, released right after it.
+    std::optional<ca::ThreeWayTable> three_way;
+    std::filesystem::path three_way_source;
+    if (players == 3U && config.preflop_terminals == pb::PreflopTerminals::ClassCache) {
+      three_way_source = three_way_table_path.empty()
+                             ? resources_dir / std::string(ca::three_way_table_file_name)
+                             : three_way_table_path;
+      auto loaded = ca::ThreeWayTable::load(three_way_source, ca::ThreeWayLoad::CompleteOnly);
+      if (!loaded)
+        throw std::runtime_error("three-player class table " + three_way_source.string() +
+                                 " rejected: " + ca::resource_error_name(loaded.error()));
+      three_way.emplace(std::move(loaded.value()));
+      resources.three_way = &*three_way;
+    }
+    const std::string three_way_fingerprint = three_way ? three_way->fingerprint() : std::string();
     std::optional<pb::TrainingBoards> boards;
+    std::string board_list_source;
+    if (!boards_file.empty()) {
+      boards.emplace(read_boards_file(boards_file));
+      board_list_source = "file:" + boards_file.generic_string();
+    } else if (canonical_river_boards) {
+      boards.emplace(canonical_river_board_list(catalog));
+      board_list_source = "canonical-river-boards";
+    }
     if (fixed_boards > 0U) {
+      board_list_source = "fixed-boards";
       boards.emplace();
       ca::DeterministicRandom random(config.training_seed);
       for (std::uint32_t board = 0; board < fixed_boards; ++board) {
@@ -548,6 +781,15 @@ int main(const int argc, char **argv) {
                                pb::trainer_error_name(created.error()));
     }
     auto &trainer = *created.value();
+    resources.three_way = nullptr;
+    three_way.reset();
+    double board_weight_total = 0.0;
+    const std::size_t board_list_size = boards ? boards->histories.size() : 0U;
+    if (boards) {
+      for (const auto weight : boards->weights)
+        board_weight_total += weight;
+      boards.reset();
+    }
     if (resume && !checkpoint_path.empty() && std::filesystem::exists(checkpoint_path)) {
       const auto loaded = trainer.load_checkpoint(checkpoint_path);
       if (!loaded) {
@@ -580,7 +822,13 @@ int main(const int argc, char **argv) {
                                      {"rows", chart_lock->chart_rows},
                                      {"outside_range_rows", chart_lock->outside_range_rows},
                                      {"fingerprint", trainer.preflop_lock_fingerprint()}};
-      lock_text = ", \"preflop_lock\": " + lock_json.dump();
+      auto lock_report = lock_json;
+      if (players >= 3U) {
+        // Reached all-zero rows left unlocked: they train (chart_lock).
+        lock_report["fallback_rows"] = chart_lock->fallback_rows;
+        lock_report["fallback_reach_combos"] = chart_lock->fallback_reach_combos;
+      }
+      lock_text = ", \"preflop_lock\": " + lock_report.dump();
       std::string files;
       for (const auto &file : chart_lock->files)
         files += (files.empty() ? "" : ",") + file;
@@ -617,9 +865,44 @@ int main(const int argc, char **argv) {
               << ", \"initial_pot_antes\": " << trainer.initial_pot_antes()
               << ", \"target_pot_percent\": " << target_pot_percent
               << ", \"automatic_target\": " << (automatic_target ? "true" : "false")
-              << lock_text << ", \"preparation_seconds\": " << preparation_seconds << "}\n";
+              << lock_text;
+    if (phase3_report) {
+      // Heads-up runs without the phase-3 switches keep the former start event.
+      nlohmann::json positions = nlohmann::json::array();
+      for (const auto &position : compiled.value().config().positions)
+        positions.push_back(position);
+      const nlohmann::json phase3{
+          {"players", players},
+          {"positions", positions},
+          {"checkdown", checkdown},
+          {"folded_cards", "dead"},
+          {"preflop_terminals", config.preflop_terminals == pb::PreflopTerminals::BoardKernels
+                                    ? "board_kernels"
+                                    : "class_cache"},
+          {"validation", config.validation},
+          {"poison_skipped_units", config.poison_skipped_units},
+          {"hero_folded_shortcut", config.hero_folded_shortcut},
+          {"three_seat_harness", config.three_seat_harness},
+          {"three_way_table", three_way_fingerprint.empty()
+                                  ? nlohmann::json(nullptr)
+                                  : nlohmann::json{{"path", three_way_source.generic_string()},
+                                                   {"fingerprint", three_way_fingerprint}}},
+          {"board_list", board_list_size == 0U
+                             ? nlohmann::json(nullptr)
+                             : nlohmann::json{{"source", board_list_source},
+                                              {"boards", board_list_size},
+                                              {"weight_total", board_weight_total}}},
+          {"pause_file", pause_file.empty() ? nlohmann::json(nullptr)
+                                            : nlohmann::json(pause_file.generic_string())}};
+      std::cout << ", \"phase3\": " << phase3.dump();
+    }
+    std::cout << ", \"preparation_seconds\": " << preparation_seconds << "}\n";
     {
       auto breakdown = memory_breakdown_json(trainer.memory_breakdown());
+      if (players == 3U || three_seat_harness) {
+        breakdown["class_cache_bytes"] = trainer.memory_breakdown().class_cache_bytes;
+        breakdown["class_values_bytes"] = trainer.memory_breakdown().class_values_bytes;
+      }
       breakdown["process"] = peaks_json(pb::process_memory_peaks());
       breakdown["stage"] = "after_initialization";
       std::cout << breakdown.dump() << "\n" << std::flush;
@@ -646,6 +929,14 @@ int main(const int argc, char **argv) {
     double discount_seconds = 0.0, refresh_seconds = 0.0, prepare_seconds = 0.0,
            traversal_seconds = 0.0;
     pb::IterationTelemetry detailed_profile;
+    // 3-seat path: per-hero terminal and unit counts (detailed_profile) and the
+    // class cache time, summed over the iterations of this process.
+    std::array<std::uint64_t, 3> terminals_visited_by_hero{};
+    std::array<std::uint64_t, 3> terminals_pruned_by_hero{};
+    std::array<std::uint64_t, 3> terminals_shortcut_by_hero{};
+    std::array<std::uint64_t, 3> units_run_by_hero{};
+    std::array<std::uint64_t, 3> units_skipped_by_hero{};
+    double class_cache_seconds = 0.0;
     std::array<std::uint64_t, 4> rows_materialized{};
     std::array<std::uint64_t, 4> cells_materialized{};
     std::array<std::uint64_t, 4> hand_lookups{};
@@ -762,6 +1053,7 @@ int main(const int argc, char **argv) {
     }
     bool breakdown_after_first_iteration = false;
     bool stopped_by_file = false;
+    bool paused = false;
     while ((automatic_target || trainer.iteration() < iterations) && !converged && !plateau) {
       const auto telemetry = trainer.iterate();
       if (!telemetry) {
@@ -824,10 +1116,22 @@ int main(const int argc, char **argv) {
           telemetry.value().sampled_preflop_all_in_seconds;
       detailed_profile.sampled_postflop_showdown_seconds +=
           telemetry.value().sampled_postflop_showdown_seconds;
+      for (std::size_t seat = 0; seat < 3U; ++seat) {
+        terminals_visited_by_hero[seat] += telemetry.value().terminals_visited_by_hero[seat];
+        terminals_pruned_by_hero[seat] += telemetry.value().terminals_pruned_by_hero[seat];
+        terminals_shortcut_by_hero[seat] += telemetry.value().terminals_shortcut_by_hero[seat];
+        units_run_by_hero[seat] += telemetry.value().units_run_by_hero[seat];
+        units_skipped_by_hero[seat] += telemetry.value().units_skipped_by_hero[seat];
+      }
+      class_cache_seconds += telemetry.value().class_cache_seconds;
       process_bytes = telemetry.value().process_bytes;
       if (!breakdown_after_first_iteration) {
         breakdown_after_first_iteration = true;
         auto breakdown = memory_breakdown_json(trainer.memory_breakdown());
+        if (players == 3U || three_seat_harness) {
+          breakdown["class_cache_bytes"] = trainer.memory_breakdown().class_cache_bytes;
+          breakdown["class_values_bytes"] = trainer.memory_breakdown().class_values_bytes;
+        }
         breakdown["process"] = peaks_json(pb::process_memory_peaks());
         breakdown["stage"] = "after_first_iteration";
         std::cout << breakdown.dump() << "\n" << std::flush;
@@ -949,6 +1253,14 @@ int main(const int argc, char **argv) {
                     << ",\"error\":" << nlohmann::json(failure).dump() << "}\n"
                     << std::flush;
         }
+      }
+      std::error_code pause_error;
+      if (!pause_file.empty() && std::filesystem::exists(pause_file, pause_error)) {
+        paused = true;
+        std::cout << "{\"event\":\"pause_file\",\"iteration\":" << trainer.iteration()
+                  << "}\n"
+                  << std::flush;
+        break;
       }
       std::error_code stop_error;
       if (!stop_file.empty() && std::filesystem::exists(stop_file, stop_error)) {
@@ -1090,7 +1402,8 @@ int main(const int argc, char **argv) {
                                pb::trainer_error_name(saved.error());
       });
     }
-    if (!current_policy_path.empty()) {
+    // A daily pause writes the checkpoint only: the policies belong to the real end.
+    if (!current_policy_path.empty() && !paused) {
       const auto saved = trainer.save_current_policy(
           current_policy_path,
           trainer.identity() + "|current|iteration=" + std::to_string(trainer.iteration()) +
@@ -1099,7 +1412,7 @@ int main(const int argc, char **argv) {
         throw std::runtime_error("current policy write failed");
       }
     }
-    if (!policy_path.empty()) {
+    if (!policy_path.empty() && !paused) {
       const auto saved = trainer.save_average_policy(policy_path, average_policy_source());
       if (!saved) {
         throw std::runtime_error(std::string("policy write failed: ") +
@@ -1196,6 +1509,23 @@ int main(const int argc, char **argv) {
               << detailed_profile.sampled_preflop_all_in_seconds
               << ",\"sampled_postflop_showdown_seconds\":"
               << detailed_profile.sampled_postflop_showdown_seconds << "}"
+              << (phase3_report
+                      ? ", \"three_seat_profile\": " +
+                            nlohmann::json{
+                                {"players", players},
+                                {"paused", paused},
+                                {"class_cache_seconds", class_cache_seconds},
+                                {"terminals_visited_by_hero",
+                                 seat_array(terminals_visited_by_hero, players)},
+                                {"terminals_pruned_by_hero",
+                                 seat_array(terminals_pruned_by_hero, players)},
+                                {"terminals_shortcut_by_hero",
+                                 seat_array(terminals_shortcut_by_hero, players)},
+                                {"units_run_by_hero", seat_array(units_run_by_hero, players)},
+                                {"units_skipped_by_hero",
+                                 seat_array(units_skipped_by_hero, players)}}
+                                .dump()
+                      : std::string())
               << ", \"seconds_per_iteration\": "
               << (trainer.iteration() > initial_iteration
                       ? training_seconds /
@@ -1210,6 +1540,7 @@ int main(const int argc, char **argv) {
     std::cout << "PREFLOP_BLUEPRINT_TRAIN="
               << (converged           ? "CONVERGED"
                   : plateau           ? "PLATEAU"
+                  : paused            ? "PAUSED"
                   : stopped_by_file   ? "STOPPED"
                                       : "ITERATION_LIMIT")
               << '\n';
