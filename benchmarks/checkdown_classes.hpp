@@ -733,6 +733,16 @@ public:
     return row;
   }
 
+  // Current strategy (regret matching, uniform without a positive regret) of a
+  // class at a decision node, in edge order; the row itself where it is locked
+  // (phase 3, V9: the step-2 trainer's current policy against this one).
+  [[nodiscard]] std::vector<double> current_strategy(const std::uint32_t node,
+                                                     const std::size_t hand_class) const {
+    std::vector<double> row(game_.nodes()[node].action_count, 0.0);
+    fill_strategy(node, hand_class, false, row.data());
+    return row;
+  }
+
   // Reach of every seat's own actions under the average profile, per node.
   [[nodiscard]] std::vector<Reach> own_reach() const {
     std::vector<Reach> reach(game_.nodes().size());

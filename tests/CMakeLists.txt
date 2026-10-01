@@ -838,6 +838,35 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_trainer3_oracle_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Phase 3 T3 (gate 3a): V4 (trainer level), V5, V6, V7 and the V12 smoke on
+  # 3WAY50 / HU50 with the 200/500/1000 buckets. The long entry (label
+  # phase3_long only, about 30-60 min at 2 threads) runs V9b at the pass level
+  # and both legs of V9 against the step-1 class solver over the 19,998
+  # canonical 5-card boards.
+  add_executable(gtosd_preflop_blueprint_trainer3_tests preflop_blueprint_trainer3_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_long_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_tests --long
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_long_tests
+    PROPERTIES LABELS "phase3_long" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_tests
+      gtosd_preflop_blueprint_trainer3_long_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests
     preflop_blueprint_monker_values_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_monker_values_tests
