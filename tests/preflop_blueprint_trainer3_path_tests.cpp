@@ -17,7 +17,9 @@
 //  - board_kernels mode on the checkdown-compiled 3WAY50 (refused without
 //    validation), and the class-cache mode on the same tree;
 //  - zero-sum identity through terminal3 (TrainerAccess::terminal3_values) on
-//    the 3-active showdowns of the rake-free 3WAY50, every seat as hero.
+//    the 3-active showdowns of the rake-free 3WAY50, every seat as hero, scaled
+//    by the joint reach mass times the largest payoff (a royal flush board ties
+//    every hand, where a ratio to sum|terms| would compare rounding noise).
 // Needs preflop_three_way_v1.bin (complete) under --resources-dir; SKIP (exit
 // 77) without it.
 #include "preflop_blueprint_test_support.hpp"
@@ -355,7 +357,21 @@ void test_zero_sum_terminals(const Resources &resources, const ca::ThreeWayTable
     for (auto &value : seat)
       value = weight(random) < 0.3 ? 0.0 : weight(random);
   }
+  // Scale of the identity: the joint reach mass times the largest payoff of the
+  // terminal, an upper bound of every |<r_s, V_s>| (the D-scaled tolerance of
+  // spec section 7). Sum|terms| is not a usable scale: where every hand ties
+  // (a royal flush on board) the exact values are 0 up to odd chips and the
+  // computed ones are rounding residues of the loss mass, so their ratio to
+  // their own sum of magnitudes is noise over noise.
+  double reach_product = 1.0;
+  for (const auto &seat : reach) {
+    double total = 0.0;
+    for (const auto value : seat)
+      total += value;
+    reach_product *= total;
+  }
   double worst = 0.0;
+  double worst_magnitude_ratio = 0.0;
   for (const auto &texts : {std::array<std::string_view, 5>{"Ks", "Qd", "7c", "9h", "6s"},
                             std::array<std::string_view, 5>{"As", "Ad", "Ac", "Kh", "Ks"},
                             std::array<std::string_view, 5>{"Ts", "Js", "Qs", "Ks", "As"}}) {
@@ -367,6 +383,12 @@ void test_zero_sum_terminals(const Resources &resources, const ca::ThreeWayTable
       values[hero] = std::move(computed.value());
     }
     for (std::size_t index = 0; index < terminals.size(); ++index) {
+      double payoff = 0.0;
+      for (std::uint8_t winners = 1U; winners <= 7U; ++winners)
+        for (std::size_t seat = 0; seat < 3U; ++seat)
+          payoff = std::max(payoff, std::abs(static_cast<double>(game.showdown_payoffs(
+                                                 terminals[index], winners)[seat])) /
+                                        static_cast<double>(gtosd::Money::units_per_ante));
       double sum = 0.0;
       double magnitude = 0.0;
       for (std::size_t hero = 0; hero < 3U; ++hero) {
@@ -376,13 +398,15 @@ void test_zero_sum_terminals(const Resources &resources, const ca::ThreeWayTable
           magnitude += std::abs(term);
         }
       }
+      worst = std::max(worst, std::abs(sum) / (reach_product * std::max(payoff, 1e-300)));
       if (magnitude > 0.0)
-        worst = std::max(worst, std::abs(sum) / magnitude);
+        worst_magnitude_ratio = std::max(worst_magnitude_ratio, std::abs(sum) / magnitude);
     }
   }
   std::cout << "zero-sum identity through terminal3 on " << terminals.size()
-            << " 3-active postflop showdowns x 3 boards: worst |sum| / sum|terms| " << worst
-            << '\n';
+            << " 3-active postflop showdowns x 3 boards (incl. a royal flush on board): worst "
+               "|sum| / (reach product x max |payoff|) "
+            << worst << " (|sum| / sum|terms| " << worst_magnitude_ratio << ")\n";
   require(worst <= 1e-12, "sum over seats of <r_s, V_s> = 0 without rake");
 }
 
