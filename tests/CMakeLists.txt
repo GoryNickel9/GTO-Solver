@@ -814,6 +814,30 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_trainer3_path_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Phase 3 K5 (gate 3a): independent oracles of the 3-seat path on 3WAY50 with
+  # the 200/500/1000 buckets: V13 (scalar walker with the equity evaluator
+  # against TrainerAccess::subtree_values3 at 7 subtree roots, heroes 0-2), V8
+  # through terminal3 (rake identity per winner set, every seat as hero), V9b at
+  # the terminal level (class cache = board-weighted kernel values over the
+  # 19,998 canonical boards). SKIP (exit 77) without the three-way table.
+  add_executable(gtosd_preflop_blueprint_trainer3_oracle_tests
+    preflop_blueprint_trainer3_oracle_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_oracle_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::equity gtosd::solver
+            gtosd::best_response gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_oracle_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_oracle_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_oracle_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_oracle_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_oracle_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_oracle_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests
     preflop_blueprint_monker_values_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_monker_values_tests
