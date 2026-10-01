@@ -76,15 +76,19 @@ With 19a stacks the limped-pot shapes are HU50's: `check;bet_4;all_in`, `fold;ca
 | `HU19_B2_river.json` | 19a | river (same shapes) | 49 | 4 / 2 check-only / 2 check-only / 12 | `fnv1a64:23b83f3f3b18d1c0` |
 | `HU8_B1_flopturn.json` | 8a | flop, turn (turn after a flop bet-call, donk all-in) | 85 | 4 / 8 / 16 / 10 check-only | `fnv1a64:5269db409b4bcf45` |
 | `HU19_B0M_flop.json` | 19a | flop; pot-size open, 3 postflop entries (see B0M below) | 163 | 8 / 28 / 22 check-only / 22 check-only | `fnv1a64:194fd41496666162` |
+| `HU19_B1_flopturn.json` | 19a | flop, turn (HU50's full limped-pot flop+turn shape: also `check;bet_12;all_in` after a bet-call, including the non-all-in donk, and `raise_16` on the turn) | 175 | 4 / 12 / 36 / 26 check-only | `fnv1a64:d71ba6ee3c439917` |
 
 | Run | Game | Tables | Texture map | Why lossless | Control (one id on the deciding street) |
 |---|---|---|---|---|---|
 | B0L | `HU19_B0_flop` | `v1g_flopexact_turn1x1` | `identity_texture_map.txt` | exact flop rows; turn and river nodes are check-only (one action) | B0LG1: `g1x1` (`--levels 1 --tiers 1`) |
 | B2L | `HU19_B2_river` | `v2_river_exact` | `identity_river_board_texture_map.txt` | no decision before the river; river rows keyed by the five-card board | B2LG1: `v2g_river1` |
 | B1L | `HU8_B1_flopturn` | `v1_flopturn_exact` | `identity_texture_map.txt` | exact flop and turn rows; river check-only | B1LG1: `v1g_flopexact_turn1x1` |
+| HU19_B1L | `HU19_B1_flopturn` | `v1_flopturn_exact` | `identity_texture_map.txt` | exact flop and turn rows; river check-only | HU19_B1LG1: `v1g_flopexact_turn1x1` |
 
-All six run locked (`LOCK_CHARTS`/`LOCK_NODES` as above) and are gated on the sum of the
-`gain_lower` columns.
+All of them run locked (`LOCK_CHARTS`/`LOCK_NODES` as above) and are gated on the sum of the
+`gain_lower` columns. `HU19_B1_flopturn` is not in the driver's tree list: pass
+`EXPECT_TREE=fnv1a64:d71ba6ee3c439917`. Its smoke values: capacities as B1, `preflop_lock.rows` 162,
+state 10.36 GB (trainer peak about 10.47 GB, evaluator about 5.05 GB); control 0.28 GB.
 
 **B0M: several postflop entries and class-shaped ranges** (`HU19_B0M_flop.json`, tree
 `fnv1a64:194fd41496666162`): B0 with a pot-size open (`preflop_open_sizes_basis_points [10000]`,
