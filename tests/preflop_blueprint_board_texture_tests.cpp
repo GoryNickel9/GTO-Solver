@@ -1195,6 +1195,41 @@ CanonicalBoard canonical_board(const ca::BoardCatalog &catalog, const ca::BoardH
           catalog.lookup_river_board(five).value().index};
 }
 
+std::string decimal(const double value) {
+  std::ostringstream text;
+  text << std::setprecision(10) << value;
+  return text.str();
+}
+
+// River cells compared by A1 (river_key_oracle) and how many of them carry
+// a value: an oracle cumulative regret or strategy sum that is not zero, or
+// that exceeds 1e-6 (a thousand times A1's tolerance, so a wrong value of
+// that size fails A1).
+struct RiverCells {
+  std::uint64_t compared{0U};
+  std::uint64_t regret_nonzero{0U};
+  std::uint64_t regret_above{0U};
+  std::uint64_t sum_nonzero{0U};
+  std::uint64_t sum_above{0U};
+  double largest_regret{0.0};
+};
+
+void add_cells(RiverCells &total, const RiverCells &cells) {
+  total.compared += cells.compared;
+  total.regret_nonzero += cells.regret_nonzero;
+  total.regret_above += cells.regret_above;
+  total.sum_nonzero += cells.sum_nonzero;
+  total.sum_above += cells.sum_above;
+  total.largest_regret = std::max(total.largest_regret, cells.largest_regret);
+}
+
+std::string cells_summary(const RiverCells &cells) {
+  return std::to_string(cells.regret_above) + " of " + std::to_string(cells.compared) +
+         " with |regret| > 1e-6 (nonzero " + std::to_string(cells.regret_nonzero) +
+         "), strategy sum > 1e-6 " + std::to_string(cells.sum_above) + " (nonzero " +
+         std::to_string(cells.sum_nonzero) + ")";
+}
+
 // Information sets of the abstract oracle game, (decision node, row of a
 // subset hand of the actor), with the canonical boards on which they occur.
 struct PoolingCounts {
@@ -1208,6 +1243,13 @@ struct PoolingCounts {
   std::uint64_t river_flops{0U};
   std::uint64_t river_five_card_boards{0U};
   std::uint64_t turn_turns{0U};
+  // River information sets (node << 32 | row) that occur on two canonical
+  // boards: the pooled river rows.
+  std::set<std::uint64_t> pooled_river_rows;
+  // Filled by river_key_oracle: the river cells A1 compares, all of them and
+  // those of the pooled river rows.
+  RiverCells a1_river;
+  RiverCells a1_pooled_river;
 };
 
 PoolingCounts pooling_counts(const pb::CompiledGame &game, const Resources &resources,
@@ -1246,6 +1288,9 @@ PoolingCounts pooling_counts(const pb::CompiledGame &game, const Resources &reso
       }
     }
     if (street == gtosd::Street::River) {
+      if (spanned.size() > 1U) {
+        counts.pooled_river_rows.insert(key);
+      }
       counts.river_rivers_of_one_turn += rivers_of_one_turn ? 1U : 0U;
       counts.river_flops += differ[0] ? 1U : 0U;
       counts.river_turns += differ[1] ? 1U : 0U;
@@ -1278,6 +1323,8 @@ struct RiverKeyVariant {
   // of the other key read in the trained layout), and the other key's pooling.
   const pb::BoardClassRows *wrong_key_rows{nullptr};
   RiverPooling pooling{RiverPooling::None};
+  // Also evaluate each mutated lift confined to one player's information sets.
+  bool per_player_lifts{false};
 };
 
 // Brute-force values of a lifted profile (calculate_nash_conv) and the number
@@ -1301,6 +1348,10 @@ struct RiverKeyEvaluation {
   // The average lifted with wrong_key_rows and with the variant's pooling.
   std::optional<LiftValues> wrong_key;
   std::optional<LiftValues> pooled;
+  // The same lifts with only player p's information sets mutated (the other
+  // player's from the correct lift), with per_player_lifts.
+  std::array<std::optional<LiftValues>, 2> wrong_key_player;
+  std::array<std::optional<LiftValues>, 2> pooled_player;
 };
 
 // Largest change of the values A2 compares (EVs, best responses, NashConv).
@@ -1311,6 +1362,17 @@ double largest_change(const LiftValues &reference, const LiftValues &mutated) {
                        std::abs(mutated.best_response[player] - reference.best_response[player])});
   }
   return change;
+}
+
+// Change of the A2 values that a lift of player's rows alone can move: that
+// player's EV (the game is zero-sum, so both EVs move by the same amount) and
+// the opponent's best response (a player's own best response does not depend
+// on its own strategy).
+double player_change(const LiftValues &reference, const LiftValues &mutated,
+                     const std::size_t player) {
+  const std::size_t opponent = 1U - player;
+  return std::max(std::abs(mutated.ev[player] - reference.ev[player]),
+                  std::abs(mutated.best_response[opponent] - reference.best_response[opponent]));
 }
 
 // Parts of a lossless river information set key of FiniteGameBuilder,
@@ -1409,6 +1471,26 @@ gtosd::StrategyProfile pooled_profile(const gtosd::StrategyProfile &profile,
   return pooled;
 }
 
+// The correct lift with the information sets of one player taken from a
+// mutated lift: an evaluator whose wrong key is confined to that player's
+// rows.
+gtosd::StrategyProfile player_profile(const gtosd::StrategyProfile &reference,
+                                      const gtosd::StrategyProfile &mutated,
+                                      const std::uint8_t player) {
+  auto profile = reference;
+  for (auto &[key, strategy] : profile) {
+    if (strategy.player != player) {
+      continue;
+    }
+    const auto found = mutated.find(key);
+    require(found != mutated.end() && found->second.player == player &&
+                found->second.actions == strategy.actions,
+            "a mutated lift has the player's information sets");
+    strategy = found->second;
+  }
+  return profile;
+}
+
 LiftValues lift_values(const gtosd::FiniteGame &physical_game,
                        const gtosd::StrategyProfile &reference,
                        const gtosd::StrategyProfile &profile, const std::string &name) {
@@ -1484,11 +1566,25 @@ void evaluate_lifts(const Resources &resources, const pb::AbstractionTables &vie
             "the lossless game does not depend on the rows");
     evaluation.wrong_key =
         lift_values(physical_game, lifted, wrong_builder.profile(), "wrong key " + variant.name);
+    if (variant.per_player_lifts) {
+      for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
+        evaluation.wrong_key_player[player] =
+            lift_values(physical_game, lifted,
+                        player_profile(lifted, wrong_builder.profile(), player),
+                        "wrong key of player " + std::to_string(player) + " " + variant.name);
+      }
+    }
   }
   if (variant.pooling != RiverPooling::None) {
-    evaluation.pooled =
-        lift_values(physical_game, lifted, pooled_profile(lifted, boards, variant.pooling),
-                    "pooled " + variant.name);
+    const auto pooled = pooled_profile(lifted, boards, variant.pooling);
+    evaluation.pooled = lift_values(physical_game, lifted, pooled, "pooled " + variant.name);
+    if (variant.per_player_lifts) {
+      for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
+        evaluation.pooled_player[player] =
+            lift_values(physical_game, lifted, player_profile(lifted, pooled, player),
+                        "pooled of player " + std::to_string(player) + " " + variant.name);
+      }
+    }
   }
 }
 
@@ -1510,7 +1606,7 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
   view.turn = &tables.turn;
   view.river = variant.river;
   view.board_class_rows = &rows;
-  const auto counts = pooling_counts(game, resources, view, boards, variant.subsets);
+  auto counts = pooling_counts(game, resources, view, boards, variant.subsets);
 
   // The abstract game keyed by the BoardContext rows, solved by the
   // independent scalar CFR.
@@ -1564,12 +1660,32 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
   double maximum_regret_error = 0.0;
   double maximum_strategy_error = 0.0;
   std::uint64_t compared = 0U;
+  const auto tally = [](RiverCells &cells, const double regret, const double strategy_sum) {
+    ++cells.compared;
+    cells.regret_nonzero += regret != 0.0 ? 1U : 0U;
+    cells.regret_above += std::abs(regret) > 1e-6 ? 1U : 0U;
+    cells.sum_nonzero += strategy_sum != 0.0 ? 1U : 0U;
+    cells.sum_above += std::abs(strategy_sum) > 1e-6 ? 1U : 0U;
+    cells.largest_regret = std::max(cells.largest_regret, std::abs(regret));
+  };
   for (const auto &[key, buffer] : solved.value().checkpoint.information_sets) {
     const auto parsed = parse_key(key);
     const auto &node = game.nodes()[parsed.node];
     require(node.kind == pb::NodeKind::Decision && node.actor == parsed.player &&
                 buffer.actions.size() == node.action_count,
             "oracle information set maps onto a compiled decision");
+    if (node.street == gtosd::Street::River) {
+      const bool pooled = counts.pooled_river_rows.contains(
+          (static_cast<std::uint64_t>(parsed.node) << 32U) | parsed.row);
+      for (std::size_t action = 0; action < node.action_count; ++action) {
+        tally(counts.a1_river, buffer.cumulative_regret[action],
+              buffer.cumulative_strategy[action]);
+        if (pooled) {
+          tally(counts.a1_pooled_river, buffer.cumulative_regret[action],
+                buffer.cumulative_strategy[action]);
+        }
+      }
+    }
     const auto offset =
         layout.offsets[parsed.node] + static_cast<std::uint64_t>(parsed.row) * node.action_count;
     const auto average_row = average.row(parsed.node, parsed.row);
@@ -1603,6 +1719,13 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
               "board-class cells outside the reduced game stay untouched");
     }
   }
+  // A1 is not vacuous on the river: the average may play the river uniformly
+  // (the unlocked variants), but the pooled river rows it compares carry
+  // regrets and strategy sums far above its tolerance.
+  require(!counts.pooled_river_rows.empty() && counts.a1_pooled_river.regret_above > 0U &&
+              counts.a1_pooled_river.sum_above > 0U,
+          "A1 compares pooled river rows with |regret| and strategy sum above 1e-6: " +
+              variant.name);
 
   // A2: the trainer's physical best response (joint river engine) is the
   // brute-force NashConv of the lifted average on the lossless physical game.
@@ -1639,6 +1762,17 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
             << nash_conv.value().nash_conv << "), EV [" << exact.value().ev[0] << ", "
             << exact.value().ev[1] << "], "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  const auto cells_text = [](const RiverCells &cells) {
+    return std::to_string(cells.compared) + " cells, regret nonzero " +
+           std::to_string(cells.regret_nonzero) + " (above 1e-6 " +
+           std::to_string(cells.regret_above) + ", largest " + decimal(cells.largest_regret) +
+           "), strategy sum nonzero " + std::to_string(cells.sum_nonzero) + " (above 1e-6 " +
+           std::to_string(cells.sum_above) + ")";
+  };
+  std::cout << "    A1 river cells of " << variant.name << ": all river rows "
+            << cells_text(counts.a1_river) << "; pooled river rows ("
+            << counts.pooled_river_rows.size() << " information sets) "
+            << cells_text(counts.a1_pooled_river) << "\n";
   if (evaluation != nullptr) {
     evaluate_lifts(resources, view, street_tables, boards, variant, average, exact.value(),
                    physical_game, physical_builder.profile(), *evaluation);
@@ -1654,6 +1788,10 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
 //      subsets give the regrets, strategy sums and average of
 //      gtosd::solve_finite_game (LinearCfr) on the abstract game keyed by the
 //      BoardContext rows, within 1e-9, and leave every other cell at zero;
+//      the river cells it compares are counted (printed), and the river rows
+//      that pool two canonical boards must carry cumulative regrets and
+//      strategy sums above 1e-6: the average plays the river uniformly here,
+//      the river regrets and sums that A1 checks are not zero;
 //  A2  the trainer's exact physical best response (the joint river engine,
 //      which computes the river rows of either key independently of
 //      BoardContext) equals calculate_nash_conv of the lifted average on the
@@ -1737,6 +1875,8 @@ void test_river_key_oracle(const Resources &resources, const FoldedTables &table
   std::array<std::uint64_t, 2> identity_river_sets{};
   std::array<std::uint64_t, 2> river_board_river_sets{};
   std::uint32_t variants = 0U;
+  RiverCells river_cells;
+  RiverCells pooled_river_cells;
   for (const auto &entry : cases) {
     const bool river_board_key = entry.map->river_key() == pb::RiverKey::RiverBoard;
     for (const std::uint32_t groups : {6U, 1U}) {
@@ -1751,6 +1891,8 @@ void test_river_key_oracle(const Resources &resources, const FoldedTables &table
       variant.subsets = entry.co40_game ? co40_subsets : oracle_subsets();
       const auto counts = river_key_oracle(resources, tables, boards, variant);
       ++variants;
+      add_cells(river_cells, counts.a1_river);
+      add_cells(pooled_river_cells, counts.a1_pooled_river);
 
       // A3: non-vacuity of the pooling.
       require(counts.by_street[3] > 0U, "the oracle game has river information sets");
@@ -1801,6 +1943,9 @@ void test_river_key_oracle(const Resources &resources, const FoldedTables &table
             << identity_river_sets[0] << " / " << river_board_river_sets[0] << " (6 groups), "
             << identity_river_sets[1] << " / " << river_board_river_sets[1] << " (1 group), "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  std::cout << "river-key oracle A1 river cells (" << variants
+            << " variants): all river rows " << cells_summary(river_cells)
+            << "; pooled river rows " << cells_summary(pooled_river_cells) << "\n";
 }
 
 // Boards of the A2 power check (test_river_key_decisive), weights 1 to 7, no
@@ -1852,12 +1997,6 @@ std::string combo_labels(const std::array<std::string_view, 4> &texts) {
     }
   }
   return labels;
-}
-
-std::string decimal(const double value) {
-  std::ostringstream text;
-  text << std::setprecision(10) << value;
-  return text.str();
 }
 
 // Showdown result of player 0 in every deal of the subsets on a board, player
@@ -2048,6 +2187,33 @@ void print_evaluation(const std::string &name, const RiverKeyEvaluation &evaluat
   std::cout << "\n";
 }
 
+// The mutated lifts confined to one player's information sets: the sets that
+// change and how far each A2 value moves.
+void print_player_lifts(const std::string &name, const RiverKeyEvaluation &evaluation,
+                        const RiverPooling pooling) {
+  const auto print = [&](const std::string &mutation,
+                         const std::array<std::optional<LiftValues>, 2> &lifts) {
+    for (std::size_t player = 0U; player < 2U; ++player) {
+      if (!lifts[player]) {
+        continue;
+      }
+      const auto &lift = *lifts[player];
+      const auto &exact = evaluation.exact;
+      std::cout << "      " << name << ", " << mutation << ", player " << player
+                << "'s rows only: " << lift.changed << " information sets change, |dEV|"
+                << " " << decimal(std::abs(lift.ev[player] - exact.ev[player])) << ", |dBR0| "
+                << decimal(std::abs(lift.best_response[0] - exact.best_response[0]))
+                << ", |dBR1| " << decimal(std::abs(lift.best_response[1] - exact.best_response[1]))
+                << ", |dNashConv| " << decimal(std::abs(lift.nash_conv - exact.nash_conv))
+                << ", player change " << decimal(player_change(exact, lift, player)) << "\n";
+    }
+  };
+  print("read with the key-turn rows", evaluation.wrong_key_player);
+  print(pooling == RiverPooling::Turn ? "rivers of a turn pooled"
+                                      : "orders of a five-card board pooled",
+        evaluation.pooled_player);
+}
+
 // A2 power (review of the night of 1 October 2026). In test_river_key_oracle
 // EV and NashConv were equal to 6 digits across keys. On the nine boards of
 // river_key_boards every deal of the oracle subsets has the same showdown
@@ -2056,9 +2222,10 @@ void print_evaluation(const std::string &name, const RiverKeyEvaluation &evaluat
 // preflop folds (the best response of player 0 is the fold, -1 ante), and the
 // unlocked average plays every lifted river information set uniformly (all of
 // them in the unlocked variants below and on the nine boards), so no river
-// row of either key can change a value of A2. This test therefore runs
-// river_decisive_boards (Ts Js Th Jh against Qd Kd Qc Kc), where the river
-// changes the winner, in three parts:
+// row of either key can change a value of A2 (A1 still compares river
+// regrets and strategy sums above 1e-6, see test_river_key_oracle). This test
+// therefore runs river_decisive_boards (Ts Js Th Jh against Qd Kd Qc Kc),
+// where the river changes the winner, in these parts:
 //  - board checks: the canonical relations the test relies on and, with the
 //    engine's ranks, that deals change their showdown result across the
 //    rivers of each canonical turn with two rivers; the river cells that key
@@ -2083,10 +2250,22 @@ void print_evaluation(const std::string &name, const RiverKeyEvaluation &evaluat
 //    five-card board pooled (9s8s6d Qs Ad reads the trained rows of 9s8s6d Ad
 //    Qs). A key-"turn" table read with the river-board rows is not compared:
 //    its class index (up to 19,998 five-card boards) can lie past the 13,761
-//    turn classes of the layout.
+//    turn classes of the layout;
+//  - mirrored (review of bf0f63e): the same locked variants with the hands
+//    swapped (player 0 Qd Kd Qc Kc, player 1 Ts Js Th Jh) and the same lock,
+//    A2 within 1e-9 and power (a) and (b) as above. Above, player 1's best
+//    response ends the hand preflop (the same value in every HU10 variant),
+//    so NashConv sees only player 1's river rows; mirrored, player 0's;
+//  - power per player, both orientations: each mutated lift confined to one
+//    player's river information sets changes some and moves that player's EV
+//    or the opponent's best response by more than 1e-6 (an evaluator bug
+//    confined to one player's rows fails A2), and moves the NashConv by more
+//    than 1e-6 for player 1's rows (original) and player 0's rows (mirrored),
+//    so a wrong key only in the opponent's best-response pass fails A2 too.
 // For comparison (printed, not asserted): one unlocked variant on the nine
 // boards (its lifted river strategies, all uniform) and the locked mutations
-// on the nine boards (smaller where they only move trained rows).
+// on the nine boards (smaller where they only move trained rows). The A1 river
+// cells of the unlocked variants are summed and printed.
 void test_river_key_decisive(const Resources &resources, const FoldedTables &tables,
                              const pb::BoardTextureMap &tx2) {
   const auto started = Clock::now();
@@ -2232,6 +2411,8 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
   std::uint32_t unlocked_variants = 0U;
   std::uint64_t unlocked_river_sets = 0U;
   std::uint64_t unlocked_river_trained = 0U;
+  RiverCells unlocked_river_cells;
+  RiverCells unlocked_pooled_river_cells;
   for (const auto &entry : cases) {
     const bool river_board_key = entry.map->river_key() == pb::RiverKey::RiverBoard;
     for (const std::uint32_t groups : {6U, 1U}) {
@@ -2242,6 +2423,8 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
       ++unlocked_variants;
       unlocked_river_sets += evaluation.river_information_sets;
       unlocked_river_trained += evaluation.river_trained;
+      add_cells(unlocked_river_cells, counts.a1_river);
+      add_cells(unlocked_pooled_river_cells, counts.a1_pooled_river);
       print_evaluation(variant.name, evaluation, variant.pooling);
 
       // A3 on the decisive boards.
@@ -2288,11 +2471,13 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
   for (const auto &entry : cases) {
     for (const std::uint32_t groups : {6U, 1U}) {
       const pb::BoardClassRows turn_rows(4U, 5U, groups, identity);
-      const auto variant = make_variant(entry, groups, "locked decisive ", turn_rows);
+      auto variant = make_variant(entry, groups, "locked decisive ", turn_rows);
+      variant.per_player_lifts = true;
       RiverKeyEvaluation evaluation;
       river_key_locked(resources, tables, boards, variant, evaluation);
       ++locked_variants;
       print_evaluation(variant.name, evaluation, variant.pooling);
+      print_player_lifts(variant.name, evaluation, variant.pooling);
       require(evaluation.river_trained > 0U,
               "the locked average plays the river: a lifted river strategy is not uniform: " +
                   variant.name);
@@ -2342,7 +2527,9 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
     const pb::BoardClassRows turn_rows(4U, 5U, 6U, identity);
     auto variant = make_variant(cases[3], 6U, "unlocked nine boards ", turn_rows);
     variant.subsets = oracle_subsets();
-    static_cast<void>(river_key_oracle(resources, tables, nine_boards, variant, &nine_unlocked));
+    const auto counts = river_key_oracle(resources, tables, nine_boards, variant, &nine_unlocked);
+    add_cells(unlocked_river_cells, counts.a1_river);
+    add_cells(unlocked_pooled_river_cells, counts.a1_pooled_river);
     print_evaluation(variant.name, nine_unlocked, variant.pooling);
   }
   std::array<RiverKeyEvaluation, 2> nine_turn_key{};
@@ -2381,6 +2568,122 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
               << "), by the orders of a five-card board pooled " << moved(turn_key[slot], true)
               << " (nine boards " << moved(nine_turn_key[slot], true) << ")\n";
   }
+
+  // Mirrored: the locked decisive variants with the hands swapped (player 0
+  // Qd Kd Qc Kc, player 1 Ts Js Th Jh; CO40-test QdKd, QcKc against TsJs,
+  // ThJh) and the same lock. In the variants above player 1's best response
+  // ends the hand preflop (2.225498844 in every HU10 variant), so their
+  // NashConv sees only player 1's river rows; here player 1 holds the hands
+  // that play the river, so player 0's river rows enter its best response.
+  pb::HandSubsets mirrored_subsets;
+  mirrored_subsets.combos[0] = subsets.combos[1];
+  mirrored_subsets.combos[1] = subsets.combos[0];
+  pb::HandSubsets mirrored_co40_subsets;
+  mirrored_co40_subsets.combos[0] = co40_subsets.combos[1];
+  mirrored_co40_subsets.combos[1] = co40_subsets.combos[0];
+  std::array<RiverKeyEvaluation, 2> mirrored_turn_key{};
+  std::array<RiverKeyEvaluation, 2> mirrored_board_key{};
+  std::uint32_t mirrored_variants = 0U;
+  for (const auto &entry : cases) {
+    for (const std::uint32_t groups : {6U, 1U}) {
+      const pb::BoardClassRows turn_rows(4U, 5U, groups, identity);
+      auto variant = make_variant(entry, groups, "locked mirrored decisive ", turn_rows);
+      variant.subsets = entry.co40_game ? mirrored_co40_subsets : mirrored_subsets;
+      variant.per_player_lifts = true;
+      RiverKeyEvaluation evaluation;
+      river_key_locked(resources, tables, boards, variant, evaluation);
+      ++mirrored_variants;
+      print_evaluation(variant.name, evaluation, variant.pooling);
+      print_player_lifts(variant.name, evaluation, variant.pooling);
+      require(evaluation.river_trained > 0U,
+              "the locked average plays the river: a lifted river strategy is not uniform: " +
+                  variant.name);
+      const std::size_t slot = groups == 1U ? 1U : 0U;
+      if (!entry.co40_game && entry.map == &identity) {
+        mirrored_turn_key[slot] = evaluation;
+      }
+      if (!entry.co40_game && entry.map == &river_board) {
+        mirrored_board_key[slot] = evaluation;
+      }
+    }
+  }
+
+  // Power per player, both orientations: every mutated lift confined to one
+  // player's river rows moves that player's EV or the opponent's best
+  // response by more than 1e-6, so A2 fails for an evaluator whose wrong key
+  // is confined to that player's rows; and each player's rows alone move the
+  // NashConv in one orientation (player 1's in the original variants, player
+  // 0's in the mirrored ones), so an evaluator reading them with the wrong key
+  // only in the opponent's best-response pass fails A2 too.
+  struct Orientation {
+    const char *name;
+    const std::array<RiverKeyEvaluation, 2> *turn;
+    const std::array<RiverKeyEvaluation, 2> *board;
+    std::size_t best_response_player;
+  };
+  const std::array<Orientation, 2> orientations{
+      {{"original", &turn_key, &board_key, 0U},
+       {"mirrored", &mirrored_turn_key, &mirrored_board_key, 1U}}};
+  std::array<double, 2> smallest_player_change{1.0e300, 1.0e300};
+  std::array<double, 2> smallest_player_nash_conv{1.0e300, 1.0e300};
+  double smallest_mirrored_key_change = 1.0e300;
+  double smallest_mirrored_mutation = 1.0e300;
+  for (const auto &orientation : orientations) {
+    for (std::size_t slot = 0U; slot < 2U; ++slot) {
+      const auto &turn = (*orientation.turn)[slot];
+      const auto &board = (*orientation.board)[slot];
+      const std::array<std::pair<const RiverKeyEvaluation *,
+                                 const std::array<std::optional<LiftValues>, 2> *>,
+                       3>
+          mutations{{{&board, &board.wrong_key_player},
+                     {&board, &board.pooled_player},
+                     {&turn, &turn.pooled_player}}};
+      for (const auto &[evaluation, lifts] : mutations) {
+        for (std::size_t player = 0U; player < 2U; ++player) {
+          const auto &lift = (*lifts)[player];
+          require(lift && lift->changed > 0U,
+                  "a mutated lift of one player's rows changes information sets");
+          const double change = player_change(evaluation->exact, *lift, player);
+          require(change > 1e-6,
+                  "power per player: a wrong-key lift of one player's river rows moves that "
+                  "player's EV or the opponent's best response by more than 1e-6 (" +
+                      std::string(orientation.name) + ", player " + std::to_string(player) +
+                      ")");
+          smallest_player_change[player] = std::min(smallest_player_change[player], change);
+          // The player whose rows the opponent's best response reaches.
+          if (player != orientation.best_response_player) {
+            const double moved_nash_conv = std::abs(lift->nash_conv - evaluation->exact.nash_conv);
+            require(moved_nash_conv > 1e-6,
+                    "power per player: the lift of one player's river rows moves the "
+                    "opponent's best response and the NashConv by more than 1e-6 (" +
+                        std::string(orientation.name) + ", player " + std::to_string(player) +
+                        ")");
+            smallest_player_nash_conv[player] =
+                std::min(smallest_player_nash_conv[player], moved_nash_conv);
+          }
+        }
+      }
+      if (orientation.best_response_player == 1U) {
+        const double key_change = std::min(std::abs(turn.exact.nash_conv - board.exact.nash_conv),
+                                           std::abs(turn.exact.ev[0] - board.exact.ev[0]));
+        require(key_change > 1e-6,
+                "power (a), mirrored: the river key changes the trainer's EV and NashConv by "
+                "more than 1e-6");
+        require(board.wrong_key && board.wrong_key->changed > 0U && board.pooled &&
+                    board.pooled->changed > 0U && turn.pooled && turn.pooled->changed > 0U,
+                "power (b), mirrored: the mutated lifts change information sets");
+        const double mutation =
+            std::min({std::abs(board.wrong_key->nash_conv - board.exact.nash_conv),
+                      std::abs(board.pooled->nash_conv - board.exact.nash_conv),
+                      std::abs(turn.pooled->nash_conv - turn.exact.nash_conv)});
+        require(mutation > 1e-6,
+                "power (b), mirrored: every wrong-key lift moves the brute-force NashConv by "
+                "more than 1e-6");
+        smallest_mirrored_key_change = std::min(smallest_mirrored_key_change, key_change);
+        smallest_mirrored_mutation = std::min(smallest_mirrored_mutation, mutation);
+      }
+    }
+  }
   std::cout << "river-key decisive boards: 7 boards where the river changes the showdown "
                "winner; "
             << unlocked_variants
@@ -2395,6 +2698,21 @@ void test_river_key_decisive(const Resources &resources, const FoldedTables &tab
             << " and every wrong-key lift moves the brute-force NashConv by at least "
             << decimal(smallest_mutation) << " (both > 1e-6), "
             << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
+  std::cout << "river-key decisive per player: " << mirrored_variants
+            << " mirrored locked variants with A2; a wrong-key lift of one player's river rows "
+               "moves that player's EV or the opponent's best response by at least "
+            << decimal(smallest_player_change[0]) << " (player 0) / "
+            << decimal(smallest_player_change[1])
+            << " (player 1), and the NashConv by at least " << decimal(smallest_player_nash_conv[0])
+            << " (player 0's rows, mirrored) / " << decimal(smallest_player_nash_conv[1])
+            << " (player 1's rows, original); mirrored keys differ by at least "
+            << decimal(smallest_mirrored_key_change)
+            << " and every mirrored wrong-key lift moves the NashConv by at least "
+            << decimal(smallest_mirrored_mutation) << " (all > 1e-6)\n";
+  std::cout << "river-key decisive A1 river cells (" << unlocked_variants
+            << " unlocked decisive variants and the unlocked nine-board variant): all river rows "
+            << cells_summary(unlocked_river_cells) << "; pooled river rows "
+            << cells_summary(unlocked_pooled_river_cells) << "\n";
 }
 
 // A4 (critic R3): HU50's update path, boards sampled from the list with
