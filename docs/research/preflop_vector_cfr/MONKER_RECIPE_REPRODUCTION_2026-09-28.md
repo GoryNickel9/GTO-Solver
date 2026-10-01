@@ -2275,7 +2275,7 @@ toccarlo; `threeway/phase3b/partA.md`, `review_partA.md`, `referee3.md` e `chain
   pronta, non applicata. D3 (bassa): la normalizzazione della portata a tre posti è coperta da un solo controllo; tre
   controlli suggeriti.
 - **Arbitro del postflop 3-way**, commit `2aa24d8` su `feat/threeway-step2` (21:56): regole riscritte in Python dalle regole
-  del gioco, non dal codice del motore; `3WAY50_donk`, `_rake` (5 % / cap 3a), `_rake25cap2` (il gioco del run),
+  del gioco, non dal codice del motore (le convenzioni C1-C16 vengono dal motore per scelta); `3WAY50_donk`, `_rake` (5 % / cap 3a), `_rake25cap2` (il gioco del run),
   `_rake5cap075` e `_allin5x` tutti PASS con 0 errori di regola; i primi quattro hanno 7.225 nodi e 10.410 righe di payoff,
   l'ultimo 7.126 e 10.236. I side pot sono irraggiungibili (stack uguali: lemma R9b, controllato su tutti i nodi); le 459
   righe con unità dispari del gioco del run vanno ai posti più bassi come vuole la convenzione; otto mutazioni di prova del
