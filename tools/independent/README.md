@@ -273,3 +273,97 @@ python tools/independent/sd_designer_policies.py --threads 2 > $D/S5a_designer.l
 - All of them are single-core except S2's 4 workers and the evaluator's `--threads`.
 
 **Exit codes** of S1, S2, S5a and S6: 0 pass, 1 mismatch, 2 input error.
+
+## S2-DLL `sd_dll_check.py`: third opinion from the user's equity calculator DLL
+
+**What it proves.** A third evaluator, written separately in the user's equity calculator, ranks every
+seven-card set in the same order as `rank_table_v1.bin`. So every river showdown and every all-in runout
+agrees. The DLL's own exact enumeration also reproduces `preflop_all_in_v1.bin` on the sampled pairs.
+
+**The DLL.**
+- `equity-calculator-web-app/cpp/build/Release/equity_calculator.dll`: 52,224 bytes, built 14/05/2026
+  18:02, SHA-256 `ab09c244…2fa985` (recorded in the JSON).
+- It is loaded read-only through ctypes. It is never built or modified, and nothing is written in the
+  user's repository. A missing DLL or export gives exit 2.
+- **Exports used:**
+  - `compute_equity_enumeration`, 2 combos: preflop, or with a full board;
+  - `evaluate_hand_direct`, 7 cards, an int score.
+- **Source dates** [VERIFIED by file times]:
+  - `hand_evaluator.cpp` (17/03/2026, base-15 weights for flush and high-card kickers) predates the build.
+  - `equity_api.cpp` was saved at 19:22, after the build. Its new export
+    `compute_equity_range_vs_range_weighted` is missing from the binary.
+  - Whether the two exports used still match today's source is INFERRED. The runtime guards below check
+    their behaviour.
+
+**The known bias does not apply** [VERIFIED by reading the code]:
+- **Where the bias is.** The diary records it (`MONKER_RECIPE_REPRODUCTION_2026-09-28.md`, 9.2; the
+  PROGRESS_LOG lists its fix as pending). It is in the web app's multiway range Monte Carlo,
+  `src/lib/multiwaySimulation.ts` (TypeScript, not in the DLL):
+  - `sampleCombo` draws player 1 from the whole range, then each next player from what is left;
+  - so the deal is not the joint deal conditioned on no shared card;
+  - blocking ranges therefore get the wrong weights;
+  - the code read on 01/10 still samples this way.
+- **Other Monte Carlo paths are not reached.** The DLL has its own Monte Carlo (time-seeded `std::rand`),
+  and the Python wrapper sends 3+ hands to it. Every call here passes 2 single combos:
+  - preflop: C(32,5) = 201,376 runouts, which takes the exact branch of `runTrueEnumerationAPI` (Monte
+    Carlo needs more than 1,000,000 runouts or more than 4 hands);
+  - or a full board, which evaluates the hands directly.
+- **Runtime guards show the exact branch ran:**
+  - 402,752 × equity is an integer (2W + T);
+  - repeated calls are bit-identical;
+  - the two equities sum to 1;
+  - no answer is the 1/n catch-all unless the exact shares are 1/2;
+  - every river tie is confirmed by equal, non-zero `evaluate_hand_direct` scores.
+
+**Checks:**
+- **D0 / E0.** The DLL and its exports exist, and its provenance is recorded. The engine files parse,
+  with trailers and fingerprints verified.
+- **R7, exhaustive.** `evaluate_hand_direct` runs on all 8,347,680 seven-card sets. Score and engine
+  ordinal must map one-to-one and strictly increasing, with no zero score.
+- **RV, random rivers.** 1,000,000 random (hand, hand, board) deals of 9 distinct cards. The DLL's
+  full-board winner or tie must equal the sign of the engine ordinal difference. The API answer must also
+  equal the comparison of the DLL's own scores.
+- **PA, preflop equity.** 2,000 random disjoint pairs (without replacement) plus 12 edge pairs. The DLL
+  enumerates the 201,376 runouts, and both equities must equal (2W + T) / 402,752 and (2L + T) / 402,752
+  within 1e-12. The DLL is called with the lower combo id first or second at random.
+- **PA2, W/T/L.** The equity alone fixes only 2W + T. So the same pairs are counted over their 201,376
+  boards with the R7 DLL scores, and W, T and L must equal the file's integers.
+- **M, `--self-test`.** Mutations in memory, with no extra DLL calls:
+  - swapping the engine ordinals of the lowest straight and the highest trips must fail R7 and RV;
+  - W+1/L-1 on one pair must fail PA and PA2;
+  - W+1/T-2/L+1 (same 2W + T) must pass PA and fail PA2. This is why PA2 exists.
+
+**Result of 01/10/2026, 09:19-09:23: all PASS (exit 0)** [VERIFIED, `out/monker/correctness/independent/S2_dll/`]:
+- **R7.** 0 order violations and 0 zero scores. There are 752 levels on both sides (the 752 of S1's E3),
+  split by DLL category:
+  - high card 10, pair 138, two pair 203, trips 125, straight 6;
+  - full house 72, flush 120, quads 72, straight flush 6.
+- **RV.** 1,000,000 triples with 0 mismatches: 465,765 hero wins, 69,791 ties, 464,444 villain wins.
+  - 0 invalid answers, 0 unconfirmed ties, and the two entry points never disagree.
+  - Coverage: 13,345 straight-against-trips deals and 1,748 flush-against-full-house deals.
+- **PA.** 2,012 pairs, maximum error exactly 0.0: every equity is bit-identical to (2W + T) / 402,752.
+  - 0 lattice failures, 0 catch-all answers, and 20 of 20 repeated calls identical.
+  - 995 pairs were called with the higher id first.
+- **PA2.** 2,012 pairs with 0 W/T/L mismatches.
+- **M1 and M2.** Both mutations are detected:
+  - the straight/trips swap of the adjacent levels 1127 and 1128 gives 1 R7 violation and 22 RV mismatches;
+  - PA misses the same-2W+T mutation, as designed, and PA2 catches it.
+- **Chain.** R7 holds on every set. S1 matched the engine's seven-card ordinals to the Python rules
+  exactly, and S2 matched the all-in table to counts from those ordinals on all 176,715 pairs. So counts
+  under the DLL's ranking equal the engine table on every pair. This is derived, not run pair by pair
+  with the DLL.
+
+**Cost.**
+- 187 s with `--processes 2`: files 4 s with checksums, R7 11 s, RV 6 s, PA/PA2 165 s.
+- PA/PA2 take about 0.16 s per pair per process: about 90 ms of DLL enumeration and about 40 ms of
+  numpy.
+- Memory: parent peak working set 0.34 GB (0.36 GB commit); the worker is smaller (scores 33 MB).
+- Threads: 2 busy processes, each single-threaded (`OPENBLAS_NUM_THREADS=1`). The parent shows up to 7
+  OS threads, mostly idle pool handlers.
+- Outputs: `sd_dll_check.json` and `dll_seven_scores.npy` (33 MB) in `S2_dll/`.
+
+```
+python tools/independent/sd_dll_check.py --self-test > $D/S2_dll.log 2>&1; echo "S2-DLL exit $?"   # no build needed
+```
+
+**Exit codes:** 0 pass, 1 mismatch or an undetected mutation, 2 usage, input or DLL error.
