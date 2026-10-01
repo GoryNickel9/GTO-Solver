@@ -2058,8 +2058,8 @@ sono confermate dai file (5.11).
 ### 9.7 Fase 3a: codice, gate 3a, merge e primo run in coda (1° ottobre, dalle 09:24 alle 18:12)
 
 Rapporti nella cartella temporanea della sessione, `threeway/phase3a/`: `gate3a.md` (integrazione, 12:22-14:25), `review.md`
-(review indipendente, 14:20-14:56), `deferred_tests.md`, `gate3a_final.md` (16:30-17:25), `final_chain.log` e
-`final_chain_run2.out` (controlli a 15 × 4, 18:00-18:11); in `threeway/run1/`: `NOT_READY.md`, `final_freeze.sh`,
+(review indipendente, 14:20-14:56), `deferred_tests.md`, `gate3a_final.md` (16:30-17:25), `final_chain.log` (catena
+finale: gamba 3-way di V9 alle 16:45-16:50, controlli a 15 × 4 alle 18:00-18:11) e `final_chain_run2.out` (controlli a 15 × 4); in `threeway/run1/`: `NOT_READY.md`, `final_freeze.sh`,
 `queue_3way50_15x4.sh` e le prove della coda (`qtest2/driver.log`). Codice nel worktree
 `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver-phase3`, branch `feat/threeway-step2` (da `d0796f8`). Cronologia nel diario
 (PROGRESS_LOG, voci del 1° ottobre dalle 08:00 alle 16:30 e della sera). [V] = verificato (misurato, o letto nei file, nei log
@@ -2121,7 +2121,7 @@ sono girati la build finale a `12fe441`, la ctest, V1, la gamba 3-way di V9 e i 
 | V6 | Scorciatoia accesa e spenta | **PASS**: 4,6e-15 della scala (soglia 1e-12), stati identici a 2 e 8 thread |
 | V7 | Harness a tre seggi = HU (G1 / HU50 con rake) | **Parziale, accettato**: un'iterazione da zero a 2,0e-13 / 4,1e-13 della scala, un'iterazione alternata da una policy densa a 0,076 / 0,045 della tolleranza; la clausola della traiettoria a 100 iterazioni (0,001 sulle chart, 1e-6 a sull'EV) non è rispettata: 0,46 / 0,33 sulle righe preflop, 0,028 / 0,019 a sull'EV |
 | V8 | Identità del rake | **PASS**: 1,65e-15 attraverso `terminal3` (3 fixture × 3.701 terminali postflop × 20 board, ogni seggio come eroe) |
-| V9 | Uguale al passo 1 per classi sull'albero checkdown (19.998 board canonici, 6 iterazioni) | **PASS**: gamba HU 6,9e-14 / 8,4e-14 all'iterazione 1 (soglia 1e-9). Gamba 3-way (16:45-16:50, `board_kernels`, 8 thread, 27,5-27,7 s per iterazione), `3WAY50_donk_rake` / `_rake25cap2`: 1,45e-12 / 5,64e-12 all'iterazione 1, righe medie 2,8e-11 / 3,5e-12 (soglia 0,001), EV 1,2e-13 / 4,6e-13 a e guadagno 2,9e-13 / 5,3e-13 a (soglia 1e-6 a). È l'unico oracolo indipendente della traversata preflop a 3 seggi e del calendario alternato dei tre eroi |
+| V9 | Uguale al passo 1 per classi sull'albero checkdown (19.998 board canonici, 6 iterazioni) | **PASS**: gamba HU 6,9e-14 / 8,4e-14 all'iterazione 1 (soglia 1e-9). Gamba 3-way (16:45-16:50, `board_kernels`, 8 thread, 27,5-27,7 s per iterazione), `3WAY50_donk_rake` / `_rake25cap2`: 1,45e-12 / 5,64e-12 all'iterazione 1, righe medie 2,8e-11 / 3,5e-12 (soglia 0,001), EV 1,2e-13 / 4,6e-13 a e guadagno 2,9e-13 / 5,3e-13 a (soglia 1e-6 a). Secondo la review è l'unico oracolo indipendente della traversata preflop a 3 seggi e del calendario alternato dei tre eroi |
 | V9b | Cache = kernel | **PASS**: 5,2e-14 ai terminali (200 termini, 19.998 board), 2,7e-11 / 4,5e-12 sulla passata |
 | V10 | Determinismo dei thread | **PASS** a tabelle piccole (stato `fnv1a64:25f269dcb61ae069` a 1, 2 e 8 thread) e a 15 × 4 (18:05-18:09, 20 iterazioni, `--validation`): stato `fnv1a64:6a94a517133aa13a` a 8, 2 e 1 thread, 54 chart con lo stesso digest `9da6182ae65102c6`, 0 file non finiti |
 | V11 | Parte A | Fuori dal gate 3a: è il gate 3b |
@@ -2139,7 +2139,10 @@ fatto: non serve al gate.
 
 **Il blocco della memoria (16:50-18:03)** [V, `gate3a_final.md`, `final_chain_run2.out`]. I controlli a 15 × 4 e il run vogliono
 almeno 18.874.368 KB liberi (14,8 GB del trainer più 3 di margine) e nessun altro training. Dalle 16:50:41 lo smoke ha aspettato 30
-minuti ed è uscito per timeout alle 17:21:26: memoria libera fra 14,7 e 16,0 GB senza nessun nostro processo. La tenevano le
+minuti ed è uscito per timeout alle 17:21:26: memoria libera fra 14,7 e 16,0 GB (31 letture). I valori sotto 15 GB cadono fra
+le 16:51 e le 16:56, mentre girava la prova della coda con il trainer vero su HU G1 (il gate non conta i training del worktree
+della fase 3); dalle 16:57 alle 17:21, senza training nostri, 15,6-16,0 GB [V, `gate.log` di `out/final_smoke_t8` e `queue.log`
+di `out/qtest_queue` nel worktree]. La memoria mancante la tenevano le
 applicazioni dell'utente (memoria privata alle 16:58: Brave 4,2 GB in 33 processi, Claude 2,8, ChatGPT 1,8, Steam 1,0, Telegram
 0,9, Discord 0,8). Verso le 18:00 l'utente ha chiuso Brave; alle 18:00:35 i KB liberi erano 18.700.448, appena sotto, e alle
 18:03:39 il gate si è aperto con 19.051.048.
@@ -2159,8 +2162,10 @@ applicazioni dell'utente (memoria privata alle 16:58: Brave 4,2 GB in 33 process
 - Rispetto alla specifica (9.6): 1,5 s per iterazione, sotto la forbice stimata di 2-4,5 s e sotto i 2,6 s misurati a 8 thread
   con le tabelle piccole sulla macchina carica; il picco è quello stimato (circa 14,8 GB).
 - **Scala con i thread** [I, rapporti dei tempi della tabella; il punto a 4 thread viene dallo smoke, gli altri da V10]: da 1 a 2
-  thread 1,78 volte, da 1 a 4 2,84, da 1 a 8 3,54. Un fit di Amdahl dà circa il 12 % di lavoro non parallelo; su 48 core fisici
-  sarebbero circa 0,5-0,8 s per iterazione (la specifica stimava 0,4-1,0 s su un server).
+  thread 1,78 volte, da 1 a 4 2,84, da 1 a 8 3,54 (l'i3-10100F ha 4 core fisici: da 4 a 8 thread il guadagno viene
+  dall'hyperthreading). Un fit di Amdahl dà circa il 12 % di lavoro non parallelo (12-14 % dai punti a 2 e 4 thread); su 48 core
+  fisici sarebbero circa 0,5-0,8 s per iterazione, a parità di velocità per core e senza limiti di banda della memoria (la
+  specifica stimava 0,4-1,0 s su un server).
 
 **Guardie del 30** (10.12). Verso le 17:58 la sessione principale ha fermato `ext/stop_ext_1958.ps1` e
 `night2/stop_night2_1958.ps1`: alle 19:40 avrebbero scritto file CANCEL nelle cartelle dei loro run, già archiviate su F:
@@ -2169,7 +2174,7 @@ attraverso le junction [V, sessione principale].
 **Merge e congelamento** [V, `git log`, file `SOURCE.txt`, `queue.log`]:
 
 - 18:11:32, merge `238a41e` di `feat/threeway-step2` (`12fe441`) in `feat/monker-step1-checkdown`. `git diff 12fe441 238a41e`
-  su `libs`, `benchmarks`, `tests` e `tools` è vuoto: il codice del branch è quello del gate. Al merge il branch è 12 commit avanti a
+  su `libs`, `include`, `benchmarks`, `tests` e `tools` è vuoto: il codice del branch è quello del gate. Al merge il branch è 12 commit avanti a
   origin, non pushato.
 - 18:11:39-18:11:40, `run1/final_freeze.sh` (FREEZE_OK e DRY_RUN_OK [V, sessione principale]), che aggiunge solo file nuovi nel
   checkout principale e rifiuta di sovrascrivere:
@@ -2207,15 +2212,20 @@ attraverso le junction [V, sessione principale].
   cancellato dall'avvio del runner o del trainer: il run avrebbe girato oltre le 19:40), corretto nella versione congelata. Alle
   16:51-16:57 la pausa era stata provata con il trainer vero su HU G1 (pausa a 1.668, ripresa da 1.668, annullamento durante il run
   → pausa a 2.840).
-- **Limite**: le prove sono state fatte con `CHECKPOINT_EVERY=0`, prima della decisione delle 18:00. Il checkpoint periodico è il
-  percorso del runner che i run HU usano già (default 20.000), ma con questa coda non è stato provato. Un crash o un riavvio fermano
+- **Limite**: le prove sono state fatte con `CHECKPOINT_EVERY=0`, prima della decisione delle 18:00: la copia provata
+  (`dry_stage`, sha256 `608df367…`) differisce da quella congelata (`7581f0f8…`) solo per `R_CHECKPOINT_EVERY` e per il testo
+  di una riga del dry run [V, diff]. Il checkpoint periodico (`--checkpoint-every`) chiama nel trainer lo stesso salvataggio
+  delle pause e della fine, e nel runner il default HU è 20.000 [V, codice]; con questa coda e a 15 × 4 non è stato
+  provato. Un crash o un riavvio fermano
   anche la coda: si rilancia lo stesso comando, dopo aver controllato che il PID di `queue.lock` non esista più e averlo tolto, e il
   run riparte dall'ultimo checkpoint [I].
 
 **Fine prevista** [I]. A 1,5 s per iterazione (± 30 %): 16.000 iterazioni in circa 7 ore; l'arresto atteso dalla specifica, fra
-24.000 e 40.000, in circa 10-17 ore, cioè il 02/10 fra le 10:30 e le 17:30; il tetto di 48.000 in circa 20 ore. Secondo
-`gate3a_final.md`, sotto 3,4 s per iterazione l'intero run, tetto compreso, finisce prima della prima pausa (03/10 alle 19:40). Il
-costo dei checkpoint ogni 16.000 (14,32 GB di stato ciascuno) non è misurato.
+24.000 e 40.000 (una stima per analogia con l'HU), in circa 10-17 ore, cioè il 02/10 fra le 10:30 e le 17:30; il tetto di 48.000
+in circa 20 ore. Secondo `gate3a_final.md`, sotto 3,4 s per iterazione l'intero run, tetto compreso, finisce prima della prima
+pausa (03/10 alle 19:40). Il costo dei checkpoint ogni 16.000 non è misurato: la specifica (4.3) stima 13,56 GB e 1,3-4,5 minuti
+per un checkpoint a 15 × 4 (regret e somme, cioè lo stato di 14,32 GB senza i timestamp dello sconto lazy, 0,77 GB [V,
+`memory_breakdown` dello smoke]).
 
 **Cosa resta.**
 

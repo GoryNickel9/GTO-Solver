@@ -22,7 +22,7 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il vecchio limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | **Aggiornamento del 2026-10-01 alle 18:15**: gate 3a della fase 3 del 3-way completo (sezione 9.7 di [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md)): build a `12fe441`, ctest 101/101, V1 e gamba 3-way di V9 PASS; dopo la chiusura di Brave da parte dell'utente anche lo smoke a 15 × 4 (1,499 s per iterazione a 8 thread, picco 14,86 GB), V10 e V12 a 15 × 4 PASS; V7 parziale accettato come limite del disegno del test. Merge `238a41e` di `feat/threeway-step2` in `feat/monker-step1-checkdown` (non pushato; al merge 12 commit avanti a origin); eseguibili, runner e coda congelati in `out/monker/bin_3way_step2`, `out/frozen/threeway_step2_12fe441` e `out/frozen/queue_3way50_15x4.sh`. Primo run 3WAY50 (15 × 4 double, rake 2,5 % / cap 2a, arresto a 0,008 sulle 18 chart non all-in, minimo 16.000, tetto 48.000, checkpoint ogni 16.000 per decisione dell'utente) in coda dalle 18:11:54 per le 00:00 del 2026-10-02, giorno senza finestra; dal 2026-10-03 pausa alle 19:40 e ripresa alle 00:00; fine attesa il 2026-10-02 fra le 10:30 e le 17:30 se l'arresto cade fra 24.000 e 40.000 iterazioni [I]. La coda parte solo con almeno 18.874.368 KB liberi: l'utente non riapre Brave e tiene aperta questa sessione. Poi: risultato del run 1, fase 3b (parte A e V11), parte A campionata su 64 flop fisici, test del blocco a 15 × 4, proposta della batteria di correttezza 3-way chiesta dall'utente (diario del 2026-10-01 sera). Quanto segue è lo stato degli altri filoni alle 14:40 del 2026-09-30, non aggiornato. In corso alle 14:40 del 2026-09-30: estensione del run 30 × 4 con rake 2,5 % / cap 2a fino a 64.000 iterazioni (valutazione esatta, poi archivio su F:), in coda il run con le texture TXM2 nello stesso gioco (64.000). Decisioni in attesa: le D1-D7 della specifica della fase 3 del 3-way (astrazione, rake del passo 2, regola di arresto 0,008 sulle 18 chart non all-in, ambito della valutazione, server a noleggio, build fino alle 24:00, conferme; prese il 2026-10-01, vedi il diario); configurazione HU di riferimento dopo l'estensione e il TXM2 (candidato 30 × 4 con rake 2,5 % / cap 2a); opzione A (algoritmo): la condizione dell'utente delle 12:26 (dopo il risultato del 30 × 4 e il test 7) è soddisfatta; non rimessa in coda, aspetta la conferma dell'utente (gioco: G1 come preparata, oppure il 30 × 4 con rake 2,5 % / cap 2a secondo il piano delle 12:26); criterio di somiglianza in EV; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente. Poi il codice della fase 3 (dalle 15:00 circa secondo la specifica). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.11, 6, 8, 9.6 e 9.7, e nella [specifica della fase 3](threeway/PHASE3_SPEC_2026-09-30.md). |
+| Prossimo passo | **Aggiornamento del 2026-10-01 alle 18:15**: gate 3a della fase 3 del 3-way completo (sezione 9.7 di [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md)): build a `12fe441`, ctest 101/101, V1 e gamba 3-way di V9 PASS; dopo la chiusura di Brave da parte dell'utente anche lo smoke a 15 × 4 (1,499 s per iterazione a 8 thread, picco 14,86 GB), V10 e V12 a 15 × 4 PASS; V7 parziale accettato come limite del disegno del test. Merge `238a41e` di `feat/threeway-step2` in `feat/monker-step1-checkdown` (non pushato; al merge 12 commit avanti a origin); eseguibili, runner e coda congelati in `out/monker/bin_3way_step2`, `out/frozen/threeway_step2_12fe441` e `out/frozen/queue_3way50_15x4.sh`. Primo run 3WAY50 (15 × 4 double, rake 2,5 % / cap 2a, arresto a 0,008 sulle 18 chart non all-in, minimo 16.000, tetto 48.000, checkpoint ogni 16.000 per decisione dell'utente) in coda dalle 18:11:54 per le 00:00 del 2026-10-02, giorno senza finestra; dal 2026-10-03 pausa alle 19:40 e ripresa alle 00:00; fine attesa il 2026-10-02 fra le 10:30 e le 17:30 a 1,5 s per iterazione, se l'arresto cade fra 24.000 e 40.000 iterazioni [I]. La coda parte solo con almeno 18.874.368 KB liberi; l'utente non riapre Brave e tiene aperta questa sessione di Claude per la notte. Poi: risultato del run 1, fase 3b (parte A e V11), parte A campionata su 64 flop fisici, test del blocco a 15 × 4, proposta della batteria di correttezza 3-way chiesta dall'utente (diario del 2026-10-01 sera). Quanto segue è lo stato degli altri filoni alle 14:40 del 2026-09-30, non aggiornato. In corso alle 14:40 del 2026-09-30: estensione del run 30 × 4 con rake 2,5 % / cap 2a fino a 64.000 iterazioni (valutazione esatta, poi archivio su F:), in coda il run con le texture TXM2 nello stesso gioco (64.000). Decisioni in attesa: le D1-D7 della specifica della fase 3 del 3-way (astrazione, rake del passo 2, regola di arresto 0,008 sulle 18 chart non all-in, ambito della valutazione, server a noleggio, build fino alle 24:00, conferme; prese il 2026-10-01, vedi il diario); configurazione HU di riferimento dopo l'estensione e il TXM2 (candidato 30 × 4 con rake 2,5 % / cap 2a); opzione A (algoritmo): la condizione dell'utente delle 12:26 (dopo il risultato del 30 × 4 e il test 7) è soddisfatta; non rimessa in coda, aspetta la conferma dell'utente (gioco: G1 come preparata, oppure il 30 × 4 con rake 2,5 % / cap 2a secondo il piano delle 12:26); criterio di somiglianza in EV; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente. Poi il codice della fase 3 (dalle 15:00 circa secondo la specifica). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.11, 6, 8, 9.6 e 9.7, e nella [specifica della fase 3](threeway/PHASE3_SPEC_2026-09-30.md). |
 
 ## 2. Registro dei gate
 
@@ -62,7 +62,7 @@ Rapporti nella cartella temporanea della sessione: `threeway/phase3a/gate3a_fina
 | 16:51-16:57 | Prova della pausa e dell'annullamento della coda con il trainer vero su HU G1 |
 | 17:24 | `run1/NOT_READY.md`: niente merge, congelamento o coda finché i controlli a 15 × 4 non passano |
 | 17:36-17:37 | Congelamento di prova in una cartella di staging e dry run della coda: DRY_RUN_OK (il gate della memoria allora sarebbe stato chiuso: 15.672.948 KB liberi) |
-| 17:39-17:54 | Prove della coda con un trainer finto: un primo giro non valido (codici di uscita letti in una subshell), il secondo tutto PASS |
+| 17:39-17:54 | Prove della coda con un trainer finto: un primo giro non valido (codici di uscita letti in una subshell), il secondo tutto PASS (T7 dopo una correzione del driver) |
 | Verso le 17:58 | La sessione principale ferma le guardie del 30 |
 | Verso le 18:00 | L'utente chiude Brave e sceglie il checkpoint ogni 16.000 iterazioni; `R_CHECKPOINT_EVERY=16000` nello script della coda |
 | 18:00:33-18:11:10 | Catena finale: smoke a 8 e 4 thread, V10 e V12 a 15 × 4, tutti PASS |
@@ -86,7 +86,9 @@ la finestra solita, dal 03/10 pausa alle 19:40 e ripresa alle 00:00.
 
 - I controlli a 15 × 4 e il run vogliono almeno 18.874.368 KB liberi (14,8 GB del trainer più 3 di margine) e nessun altro
   training.
-- Dalle 16:50:41 alle 17:21:26 il gate è rimasto chiuso: 14,7-16,0 GB liberi senza nessun nostro processo (31 letture).
+- Dalle 16:50:41 alle 17:21:26 il gate è rimasto chiuso: 14,7-16,0 GB liberi (31 letture). Sotto 15 GB solo fra le 16:51 e le
+  16:56, mentre girava la prova della coda con il trainer vero su HU G1 (il gate non conta i training del worktree della fase 3);
+  dalle 16:57 alle 17:21, senza training nostri, 15,6-16,0 GB.
 - La memoria la tenevano le applicazioni dell'utente (memoria privata alle 16:58): Brave 4,2 GB in 33 processi, Claude 2,8,
   ChatGPT 1,8, Steam 1,0, Telegram 0,9, Discord 0,8.
 - Alle 17:24 il passo del run 1 si è fermato senza toccare nulla (`NOT_READY.md`, 15.826.468 KB liberi).
@@ -110,15 +112,15 @@ dei loro run, già archiviate su F: attraverso le junction.
   lo stesso digest, 0 file non finiti: PASS.
 - V12 a 15 × 4: albero PASS `nodes=54 files=54`; blocco 2.681 righe + 1.688 fuori range + 5 di ripiego; ritorno con differenza
   massima 0,0010 e 0 righe oltre la tolleranza: PASS.
-- V7: la clausola della traiettoria resta il limite del disegno del test accettato dalla review; tutto il resto del gate era già
-  PASS a tabelle piccole.
-- Scala [I]: da 1 a 2 thread 1,78 volte, da 1 a 4 2,84, da 1 a 8 3,54; un fit di Amdahl dà circa il 12 % di lavoro non
-  parallelo, quindi su 48 core fisici circa 0,5-0,8 s per iterazione. La specifica stimava 2-4,5 s sull'i3: il passo misurato è
-  più veloce.
+- V7: la clausola della traiettoria resta il limite del disegno del test accettato dalla review. V2-V6, V8, la gamba HU di V9,
+  V9b e V13 erano già PASS all'integrazione, e quelli che sono test di ctest ripassano nella 101/101 della build finale.
+- Scala [I]: da 1 a 2 thread 1,78 volte, da 1 a 4 2,84, da 1 a 8 3,54 (4 core fisici: oltre i 4 thread conta l'hyperthreading);
+  un fit di Amdahl dà circa il 12 % di lavoro non parallelo, quindi su 48 core fisici circa 0,5-0,8 s per iterazione, a parità di
+  velocità per core e senza limiti di banda della memoria. La specifica stimava 2-4,5 s sull'i3: il passo misurato è più veloce.
 
 **Merge, congelamento e lancio** [V].
 
-- Merge `238a41e` alle 18:11:32: `git diff 12fe441 238a41e` su `libs`, `benchmarks`, `tests` e `tools` è vuoto. Il branch
+- Merge `238a41e` alle 18:11:32: `git diff 12fe441 238a41e` su `libs`, `include`, `benchmarks`, `tests` e `tools` è vuoto. Il branch
   `feat/monker-step1-checkdown` è 12 commit avanti a origin al merge, non pushato.
 - Congelamento con `run1/final_freeze.sh` (FREEZE_OK e DRY_RUN_OK): `out/monker/bin_3way_step2/` (train `12c0dd6b8ccd…`,
   monker_tree `274505865911…`), `out/frozen/threeway_step2_12fe441/` (runner, `compare_charts.py`, configurazione, manifest e
@@ -129,12 +131,15 @@ dei loro run, già archiviate su F: attraverso le junction.
 - Run: 15 × 4 + TX2 double, rake 2,5 % / cap 2a, 8 thread, arresto a 0,008 sulle 18 chart non all-in ogni 4.000 iterazioni,
   minimo 16.000, tetto 48.000, checkpoint e policy ogni 16.000. Il 02/10 gira senza pausa; dal 03/10 pausa alle 19:40 (solo
   checkpoint) e ripresa alle 00:00.
-- Le prove della coda sono state fatte con `CHECKPOINT_EVERY=0`, prima della decisione delle 18:00: il checkpoint periodico, già
-  usato dai run HU, con questa coda non è provato.
+- Le prove della coda sono state fatte con `CHECKPOINT_EVERY=0`, prima della decisione delle 18:00 (la copia provata differisce
+  da quella congelata solo per `R_CHECKPOINT_EVERY`): il checkpoint periodico, lo stesso salvataggio del trainer delle pause e
+  della fine, con questa coda e a 15 × 4 non è provato.
 
-**Fine prevista** [I]. A 1,5 s per iterazione (± 30 %): 16.000 iterazioni in circa 7 ore; l'arresto atteso fra 24.000 e 40.000 in
-circa 10-17 ore, cioè il 02/10 fra le 10:30 e le 17:30; il tetto di 48.000 in circa 20 ore. In ogni caso prima della prima pausa
-(03/10 alle 19:40); il costo dei checkpoint non è misurato.
+**Fine prevista** [I]. A 1,5 s per iterazione (± 30 %): 16.000 iterazioni in circa 7 ore; l'arresto atteso dalla specifica fra
+24.000 e 40.000 (una stima per analogia con l'HU) in circa 10-17 ore, cioè il 02/10 fra le 10:30 e le 17:30; il tetto di 48.000 in
+circa 20 ore. Anche con il 30 % in più il tetto cade prima della prima pausa (03/10 alle 19:40): secondo `gate3a_final.md` basta
+restare sotto 3,4 s per iterazione. Il costo dei checkpoint ogni 16.000 non è misurato (la specifica stima 1,3-4,5 minuti
+ciascuno).
 
 **Cosa resta**: il risultato del run 1; la fase 3b (parte A e V11, gate 3b); la parte A campionata su 64 flop fisici; il test del
 blocco a 15 × 4 (24.000 iterazioni); la proposta della batteria di correttezza 3-way chiesta dall'utente la mattina, che non è
