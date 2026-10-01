@@ -24,6 +24,13 @@ difference pools effective combos instead of averaging the charts: the common pa
 and the union are summed over the distinct restricted ranges (two charts reached by
 the same earlier actions of the same player share one range and count once), then
 one minus their ratio.
+
+The mean distance is also reported over two groups of charts (JSON
+all_in_mean_distance / non_all_in_mean_distance with their chart counts, and on
+the overall text line): a chart faces an all-in when its actions, on both sides
+together, are exactly Call and Fold. In the 3-way 50a tree 36 of the 54 charts
+face an all-in and depend only on equity, rake and ranges; the step-2 stop rule
+watches the 18 others (phase 3 spec, section 5.3).
 """
 from __future__ import annotations
 
@@ -49,6 +56,15 @@ def read_chart(path: pathlib.Path) -> tuple[list[str], dict[str, dict[str, float
         parts = line.split("\t")
         rows[parts[0]] = {action: float(value) for action, value in zip(actions, parts[1:])}
     return actions, rows
+
+
+ALL_IN_FACING_ACTIONS = frozenset({"Call", "Fold"})
+
+
+def facing_all_in(actions_ours: list[str], actions_theirs: list[str]) -> bool:
+    """A chart that faces an all-in: its actions, on both sides together, are exactly
+    Call and Fold."""
+    return set(actions_ours) | set(actions_theirs) == ALL_IN_FACING_ACTIONS
 
 
 def main_action(frequencies: dict[str, float]) -> str:
@@ -159,6 +175,7 @@ def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
             "chart": relative,
             "actions_ours": our_actions,
             "actions_theirs": their_actions,
+            "facing_all_in": facing_all_in(our_actions, their_actions),
             "classes": len(per_class),
             "outside_both_ranges": outside_range,
             "in_range_only_ours": only_ours,
@@ -172,6 +189,12 @@ def compare(ours: pathlib.Path, theirs: pathlib.Path, top: int) -> dict:
     shares = [c["same_main_action_share"] for c in report["charts"]
               if c["same_main_action_share"] is not None]
     report["overall_mean_distance"] = round(sum(distances) / len(distances), 4) if distances else None
+    # The same mean over the charts facing an all-in and over the others.
+    for group, facing in (("all_in", True), ("non_all_in", False)):
+        values = [c["mean_distance"] for c in report["charts"]
+                  if c["mean_distance"] is not None and c["facing_all_in"] == facing]
+        report[f"{group}_mean_distance"] = round(sum(values) / len(values), 4) if values else None
+        report[f"{group}_charts"] = len(values)
     report["overall_same_main_action_share"] = round(sum(shares) / len(shares), 4) if shares else None
     # Pooled on effective combos over the distinct restricted ranges (elsewhere every
     # class reaches the node on both sides and the difference is 0).
@@ -243,7 +266,12 @@ def main() -> int:
                  f"ours {report['overall_range_combos_ours']:.1f}, theirs "
                  f"{report['overall_range_combos_theirs']:.1f}, "
                  f"{report['distinct_restricted_ranges']} distinct restricted ranges)"
-                 if report["overall_range_difference"] is not None else ""))
+                 if report["overall_range_difference"] is not None else "")
+              + "".join(f"; {label} {report[f'{group}_mean_distance']:.3f} "
+                        f"({report[f'{group}_charts']} charts)"
+                        for group, label in (("all_in", "facing all-in"),
+                                             ("non_all_in", "not facing all-in"))
+                        if report[f"{group}_mean_distance"] is not None))
     if args.json:
         args.json.write_text(json.dumps(report, indent=1), encoding="utf-8")
     return 0

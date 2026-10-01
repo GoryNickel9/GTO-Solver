@@ -236,12 +236,13 @@ def main() -> int:
             if key in estimate:
                 row[key] = estimate[key]
         rows.append(row)
-        print(f"it_{iteration}: gain {fmt(row['gain_antes'][0])} / {fmt(row['gain_antes'][1])} a, "
+        print(f"it_{iteration}: gain {' / '.join(fmt(v) for v in row['gain_antes'])} a, "
               f"nashconv {fmt(nashconv)} a ({fmt(row['nashconv_pot_percent'], 3)} % pot), distance "
               f"{fmt(row['distance'], 4)}, range difference {fmt(row['range_difference'], 4)}"
               + (f" (evaluated in {row['evaluation_seconds']} s)" if evaluated else " (cached)"))
 
-    names = positions or ["P0", "P1"]
+    # One column per player of the evaluated game (len(positions); 2 heads-up, 3 for the 3-way).
+    names = positions or [f"P{seat}" for seat in range(len(rows[0]["gain_antes"]) if rows else 2)]
     header = (["iteration", "train_s"] + [f"gain_{p}" for p in names]
               + [f"gain_lower_{p}" for p in names] + [f"gain_pre_{p}" for p in names]
               + ["nashconv_a", "nashconv_%pot", "distance", "range_diff"]
@@ -258,7 +259,7 @@ def main() -> int:
                   fmt(row["distance"], 4), fmt(row["range_difference"], 4)]
         if len(header) > len(cells):
             cells += ([fmt(v) for v in row["monker_loss_antes"]] if row["monker_loss_antes"]
-                      else ["na", "na"])
+                      else ["na"] * len(names))
         lines.append("\t".join(cells))
     table = "\n".join(lines) + "\n"
     summary = {
