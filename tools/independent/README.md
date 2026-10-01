@@ -133,9 +133,29 @@ they start.
   STEM[#MODE]=FP` adds more.
 - **R, replay with the rules.** It checks every action's legality and amount, the state at every node,
   and every payoff row, rake included.
+  - **R-sidepot**, on the engine's own fields at every node: every all-in player in the hand holds the
+    largest net contribution (no side pot, R9b), and once a street's action is over the players in the
+    hand have equal street commitments, or after a fold the winner's commitment equals the largest other
+    one (nothing left uncalled).
+  - **R-identity**, on every payoff row whatever the odd-chip order: the row sums to minus the rake,
+    every non-winner loses exactly their contribution, the winners' receipts differ by at most one unit
+    and exactly (pot − rake) mod |winners| of them hold the extra unit.
 - **A, action abstraction.** Each node's actions equal the configured abstraction, and the engine's path
   set equals the referee's own enumeration.
 - **C, labels and edge order.**
+- **Coverage** (`SD_REFEREE_COVERAGE`, also in the report): terminals by kind, street and players in the
+  hand, decisions by players with chips, payoff rows with odd units, with the rake capped, at the
+  percentage or unraked, incomplete all-in raises and short calls (always 0).
+
+**Three players (3WAY50 family, full mode).** The same checks cover the three-seat postflop: betting
+rounds with three seats (must-act set, 162 incomplete all-in raises that do not reopen the action), folds
+with dead money, showdowns among two or three live seats (3 or 7 payoff rows), the odd chips of the
+three-way ties (C11, 459 rows in `3WAY50_donk_rake25cap2`), the rake per winner set and the all-in cap
+(`allin5x`). The games are side-pot free because the stacks are equal (R9b in `rules.py`: a player who
+is all-in has committed the largest possible live total, so no call is ever short); R-sidepot verifies
+that on the engine's tree instead of assuming it, and a short call among three or more players is refused
+(`UnsupportedSituation`) rather than guessed. Per 3WAY50 config: 7,225 nodes (7,126 with the cap),
+3,122 decisions, 6,883 edges and 10,410 payoff rows, all equal to the referee's (01/10/2026, phase 3b).
 
 **Classification.** A failure that goes away when one convention takes an alternative value, without
 adding a new failure, is reported as a convention mismatch.
@@ -145,17 +165,26 @@ as a failure); 77 skip.
 
 **How it can fail.** `--self-test` needs no engine. It passes dumps of the referee's own trees, catches a
 payoff changed by +1 and a call changed by +1, and attributes every alternative-convention dump to its
-convention. It takes 2-17 s per config.
+convention. With three seats it also catches an odd chip moved from the lowest to the highest winner (a
+failure, not attributed to C11 because the other ties keep the convention), the rake charged to the
+loser (R-payoff and R-identity) and a side pot (an all-in seat with one unit less than the others). It
+takes 2-17 s per HU config and about 45 s for the full 3WAY50 tree.
 
 **Registered in CTest** with labels `preflop_blueprint;independent`:
-- `gtosd_preflop_blueprint_independent_referee_selftest` needs Python only;
-- `gtosd_preflop_blueprint_independent_referee` covers 17 configs: the HU6 family, the HU50_step2
-  family, 2size_donk, CO40 test, `HU50_rake#checkdown` and `3WAY50_donk_rake25cap2#preflop_only`.
+- `gtosd_preflop_blueprint_independent_referee_selftest` needs Python only (HU configs, the 3-way
+  preflop-only tree and the full 3-way raked tree);
+- `gtosd_preflop_blueprint_independent_referee` covers 22 configs: the HU6 family, the HU50_step2
+  family, 2size_donk, CO40 test, `HU50_rake#checkdown`, `3WAY50_donk_rake25cap2#preflop_only` and the
+  five 3WAY50 configs in full mode (`3WAY50_donk`, `_rake`, `_rake25cap2`, `_rake5cap075`, `_allin5x`).
+  Their tree fingerprints are recorded in `RECORDED_TREE_FINGERPRINTS` (compiled on 01/10/2026 from the
+  library of commit 12fe441, the one frozen for the first 3WAY50 run), so a later build that compiles
+  another 3-way tree fails the test.
 
 **Conventions no config exercises:**
 - C2 rounding: every percentage comes out exact;
 - C8 cap boundary;
-- C11 odd chip: heads-up pots always split evenly.
+- C9 with three seats (the 3WAY50 configs allow donk bets);
+- C11 odd chip is exercised only by the 3-way ties: heads-up pots always split evenly.
 
 ### S4 `sd_step1_lp.py`: exact value of the heads-up step-1 game
 

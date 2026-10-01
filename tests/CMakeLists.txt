@@ -989,6 +989,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     # S3 of the correctness coverage, referee machinery only (no engine): the
     # referee passes dumps of its own trees, catches tampered amounts and
     # payoffs and attributes a dump written under an alternative convention.
+    # The full 3WAY50 tree adds the three-seat tampers (an odd chip moved, the
+    # rake charged to the loser, a side pot).
     add_test(NAME gtosd_preflop_blueprint_independent_referee_selftest
       COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py --self-test
@@ -996,7 +998,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake25cap2.json
         "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
-        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only"
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json)
     set_tests_properties(gtosd_preflop_blueprint_independent_referee_selftest
       PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
   endif()
@@ -1009,7 +1012,11 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     # referee's own enumeration. Exit 3 = only named conventions differ. The
     # correctness games include the three raked V2 twins (V2R5 is the only
     # correctness game where the cap binds) and the bets-and-raises games
-    # B0, B0M, B2 and HU8_B1 (plan section 3.5).
+    # B0, B0M, B2 and HU8_B1 (plan section 3.5). The 3WAY50 family in full
+    # mode covers the three-seat postflop: betting rounds with three seats,
+    # folds with dead money, two- and three-way showdowns with odd chips, the
+    # rake per winner set, the all-in cap (allin5x) and the side-pot-free
+    # invariant R9b on every node (phase 3b, referee3).
     add_test(NAME gtosd_preflop_blueprint_independent_referee
       COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py
@@ -1039,7 +1046,12 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_2size_donk_allin5x.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
         "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
-        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only"
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake5cap075.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_allin5x.json)
     set_tests_properties(gtosd_preflop_blueprint_independent_referee
       PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
