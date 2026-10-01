@@ -1,12 +1,16 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include "gtosd/preflop_blueprint/abstract_best_response.hpp"
 #include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
+#include "gtosd/preflop_blueprint/multiway_kernels.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
+#include "gtosd/preflop_blueprint/preflop_class_cache.hpp"
+#include "gtosd/preflop_blueprint/trainer_access.hpp"
 
 #include "binary_io.hpp"
 #include "stream_io.hpp"
 
 #include "gtosd/card_abstraction/showdown_counts.hpp"
+#include "gtosd/card_abstraction/three_way_table.hpp"
 #include "gtosd/preflop_blueprint/best_response.hpp"
 
 #include "hashing.hpp"
@@ -14,6 +18,7 @@
 #include <algorithm>
 #include <atomic>
 #include <bit>
+#include <cassert>
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
@@ -245,6 +250,58 @@ void dispatch_tables(const TableStorage storage, const std::vector<double> &regr
   }
 }
 
+// ---- 3-seat path helpers.
+constexpr std::size_t class_count3 = 81U;
+// P(o1,o2|h) on a full board: 406 live hands disjoint from h, then C(27,2) = 351
+// disjoint from h and o1.
+constexpr double three_seat_pair_probability = 1.0 / (406.0 * 351.0);
+// Live hands of a virtual third seat disjoint from the board, h and o (V7 harness).
+constexpr double harness_third_seat_hands = 351.0;
+// Hands-sized vectors per level of the 3-seat path: the three masses of a
+// harness preflop all-in (or a terminal's D3), then the D3 of a hero node.
+constexpr std::size_t three_seat_scratch_vectors = 4U;
+constexpr std::size_t d3_scratch_offset = 3U * live_hand_count;
+
+// The lower and the higher seat other than `hero` among 3 (seat order).
+constexpr std::array<std::uint8_t, 2> other_seats3(const std::uint8_t hero) noexcept {
+  return {static_cast<std::uint8_t>(hero == 0U ? 1U : 0U),
+          static_cast<std::uint8_t>(hero == 2U ? 1U : 2U)};
+}
+
+constexpr std::uint8_t seat_bit(const std::uint8_t seat) noexcept {
+  return static_cast<std::uint8_t>(std::uint8_t{1} << seat);
+}
+
+// Adapters to the multiway kernels (multiway_kernels.hpp): every board value
+// of the 3-seat path goes through these three calls.
+//  - D3[h] = M(All, All)[h] with the reach of the two other seats.
+//  - 3-active values: the five masses (hero alone, with the lower seat, with
+//    the higher seat, all three, hero not among the winners) times the payoffs.
+//  - 2-active values against the active opponent, the folded seat's (frozen)
+//    reach dead: the win, tie and lose masses times the payoffs.
+void kernel_deal_mass(const BoardContext &context, const double *lower, const double *higher,
+                      double *out, MultiwayScratch &scratch) noexcept {
+  three_seat_deal_mass(context, ConstHandSpan(lower, live_hand_count),
+                       ConstHandSpan(higher, live_hand_count), HandSpan(out, live_hand_count),
+                       scratch);
+}
+
+void kernel_three_active(const BoardContext &context, const double *lower, const double *higher,
+                         const ThreeActivePayoffs &payoffs, double *values,
+                         MultiwayScratch &scratch) noexcept {
+  three_active_values(context, ConstHandSpan(lower, live_hand_count),
+                      ConstHandSpan(higher, live_hand_count), payoffs,
+                      HandSpan(values, live_hand_count), scratch);
+}
+
+void kernel_two_active(const BoardContext &context, const double *opponent, const double *folded,
+                       const TwoActivePayoffs &payoffs, double *values,
+                       MultiwayScratch &scratch) noexcept {
+  two_active_values(context, ConstHandSpan(opponent, live_hand_count),
+                    ConstHandSpan(folded, live_hand_count), payoffs,
+                    HandSpan(values, live_hand_count), scratch);
+}
+
 } // namespace
 
 class ParallelExecutor {
@@ -341,6 +398,19 @@ struct Trainer::Unit {
   std::vector<double> values;
 };
 
+// 3-seat path: the reach of every seat (seat order) at the unit root.
+struct Trainer::Unit3 {
+  std::uint32_t root{0U};
+  std::array<std::vector<double>, 3> reach;
+  std::vector<double> values;
+};
+
+// Test trace of the 3-seat traversal (TrainerAccess::subtree_values3).
+struct Trainer::Trace3 {
+  HeroDecisionSink *sink{nullptr};
+  std::mutex mutex;
+};
+
 struct Trainer::Workspace {
   struct Level {
     std::vector<double> child_reach;
@@ -371,13 +441,21 @@ struct Trainer::Workspace {
   double sampled_fold_terminal_seconds{0.0};
   double sampled_preflop_all_in_seconds{0.0};
   double sampled_postflop_showdown_seconds{0.0};
+  // 3-seat path: kernel scratch (null on the heads-up path) and per-hero
+  // terminal counters (detailed_profile).
+  std::unique_ptr<MultiwayScratch> multiway;
+  std::array<std::uint64_t, 3> terminals_visited{};
+  std::array<std::uint64_t, 3> terminals_pruned{};
+  std::array<std::uint64_t, 3> terminals_shortcut{};
 
-  explicit Workspace(const std::size_t depth) {
+  // scratch_vectors hands-sized vectors per level: 3 on the heads-up path, 6
+  // on the 3-seat path (five 3-active masses, then the D3 of a hero node).
+  explicit Workspace(const std::size_t depth, const std::size_t scratch_vectors = 3U) {
     levels.resize(depth);
     for (auto &level : levels) {
       level.child_reach.assign(maximum_actions * live_hand_count, 0.0);
       level.child_values.assign(maximum_actions * live_hand_count, 0.0);
-      level.scratch.assign(3U * live_hand_count, 0.0);
+      level.scratch.assign(scratch_vectors * live_hand_count, 0.0);
     }
     regret_weight.assign(live_hand_count, 0.0);
     strategy_weight.assign(live_hand_count, 0.0);
@@ -391,6 +469,9 @@ struct Trainer::Workspace {
     sampled_hero_reach_seconds = sampled_hero_update_seconds = sampled_opponent_reach_seconds =
         sampled_opponent_accumulate_seconds = sampled_fold_terminal_seconds =
             sampled_preflop_all_in_seconds = sampled_postflop_showdown_seconds = 0.0;
+    terminals_visited.fill(0U);
+    terminals_pruned.fill(0U);
+    terminals_shortcut.fill(0U);
   }
 
   [[nodiscard]] std::uint64_t bytes() const noexcept {
@@ -399,6 +480,8 @@ struct Trainer::Workspace {
       total += (level.child_reach.capacity() + level.child_values.capacity() +
                 level.scratch.capacity()) *
                sizeof(double);
+    if (multiway)
+      total += MultiwayScratch::bytes();
     return total + (regret_weight.capacity() + strategy_weight.capacity()) * sizeof(double);
   }
 };
@@ -469,11 +552,35 @@ Trainer::create(const CompiledGame &game, const TrainerResources &resources,
                 const TrainerConfig &config, const TrainingBoards *boards,
                 const HandSubsets *subsets) {
   using Outcome = Result<std::unique_ptr<Trainer>, TrainerError>;
+  const auto players = game.config().player_count;
   if (config.batch_boards == 0U || config.threads == 0U || config.flop_capacity == 0U ||
       config.turn_capacity == 0U || config.river_capacity == 0U || config.dcfr_alpha <= 0.0 ||
-      config.dcfr_beta < 0.0 || config.dcfr_gamma <= 0.0 || game.config().player_count != 2U) {
+      config.dcfr_beta < 0.0 || config.dcfr_gamma <= 0.0 || (players != 2U && players != 3U)) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
   }
+  // 3-seat path options (spec 3.2, 3.9, V6, V7): the harness only on a heads-up
+  // game; the board-kernel preflop terminals only for 3 players, in validation
+  // mode, on an exact (non-sampled) board list; the shortcut switched off only
+  // in validation mode on the 3-seat path, and for 3 players only with the
+  // board-kernel preflop terminals: in class-cache mode the shortcut of a
+  // preflop fold is the board-free class value, which a walk of the subtree
+  // (board-restricted postflop values) equals only in expectation, not per
+  // board. Hand subsets would need disjoint-pair counts per hand: refused for
+  // 3 seats.
+  const bool three_seat_path = players == 3U || config.three_seat_harness;
+  if (config.three_seat_harness && players != 2U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (config.preflop_terminals == PreflopTerminals::BoardKernels &&
+      (players != 3U || !config.validation || boards == nullptr || boards->histories.empty() ||
+       boards->sample))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (!config.hero_folded_shortcut &&
+      (!three_seat_path || !config.validation ||
+       (players == 3U && config.preflop_terminals != PreflopTerminals::BoardKernels)))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (three_seat_path && subsets != nullptr &&
+      (!subsets->combos[0].empty() || !subsets->combos[1].empty()))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
   if (config.update_mode == UpdateMode::Alternating &&
       config.batch_boards > std::numeric_limits<std::uint32_t>::max() / 2U) {
     return Outcome::failure(TrainerError::InvalidConfiguration);
@@ -505,6 +612,16 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   using Outcome = Result<bool, TrainerError>;
   const auto &stats = game_->stats();
   const bool postflop_decisions = stats.decision_nodes > stats.preflop_decisions;
+  // 3 reach vectors for a 3-player game and for the V7 harness (heads-up game,
+  // virtual third seat); heroes are the game's players.
+  heroes_ = game_->config().player_count;
+  harness_ = config_.three_seat_harness && heroes_ == 2U;
+  traversal_seats_ = static_cast<std::uint8_t>(heroes_ == 3U || harness_ ? 3U : 2U);
+  const bool three_seat = traversal_seats_ == 3U;
+  // The heads-up pair table of the preflop all-ins: heads-up games (and the
+  // harness) only; a 3-player game takes its preflop all-ins from the class
+  // cache or the board kernels.
+  const bool heads_up_all_ins = heroes_ == 2U && stats.preflop_all_in_runouts > 0U;
   if (postflop_decisions) {
     if (resources_.catalog == nullptr || resources_.flop == nullptr || resources_.turn == nullptr ||
         resources_.river == nullptr) {
@@ -541,11 +658,11 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
       return Outcome::failure(TrainerError::InvalidConfiguration);
     }
   }
-  if (stats.preflop_all_in_runouts > 0U && resources_.all_in == nullptr) {
+  if (heads_up_all_ins && resources_.all_in == nullptr) {
     return Outcome::failure(TrainerError::MissingResource);
   }
   all_in_available_ = false;
-  if (stats.preflop_all_in_runouts > 0U) {
+  if (heads_up_all_ins) {
     constexpr std::size_t count = card_abstraction::combo_count;
     all_in_win_probability_.assign(count * count, 0.0);
     all_in_tie_probability_.assign(count * count, 0.0);
@@ -587,10 +704,17 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   units_.resize(partition_.unit_roots.size());
   for (std::size_t index = 0; index < units_.size(); ++index) {
     units_[index].root = partition_.unit_roots[index];
-    units_[index].hero_reach.assign(live_hand_count, 0.0);
-    units_[index].opponent_reach.assign(live_hand_count, 0.0);
-    units_[index].values.assign(live_hand_count, 0.0);
+    // The 3-seat path keeps its buffers in units3_ (initialize_three_seat).
+    if (!three_seat) {
+      units_[index].hero_reach.assign(live_hand_count, 0.0);
+      units_[index].opponent_reach.assign(live_hand_count, 0.0);
+      units_[index].values.assign(live_hand_count, 0.0);
+    }
     unit_of_node_[units_[index].root] = static_cast<std::uint32_t>(index);
+  }
+  if (three_seat) {
+    if (const auto prepared = initialize_three_seat(); !prepared)
+      return Outcome::failure(prepared.error());
   }
   fixed_policy_evaluation_ = fixed_policy != nullptr;
   const bool float_regrets = config_.storage == TableStorage::Float32;
@@ -630,7 +754,12 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   const auto depth = static_cast<std::size_t>(stats.maximum_depth) + 2U;
   workspaces_.clear();
   for (unsigned thread = 0; thread < config_.threads; ++thread) {
-    workspaces_.push_back(std::make_unique<Workspace>(depth));
+    if (three_seat) {
+      workspaces_.push_back(std::make_unique<Workspace>(depth, three_seat_scratch_vectors));
+      workspaces_.back()->multiway = std::make_unique<MultiwayScratch>();
+    } else {
+      workspaces_.push_back(std::make_unique<Workspace>(depth));
+    }
   }
 
   for (auto &mask : hand_masks_) {
@@ -739,6 +868,26 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   // Without a lock the identity is unchanged.
   if (!lock_fingerprint_.empty())
     identity += "|preflop-lock-v1=" + lock_fingerprint_;
+  // 3-seat path (phase 3); a heads-up configuration with the default fields
+  // keeps its identity. The hero order is the update order of an iteration.
+  if (three_seat) {
+    if (harness_) {
+      identity += "|three-seat-harness-v1|" + multiway_kernel_tag_ + "|folded=dead|hero-order=0-1";
+    } else {
+      identity += "|players=3|" + multiway_kernel_tag_ +
+                  "|folded=dead|hero-order=0-1-2|three-way-table:";
+      identity += resources_.three_way != nullptr && class_cache_
+                      ? resources_.three_way->fingerprint() + "|class-cache=" +
+                            class_cache_->fingerprint()
+                      : std::string("none");
+      if (config_.preflop_terminals == PreflopTerminals::BoardKernels)
+        identity += "|preflop-terminals=board-kernels";
+    }
+    if (!config_.hero_folded_shortcut)
+      identity += "|no-hero-folded-shortcut";
+  }
+  if (config_.validation)
+    identity += "|validation";
   identity_ = "fnv1a64:" + detail::hex64_text(detail::fnv1a_text(identity));
   return Outcome::success(true);
 }
@@ -876,6 +1025,17 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
       for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
         work.slot[street][hand] = present ? work.context.row(current, hand) : 0U;
     }
+  }
+  if (traversal_seats_ == 3U) {
+    // Full ranges on the 3-seat path (subsets are refused): reach 1, P(h) = 1/465
+    // and P(o1,o2|h) = 1/(406 * 351) for every live hand and seat. pass3 reads
+    // them as constants, so a board holds no per-hand copies.
+    for (auto *arrays : {&work.initial_reach, &work.hand_probability, &work.pair_probability})
+      for (auto &values : *arrays)
+        values.clear();
+    if (config_.detailed_profile)
+      work.reach_cpu_seconds = std::chrono::duration<double>(Clock::now() - phase).count();
+    return Outcome::success(true);
   }
   const auto combos = work.context.combo_ids();
   const auto cards = work.context.cards();
@@ -1391,8 +1551,12 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
   for (auto &workspace : workspaces_)
     workspace->reset_counters();
   std::size_t drawn_boards = batch.size();
-  for (std::uint8_t hero = 0; hero < 2U; ++hero) {
-    if (hero == 1U && config_.update_mode == UpdateMode::Alternating && sample_boards_) {
+  const bool three_seat = traversal_seats_ == 3U;
+  // Heads-up: heroes 0 and 1. 3 players: heroes 0, 1, 2 in seat order, each
+  // after the first with a fresh batch (alternating, sampled) and every one
+  // with a fresh policy snapshot (alternating) and fresh class values.
+  for (std::uint8_t hero = 0; hero < heroes_; ++hero) {
+    if (hero >= 1U && config_.update_mode == UpdateMode::Alternating && sample_boards_) {
       // The opponent's new policy depends on the first batch. Reusing that
       // batch here conditions chance on the policy being evaluated, biasing
       // the second player's counterfactual values. Draw from the unchanged
@@ -1412,6 +1576,20 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
       refresh_policy(batch, &telemetry);
       telemetry.policy_refresh_seconds +=
           std::chrono::duration<double>(Clock::now() - phase).count();
+    }
+    if (three_seat) {
+      // The hero's preflop class values depend on the policy just refreshed
+      // (simultaneous mode: on the snapshot of hero 0) and on the hero.
+      phase = Clock::now();
+      prepare_preflop_classes3(hero);
+      if (config_.poison_skipped_units)
+        poison_skipped_units3(hero);
+      telemetry.class_cache_seconds += std::chrono::duration<double>(Clock::now() - phase).count();
+      phase = Clock::now();
+      for (const auto &work : batch)
+        pass3(work, hero, iteration_weight, &telemetry);
+      telemetry.traversal_seconds += std::chrono::duration<double>(Clock::now() - phase).count();
+      continue;
     }
     phase = Clock::now();
     for (const auto &work : batch)
@@ -1448,6 +1626,11 @@ Result<IterationTelemetry, TrainerError> Trainer::iterate() {
     telemetry.sampled_preflop_all_in_seconds += workspace->sampled_preflop_all_in_seconds;
     telemetry.sampled_postflop_showdown_seconds +=
         workspace->sampled_postflop_showdown_seconds;
+    for (std::size_t hero = 0; hero < 3U; ++hero) {
+      telemetry.terminals_visited_by_hero[hero] += workspace->terminals_visited[hero];
+      telemetry.terminals_pruned_by_hero[hero] += workspace->terminals_pruned[hero];
+      telemetry.terminals_shortcut_by_hero[hero] += workspace->terminals_shortcut[hero];
+    }
   }
   telemetry.process_bytes = process_working_set_bytes();
   return Outcome::success(telemetry);
@@ -1824,6 +2007,724 @@ void Trainer::terminal(const CompiledNode &node, const double *opponent_reach, d
   }
 }
 
+// ===========================================================================
+// 3-seat path (PHASE3_SPEC_2026-09-30 sections 3.1-3.3, 3.9, 3.12). The
+// heads-up functions above are not used by it and are not changed by it.
+// ===========================================================================
+
+Result<bool, TrainerError> Trainer::initialize_three_seat() {
+  using Outcome = Result<bool, TrainerError>;
+  const auto &nodes = game_->nodes();
+  const auto node_count = nodes.size();
+  const auto players = static_cast<std::uint8_t>(game_->config().player_count);
+  const auto is_terminal = [](const CompiledNode &node) {
+    return node.kind == NodeKind::TerminalFold || node.kind == NodeKind::TerminalShowdown;
+  };
+
+  // Terminals per subtree, children before parents (preorder ids grow
+  // downwards). A chance node without its street (a preflop-only compile)
+  // cannot be traversed.
+  terminal_count_.assign(node_count, 0U);
+  for (std::size_t index = node_count; index-- > 0U;) {
+    const auto &node = nodes[index];
+    if (is_terminal(node)) {
+      terminal_count_[index] = 1U;
+      continue;
+    }
+    if (node.action_count == 0U)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    std::uint32_t count = 0U;
+    for (const auto &edge : game_->edges_of(node.id))
+      count += terminal_count_[edge.child];
+    terminal_count_[index] = count;
+  }
+  // Per top node and hero: the terminals below it that no unit of the hero's
+  // parallel phase counts, i.e. those of the hero-inactive children of top
+  // nodes (skipped units and inactive top subtrees). Every child of a top node
+  // is a top node or a unit root.
+  top_uncounted_terminals_.assign(node_count * 3U, 0U);
+  for (std::size_t index = node_count; index-- > 0U;) {
+    if (partition_.is_top[index] == 0U)
+      continue;
+    for (std::uint8_t hero = 0U; hero < 3U; ++hero) {
+      std::uint32_t count = 0U;
+      for (const auto &edge : game_->edges_of(nodes[index].id)) {
+        if ((nodes[edge.child].active_mask & seat_bit(hero)) == 0U)
+          count += terminal_count_[edge.child];
+        else if (partition_.is_top[edge.child] != 0U)
+          count += top_uncounted_terminals_[static_cast<std::size_t>(edge.child) * 3U + hero];
+      }
+      top_uncounted_terminals_[index * 3U + hero] = count;
+    }
+  }
+
+  // Creation checks (spec 3.2, 3.5, 3.10), on the money units of the tree:
+  //  - at a showdown, every active seat has one payoff over the winner sets
+  //    that exclude it (one pot, equal stacks: the single loser payoff);
+  //  - an inactive seat has one payoff over every winner set of a showdown,
+  //    and the same payoff at every terminal below a node where it is
+  //    inactive: folded_payoff_, the value of the hero-folded shortcut.
+  folded_payoff_.assign(node_count * 3U, std::numeric_limits<double>::quiet_NaN());
+  std::vector<std::int64_t> below(node_count * 3U, 0);
+  for (std::size_t index = node_count; index-- > 0U;) {
+    const auto &node = nodes[index];
+    if (node.kind == NodeKind::TerminalShowdown) {
+      for (std::uint8_t seat = 0U; seat < players; ++seat) {
+        std::optional<std::int64_t> outside;
+        for (std::uint8_t winners = 1U; winners <= node.active_mask; ++winners) {
+          if ((winners & static_cast<std::uint8_t>(~node.active_mask)) != 0U ||
+              (winners & seat_bit(seat)) != 0U)
+            continue;
+          const auto payoff = game_->showdown_payoffs(node.id, winners)[seat];
+          if (outside && *outside != payoff)
+            return Outcome::failure(TrainerError::InvalidConfiguration);
+          outside = payoff;
+        }
+        if ((node.active_mask & seat_bit(seat)) == 0U && outside)
+          below[index * 3U + seat] = *outside;
+      }
+    }
+    for (std::uint8_t seat = 0U; seat < players; ++seat) {
+      if ((node.active_mask & seat_bit(seat)) != 0U)
+        continue;
+      if (node.kind == NodeKind::TerminalFold) {
+        below[index * 3U + seat] = game_->fold_payoffs(node.id)[seat];
+      } else if (!is_terminal(node)) {
+        const auto edges = game_->edges_of(node.id);
+        const auto first = below[static_cast<std::size_t>(edges[0].child) * 3U + seat];
+        for (const auto &edge : edges)
+          if (below[static_cast<std::size_t>(edge.child) * 3U + seat] != first)
+            return Outcome::failure(TrainerError::InvalidConfiguration);
+        below[index * 3U + seat] = first;
+      }
+      folded_payoff_[index * 3U + seat] =
+          static_cast<double>(below[index * 3U + seat]) * ante_scale;
+    }
+  }
+
+  // Units, and the units each hero runs or skips. With the shortcut the hero
+  // never enters a node where it is inactive, so a unit whose root has the
+  // hero inactive is neither prepared nor run for that hero; the set depends
+  // only on the tree, the partition and the hero (thread determinism).
+  units3_.resize(partition_.unit_roots.size());
+  for (std::size_t index = 0; index < units3_.size(); ++index) {
+    auto &unit = units3_[index];
+    unit.root = partition_.unit_roots[index];
+    for (auto &reach : unit.reach)
+      reach.assign(live_hand_count, 0.0);
+    unit.values.assign(live_hand_count, 0.0);
+  }
+  for (std::uint8_t hero = 0U; hero < 3U; ++hero) {
+    unit_work_[hero].clear();
+    unit_skipped_[hero].clear();
+    if (hero >= heroes_)
+      continue;
+    for (std::size_t index = 0; index < units3_.size(); ++index) {
+      const bool active = (nodes[units3_[index].root].active_mask & seat_bit(hero)) != 0U;
+      if (active || !config_.hero_folded_shortcut)
+        unit_work_[hero].push_back(static_cast<std::uint32_t>(index));
+      else
+        unit_skipped_[hero].push_back(static_cast<std::uint32_t>(index));
+    }
+  }
+
+  // Preflop decisions and terminals (the nodes whose class reach gates the
+  // traversal in class-cache mode).
+  preflop_index_.assign(node_count, no_unit);
+  preflop_nodes_.clear();
+  for (const auto &node : nodes) {
+    if (node.street != Street::Preflop || node.kind == NodeKind::Chance)
+      continue;
+    preflop_index_[node.id] = static_cast<std::uint32_t>(preflop_nodes_.size());
+    preflop_nodes_.push_back(node.id);
+  }
+  class_zero3_.assign(preflop_nodes_.size() * 3U, 0U);
+  class_values_hero_ = 0xFFU;
+  ones3_.assign(live_hand_count, 1.0);
+  root_values3_.assign(live_hand_count, 0.0);
+  {
+    const MultiwayScratch probe;
+    multiway_kernel_tag_ = std::string(multiway_kernel_version) + "/" +
+                           multiway_kernel_isa_name(probe.isa());
+  }
+
+  // The class cache of a 3-player game (spec 3.9): built once from the
+  // three-player class table; terms only for preflop nodes.
+  class_cache_.reset();
+  if (class_cache_active()) {
+    if (resources_.three_way == nullptr)
+      return Outcome::failure(TrainerError::MissingResource);
+    if (!resources_.three_way->complete())
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    auto cache = PreflopClassCache::build(*game_, *resources_.three_way);
+    if (!cache)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    class_cache_ = std::make_unique<PreflopClassCache>(std::move(cache.value()));
+    // Every value the class-cache traversal reads exists: the hero's value at
+    // every preflop terminal where it can arrive, and at every preflop child
+    // of its own folds (the shortcut).
+    for (const auto id : preflop_nodes_) {
+      const auto &node = nodes[id];
+      for (std::uint8_t seat = 0U; seat < 3U; ++seat) {
+        if (is_terminal(node) && class_cache_->term(id, seat).kind == PreflopTermKind::None)
+          return Outcome::failure(TrainerError::InvalidConfiguration);
+        if (node.kind != NodeKind::Decision || node.actor != seat)
+          continue;
+        for (const auto &edge : game_->edges_of(id))
+          if ((nodes[edge.child].active_mask & seat_bit(seat)) == 0U &&
+              class_cache_->term(edge.child, seat).kind == PreflopTermKind::None)
+            return Outcome::failure(TrainerError::InvalidConfiguration);
+      }
+    }
+  }
+  return Outcome::success(true);
+}
+
+bool Trainer::class_cache_active() const noexcept {
+  return traversal_seats_ == 3U && !harness_ &&
+         config_.preflop_terminals == PreflopTerminals::ClassCache;
+}
+
+void Trainer::prepare_preflop_classes3(const std::uint8_t hero) {
+  if (!class_cache_active())
+    return;
+  // Class reach of every seat at every preflop node, from the root (reach 1)
+  // through the compact policy's preflop rows (slot = class, lock applied).
+  // The traversal multiplies the same factors in the same order (a zero reach
+  // stays zero either way), so the reach of every live combo of a class equals
+  // the class reach.
+  class_cache_->compute_reach(compact_policy_, compact_offsets_);
+  for (std::size_t index = 0; index < preflop_nodes_.size(); ++index) {
+    for (std::uint8_t seat = 0U; seat < 3U; ++seat) {
+      const double *reach = class_cache_->reach(preflop_nodes_[index], seat);
+      class_zero3_[index * 3U + seat] = static_cast<std::uint8_t>(
+          std::all_of(reach, reach + class_count3, [](const double value) { return value == 0.0; })
+              ? 1U
+              : 0U);
+    }
+  }
+  // The hero's values at every preflop node where it has a term: terminals,
+  // and the nodes right after a fold of the hero (already scaled by
+  // C(30,5)/C(34,5)). One piece per term in a fixed order: thread-independent.
+  class_cache_->contract(hero, config_.threads);
+  class_values_hero_ = hero;
+}
+
+const double *Trainer::class_values3(const std::uint32_t node,
+                                     const std::uint8_t hero) const noexcept {
+  assert(class_values_hero_ == hero);
+  return class_cache_ ? class_cache_->values(node, hero) : nullptr;
+}
+
+void Trainer::poison_skipped_units3(const std::uint8_t hero) {
+  for (const auto index : unit_skipped_[hero])
+    std::fill(units3_[index].values.begin(), units3_[index].values.end(),
+              std::numeric_limits<double>::quiet_NaN());
+}
+
+bool Trainer::others_zero3(const CompiledNode &node, const SeatReach &reach,
+                           const std::uint8_t hero) const noexcept {
+  const auto seats = other_seats3(hero);
+  // The class values of a preflop node are board-free: a seat whose reach is
+  // zero on the live hands of this board can still reach the node with a class
+  // that the board blocks, so the gate at preflop decisions and terminals is
+  // the class reach (zero on the classes implies zero on the board).
+  if (class_cache_active() && node.street == Street::Preflop && node.kind != NodeKind::Chance) {
+    const auto index = static_cast<std::size_t>(preflop_index_[node.id]) * 3U;
+    return class_zero3_[index + seats[0]] != 0U || class_zero3_[index + seats[1]] != 0U;
+  }
+  return all_zero(reach[seats[0]]) || all_zero(reach[seats[1]]);
+}
+
+void Trainer::deal_mass3(const CompiledNode &node, const SeatReach &reach, double *out,
+                         const std::uint8_t hero, const BoardWork &board,
+                         Workspace &workspace) const {
+  if (class_cache_active() && node.street == Street::Preflop) {
+    // Preflop in class-cache mode the shortcut and the terminals read the
+    // cache's own terms (class_values3); this class D3, scaled like them, is
+    // the fallback of a node without a term.
+    std::array<double, class_count3> deal{};
+    class_cache_->deal_values(node.id, hero, deal.data());
+    const auto classes = board.context.hand_classes();
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+      out[hand] = PreflopClassCache::board_scale * deal[classes[hand]];
+    return;
+  }
+  const auto seats = other_seats3(hero);
+  kernel_deal_mass(board.context, reach[seats[0]], reach[seats[1]], out, *workspace.multiway);
+}
+
+void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double *values,
+                        double *scratch, const std::uint8_t hero, const BoardWork &board,
+                        Workspace &workspace) const {
+  const auto hero_bit = seat_bit(hero);
+  const auto seats = other_seats3(hero);
+  const auto payoff = [&](const std::uint8_t winners) {
+    return static_cast<double>(game_->showdown_payoffs(node.id, winners)[hero]) * ante_scale;
+  };
+  const bool preflop = node.street == Street::Preflop;
+  if (preflop && class_cache_active()) {
+    // Every preflop terminal (all-in, checkdown leaf or fold, the hero active
+    // or not) has a cache term for every seat: the hero's class value.
+    const double *class_values = class_values3(node.id, hero);
+    if (class_values != nullptr) {
+      const auto classes = board.context.hand_classes();
+      for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+        values[hand] = class_values[classes[hand]];
+      return;
+    }
+  }
+  const auto scaled = [&](const double factor, const double *mass) {
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+      values[hand] = factor * mass[hand];
+  };
+  if ((node.active_mask & hero_bit) == 0U) {
+    // Only with the shortcut switched off: below a hero fold every terminal
+    // pays the hero its folded payoff, over the other seats' joint mass.
+    deal_mass3(node, reach, scratch, hero, board, workspace);
+    scaled(folded_payoff_[static_cast<std::size_t>(node.id) * 3U + hero], scratch);
+    return;
+  }
+  if (node.kind == NodeKind::TerminalFold) {
+    // The hero is the last seat standing (a hero that folds into a terminal
+    // is valued at its own decision node).
+    deal_mass3(node, reach, scratch, hero, board, workspace);
+    scaled(static_cast<double>(game_->fold_payoffs(node.id)[hero]) * ante_scale, scratch);
+    return;
+  }
+  if (preflop && harness_) {
+    // V7 harness: the heads-up pair table against the real opponent (the
+    // lower other seat), times the 351 live hands of the virtual third seat.
+    const auto opponent = seats[0];
+    double *win_mass = scratch;
+    double *tie_mass = scratch + live_hand_count;
+    double *lose_mass = scratch + 2U * live_hand_count;
+    if (!all_in_available_) {
+      std::fill_n(values, live_hand_count, 0.0);
+      return;
+    }
+    all_in_masses(board.context, reach[opponent], win_mass, tie_mass, lose_mass);
+    const double win = payoff(hero_bit) * harness_third_seat_hands;
+    const double tie = payoff(node.active_mask) * harness_third_seat_hands;
+    const double lose = payoff(seat_bit(opponent)) * harness_third_seat_hands;
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+      values[hand] = win * win_mass[hand] + tie * tie_mass[hand] + lose * lose_mass[hand];
+    return;
+  }
+  if (std::popcount(static_cast<unsigned>(node.active_mask)) == 3) {
+    // Postflop showdowns and runouts, and preflop showdowns in board_kernels
+    // mode: the five masses of the 3-active sweep, the payoffs read per winner
+    // set. One loser payoff over {lower}, {higher} and both (creation check).
+    const auto lower_bit = seat_bit(seats[0]);
+    const auto higher_bit = seat_bit(seats[1]);
+    ThreeActivePayoffs payoffs;
+    payoffs.win = payoff(hero_bit);
+    payoffs.tie_lower = payoff(static_cast<std::uint8_t>(hero_bit | lower_bit));
+    payoffs.tie_higher = payoff(static_cast<std::uint8_t>(hero_bit | higher_bit));
+    payoffs.tie_both = payoff(node.active_mask);
+    payoffs.lose = payoff(lower_bit);
+    kernel_three_active(board.context, reach[seats[0]], reach[seats[1]], payoffs, values,
+                        *workspace.multiway);
+    return;
+  }
+  // Two active seats: the hero and its opponent; the third seat folded (or is
+  // the harness's virtual seat), its reach frozen and its cards dead.
+  const bool lower_active = (node.active_mask & seat_bit(seats[0])) != 0U;
+  const auto opponent = lower_active ? seats[0] : seats[1];
+  const auto folded = lower_active ? seats[1] : seats[0];
+  TwoActivePayoffs payoffs;
+  payoffs.win = payoff(hero_bit);
+  payoffs.tie = payoff(node.active_mask);
+  payoffs.lose = payoff(seat_bit(opponent));
+  kernel_two_active(board.context, reach[opponent], reach[folded], payoffs, values,
+                    *workspace.multiway);
+}
+
+void Trainer::pass3(const BoardWork &board, const std::uint8_t hero, const double iteration_weight,
+                    IterationTelemetry *telemetry) {
+  const bool profile = config_.detailed_profile && telemetry != nullptr;
+  auto phase = Clock::now();
+  auto &primary = *workspaces_[0];
+  // Full ranges: P(h) = 1/465 and P(o1,o2|h) = 1/(406 * 351) for every live hand.
+  const double hand_probability = 1.0 / static_cast<double>(live_hand_count);
+  const double regret_weight =
+      board.weight * hand_probability * three_seat_pair_probability * iteration_weight;
+  const double strategy_weight = board.weight * hand_probability * iteration_weight;
+  std::fill(primary.regret_weight.begin(), primary.regret_weight.end(), regret_weight);
+  std::fill(primary.strategy_weight.begin(), primary.strategy_weight.end(), strategy_weight);
+  for (std::size_t thread = 1; thread < workspaces_.size(); ++thread) {
+    workspaces_[thread]->regret_weight = primary.regret_weight;
+    workspaces_[thread]->strategy_weight = primary.strategy_weight;
+  }
+  if (profile)
+    telemetry->traversal_weight_setup_seconds +=
+        std::chrono::duration<double>(Clock::now() - phase).count();
+
+  // Every seat starts with reach 1 on every live hand (the harness's virtual
+  // seat keeps it: it never acts).
+  const SeatReach reach{ones3_.data(), ones3_.data(), ones3_.data()};
+  phase = Clock::now();
+  top_down_reach3(game_->root(), reach, hero, board, primary, 0U);
+  if (profile)
+    telemetry->traversal_top_down_seconds +=
+        std::chrono::duration<double>(Clock::now() - phase).count();
+  phase = Clock::now();
+  const auto &work = unit_work_[hero];
+  executor_->run(work.size(), [&](const std::size_t index, const unsigned thread) {
+    auto &unit = units3_[work[index]];
+    const SeatReach unit_reach{unit.reach[0].data(), unit.reach[1].data(), unit.reach[2].data()};
+    traverse3(unit.root, game_->nodes()[unit.root].depth, unit_reach, unit.values.data(), hero,
+              board, *workspaces_[thread], false);
+  });
+  if (profile)
+    telemetry->traversal_parallel_seconds +=
+        std::chrono::duration<double>(Clock::now() - phase).count();
+  phase = Clock::now();
+  traverse3(game_->root(), 0U, reach, root_values3_.data(), hero, board, primary, true);
+  if (profile)
+    telemetry->traversal_top_reduce_seconds +=
+        std::chrono::duration<double>(Clock::now() - phase).count();
+  if (telemetry != nullptr) {
+    telemetry->units_run_by_hero[hero] += work.size();
+    telemetry->units_skipped_by_hero[hero] += unit_skipped_[hero].size();
+  }
+}
+
+void Trainer::top_down_reach3(const std::uint32_t node_id, const SeatReach &reach,
+                              const std::uint8_t hero, const BoardWork &board,
+                              Workspace &workspace, const std::uint32_t depth) {
+  const auto unit_index = unit_of_node_[node_id];
+  if (unit_index != no_unit) {
+    auto &unit = units3_[unit_index];
+    for (std::size_t seat = 0; seat < 3U; ++seat)
+      std::copy_n(reach[seat], live_hand_count, unit.reach[seat].data());
+    return;
+  }
+  const auto &nodes = game_->nodes();
+  const auto &node = nodes[node_id];
+  const auto edges = game_->edges_of(node_id);
+  if (node.kind == NodeKind::Chance) {
+    top_down_reach3(edges[0].child, reach, hero, board, workspace, depth + 1U);
+    return;
+  }
+  if (node.kind != NodeKind::Decision)
+    return;
+  auto &level = workspace.levels[depth];
+  const auto actor = node.actor;
+  const double *acting = reach[actor];
+  const auto actions = node.action_count;
+  std::uint64_t policy_rows = 0U;
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    const double hand_reach = acting[hand];
+    if (hand_reach == 0.0) {
+      for (std::uint8_t action = 0; action < actions; ++action)
+        level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] = 0.0;
+      continue;
+    }
+    const auto probabilities = policy_row(node_id, static_cast<std::uint16_t>(hand), board);
+    ++policy_rows;
+    for (std::uint8_t action = 0; action < actions; ++action)
+      level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
+          hand_reach * probabilities[action];
+  }
+  if (config_.detailed_profile)
+    workspace.policy_rows_read += policy_rows;
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    const auto child = edges[action].child;
+    // The hero-folded shortcut: a subtree where the hero is inactive is never
+    // entered, so its units are not prepared (they are skipped, spec 3.2).
+    if (actor == hero && config_.hero_folded_shortcut &&
+        (nodes[child].active_mask & seat_bit(hero)) == 0U)
+      continue;
+    auto next = reach;
+    next[actor] = level.child_reach.data() + static_cast<std::size_t>(action) * live_hand_count;
+    top_down_reach3(child, next, hero, board, workspace, depth + 1U);
+  }
+}
+
+void Trainer::traverse3(const std::uint32_t node_id, const std::uint32_t depth,
+                        const SeatReach &reach, double *values, const std::uint8_t hero,
+                        const BoardWork &board, Workspace &workspace, const bool top_phase) {
+  ++workspace.nodes_visited;
+  const bool profile_sample =
+      config_.detailed_profile && workspace.nodes_visited % profile_sample_stride == 0U;
+  // A unit's values were computed in the parallel phase. The shortcut below is
+  // taken at the hero's node before any child (and so any unit) is looked up,
+  // so a skipped unit is never read here.
+  if (top_phase) {
+    const auto unit_index = unit_of_node_[node_id];
+    if (unit_index != no_unit) {
+      std::copy_n(units3_[unit_index].values.data(), live_hand_count, values);
+      return;
+    }
+  }
+  const auto &nodes = game_->nodes();
+  const auto &node = nodes[node_id];
+  const auto hero_bit = seat_bit(hero);
+  assert(!config_.hero_folded_shortcut || (node.active_mask & hero_bit) != 0U);
+  const double *hero_reach = reach[hero];
+  const bool others_zero = others_zero3(node, reach, hero);
+  if (others_zero && all_zero(hero_reach)) {
+    if (config_.detailed_profile) {
+      ++workspace.zero_reach_prunes;
+      // Every terminal below is pruned here, except at a top node: the units
+      // below it have counted theirs in the parallel phase, which leaves only
+      // the terminals of the hero-inactive subtrees the shortcut would have
+      // counted (none with the shortcut off: every unit runs).
+      const bool top_node = top_phase && partition_.is_top[node_id] != 0U;
+      workspace.terminals_pruned[hero] +=
+          !top_node ? terminal_count_[node_id]
+          : config_.hero_folded_shortcut
+              ? top_uncounted_terminals_[static_cast<std::size_t>(node_id) * 3U + hero]
+              : 0U;
+    }
+    std::fill_n(values, live_hand_count, 0.0);
+    return;
+  }
+  switch (node.kind) {
+  case NodeKind::TerminalFold:
+  case NodeKind::TerminalShowdown:
+    if (config_.detailed_profile) {
+      ++workspace.terminals_visited[hero];
+      if (node.kind == NodeKind::TerminalFold)
+        ++workspace.fold_terminals_visited;
+      else if (node.street == Street::Preflop)
+        ++workspace.preflop_all_in_terminals_visited;
+      else
+        ++workspace.postflop_showdown_terminals_visited;
+    }
+    if (others_zero) {
+      std::fill_n(values, live_hand_count, 0.0);
+    } else {
+      const auto terminal_started = profile_sample ? Clock::now() : Clock::time_point{};
+      terminal3(node, reach, values, workspace.levels[depth].scratch.data(), hero, board,
+                workspace);
+      if (profile_sample) {
+        const auto seconds = std::chrono::duration<double>(Clock::now() - terminal_started).count();
+        if (node.kind == NodeKind::TerminalFold)
+          workspace.sampled_fold_terminal_seconds += seconds;
+        else if (node.street == Street::Preflop)
+          workspace.sampled_preflop_all_in_seconds += seconds;
+        else
+          workspace.sampled_postflop_showdown_seconds += seconds;
+      }
+    }
+    return;
+  case NodeKind::Chance:
+    if (config_.detailed_profile)
+      ++workspace.chance_nodes_visited;
+    traverse3(game_->edges_of(node_id)[0].child, depth + 1U, reach, values, hero, board,
+              workspace, top_phase);
+    return;
+  case NodeKind::Decision:
+    if (config_.detailed_profile) {
+      ++workspace.decision_nodes_visited;
+      if (node.actor == hero)
+        ++workspace.hero_decision_nodes;
+      else
+        ++workspace.opponent_decision_nodes;
+    }
+    break;
+  }
+
+  auto &level = workspace.levels[depth];
+  const auto edges = game_->edges_of(node_id);
+  const auto actions = node.action_count;
+  if (node.actor == hero) {
+    const auto base = layout_.offsets[node_id];
+    const auto policy_base = compact_offsets_[node_id];
+    const bool preflop = node.street == Street::Preflop;
+    const auto street_index = preflop ? 0U : static_cast<std::size_t>(node.street) - 1U;
+    std::uint64_t policy_rows = 0U;
+    std::uint64_t regret_cells = 0U;
+    std::uint64_t strategy_cells = 0U;
+    const auto reach_started = profile_sample ? Clock::now() : Clock::time_point{};
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+      const auto cell = base +
+                        static_cast<std::uint64_t>(board.context.row(
+                            node.street, static_cast<std::uint16_t>(hand))) *
+                            actions;
+      level.cell_offsets[hand] = cell;
+      const std::uint64_t slot =
+          preflop ? board.context.hand_classes()[hand] : board.slot[street_index][hand];
+      const auto policy_offset = policy_base + slot * actions;
+      level.policy_offsets[hand] = policy_offset;
+      const double hand_reach = hero_reach[hand];
+      if (hand_reach == 0.0) {
+        for (std::uint8_t action = 0; action < actions; ++action)
+          level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] = 0.0;
+        continue;
+      }
+      const double *probabilities = compact_policy_.data() + policy_offset;
+      ++policy_rows;
+      for (std::uint8_t action = 0; action < actions; ++action)
+        level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
+            hand_reach * probabilities[action];
+    }
+    if (profile_sample)
+      workspace.sampled_hero_reach_seconds +=
+          std::chrono::duration<double>(Clock::now() - reach_started).count();
+    // D3 of the other seats at this node, shared by every action that leaves
+    // the hero inactive (the hero's action does not change the other seats'
+    // reach): computed once, on the first such action.
+    double *deal_mass = level.scratch.data() + d3_scratch_offset;
+    bool deal_mass_ready = false;
+    for (std::uint8_t action = 0; action < actions; ++action) {
+      const auto child = edges[action].child;
+      double *child_values =
+          level.child_values.data() + static_cast<std::size_t>(action) * live_hand_count;
+      if (config_.hero_folded_shortcut && (nodes[child].active_mask & hero_bit) == 0U) {
+        // Hero-folded shortcut (spec 3.2): every terminal below pays the hero
+        // its folded payoff, and the other seats' reach summed over those
+        // terminals is D3 at this node. The child (often a unit root) is not
+        // looked up.
+        if (config_.detailed_profile)
+          workspace.terminals_shortcut[hero] += terminal_count_[child];
+        if (others_zero) {
+          std::fill_n(child_values, live_hand_count, 0.0);
+          continue;
+        }
+        // Preflop in class-cache mode: the cache's term of the hero at the
+        // child, its folded payoff times the scaled class D3.
+        if (preflop && class_cache_active()) {
+          if (const double *class_values = class_values3(child, hero)) {
+            const auto classes = board.context.hand_classes();
+            for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+              child_values[hand] = class_values[classes[hand]];
+            continue;
+          }
+        }
+        if (!deal_mass_ready) {
+          deal_mass3(node, reach, deal_mass, hero, board, workspace);
+          deal_mass_ready = true;
+        }
+        const double folded = folded_payoff_[static_cast<std::size_t>(child) * 3U + hero];
+        for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+          child_values[hand] = folded * deal_mass[hand];
+        continue;
+      }
+      auto next = reach;
+      next[hero] = level.child_reach.data() + static_cast<std::size_t>(action) * live_hand_count;
+      traverse3(child, depth + 1U, next, child_values, hero, board, workspace, top_phase);
+    }
+    const auto update_started = profile_sample ? Clock::now() : Clock::time_point{};
+    const bool accumulate_strategy = !fixed_policy_evaluation_;
+    // Locked classes play their fixed row: no regret and no strategy-sum write.
+    const std::uint8_t *locked = preflop ? locked_classes(node_id) : nullptr;
+    dispatch_tables(
+        config_.storage, regrets_, strategy_sums_, regrets_f32_, strategy_sums_f32_,
+        [&](auto *regrets, auto *sums) {
+          const std::size_t update_distance = config_.prefetch_update_hands;
+          for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+            if (update_distance != 0U && hand + update_distance < live_hand_count) {
+              const auto ahead = level.cell_offsets[hand + update_distance];
+              prefetch_read(regrets + ahead);
+              prefetch_read(sums + ahead);
+            }
+            const auto cell = level.cell_offsets[hand];
+            const double *probabilities = compact_policy_.data() + level.policy_offsets[hand];
+            ++policy_rows;
+            double value = 0.0;
+            for (std::uint8_t action = 0; action < actions; ++action) {
+              value += probabilities[action] *
+                       level.child_values[static_cast<std::size_t>(action) * live_hand_count + hand];
+            }
+            values[hand] = value;
+            if (locked != nullptr && locked[board.context.hand_classes()[hand]] != 0U)
+              continue;
+            const double regret_weight = workspace.regret_weight[hand];
+            if (!others_zero && regret_weight != 0.0) {
+              regret_cells += actions;
+              for (std::uint8_t action = 0; action < actions; ++action) {
+                auto &regret = regrets[cell + action];
+                store(regret,
+                      static_cast<double>(regret) +
+                          regret_weight *
+                              (level.child_values[static_cast<std::size_t>(action) *
+                                                      live_hand_count +
+                                                  hand] -
+                               value));
+              }
+            }
+            const double strategy_weight = workspace.strategy_weight[hand] * hero_reach[hand];
+            if (accumulate_strategy && strategy_weight != 0.0) {
+              strategy_cells += actions;
+              for (std::uint8_t action = 0; action < actions; ++action) {
+                auto &sum = sums[cell + action];
+                store(sum, static_cast<double>(sum) + strategy_weight * probabilities[action]);
+              }
+            }
+          }
+        });
+    if (trace3_ != nullptr && trace3_->sink != nullptr) {
+      std::vector<double> weights(live_hand_count, 0.0);
+      for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+        const bool skipped =
+            others_zero || (locked != nullptr && locked[board.context.hand_classes()[hand]] != 0U);
+        weights[hand] = skipped ? 0.0 : workspace.regret_weight[hand];
+      }
+      HeroDecisionTrace trace;
+      trace.node = node_id;
+      trace.hero = hero;
+      trace.actions = actions;
+      trace.action_values = std::span<const double>(
+          level.child_values.data(), static_cast<std::size_t>(actions) * live_hand_count);
+      trace.values = std::span<const double>(values, live_hand_count);
+      trace.hero_reach = std::span<const double>(hero_reach, live_hand_count);
+      trace.regret_weight = std::span<const double>(weights.data(), live_hand_count);
+      const std::lock_guard lock(trace3_->mutex);
+      trace3_->sink->record(trace);
+    }
+    if (profile_sample)
+      workspace.sampled_hero_update_seconds +=
+          std::chrono::duration<double>(Clock::now() - update_started).count();
+    if (config_.detailed_profile) {
+      workspace.policy_rows_read += policy_rows;
+      workspace.regret_cells_written += regret_cells;
+      workspace.strategy_cells_written += strategy_cells;
+    }
+    return;
+  }
+
+  // Another seat acts: only its reach vector is split; the third vector passes
+  // unchanged (a seat that folded keeps its frozen reach), and values sum.
+  const auto actor = node.actor;
+  const double *acting = reach[actor];
+  std::uint64_t policy_rows = 0U;
+  const auto reach_started = profile_sample ? Clock::now() : Clock::time_point{};
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    const double hand_reach = acting[hand];
+    if (hand_reach == 0.0) {
+      for (std::uint8_t action = 0; action < actions; ++action)
+        level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] = 0.0;
+      continue;
+    }
+    const auto probabilities = policy_row(node_id, static_cast<std::uint16_t>(hand), board);
+    ++policy_rows;
+    for (std::uint8_t action = 0; action < actions; ++action)
+      level.child_reach[static_cast<std::size_t>(action) * live_hand_count + hand] =
+          hand_reach * probabilities[action];
+  }
+  if (profile_sample)
+    workspace.sampled_opponent_reach_seconds +=
+        std::chrono::duration<double>(Clock::now() - reach_started).count();
+  if (config_.detailed_profile)
+    workspace.policy_rows_read += policy_rows;
+  std::fill_n(values, live_hand_count, 0.0);
+  for (std::uint8_t action = 0; action < actions; ++action) {
+    auto next = reach;
+    next[actor] = level.child_reach.data() + static_cast<std::size_t>(action) * live_hand_count;
+    traverse3(edges[action].child, depth + 1U, next, level.child_values.data(), hero, board,
+              workspace, top_phase);
+    const auto accumulate_started = profile_sample ? Clock::now() : Clock::time_point{};
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+      values[hand] += level.child_values[hand];
+    if (profile_sample)
+      workspace.sampled_opponent_accumulate_seconds +=
+          std::chrono::duration<double>(Clock::now() - accumulate_started).count();
+  }
+}
+
 template <typename Function> void Trainer::for_each_row(Function &&function) const {
   for (const auto &node : game_->nodes()) {
     if (node.kind != NodeKind::Decision) {
@@ -2126,6 +3027,22 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
         sizeof(Unit) +
         (unit.hero_reach.capacity() + unit.opponent_reach.capacity() + unit.values.capacity()) *
             sizeof(double);
+  for (const auto &unit : units3_)
+    breakdown.unit_bytes += sizeof(Unit3) + (unit.reach[0].capacity() + unit.reach[1].capacity() +
+                                             unit.reach[2].capacity() + unit.values.capacity()) *
+                                                sizeof(double);
+  for (const auto &list : unit_work_)
+    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
+  for (const auto &list : unit_skipped_)
+    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
+  breakdown.class_cache_bytes = class_cache_ ? class_cache_->memory_bytes() : 0U;
+  breakdown.class_values_bytes =
+      (folded_payoff_.capacity() + ones3_.capacity() + root_values3_.capacity()) *
+          sizeof(double) +
+      class_zero3_.capacity() +
+      (terminal_count_.capacity() + top_uncounted_terminals_.capacity() +
+       preflop_index_.capacity() + preflop_nodes_.capacity()) *
+          sizeof(std::uint32_t);
   breakdown.layout_offset_bytes = layout_.offsets.capacity() * sizeof(std::uint64_t);
   breakdown.partition_bytes = partition_.unit_roots.capacity() * sizeof(std::uint32_t) +
                               partition_.is_top.capacity() + unit_of_node_.capacity() * 4U;
@@ -2157,6 +3074,9 @@ Result<ExploitabilityEstimate, TrainerError>
 Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_list) {
   using Outcome = Result<ExploitabilityEstimate, TrainerError>;
   const auto started = Clock::now();
+  // The physical best response is heads-up (3 seats: part A/B, spec 6).
+  if (heroes_ != 2U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
   if ((!board_list_.empty() || subsets_) && !supported_diagnostic_prior(board_list_, hand_masks_)) {
     // A restricted board corpus can change the preflop private-deal prior.
     // The physical evaluator assumes a fixed preflop deal, so labeling its
@@ -2389,165 +3309,284 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   return Outcome::success(true);
 }
 
-class TrainerAccess {
-public:
-  static Result<AbstractBestResponseReport, TrainerError>
-  abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                         const TrainerResources &resources, const std::vector<FlopGroup> &groups,
-                         const AbstractBestResponseOptions &options) {
-    using Outcome = Result<AbstractBestResponseReport, TrainerError>;
-    const auto started = Clock::now();
-    if (options.threads == 0U || groups.empty() || resources.history_rows == nullptr)
-      return Outcome::failure(TrainerError::InvalidConfiguration);
-    const auto &source_layout = policy.layout();
-    if (source_layout.entries != policy.table().size())
-      return Outcome::failure(TrainerError::InvalidConfiguration);
+Result<AbstractBestResponseReport, TrainerError>
+TrainerAccess::abstract_best_response(const CompiledGame &game, BucketPolicy policy,
+                                      const TrainerResources &resources,
+                                      const std::vector<FlopGroup> &groups,
+                                      const AbstractBestResponseOptions &options) {
+  using Outcome = Result<AbstractBestResponseReport, TrainerError>;
+  const auto started = Clock::now();
+  if (options.threads == 0U || groups.empty() || resources.history_rows == nullptr ||
+      game.config().player_count != 2U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  const auto &source_layout = policy.layout();
+  if (source_layout.entries != policy.table().size())
+    return Outcome::failure(TrainerError::InvalidConfiguration);
 
-    double group_weight = 0.0;
-    for (const auto &group : groups) {
-      if (!(group.weight > 0.0) || !std::isfinite(group.weight) || group.boards.empty())
+  double group_weight = 0.0;
+  for (const auto &group : groups) {
+    if (!(group.weight > 0.0) || !std::isfinite(group.weight) || group.boards.empty())
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    group_weight += group.weight;
+    double board_weight = 0.0;
+    for (const auto &board : group.boards) {
+      if (!(board.weight > 0.0) || !std::isfinite(board.weight))
         return Outcome::failure(TrainerError::InvalidConfiguration);
-      group_weight += group.weight;
-      double board_weight = 0.0;
-      for (const auto &board : group.boards) {
-        if (!(board.weight > 0.0) || !std::isfinite(board.weight))
-          return Outcome::failure(TrainerError::InvalidConfiguration);
-        board_weight += board.weight;
-      }
-      if (!(board_weight > 0.0) || !std::isfinite(board_weight))
-        return Outcome::failure(TrainerError::InvalidConfiguration);
+      board_weight += board.weight;
     }
-    if (!(group_weight > 0.0) || !std::isfinite(group_weight))
+    if (!(board_weight > 0.0) || !std::isfinite(board_weight))
       return Outcome::failure(TrainerError::InvalidConfiguration);
-
-    TrainerConfig config;
-    config.flop_capacity = source_layout.flop_capacity;
-    config.turn_capacity = source_layout.turn_capacity;
-    config.river_capacity = source_layout.river_capacity;
-    config.batch_boards = 1U;
-    config.threads = options.threads;
-    std::vector<double> fixed_policy = std::move(policy.table());
-    std::unique_ptr<Trainer> evaluator(new Trainer(game, resources, config));
-    HandSubsets subsets;
-    subsets.combos = options.hand_subsets;
-    const bool restricted = !subsets.combos[0].empty() || !subsets.combos[1].empty();
-    const auto initialized =
-        evaluator->initialize(nullptr, restricted ? &subsets : nullptr, &fixed_policy);
-    if (!initialized)
-      return Outcome::failure(initialized.error());
-
-    AbstractBestResponseReport report;
-    report.flops = static_cast<std::uint32_t>(groups.size());
-    Trainer::BoardWork work;
-    for (std::size_t group_index = 0; group_index < groups.size(); ++group_index) {
-      const auto &group = groups[group_index];
-      const double normalized_group = group.weight / group_weight;
-      const double board_total = std::accumulate(
-          group.boards.begin(), group.boards.end(), 0.0,
-          [](const double sum, const WeightedBoard &board) { return sum + board.weight; });
-      for (const auto &board : group.boards) {
-        const auto prepared = evaluator->prepare_board(
-            board.history, normalized_group * board.weight / board_total, work);
-        if (!prepared)
-          return Outcome::failure(prepared.error());
-        evaluator->pass(work, 0U, 1.0);
-        evaluator->pass(work, 1U, 1.0);
-        ++report.boards;
-      }
-      if (options.progress) {
-        AbstractBestResponseProgress progress;
-        progress.flops_done = static_cast<std::uint32_t>(group_index + 1U);
-        progress.flops_total = report.flops;
-        progress.boards_done = report.boards;
-        progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-        options.progress(progress);
-      }
-    }
-
-    struct Predecessor {
-      std::uint32_t node{no_node};
-      std::uint8_t action{0U};
-    };
-    std::vector<Predecessor> predecessors(game.nodes().size());
-    for (const auto &node : game.nodes()) {
-      if (node.kind != NodeKind::Decision)
-        continue;
-      auto child = node.id;
-      auto parent = node.parent;
-      while (parent != no_node) {
-        const auto &ancestor = game.nodes()[parent];
-        if (ancestor.kind == NodeKind::Decision && ancestor.actor == node.actor) {
-          const auto edges = game.edges_of(parent);
-          const auto edge = std::find_if(edges.begin(), edges.end(),
-                                         [&](const CompiledEdge &entry) {
-                                           return entry.child == child;
-                                         });
-          if (edge == edges.end())
-            return Outcome::failure(TrainerError::IntegrityFailure);
-          predecessors[node.id] =
-              {parent, static_cast<std::uint8_t>(edge - edges.begin())};
-          break;
-        }
-        child = parent;
-        parent = ancestor.parent;
-      }
-    }
-
-    const auto predecessor_row = [&](const Street street, const std::uint32_t row,
-                                     const Street target) {
-      auto current_street = street;
-      auto current_row = row;
-      while (current_street != target && current_row != no_history_row) {
-        if (current_street == Street::Preflop)
-          return no_history_row;
-        current_row = resources.history_rows->parent_row(current_street, current_row);
-        current_street = static_cast<Street>(static_cast<std::uint8_t>(current_street) - 1U);
-      }
-      return current_street == target ? current_row : no_history_row;
-    };
-
-    for (const std::uint8_t hero : {std::uint8_t{0}, std::uint8_t{1}}) {
-      double gain = 0.0;
-      for (auto iterator = game.nodes().rbegin(); iterator != game.nodes().rend(); ++iterator) {
-        const auto &node = *iterator;
-        if (node.kind != NodeKind::Decision || node.actor != hero)
-          continue;
-        const auto rows = StateLayout::rows_for(node.street, source_layout.flop_capacity,
-                                                source_layout.turn_capacity,
-                                                source_layout.river_capacity);
-        const auto &predecessor = predecessors[node.id];
-        for (std::uint32_t row = 0; row < rows; ++row) {
-          const auto offset = source_layout.offsets[node.id] +
-                              static_cast<std::uint64_t>(row) * node.action_count;
-          double value = -std::numeric_limits<double>::infinity();
-          for (std::uint8_t action = 0; action < node.action_count; ++action)
-            value = std::max(value, evaluator->regret(offset + action));
-          if (!std::isfinite(value))
-            return Outcome::failure(TrainerError::IntegrityFailure);
-          if (predecessor.node == no_node) {
-            gain += value;
-            continue;
-          }
-          const auto &parent = game.nodes()[predecessor.node];
-          const auto parent_row = predecessor_row(node.street, row, parent.street);
-          if (parent_row == no_history_row)
-            return Outcome::failure(TrainerError::IntegrityFailure);
-          const auto parent_offset =
-              source_layout.offsets[parent.id] +
-              static_cast<std::uint64_t>(parent_row) * parent.action_count + predecessor.action;
-          evaluator->add_regret(parent_offset, value);
-        }
-      }
-      if (!std::isfinite(gain) || gain < -1e-9)
-        return Outcome::failure(TrainerError::IntegrityFailure);
-      report.gain[hero] = std::max(0.0, gain);
-    }
-    report.max_gain = std::max(report.gain[0], report.gain[1]);
-    report.process_bytes = process_working_set_bytes();
-    report.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-    return Outcome::success(report);
   }
-};
+  if (!(group_weight > 0.0) || !std::isfinite(group_weight))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+
+  TrainerConfig config;
+  config.flop_capacity = source_layout.flop_capacity;
+  config.turn_capacity = source_layout.turn_capacity;
+  config.river_capacity = source_layout.river_capacity;
+  config.batch_boards = 1U;
+  config.threads = options.threads;
+  std::vector<double> fixed_policy = std::move(policy.table());
+  std::unique_ptr<Trainer> evaluator(new Trainer(game, resources, config));
+  HandSubsets subsets;
+  subsets.combos = options.hand_subsets;
+  const bool restricted = !subsets.combos[0].empty() || !subsets.combos[1].empty();
+  const auto initialized =
+      evaluator->initialize(nullptr, restricted ? &subsets : nullptr, &fixed_policy);
+  if (!initialized)
+    return Outcome::failure(initialized.error());
+
+  AbstractBestResponseReport report;
+  report.flops = static_cast<std::uint32_t>(groups.size());
+  Trainer::BoardWork work;
+  for (std::size_t group_index = 0; group_index < groups.size(); ++group_index) {
+    const auto &group = groups[group_index];
+    const double normalized_group = group.weight / group_weight;
+    const double board_total = std::accumulate(
+        group.boards.begin(), group.boards.end(), 0.0,
+        [](const double sum, const WeightedBoard &board) { return sum + board.weight; });
+    for (const auto &board : group.boards) {
+      const auto prepared = evaluator->prepare_board(
+          board.history, normalized_group * board.weight / board_total, work);
+      if (!prepared)
+        return Outcome::failure(prepared.error());
+      evaluator->pass(work, 0U, 1.0);
+      evaluator->pass(work, 1U, 1.0);
+      ++report.boards;
+    }
+    if (options.progress) {
+      AbstractBestResponseProgress progress;
+      progress.flops_done = static_cast<std::uint32_t>(group_index + 1U);
+      progress.flops_total = report.flops;
+      progress.boards_done = report.boards;
+      progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
+      options.progress(progress);
+    }
+  }
+
+  struct Predecessor {
+    std::uint32_t node{no_node};
+    std::uint8_t action{0U};
+  };
+  std::vector<Predecessor> predecessors(game.nodes().size());
+  for (const auto &node : game.nodes()) {
+    if (node.kind != NodeKind::Decision)
+      continue;
+    auto child = node.id;
+    auto parent = node.parent;
+    while (parent != no_node) {
+      const auto &ancestor = game.nodes()[parent];
+      if (ancestor.kind == NodeKind::Decision && ancestor.actor == node.actor) {
+        const auto edges = game.edges_of(parent);
+        const auto edge = std::find_if(edges.begin(), edges.end(),
+                                       [&](const CompiledEdge &entry) {
+                                         return entry.child == child;
+                                       });
+        if (edge == edges.end())
+          return Outcome::failure(TrainerError::IntegrityFailure);
+        predecessors[node.id] =
+            {parent, static_cast<std::uint8_t>(edge - edges.begin())};
+        break;
+      }
+      child = parent;
+      parent = ancestor.parent;
+    }
+  }
+
+  const auto predecessor_row = [&](const Street street, const std::uint32_t row,
+                                   const Street target) {
+    auto current_street = street;
+    auto current_row = row;
+    while (current_street != target && current_row != no_history_row) {
+      if (current_street == Street::Preflop)
+        return no_history_row;
+      current_row = resources.history_rows->parent_row(current_street, current_row);
+      current_street = static_cast<Street>(static_cast<std::uint8_t>(current_street) - 1U);
+    }
+    return current_street == target ? current_row : no_history_row;
+  };
+
+  for (const std::uint8_t hero : {std::uint8_t{0}, std::uint8_t{1}}) {
+    double gain = 0.0;
+    for (auto iterator = game.nodes().rbegin(); iterator != game.nodes().rend(); ++iterator) {
+      const auto &node = *iterator;
+      if (node.kind != NodeKind::Decision || node.actor != hero)
+        continue;
+      const auto rows = StateLayout::rows_for(node.street, source_layout.flop_capacity,
+                                              source_layout.turn_capacity,
+                                              source_layout.river_capacity);
+      const auto &predecessor = predecessors[node.id];
+      for (std::uint32_t row = 0; row < rows; ++row) {
+        const auto offset = source_layout.offsets[node.id] +
+                            static_cast<std::uint64_t>(row) * node.action_count;
+        double value = -std::numeric_limits<double>::infinity();
+        for (std::uint8_t action = 0; action < node.action_count; ++action)
+          value = std::max(value, evaluator->regret(offset + action));
+        if (!std::isfinite(value))
+          return Outcome::failure(TrainerError::IntegrityFailure);
+        if (predecessor.node == no_node) {
+          gain += value;
+          continue;
+        }
+        const auto &parent = game.nodes()[predecessor.node];
+        const auto parent_row = predecessor_row(node.street, row, parent.street);
+        if (parent_row == no_history_row)
+          return Outcome::failure(TrainerError::IntegrityFailure);
+        const auto parent_offset =
+            source_layout.offsets[parent.id] +
+            static_cast<std::uint64_t>(parent_row) * parent.action_count + predecessor.action;
+        evaluator->add_regret(parent_offset, value);
+      }
+    }
+    if (!std::isfinite(gain) || gain < -1e-9)
+      return Outcome::failure(TrainerError::IntegrityFailure);
+    report.gain[hero] = std::max(0.0, gain);
+  }
+  report.max_gain = std::max(report.gain[0], report.gain[1]);
+  report.process_bytes = process_working_set_bytes();
+  report.seconds = std::chrono::duration<double>(Clock::now() - started).count();
+  return Outcome::success(report);
+}
+
+Result<bool, TrainerError> TrainerAccess::set_regrets(Trainer &trainer,
+                                                      const std::span<const double> regrets) {
+  using Outcome = Result<bool, TrainerError>;
+  if (!trainer.usable_ || regrets.size() != trainer.layout_.entries ||
+      (trainer.config_.lazy_discount && trainer.iteration_ != 0U))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  dispatch_tables(trainer.config_.storage, trainer.regrets_, trainer.strategy_sums_,
+                  trainer.regrets_f32_, trainer.strategy_sums_f32_, [&](auto *table, auto *) {
+                    for (std::size_t cell = 0; cell < regrets.size(); ++cell)
+                      store(table[cell], regrets[cell]);
+                  });
+  return Outcome::success(true);
+}
+
+Result<SubtreeValues3, TrainerError>
+TrainerAccess::subtree_values3(Trainer &trainer, const std::uint32_t node,
+                               const std::array<std::vector<double>, 3> &reach,
+                               const std::uint8_t hero, const card_abstraction::BoardHistory &board,
+                               HeroDecisionSink *sink) {
+  using Outcome = Result<SubtreeValues3, TrainerError>;
+  const auto &nodes = trainer.game_->nodes();
+  if (!trainer.usable_ || trainer.traversal_seats_ != 3U || hero >= trainer.heroes_ ||
+      node >= nodes.size() || trainer.fixed_policy_evaluation_)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  for (const auto &seat : reach)
+    if (seat.size() != live_hand_count)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+  const auto &root = nodes[node];
+  if (trainer.config_.hero_folded_shortcut && (root.active_mask & seat_bit(hero)) == 0U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  // Preflop class values follow the policy, not injected reach.
+  if (trainer.class_cache_active() && root.street == Street::Preflop &&
+      root.kind != NodeKind::Chance)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  auto &batch = trainer.board_batch_;
+  batch.resize(1U);
+  if (const auto prepared = trainer.prepare_board(board, 1.0, batch[0]); !prepared)
+    return Outcome::failure(prepared.error());
+  trainer.refresh_policy(batch, nullptr);
+  trainer.prepare_preflop_classes3(hero);
+  if (trainer.config_.poison_skipped_units)
+    trainer.poison_skipped_units3(hero);
+  auto &primary = *trainer.workspaces_[0];
+  const double regret_weight =
+      (1.0 / static_cast<double>(live_hand_count)) * three_seat_pair_probability;
+  for (auto &workspace : trainer.workspaces_) {
+    std::fill(workspace->regret_weight.begin(), workspace->regret_weight.end(), regret_weight);
+    std::fill(workspace->strategy_weight.begin(), workspace->strategy_weight.end(),
+              1.0 / static_cast<double>(live_hand_count));
+  }
+  Trainer::Trace3 trace;
+  trace.sink = sink;
+  trainer.trace3_ = sink != nullptr ? &trace : nullptr;
+  const Trainer::SeatReach seat_reach{reach[0].data(), reach[1].data(), reach[2].data()};
+  trainer.top_down_reach3(node, seat_reach, hero, batch[0], primary, root.depth);
+  // The units below the node that the hero runs (the skipped ones stay out).
+  std::vector<std::uint32_t> work;
+  SubtreeValues3 result;
+  for (const auto index : trainer.unit_work_[hero]) {
+    const auto unit_root = trainer.units3_[index].root;
+    if (unit_root >= node && unit_root < root.subtree_end)
+      work.push_back(index);
+  }
+  for (const auto index : trainer.unit_skipped_[hero]) {
+    const auto unit_root = trainer.units3_[index].root;
+    if (unit_root >= node && unit_root < root.subtree_end)
+      ++result.units_skipped;
+  }
+  trainer.executor_->run(work.size(), [&](const std::size_t index, const unsigned thread) {
+    auto &unit = trainer.units3_[work[index]];
+    const Trainer::SeatReach unit_reach{unit.reach[0].data(), unit.reach[1].data(),
+                                        unit.reach[2].data()};
+    trainer.traverse3(unit.root, nodes[unit.root].depth, unit_reach, unit.values.data(), hero,
+                      batch[0], *trainer.workspaces_[thread], false);
+  });
+  result.values.assign(live_hand_count, 0.0);
+  trainer.traverse3(node, root.depth, seat_reach, result.values.data(), hero, batch[0], primary,
+                    true);
+  trainer.trace3_ = nullptr;
+  result.regret_weight = primary.regret_weight;
+  result.units_run = static_cast<std::uint32_t>(work.size());
+  return Outcome::success(std::move(result));
+}
+
+Result<std::vector<std::vector<double>>, TrainerError>
+TrainerAccess::terminal3_values(Trainer &trainer, const std::span<const std::uint32_t> nodes,
+                                const std::array<std::vector<double>, 3> &reach,
+                                const std::uint8_t hero,
+                                const card_abstraction::BoardHistory &board) {
+  using Outcome = Result<std::vector<std::vector<double>>, TrainerError>;
+  const auto &tree = trainer.game_->nodes();
+  if (!trainer.usable_ || trainer.traversal_seats_ != 3U || hero >= trainer.heroes_)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  for (const auto &seat : reach)
+    if (seat.size() != live_hand_count)
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+  for (const auto id : nodes) {
+    if (id >= tree.size())
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+    const auto &entry = tree[id];
+    if ((entry.kind != NodeKind::TerminalFold && entry.kind != NodeKind::TerminalShowdown) ||
+        (entry.active_mask & seat_bit(hero)) == 0U ||
+        (trainer.class_cache_active() && entry.street == Street::Preflop))
+      return Outcome::failure(TrainerError::InvalidConfiguration);
+  }
+  Trainer::BoardWork work;
+  if (const auto prepared = trainer.prepare_board(board, 1.0, work); !prepared)
+    return Outcome::failure(prepared.error());
+  auto &workspace = *trainer.workspaces_[0];
+  const Trainer::SeatReach seat_reach{reach[0].data(), reach[1].data(), reach[2].data()};
+  std::vector<std::vector<double>> values;
+  values.reserve(nodes.size());
+  for (const auto id : nodes) {
+    values.emplace_back(live_hand_count, 0.0);
+    trainer.terminal3(tree[id], seat_reach, values.back().data(),
+                      workspace.levels[0].scratch.data(), hero, work, workspace);
+  }
+  return Outcome::success(std::move(values));
+}
 
 Result<AbstractBestResponseReport, TrainerError>
 evaluate_abstract_best_response(const CompiledGame &game, BucketPolicy policy,

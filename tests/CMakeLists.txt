@@ -790,6 +790,30 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_class_cache_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Phase 3 lane T (T1): smoke of the 3-seat trainer path on 3WAY50 with the
+  # 200/500/1000 buckets: census of visited, pruned and shortcut-skipped
+  # terminals, thread determinism, poisoned skipped units, shortcut on/off
+  # (board_kernels on a listed board set), the heads-up harness against the
+  # heads-up path, the checkdown tree in both preflop modes, the zero-sum
+  # identity through terminal3. SKIP (exit 77) without the three-way table.
+  add_executable(gtosd_preflop_blueprint_trainer3_path_tests
+    preflop_blueprint_trainer3_path_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_trainer3_path_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_trainer3_path_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_trainer3_path_tests)
+  add_test(NAME gtosd_preflop_blueprint_trainer3_path_tests
+    COMMAND gtosd_preflop_blueprint_trainer3_path_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000)
+  set_tests_properties(gtosd_preflop_blueprint_trainer3_path_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;trainer" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_trainer3_path_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests
     preflop_blueprint_monker_values_tests.cpp)
   target_link_libraries(gtosd_preflop_blueprint_monker_values_tests
