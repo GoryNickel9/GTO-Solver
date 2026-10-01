@@ -1,5 +1,5 @@
 param(
-  [string]$BuildDir = "out/build/windows-gui-release",
+  [string]$BuildDir = "out/build/windows-release",
   [string]$OutputDir = "out/production-dcfr-anti-specialization-audit",
   [string]$Specification = "benchmarks/fixtures/gto_plus_ahkhqh_101.json"
 )

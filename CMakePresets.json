@@ -40,16 +40,6 @@
       }
     },
     {
-      "name": "windows-gui-release",
-      "inherits": "windows-base",
-      "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "GTOSD_BUILD_GUI_PROTOTYPES": "ON",
-        "GTOSD_BUILD_DESKTOP_GUI": "ON",
-        "VCPKG_MANIFEST_FEATURES": "gui-prototypes"
-      }
-    },
-    {
       "name": "windows-asan",
       "inherits": "windows-base",
       "cacheVariables": {
@@ -61,7 +51,6 @@
   "buildPresets": [
     { "name": "windows-debug", "configurePreset": "windows-debug" },
     { "name": "windows-release", "configurePreset": "windows-release" },
-    { "name": "windows-gui-release", "configurePreset": "windows-gui-release" },
     { "name": "windows-asan", "configurePreset": "windows-asan" }
   ],
   "testPresets": [
@@ -73,11 +62,6 @@
     {
       "name": "windows-release",
       "configurePreset": "windows-release",
-      "output": { "outputOnFailure": true }
-    },
-    {
-      "name": "windows-gui-release",
-      "configurePreset": "windows-gui-release",
       "output": { "outputOnFailure": true }
     },
     {
