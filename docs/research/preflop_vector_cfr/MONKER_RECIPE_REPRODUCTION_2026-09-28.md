@@ -2044,9 +2044,10 @@ dei run bloccati a 30 × 4 (48.000) va rivisto confrontando 24.000 e 48.000, e i
 Le cifre HU della specifica che venivano dai run del pomeriggio (0,057 di distanza, preferenza suited uguale a MonkerSolver)
 sono confermate dai file (5.11).
 
-## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre mattina)
+## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre pomeriggio)
 
-Dalle prime prove di calibrazione (15:46 del 30) alla fine della coda notturna (07:52 del 1° ottobre). Rapporti e script
+Dalle prime prove di calibrazione (15:46 del 30) alla fine della coda notturna (07:52 del 1° ottobre); la chiusura, con la coda
+del giorno finita alle 16:28 del 1° ottobre, è in 10.13 (`day1/results.md`, `day1/checks.md`, `day1/queue.log`). Rapporti e script
 nella cartella temporanea della sessione, `scratchpad/correctness/`: `design.md` (progetto), `results.md` (run del 30),
 `coverage/plan.md` (piano di copertura, con i cinque studi `river_key_turn.md`, `bets_raises.md`, `shared_components.md`,
 `seeds_variants.md`, `rake.md` e la critica `critic.md`), `night2/results.md` e `night2/checks.md` (coda notturna),
@@ -2058,6 +2059,10 @@ estrapolazione).
 
 **In breve.**
 
+- **Chiusura del 1° ottobre, 16:28 (10.13): la batteria HU è chiusa con 0 FAIL** [V]. Dopo l'estensione fino a 256.000 B2L e
+  B1L passano (0,760 % e 1,519 % del piatto), e passa anche il gioco nuovo HU19_B1L (8,495 % a 64.000, pendenza −0,76), con il
+  criterio 3 rivisto con l'utente verso le 10:30, prima dei risultati: discesa tardiva al posto del fit del pavimento. Il terzo
+  parere con la DLL dell'utente (S2-DLL) passa in tutte le parti. I punti qui sotto sono lo stato delle 08:00.
 - **Nessun errore del motore**: 0 FAIL in tutta la batteria [V].
 - Sui giochi senza perdita il percorso di codice di HU50 porta la NashConv fisica esatta verso 0 senza pavimento: V2 (preflop
   libero, river esatto) **0,0014 % del piatto a 32.000**; V2L (preflop bloccato, river esatto) **0,059 % a 448.000**, sotto la
@@ -2066,7 +2071,7 @@ estrapolazione).
   indipendenti S1-S6, S5a e l'arbitro S3), T4 (rake: V2Z, V2R, V2R5, U1-U3), T5 (seed e determinismo), T6, D6, e in T2 B0L e
   B0M [V].
 - **INCONCLUSIVE**: B2L e B1L (T2), solo sul criterio 3, il pavimento stimato con un fit a + b T^-p sugli ultimi cinque
-  snapshot; trend, componenti, controllo e strumento passano. Estensione in corso oggi [V] (10.5).
+  snapshot; trend, componenti, controllo e strumento passano. Estensione in corso oggi [V] (10.5). Poi **PASS** (10.13).
 - **Provenienza (D6)**: gli eseguibili che hanno prodotto i risultati HU50 (`bin_rake`) e quelli dei certificati (`c123`)
   danno su HU50 risultati identici bit per bit, quindi i certificati coprono i risultati HU50 [V sui casi provati, I per il
   resto] (10.9).
@@ -2405,9 +2410,11 @@ Dalla sezione 6 del piano di copertura (`coverage/plan.md`), aggiornata con i ri
    ne certifica solo l'aritmetica (S3, che include HU50 con il suo cap, e U1). In V2R5 il cap morde solo preflop.
 5. **Quello che sta sotto la risoluzione dei run**: un errore il cui effetto ai nodi postflop bloccati è più piccolo della
    NashConv finale non si vede. L'estensione ha abbassato la soglia allo 0,059 % (V2L) e allo 0,553 % (V1L) del piatto; i
-   giochi B sono fra il 2,0 e il 4,4 % a 64.000. Un secondo seed non cambia questo limite.
+   giochi B sono fra il 2,0 e il 4,4 % a 64.000. Un secondo seed non cambia questo limite. Aggiornamento del 1° ottobre
+   (10.13): a 256.000 B2L è allo 0,760 % e B1L all'1,519 %; HU19_B1L è all'8,495 % a 64.000.
 6. **Errori comuni ai riferimenti indipendenti**: il Python, scritto dalle regole, potrebbe condividere un malinteso delle
    regole con il C++. Mitigazione: la DLL dell'utente come terzo parere (S2-DLL, decisa per oggi). È un indizio, non una prova.
+   S2-DLL è girato il 1° ottobre alle 09:19-09:23: tutto PASS (10.13).
 7. **Il determinismo non è la correttezza**: D1-D6 provano riproducibilità e uguaglianza dei build, nient'altro.
 8. **Se le nostre regole e convenzioni sono quelle di MonkerSolver** (dettagli del rake, unità dispari, size postflop,
    astrazione di MonkerSolver): non è una domanda di correttezza del solver e la NashConv non la vede. La scala sopra il tris
@@ -2463,4 +2470,131 @@ Dalla sezione 6 del piano di copertura (`coverage/plan.md`), aggiornata con i ri
 Non eseguiti, dal piano: V2L15 e V2LT15 (costo del raggruppamento della chiave "turn" a parità di livelli), V2-s2, S5b, S5a
 su HU50. Guardie ancora armate oggi: `ext/stop_ext_1958.ps1` e `night2/stop_night2_1958.ps1` (CANCEL alle 19:40, kill alle
 19:58 dei processi che corrispondono ai loro schemi).
+
+### 10.13 Chiusura del 1° ottobre (pomeriggio): verdetti finali di T2, S2-DLL, archivio; la batteria HU è chiusa
+
+Coda `day1/queue_day1.sh` (in coda alle 09:51:29, finita alle 16:28:02): eseguibili `c123`, driver congelato
+`out/frozen/run_correctness_v2.sh`, 3 thread per run e al massimo 6 in tutto, controllo della memoria libera prima di ogni run
+lungo. Riepilogo automatico in `day1/results.md`, scritto da `summarize_day1.py`, che importa le regole di
+`summarize_night2.py` senza modificarle; controlli automatici in `day1/checks.md` [V].
+
+**Il criterio 3 di T2, rivisto con l'utente verso le 10:30.**
+
+- **Prima** (10.1): il pavimento stimato con il fit a + b T^-p sugli ultimi cinque snapshot, con a <= 0,1 × NC(Tmax) o
+  negativo.
+- **Perché è cambiato**: applicato all'estensione di V2L, lo stesso fit legge un pavimento (a = +0,00053 a, il 30 % della
+  NashConv a 448.000) su un run che è sceso sotto lo 0,10 % del piatto senza fermarsi (10.3). Un fit con una sola potenza
+  scambia per pavimento la pendenza che si addolcisce quando il rumore del campionamento dei board comincia a pesare [I sulla
+  causa].
+- **Ora**: criterio 3 = **discesa tardiva**, pendenza log-log fra Tmax/4 e Tmax <= −0,35 (un pavimento la porterebbe verso 0).
+  Il fit del pavimento si riporta e non decide. Gli altri criteri restano; il riepilogo del giorno aggiunge due letture più
+  severe:
+  - il criterio 2 chiede che gain_lower del CO e del BTN scendano anche a ogni raddoppio oltre 64.000 (64.000 → 128.000 →
+    256.000);
+  - ogni run è giudicato anche sulle sole righe fino a 64.000, con le stesse regole.
+- **Quando**: la regola è cambiata prima dei risultati. Le estensioni sono finite alle 13:42 e alle 14:02, HU19_B1L alle
+  16:28 [V, `queue.log` e il commento in `summarize_day1.py`].
+- **Con la regola vecchia** [V, fit riportati in `results.md`]:
+  - B2L passerebbe comunque: a = −0,0071 a sugli snapshot 64.000-256.000;
+  - B1L no: a = 0,0110 contro 0,1 × NC = 0,0046 a;
+  - HU19_B1L no: a = 0,1130 contro 0,0255 a.
+
+  Con la regola nuova B2L e B1L passano anche sulle sole righe fino a 64.000.
+
+**Verdetti** [V, `day1/results.md`]. NashConv postflop = gain_lower CO + BTN, in percentuale del piatto iniziale di 3a. I
+rapporti con il controllo a Tmax sono estrapolati [I]:
+
+| Run | Orario | NashConv postflop | Pendenza (criterio 1) | Discesa tardiva (criterio 3) | Controllo: fermo a; rapporto a 16.000; a Tmax [I] | Verdetto |
+|---|---|---|---|---|---|---|
+| B2L (river esatto), estensione | 09:51-13:42 | 0,13120 a (4,373 %) a 64.000 → **0,02280 a (0,760 %)** a 256.000 | −1,253 fra 8.000 e 256.000 | **−1,262** fra 64.000 e 256.000 | B2LG1: 8,114 a; 11,6 volte; circa 356 volte | **PASS** |
+| B1L (flop e turn esatti), estensione | 09:51-14:02 | 0,09389 a (3,130 %) a 64.000 → **0,04556 a (1,519 %)** a 256.000 | −0,603 fra 8.000 e 256.000 | **−0,522** fra 64.000 e 256.000 | B1LG1: 1,333 a; 5,9 volte; circa 29 volte | **PASS** |
+| HU19_B1L (forme complete dei piatti limpati), nuovo | 14:03-16:28 | 5,08699 a (169,6 %) a 250 → **0,25486 a (8,495 %)** a 64.000 | −0,760 fra 8.000 e 64.000 | **−0,722** fra 16.000 e 64.000 | HU19_B1LG1: 5,268 a; 7,6 volte; circa 20,7 volte | **PASS** |
+
+- **In tutti e tre** [V]:
+  - ogni snapshot PASS exact;
+  - le etichette dell'albero sono presenti: `check;bet_4;all_in`, `fold;call;raise_16;all_in` e, in HU19_B1L, anche
+    `check;bet_12;all_in` (B1L non ha rilanci, quindi solo la prima);
+  - nessuna pendenza locale sopra −0,2 dai 4.000, nessuna risalita;
+  - gain_lower del CO e del BTN in calo in ogni raddoppio;
+  - nessuna condizione di FAIL.
+- **B2L**: oltre 64.000 le pendenze locali diventano più ripide invece di addolcirsi (−1,18, −1,24, −1,30, −1,35 fino a
+  256.000). A 256.000 la NashConv è lo 0,570 % del piatto del flop (4a). A 4.000 il motore del river di riferimento dà valori
+  identici bit per bit a quello congiunto.
+- **B1L**: le pendenze locali vanno da −0,70 (4.000-16.000) a −0,49 (192.000-256.000), cioè verso il ritmo Monte Carlo −0,5 di
+  V1L (10.3) [I]. A 256.000 è l'1,139 % del piatto del flop.
+- **HU19_B1L**: gioco `HU19_B1_flopturn` (19a, 175 nodi, albero `d71ba6ee3c439917`, commit `3f4d0da`), flop e turn esatti
+  (`v1_flopturn_exact`).
+  - Aggiunge ai giochi B il `bet_12` non all-in dopo un bet-call al flop (donk compreso) e il `raise_16` al turn.
+  - Controllo HU19_B1LG1: turn a un id per board (`v1g_flopexact_turn1x1`), dalle 14:05 alle 14:44.
+  - Primo segmento PASS: capacità [302.544, 6.825.456, 206.415], 10.360.453.012 byte di stato come atteso, 162 righe
+    bloccate, picco 10,514 GB (limite 13,612), 0,095 s per iterazione.
+  - Ha aspettato la memoria dalle 13:46 alle 14:02 (servivano 10,5 + 3 GB liberi) ed è partito dopo la fine di B2L e B1L,
+    come da piano.
+  - Pendenze locali da −0,83 / −0,85 (8.000-24.000) a −0,60 (48.000-64.000).
+  - Livello (non è un criterio): 6,371 % del piatto del flop a 64.000, il più alto dei giochi B.
+- **Ripresa delle estensioni**: controllo automatico PASS alle 10:27:46 (B2L) e alle 10:31:03 (B1L). Ripresa da 64.000 con
+  l'identità del trainer della notte (`a60b8a0424f397ea`, `25e79c66292f0013`) [V].
+- **Ribasamento delle epoche dello sconto lazy** (a 65.535, 131.070 e 196.605): nessun gradino nelle pendenze locali. B2L
+  −1,18 sia fra 48.000 e 64.000 sia fra 64.000 e 96.000, B1L −0,58 contro −0,55 [V].
+
+**S2-DLL: terzo parere con la DLL dell'utente** [V]. Dalle 09:19 alle 09:23, `tools/independent/sd_dll_check.py` (commit
+`d0796f8`, sezione nel README di `tools/independent/`), uscite in `out/monker/correctness/independent/S2_dll/`.
+
+- **La DLL**: `equity_calculator.dll` del calcolatore dell'utente, compilata il 14/05/2026, SHA-256 `ab09c244…2fa985`.
+  - È caricata in sola lettura con ctypes: niente build e nessuna scrittura nel suo repository.
+  - Le chiamate usano sempre due combo singole, quindi l'enumerazione esatta. Le guardie a runtime escludono i rami Monte Carlo
+    e la risposta di ripiego 1/n.
+  - La distorsione nota del calcolatore sta nel Monte Carlo multiway in TypeScript (9.2), non nella DLL.
+- **Tutto PASS** (187 s, 2 processi):
+  - **R7**: i punteggi della DLL su tutti gli 8.347.680 insiemi di 7 carte hanno lo stesso ordine debole della tabella dei
+    ranghi del motore (752 livelli, 0 violazioni);
+  - **RV**: 1.000.000 di river casuali, 0 differenze di vincitore o di pareggio (fra questi 13.345 scala contro tris e 1.748
+    colore contro full);
+  - **PA**: 2.012 coppie preflop (2.000 casuali e 12 di bordo); le equity della DLL sono identiche bit per bit a
+    (2W + T) / 402.752 della tabella degli all-in;
+  - **PA2**: W, T e L uguali su tutte le 2.012 coppie.
+- **Mutazioni** (`--self-test`): lo scambio dei livelli adiacenti scala/tris dà 1 violazione in R7 e 22 differenze in RV. La
+  mutazione che lascia uguale 2W + T passa PA, come previsto, e fallisce PA2.
+- **Limiti**:
+  - la catena fino a tutte le 176.715 coppie è derivata (R7 + S1 + S2), non provata coppia per coppia con la DLL;
+  - che le due funzioni esportate corrispondano ancora ai sorgenti di oggi è inferito [I];
+  - resta un indizio indipendente, non una prova (10.10, punto 6).
+
+**Archivio su F:** con `archive_run.ps1`, una cartella alla volta, ognuna verificata attraverso la junction [V]:
+
+- **Mattina, 09:13-09:40** (`archive_1001/archive_1001.log`): 20 cartelle, circa 30,9 GB.
+  - I 18 run finiti e valutati: V1L, V2L, V2, V1LG, V1LG1, V2LG, V2LG1, V1L_s2, V2L_s2, V2Z, V2R, V2R5, B0L, B0LG1, B0M,
+    B0MG1, B2LG1, B1LG1.
+  - Più `smoke2` e `checks` (18,51 GB). C: libero da 251,1 a 280,4 GB.
+  - Il primo giro (09:13) si è fermato dopo V1L, già archiviata e verificata, perché un lettore teneva aperto il log; il secondo
+    (09:24) l'ha saltata in quanto junction.
+  - `smoke`, saltata alle 09:40 perché aperta da un `tail`, è una junction dalle 09:55, `R3` dalle 09:57 [V, elenco della
+    cartella; il loro log non è fra quelli letti].
+- **Pomeriggio, 16:31-16:42** (`archive_1001b/archive_hu.log`): i quattro run del giorno, circa 19,9 GB, tutti con rc 0.
+  - B2L 6,69 GB, B1L 3,79 GB, HU19_B1L 9,18 GB, HU19_B1LG1 0,24 GB.
+  - Prima di ogni cartella lo script controlla che `run.log` finisca con "done" e che nessun processo ne tenga aperto un file.
+  - C: libero da 250,0 a 268,9 GB, F: da 175,9 a 156,0 GB.
+- Restano su C: `buckets` e `independent`, che lo script non archivia per scelta.
+
+**Correzione di 10.12** [V, reflog di `origin/feat/monker-step1-checkdown`]: il ref remoto è stato aggiornato da due push, alle
+09:10:32 (fino a `5bc2a9c`) e alle 10:29:02 (fino a `0d7ef75`, che contiene questa sezione 10 fino a 10.12). Le "08:00" di 10.12
+sono l'ora della decisione, non del push [I].
+
+**Quadro finale: la batteria HU è chiusa, 0 FAIL** [V per gli esiti; sezioni 10.3-10.9 e questa]:
+
+| Parte | Esito |
+|---|---|
+| V2, V2L | PASS; V2L passa anche il livello G1 dopo l'estensione (0,059 % del piatto a 448.000) |
+| V1L | G2-G5 PASS, G1 non raggiunto: 0,553 % a 448.000, al ritmo Monte Carlo (circa 14 milioni di iterazioni per lo 0,10 % [I]); nessuna condizione di FAIL |
+| T1 (A1-A5, tre rafforzamenti) | PASS |
+| T2 (B0L, B0M, B2L, B1L, HU19_B1L) | PASS |
+| T3 (S1, S2, S3, S4 su HU50, S5a, S6) e S2-DLL | PASS; S4 su HU6_all INCONCLUSIVE per costruzione (nessun riepilogo del motore da confrontare) |
+| T4 (U1-U3, V2Z, V2R, V2R5) | PASS |
+| T5 (seed 2, D1-D5), T6 (P2-V0), D6 | PASS |
+
+- Resta valido l'elenco di quello che non si può certificare (10.10). Non eseguiti, e non necessari per chiudere: V2L15,
+  V2LT15, V2-s2, S5b, S5a su HU50 (10.12).
+- **Risposta alla domanda di 10.1**, nei limiti di 10.10: sui giochi senza perdita lo stesso percorso di codice di HU50 va verso
+  l'equilibrio del gioco che gli diamo. Vale con e senza rake, con puntate e rilanci sotto l'all-in su flop, turn e river, e
+  nessuna misura mostra un pavimento [V per le misure; I per l'estensione a HU50, la cui astrazione è con perdita].
 
