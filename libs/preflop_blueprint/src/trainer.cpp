@@ -448,8 +448,9 @@ struct Trainer::Workspace {
   std::array<std::uint64_t, 3> terminals_pruned{};
   std::array<std::uint64_t, 3> terminals_shortcut{};
 
-  // scratch_vectors hands-sized vectors per level: 3 on the heads-up path, 6
-  // on the 3-seat path (five 3-active masses, then the D3 of a hero node).
+  // scratch_vectors hands-sized vectors per level: 3 on the heads-up path, 4
+  // on the 3-seat path (a terminal's D3 or the harness's three all-in masses,
+  // then the D3 of a hero node; the kernels' masses live in MultiwayScratch).
   explicit Workspace(const std::size_t depth, const std::size_t scratch_vectors = 3U) {
     levels.resize(depth);
     for (auto &level : levels) {
@@ -3031,10 +3032,6 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
     breakdown.unit_bytes += sizeof(Unit3) + (unit.reach[0].capacity() + unit.reach[1].capacity() +
                                              unit.reach[2].capacity() + unit.values.capacity()) *
                                                 sizeof(double);
-  for (const auto &list : unit_work_)
-    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
-  for (const auto &list : unit_skipped_)
-    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
   breakdown.class_cache_bytes = class_cache_ ? class_cache_->memory_bytes() : 0U;
   breakdown.class_values_bytes =
       (folded_payoff_.capacity() + ones3_.capacity() + root_values3_.capacity()) *
@@ -3046,6 +3043,11 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
   breakdown.layout_offset_bytes = layout_.offsets.capacity() * sizeof(std::uint64_t);
   breakdown.partition_bytes = partition_.unit_roots.capacity() * sizeof(std::uint32_t) +
                               partition_.is_top.capacity() + unit_of_node_.capacity() * 4U;
+  // 3-seat path: the units each hero runs or skips (empty on the heads-up path).
+  for (const auto &list : unit_work_)
+    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
+  for (const auto &list : unit_skipped_)
+    breakdown.partition_bytes += list.capacity() * sizeof(std::uint32_t);
   breakdown.board_list_bytes =
       board_list_.capacity() * sizeof(card_abstraction::BoardHistory) +
       (board_weights_.capacity() + board_cumulative_.capacity()) * sizeof(double) +

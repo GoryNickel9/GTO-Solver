@@ -170,7 +170,8 @@ pb::TrainingBoards read_boards_file(const std::filesystem::path &path) {
 
 // The 19,998 suit-canonical 5-card boards weighted by their orbit sizes (total
 // 376,992): exact for a checkdown tree, where only the five cards matter, and
-// for class rows (V9). Flop = the three lowest cards.
+// for class rows (V9). Flop = the three lowest cards, so the CLI accepts the
+// list only with --checkdown.
 pb::TrainingBoards canonical_river_board_list(const ca::BoardCatalog &catalog) {
   pb::TrainingBoards boards;
   boards.sample = false;
@@ -577,6 +578,11 @@ int main(const int argc, char **argv) {
       throw std::runtime_error("--hero-folded-shortcut off requires --validation");
     if (three_seat_harness && !validation)
       throw std::runtime_error("--three-seat-harness requires --validation");
+    // One history per 5-card set, the three lowest cards on the flop: exact only where the five
+    // cards alone matter (a checkdown tree); with postflop streets the flop, turn and river
+    // assignment would be biased.
+    if (canonical_river_boards && !checkdown)
+      throw std::runtime_error("--canonical-river-boards requires --checkdown");
     if (!pause_file.empty() && std::filesystem::exists(pause_file)) {
       // A pause file left by the last daily stop would pause the resumed run at once.
       std::filesystem::remove(pause_file);
@@ -629,6 +635,11 @@ int main(const int argc, char **argv) {
                                  "--certificate-out (heads-up evaluation only)");
       if (three_seat_harness)
         throw std::runtime_error("--three-seat-harness runs a heads-up game only");
+      // In class-cache mode the shortcut of a preflop fold is a board-free class value, which a
+      // walk of the subtree equals only in expectation (the trainer refuses the combination).
+      if (hero_folded_shortcut == false && preflop_terminals != pb::PreflopTerminals::BoardKernels)
+        throw std::runtime_error("--hero-folded-shortcut off on a 3-player game requires "
+                                 "--preflop-terminals board_kernels");
     } else if (!three_way_table_path.empty() ||
                preflop_terminals == pb::PreflopTerminals::BoardKernels ||
                (hero_folded_shortcut.has_value() && !three_seat_harness)) {
