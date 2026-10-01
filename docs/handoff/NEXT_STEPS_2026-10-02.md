@@ -1,6 +1,7 @@
 # Handoff per un agent coder: tutto quello che resta da fare (2 ottobre 2026)
 
-Scritto fra le 23:50 del 01/10 e le 00:10 del 02/10, in sola lettura (nessun run, build o test toccato). È un documento
+Scritto fra le 23:50 del 01/10 e le 00:10 del 02/10, in sola lettura (nessun run, build o test toccato); controllato e
+corretto alle 00:40 del 02/10 da una verifica indipendente (riquadro qui sotto, sezioni 4, T1-T4, T9, T10, T15, 6, 7). È un documento
 autosufficiente per chi non ha mai visto il progetto: leggere le sezioni 1-4 prima di toccare qualunque cosa, poi seguire
 i lavori della sezione 5 nell'ordine dato.
 
@@ -8,13 +9,19 @@ i lavori della sezione 5 nell'ordine dato.
 stima o proposta, non misurata. Le decisioni che spettano all'utente sono segnate **DECISIONE UTENTE** e raccolte nella
 sezione 7.
 
-> **Stato urgente alle 00:03 del 02/10.** La coda del run 3-way 1 **non è partita**: alle 00:00:17 il gate della memoria era
-> chiuso con 17.392.736 KB liberi contro i 18.874.368 richiesti; alle 00:03 i KB liberi erano 17.317.708 e alle 00:08
-> 17.280.224, con il gate ancora chiuso
-> [VERIFIED: `OUT1/queue.log`; `Get-CimInstance Win32_OperatingSystem`]. La coda aspetta da sola: ricontrolla la memoria ogni
-> 60 s e lo scrive nel log ogni 10 minuti. Partirà appena si liberano circa 1,5 GB. Serve che l'utente chiuda qualche
-> applicazione (il 01/10 la memoria la tenevano Brave, Claude, ChatGPT, Steam, Telegram e Discord [VERIFIED:
-> `MONKER_RECIPE_REPRODUCTION_2026-09-28.md` §9.7]). Gli orari di fine della sezione T1 slittano dello stesso ritardo.
+> **Stato alle 00:35 del 02/10 (aggiornato).** Il run 3-way 1 **è partito**. Alle 00:00:17 il gate della memoria era chiuso
+> (17.392.736 KB liberi contro i 18.874.368 richiesti) e lo era ancora alle 00:08; si è aperto alle 00:09:29 con 20.549.132 KB
+> liberi, e alle 00:09:30 è partito il runner del round 1 [VERIFIED: `OUT1/queue.log`]. Il trainer
+> `gtosd_preflop_blueprint_train.exe` è vivo dalle 00:09:30 (pid Windows 22792, circa 13,8 GB di working set) [VERIFIED:
+> `Get-CimInstance Win32_Process` alle 00:30].
+> - Le prime 500 iterazioni hanno preso 870,6 s di training, cioè **1,74 s per iterazione**, contro gli 1,5 s dello smoke
+>   [VERIFIED: evento `training_progress` in `OUT1/train.jsonl`]. Gli orari di T1 sono ricalcolati con questa velocità.
+> - L'impronta dell'albero nell'evento `start` di `OUT1/train.jsonl` è `fnv1a64:71abeabaab92fe56`, uguale a quella registrata
+>   nel referee: il punto "impronta" di T3 è già soddisfatto [VERIFIED].
+> - La decisione U1 (liberare memoria) non serve più.
+> - Dopo la scrittura, alle 00:23-00:25, in `WT` sono comparsi 4 commit nuovi su `feat/threeway-step2` (rimozione delle GUI
+>   desktop legacy, sezione 4). La parte A resta non committata [VERIFIED: `git log`, `git status` in `WT` alle 00:30].
+> - Gli script di pulizia esistono e i loro dry run sono stati verificati: comandi esatti in T15.
 
 ---
 
@@ -29,7 +36,7 @@ sezione 7.
   La batteria di correttezza HU è chiusa con 0 FAIL [VERIFIED: `DOCS/MONKER_RECIPE_REPRODUCTION_2026-09-28.md` §10.13].
 - **Il 3-way.** Il passo 2 a tre giocatori è la "fase 3", con la specifica in `DOCS/threeway/PHASE3_SPEC_2026-09-30.md`.
   - La fase 3a (kernel, percorso a 3 seggi del trainer, cache delle classi, CLI) è fatta, con il gate verde e il merge `238a41e`.
-  - Il primo run 3WAY50 è in coda dalle 00:00 del 02/10.
+  - Il primo run 3WAY50 è partito alle 00:09:30 del 02/10 (coda lanciata alle 18:11:54 del 01/10 con partenza dalle 00:00).
   - La fase 3b è la valutazione con la policy fissa ("parte A"), il V11 e il test del blocco. È scritta ma non compilata.
   - La fase 3c (parte B, migliore risposta completa) richiede un server.
 - **history7.** Le righe di bucket per storia (`HistoryBucketRows`) e la migliore risposta astratta esatta: l'utente ha deciso
@@ -79,13 +86,14 @@ sezione 7.
 
 | Cosa | Stato |
 |---|---|
-| `M`, `feat/monker-step1-checkdown` | HEAD `88118a6`, pulito. `origin/feat/monker-step1-checkdown` = `88118a6`. `main` = `df4ca99`, 135 commit dietro; `origin/main` = `77677b2` [VERIFIED: `git rev-parse`, `git rev-list`] |
+| `M`, `feat/monker-step1-checkdown` | HEAD `88118a6`, pulito. `origin/feat/monker-step1-checkdown` = `88118a6`. `main` = `df4ca99`, 135 commit dietro; `origin/main` = `77677b2` [VERIFIED: `git rev-parse`, `git rev-list`]. Dopo la scrittura HEAD è `dafcee2` (il commit di questo documento, non pushato), più la sua correzione |
+| Branch già cancellati | Alle 23:49 del 01/10 la sessione principale ha cancellato 13 branch locali uniti e 14 branch remoti uniti. Restano in locale `main`, `feat/monker-step1-checkdown`, `feat/threeway-step2`, `feat/solver-ui` e i 7 branch dei worktree da cancellare (T15); su origin restano `main` e `feat/monker-step1-checkdown` [VERIFIED: `git branch -a` alle 00:30; per i remoti si vedono solo i riferimenti locali] |
 | Tag | `history7-final` = `88118a6`: l'ultimo albero con history7 [VERIFIED: `git rev-parse history7-final`] |
-| `WT`, `feat/threeway-step2` | HEAD `2aa24d8`: `88118a6` più il commit del referee 3-way, non ancora nel branch principale. Parte A **non committata**: `trainer.hpp` +151, `trainer.cpp` +742/−1, `benchmarks/CMakeLists.txt` +7, `tests/CMakeLists.txt` +36. Non tracciati: `benchmarks/preflop_blueprint_policy_values.cpp` (1.354 righe), `tests/preflop_blueprint_policy_values_tests.cpp` (713), `tools/monker_compare/part_a_values.py` (226) [VERIFIED: `git status`, `git diff --stat`, `wc -l` in `WT`] |
-| Run 3-way 1 | Coda congelata `M/out/frozen/queue_3way50_15x4.sh` (sha256 `7581f0f8…`), lanciata alle 18:11:54 del 01/10. Alle 00:03 del 02/10 aspettava la memoria (riquadro in alto) [VERIFIED: `OUT1/queue.log`] |
+| `WT`, `feat/threeway-step2` | HEAD `2aa24d8`: `88118a6` più il commit del referee 3-way, non ancora nel branch principale. Parte A **non committata**: `trainer.hpp` +151, `trainer.cpp` +742/−1, `benchmarks/CMakeLists.txt` +7, `tests/CMakeLists.txt` +36. Non tracciati: `benchmarks/preflop_blueprint_policy_values.cpp` (1.354 righe), `tests/preflop_blueprint_policy_values_tests.cpp` (713), `tools/monker_compare/part_a_values.py` (226) [VERIFIED: `git status`, `git diff --stat`, `wc -l` in `WT`]. **Dopo la scrittura** (00:23-00:25 del 02/10) un'altra sessione ha aggiunto 4 commit: `921f424`, `1591a10`, `797a7d4`, `c2e9138`. Tolgono le GUI desktop legacy (`apps/gto_gui`, `apps/gui_qt_prototype`, `apps/gui_imgui_prototype`, preset `windows-gui-release`, feature vcpkg, due script F9) e collegano `tests/install_consumer` a `gtosd::storage`. HEAD è `c2e9138`; la parte A resta non committata e intatta [VERIFIED: `git log`, `git diff --stat 2aa24d8 c2e9138`, `git status` alle 00:30]. Il messaggio di `921f424` cita una decisione dell'utente del 02/10 sulla GUI [INFERRED: decisione non trovata nei file letti] |
+| Run 3-way 1 | Coda congelata `M/out/frozen/queue_3way50_15x4.sh` (sha256 `7581f0f8…`), lanciata alle 18:11:54 del 01/10. Alle 00:03 del 02/10 aspettava la memoria; il gate si è aperto alle 00:09:29 e il round 1 è partito alle 00:09:30 (riquadro in alto) [VERIFIED: `OUT1/queue.log`] |
 | Catene della fase 3b | `P3B/chain.sh` (build, v11, v1, cli) e `H7/h7_chain.sh` (configure, build, tests, smokes, v1). Annullate alle 23:37-23:38 del 01/10 con i file `P3B/chain.CANCEL` e `H7/h7.CANCEL`; nei log, "cancelled" alle 23:38:30 e 23:38:05 [VERIFIED: log e file]. Le ha annullate la sessione principale per proteggere il run [INFERRED: dal brief del task] |
 | Sandbox history7 | `WT/out/laneH/src` (= `2aa24d8` più la rimozione, albero LF) e `WT/out/laneH/base`. **`WT/out/laneH/build` non esiste**: la configure non è mai partita [VERIFIED: `ls`] |
-| Script di pulizia | `SP/cleanup/delete_data.ps1` e `SP/cleanup/post_delete.sh` **non esistono** alle 00:00 del 02/10 [VERIFIED: `find`]. Li sta preparando un altro passo [INFERRED] |
+| Script di pulizia | `SP/cleanup/delete_data.ps1` e `SP/cleanup/post_delete.sh` **non esistono** alle 00:00 del 02/10 [VERIFIED: `find`]. Scritti alle 00:09-00:11; dry run ricontrollati alle 00:20 da una verifica indipendente: comandi in T15 [VERIFIED] |
 
 ---
 
@@ -111,10 +119,12 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
   - arresto quando le 18 chart non all-in cambiano meno di 0,008 fra due snapshot; minimo 16.000 iterazioni, tetto 48.000;
   - checkpoint e snapshot della policy ogni 16.000;
   - eseguibili `M/out/monker/bin_3way_step2` (build di `12fe441`), runner congelato in `M/out/frozen/threeway_step2_12fe441`.
-- **Fine attesa** [INFERRED: `MONKER_RECIPE` §9.7], a 1,5 s per iterazione (misurati a 15 × 4; ± 30 %), contando dalla partenza vera:
-  - 16.000 iterazioni in circa 7 ore;
-  - arresto atteso fra 24.000 e 40.000, cioè in 10-17 ore: il 02/10 fra le 10:30 e le 17:30 se fosse partito alle 00:00;
-  - tetto di 48.000 in circa 20 ore.
+- **Fine attesa** [INFERRED], a 1,74 s per iterazione, la velocità delle prime 500 iterazioni del run [VERIFIED:
+  `OUT1/train.jsonl`, 870,6 s]. Lo smoke a 15 × 4 aveva dato 1,5 s [VERIFIED: `MONKER_RECIPE` §9.7]. Si conta dalla partenza
+  delle 00:09:30:
+  - 16.000 iterazioni (primo checkpoint) in circa 7,7 ore, verso le 08:00 del 02/10;
+  - arresto atteso fra 24.000 e 40.000, cioè in 11,6-19,3 ore: il 02/10 fra le 11:45 e le 19:30 circa;
+  - tetto di 48.000 in circa 23 ore, verso le 23:30 del 02/10.
 
   Il costo dei checkpoint (1,3-4,5 minuti ciascuno secondo la specifica) non è misurato.
 - **Comandi in sola lettura** (Git Bash). Non usare `tail -f`: un lettore aperto ha già bloccato un archivio [VERIFIED:
@@ -131,8 +141,8 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
   L'eseguibile di training può bufferizzare lo stdout fino all'uscita [VERIFIED: `MEM/msvc-build-from-git-bash.md`]. Il
   progresso affidabile sono `run.log` e le cartelle `charts/it_N`.
 - **Accettazione.**
-  - `queue.log`: "memory gate open", poi "round 1: runner start".
-  - `run.log`: una riga ogni 4.000 iterazioni, cioè circa ogni 100 minuti [INFERRED].
+  - `queue.log`: "memory gate open", poi "round 1: runner start". Fatto alle 00:09:29-00:09:30 [VERIFIED].
+  - `run.log`: una riga ogni 4.000 iterazioni, cioè circa ogni 115 minuti a 1,74 s [INFERRED].
   - Alla fine: "run finished (PREFLOP_BLUEPRINT_TRAIN=STOPPED): queue done", oppure `ITERATION_LIMIT` al tetto, e `OUT1/policy.bin` presente.
 - **Comandi manuali, solo con l'OK dell'utente** (fermare il run cambia la roadmap):
   - `touch "$OUT1/QUEUE_CANCEL"`: la coda tiene presente `PAUSE`, il trainer scrive il checkpoint ed esce `PAUSED`, la coda termina.
@@ -159,8 +169,9 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
 4. **Annullamento rimasto.** Se esiste `OUT1/QUEUE_CANCEL` e l'utente vuole riprendere, toglierlo.
 5. **Checkpoint.** Controllare `ls -la "$OUT1/state.ckpt"`. Il checkpoint si scrive a 16.000 e 32.000, a ogni pausa e alla
    fine. Il runner passa `--resume` solo se `state.ckpt` esiste, e conta come già fatti gli snapshot presenti [VERIFIED: runner
-   congelato, righe 101-102 e 119]. Si perdono al massimo 16.000 iterazioni, circa 6,7 ore [INFERRED]. **Se il crash
-   avviene prima di 16.000 iterazioni non c'è `state.ckpt`**: non rilanciare da solo e chiedere all'utente. Un rilancio
+   congelato, righe 101-102 e 119]. Si perdono al massimo 16.000 iterazioni, circa 7,7 ore a 1,74 s [INFERRED]. **Se il crash
+   avviene prima di 16.000 iterazioni (prima delle 08:00 circa del 02/10) non c'è `state.ckpt`**: non rilanciare da solo e
+   chiedere all'utente. Un rilancio
    ripartirebbe da 0 nella stessa cartella, sopra le chart già scritte, e questo caso non è stato provato [INFERRED].
 6. **Memoria.** Servono almeno 18.874.368 KB liberi e nessun trainer, altrimenti la coda aspetta e lo scrive nel log ogni 10
    minuti. Dopo un riavvio le applicazioni dell'utente possono tenere chiuso il gate: chiedergli di chiuderle.
@@ -195,6 +206,8 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
 - **Impronta dell'albero (after_run A.2).** Il referee `WT/tools/independent/sd_referee.py` fissa `fnv1a64:71abeabaab92fe56`
   per `3WAY50_donk_rake25cap2`. Bisogna confermare che l'evento di partenza in `OUT1/train.jsonl` riporti la stessa
   impronta. Se diverge, correggere `RECORDED_TREE_FINGERPRINTS` e committare in `WT` [VERIFIED: `P3B/after_run.md` A.2].
+  **Già fatto alle 00:30:** la prima riga di `OUT1/train.jsonl` (`"event": "start"`) riporta
+  `"tree_fingerprint": "fnv1a64:71abeabaab92fe56"`, uguale al valore registrato; nessun commit serve [VERIFIED].
 - **Accettazione.** Run finito con `STOPPED`, oppure con `ITERATION_LIMIT` riportato come tale; albero 54/54; impronta confermata.
 
 ### T4. Fase 3b, parte A: build e verifiche (gate 3b, prima metà)
@@ -232,7 +245,16 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
      Atteso: entro 1e-9 dall'aggregato esatto di `BestResponseEvaluator`.
   7. Referee nella ctest (A.1). Atteso 2/2 (`SD_REFEREE=PASS`, `SD_REFEREE_SELFTEST=PASS`):
      `bash $SPU/threeway/phase3a/final_locked.sh ref3b final_ctest.cmd -R gtosd_preflop_blueprint_independent_referee -j 1`.
-     Prima controllare che `grep -c 3WAY50_donk.json $B/tests/CTestTestfile.cmake` dia 1 [VERIFIED: `P3B/after_run.md` A.1].
+     Prima controllare che il test del referee sia registrato con la famiglia 3WAY50 (serve la riconfigurazione di CMake del
+     passo 2):
+     ```bash
+     grep '^add_test("gtosd_preflop_blueprint_independent_referee"' $B/tests/CTestTestfile.cmake | grep -c 3WAY50_donk.json   # atteso 1
+     ```
+     **Correzione.** `P3B/after_run.md` A.1 (e la versione precedente di questo documento) diceva che
+     `grep -c 3WAY50_donk.json $B/tests/CTestTestfile.cmake` deve dare 1. Non distingue niente: dà già 1 oggi, perché
+     `3WAY50_donk.json` compare anche negli argomenti del test `gtosd_preflop_blueprint_fixture_schema`. Dopo la
+     riconfigurazione darà 2. Il comando sopra dà 0 oggi e 1 a registrazione fatta [VERIFIED: `CTestTestfile.cmake` del
+     01/10 13:46 e `tests/CMakeLists.txt` righe 458 e 1086 in `WT`].
   8. Smoke della CLI: `REQUIRE_TRAINER=0 bash $SPU/threeway/phase3b/chain.sh cli`. Fa la parte A campionata su 2 flop con
      arresto e ripresa, poi `monker_in_our_game.py` e `part_a_values.py --check`, che devono uscire con 0. Log in
      `P3B/chain.log` [VERIFIED: `P3B/chain.sh`].
@@ -413,6 +435,17 @@ fa sì che i commit 1 e 3 **cancellino la parte A** da quei tre file [INFERRED d
   Cambia l'ordine concordato, quindi va **detto all'utente prima** (R9).
 
 **Comune a (i) e (ii):**
+- **I 4 commit GUI del 02/10 (sezione 4).** La sandbox `WT/out/laneH/src` resta a `2aa24d8`, senza quei commit. I file toccati
+  dai commit GUI e quelli della rimozione di history7 sono disgiunti, quindi `copy_and_add` e `stage_from_sandbox` non
+  annullano la rimozione della GUI [VERIFIED: elenco dei file di `removal_full.patch` e di `REMOVAL_DELETED_FILES.txt` contro
+  `git diff --stat 2aa24d8 c2e9138`]. `apply_to_worktree.sh check` però mostrerà 5 differenze attese, dovute ai commit GUI e
+  non alla rimozione:
+  - `DIFFERS` per `tests/install_consumer/CMakeLists.txt`, `tests/install_consumer/main.cpp` e
+    `tools/run_production_dcfr_anti_specialization_audit.ps1`;
+  - `tools/run_f9_benchmarks.ps1` e `tools/verify_f9_install.ps1` fra i file della sandbox assenti in HEAD.
+
+  Sono le sole differenze ammesse in più [INFERRED: dalla lettura del ramo `check` dello script]. Se nel frattempo `WT` riceve
+  altri commit, rifare il confronto dei file.
 - Prima di ogni commit, il grep dei riferimenti pendenti (schema in `P3B/review_removal.md` §5) sul worktree deve essere vuoto.
 - Se `patch` fallisce per i fine riga (il checkout è CRLF per alcuni file, i patch sono LF), fermarsi e applicare a mano
   [INFERRED].
@@ -449,6 +482,9 @@ ancora la chiave come dato: non toccarla, dirlo all'utente [VERIFIED: `P3B/revie
   git -C $M merge --no-ff feat/threeway-step2 -m "Merge phase 3b: part A (V11), 3-way referee, history7 removal"
   git -C $M diff feat/threeway-step2 HEAD -- libs include benchmarks tests tools   # deve essere vuoto
   ```
+- **Contenuto del merge.** Oggi `feat/threeway-step2` porta anche i 4 commit della rimozione delle GUI desktop
+  (`921f424`..`c2e9138`, sezione 4) [VERIFIED: `git log`]. Il messaggio del merge deve citarli, e l'utente deve saperlo
+  prima del merge, perché per il resto del codice legacy ha detto "non ancora" (T15).
 - **Vincoli.**
   - Il merge è sicuro anche con un training attivo, perché i run usano copie congelate [INFERRED: R3].
   - **Niente push** finché l'utente non lo chiede (R10).
@@ -464,8 +500,8 @@ ancora la chiave come dato: non toccarla, dirlo all'utente [VERIFIED: `P3B/revie
 
   L'evento di partenza deve riportare righe 2.681, `outside_range_rows` 1.688 e `fallback_rows` 5. Le righe di ripiego si
   allenano.
-- **Costo [INFERRED].** 24.000 × 1,5 s ≈ 10 ore (`MONKER_RECIPE` §9.7 "Cosa resta" 3), con picco di 14,8 GB. La specifica
-  stimava 13-30 ore prima della misura.
+- **Costo [INFERRED].** 24.000 × 1,5 s ≈ 10 ore (`MONKER_RECIPE` §9.7 "Cosa resta" 3), con picco di 14,8 GB. Alla velocità
+  delle prime 500 iterazioni del run 1 (1,74 s) sono circa 11,6 ore. La specifica stimava 13-30 ore prima della misura.
 - **Trappola [VERIFIED].** Il runner congelato espande `$TRAIN_ARGS` **senza virgolette** (`run_step2_continuous.sh` congelato,
   riga del comando del trainer), e `MONKER3` contiene spazi ("Short Deck", "Symmetrical Chart"). Un `--lock-charts "<MONKER3>"`
   dentro `TRAIN_ARGS` verrebbe spezzato. Il comando di B.5 (`--lock-charts \"$MONKER\"`) va quindi corretto: i test del
@@ -540,7 +576,8 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
   - la sandbox della rimozione e le due review (`P3B/removal_note.md`, `review_removal.md`, `review_partA.md`);
   - l'audit di pulizia (`P3B/cleanup_audit.md`);
   - le catene annullate alle 23:38;
-  - il gate della memoria chiuso alle 00:00 del 02/10.
+  - il gate della memoria chiuso alle 00:00 del 02/10 e aperto alle 00:09:29, con la partenza del run 1 alle 00:09:30;
+  - la pulizia (T15) e i 4 commit GUI in `WT` (sezione 4).
 - **Tabella di stato.**
   - La riga "Gate di accettazione" parla ancora di "best response esatta dentro l'astrazione <= 0,03 a" [VERIFIED:
     `PROGRESS_LOG.md` §1]: va aggiornata con T16.
@@ -566,26 +603,86 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
   - circa 234 GB su F:: `hierarchy32`, `history7_optimized`, `hu40_history7_solve`, `matrix`, `suite`, `monker/correctness`, gli `smoke_*`;
   - il worktree Codex: 73,6 GB su C:;
   - i build vecchi: circa 13 GB;
-  - 20 branch locali uniti.
+  - 20 branch locali: 17 uniti e 3 di ricerca archiviati dai tag `archive/research/*`.
+- **Decisioni dell'utente** del 01/10 verso le 23:48, più "Procedi" verso le 23:50 per i binari delle varianti [INFERRED: dal
+  brief della sessione principale, non trovate nei file]:
+  - F:, cartelle intere: history7 e suite (`hierarchy32`, `history7_optimized`, `hu40_history7_solve`, `matrix`, `suite`), i
+    test di correttezza (`monker/correctness`), i vecchi smoke (`monker/smoke_continuous`, `smoke_policy_snapshots`,
+    `smoke_policy_snapshots_g1`, `monker/step2/smoke`, `monker/step2/smoke2`);
+  - F:, varianti: in ogni run di `monker/variants` tranne `HU50_m30x4_rake25`, `HU50_g1_rake` e `HU50_lock_all_m30x4_rake25`
+    (tenuti interi), solo i binari: `*.ckpt`, `policy.bin` e gli altri `*.bin` sopra 1 MB. Chart, json, txt e log restanti
+    rimangono;
+  - C:: il worktree Codex e i build e le cartelle vecchie (circa 25 GB). Sono 24 alberi `out/build/*` stantii, i 4 worktree in
+    `C:/tmp`, i 2 worktree `wf_da8b89e2-b70-*`, `M/.tmp`, 29 cartelle legacy e P9 e i 1.712 file sciolti in `M/out`;
+  - branch: 13 locali e 14 remoti già cancellati alle 23:49 (sezione 4). Restano i 7 branch dei worktree, per `post_delete.sh`.
+- **Script**, in `SP/cleanup`, ricontrollati alle 00:20 del 02/10 da una verifica indipendente:
+  - **`delete_data.ps1`, lo esegue l'utente.**
+    - Contiene 1.888 percorsi espliciti misurati alle 00:05:15. Prima di cancellare, ogni elemento viene ricontrollato:
+      radice ammessa, nessun percorso protetto, nessuna junction attraversata, dimensione e data invariate, nessun file
+      tracciato da git, nessun processo che lo nomina.
+    - Dry run con `-UnlinkInnerJunctions`: 1.848 elementi OK, 445,34 GB in unità di 2^30 byte (F: 349,01, C: 96,33), 0
+      rifiutati.
+    - I 40 elementi di `benchmarks/results` (6,8 GB) restano fuori salvo `-IncludeBenchmarkResults`.
+    - I 64 binari delle varianti coincidono, per percorso e dimensione, con un elenco indipendente di F:; i tre run tenuti e
+      `step2/HU50` non compaiono [VERIFIED].
+  - **Il worktree Codex contiene 2 junction** verso `M/out/preflop_blueprint_resources` (usata dal run 1) e
+    `M/out/preflop_blueprint_buckets_200_500_1000`.
+    - Senza `-UnlinkInnerJunctions` lo script rifiuta quell'elemento.
+    - Con l'opzione toglie prima le 2 junction con `cmd /c rmdir` (senza `/s`). Poi controlla che le destinazioni esistano
+      ancora, altrimenti si ferma. Cancella la cartella solo se non resta nessuna junction [VERIFIED: lettura dello script e
+      dry run].
+  - **`post_delete.sh`, lo esegue la sessione principale** dopo la cancellazione dell'utente. Non cancella dati:
+    - toglie con `cmd /c rmdir` le 34 junction di `M/out` che puntano alle cartelle cancellate su F:, solo se la destinazione
+      non esiste più e F: è collegato;
+    - lancia `git worktree prune` solo se i worktree da potare sono esattamente i 7 attesi;
+    - cancella i 7 branch: `-d` per i 4 uniti, `-D` per i 3 di ricerca solo se il tag `archive/research/*` punta allo stesso
+      commit.
+
+    Dry run delle 00:19: 34 junction tenute (destinazioni ancora presenti), 0 worktree da potare, 7 branch bloccati dai loro
+    worktree. È l'esito atteso prima della cancellazione [VERIFIED].
 - **Procedura.**
-  1. Quando esistono, leggere per intero `SP/cleanup/delete_data.ps1` e `SP/cleanup/post_delete.sh` (alle 00:00 del 02/10 non
-     esistevano). Dare all'utente il comando, per esempio
-     `powershell -NoProfile -ExecutionPolicy Bypass -File <SP>\cleanup\delete_data.ps1`, e poi `bash <SP>/cleanup/post_delete.sh`.
-     **Li esegue l'utente, non l'agente** (R4).
-  2. Mai mentre un run scrive o un archivio è in corso [INFERRED].
-  3. Dopo, verificare con l'utente: `git worktree list`, nessuna junction rotta sotto `M/out` (`cmd /c dir /AL /S` in sola
-     lettura), spazio libero su C: e F:, il viewer HU50 che legge ancora `charts/**`.
+  1. L'utente, in Windows PowerShell: prima il dry run, poi la cancellazione, che chiede di scrivere `YES`. Log in
+     `SP/cleanup/delete_data.log`.
+     ```powershell
+     powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\GORYNI~1\AppData\Local\Temp\claude\C--Users-GoryNickel-Documents-GitHub-GTO-Solver\94e439a5-4749-4983-9219-1f8b6fb59a5f\scratchpad\cleanup\delete_data.ps1" -WhatIf -UnlinkInnerJunctions
+     powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\GORYNI~1\AppData\Local\Temp\claude\C--Users-GoryNickel-Documents-GitHub-GTO-Solver\94e439a5-4749-4983-9219-1f8b6fb59a5f\scratchpad\cleanup\delete_data.ps1" -UnlinkInnerJunctions
+     ```
+     Aggiungere `-IncludeBenchmarkResults` solo se l'utente vuole cancellare anche `benchmarks/results`, che non rientra nei
+     "circa 25 GB" approvati [INFERRED]. `-SkipGroup <nome>` salta un gruppo.
+  2. Un elemento modificato dopo le 00:05:15 viene rifiutato. In quel caso la sessione principale rilancia `measure.ps1`
+     (sola lettura) e `python gen.py`, poi di nuovo il dry run. Lo stesso vale per una cartella cancellata solo in parte.
+  3. Dopo la cancellazione, la sessione principale lancia `post_delete.sh`, prima con `-n`:
+     ```bash
+     bash /c/Users/GORYNI~1/AppData/Local/Temp/claude/C--Users-GoryNickel-Documents-GitHub-GTO-Solver/94e439a5-4749-4983-9219-1f8b6fb59a5f/scratchpad/cleanup/post_delete.sh -n
+     bash /c/Users/GORYNI~1/AppData/Local/Temp/claude/C--Users-GoryNickel-Documents-GitHub-GTO-Solver/94e439a5-4749-4983-9219-1f8b6fb59a5f/scratchpad/cleanup/post_delete.sh
+     ```
+  4. **Quando.** Nessun elemento della lista è letto o scritto dal run 1 [VERIFIED: percorsi protetti nello script e controllo
+     dei processi nel dry run]. Si può lanciare durante il run, mai durante un archivio su F:, e meglio fuori dai minuti del
+     checkpoint a 16.000 (verso le 08:00) [INFERRED].
+  5. Dopo, verificare con l'utente:
+     - `git worktree list`;
+     - il riepilogo di `post_delete.sh`, con le junction tolte e nessuna riga `UNLISTED`;
+     - lo spazio libero su C: e F:;
+     - il viewer HU50, che legge ancora `charts/**`.
+
+     Per le junction non usare `cmd /c dir /AL /S` su `M/out`: può attraversare le junction e leggere tutto F:
+     [INFERRED].
 - **Decisioni che restano (DECISIONE UTENTE).**
   1. **Binari di `out/monker/step2/HU50` su F:**: 7,3 GB di `state.ckpt` e `policy.bin`. Servono solo a riprendere o
      rivalutare il run; il viewer legge solo `charts/` [VERIFIED: audit §4.1].
-  2. **Fast-forward di `main` e `origin/main`.** `main` (`df4ca99`) è 135 commit dietro il branch di integrazione,
+  2. **Fast-forward di `main` e `origin/main`.** `main` (`df4ca99`) era 135 commit dietro il branch di integrazione alla
+     scrittura (di più dopo i commit di questo documento),
      `origin/main` è `77677b2` [VERIFIED: `git rev-list`]. Il fast-forward locale si fa con l'OK; quello su origin è un push
      dell'utente.
   3. **Rimozione del codice legacy** (libs `isomorphism`, `solver`, `postflop`, ..., `apps/gto_*`, test e strumenti legacy;
      audit §3.1-3.5): l'utente ha detto **"non ancora"** [INFERRED: dal brief del task, non trovato nei file]. Non toccarlo.
+     Eccezione già avvenuta: le GUI desktop, tolte in `WT` dai 4 commit del 02/10 (sezione 4), secondo il messaggio di
+     `921f424` su decisione dell'utente.
   4. **`docs/specifications/`** (17 file), il README e la ROADMAP del prodotto legacy. Descrivono il contratto "HU postflop
      esatto" che l'utente mantiene [VERIFIED: audit §3.5]. Chiedere.
   5. **Le sandbox `WT/out/laneH` e `WT/out/review3b`**, dopo T9 e T5 [INFERRED].
+  6. **`benchmarks/results`** (6,8 GB, non tracciato e ignorato da git [VERIFIED: `git ls-files`]): fuori dalla pulizia salvo
+     `-IncludeBenchmarkResults`.
 
 ### T16. Criteri di accettazione del prodotto (proposta da far approvare)
 
@@ -662,12 +759,12 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
 
 | Quando | Macchina | Agente, senza macchina |
 |---|---|---|
-| 02/10, dalla partenza del run 1 alla fine (circa 10-17 ore dopo la partenza) | Solo il run 1 (T1). Il run è fermo finché la memoria non si libera | T12 (proposta della batteria), bozza di T16, voce del diario del 01/10 sera (T14), copia senza spazi delle chart e bozza della coda del blocco (T11), variante (i) di `apply_to_worktree` (T9b) |
+| 02/10, dalla partenza del run 1 (00:09:30) alla fine (circa 11,6-19,3 ore dopo, fra le 11:45 e le 19:30 circa; tetto verso le 23:30) | Solo il run 1 (T1) | T12 (proposta della batteria), bozza di T16, voce del diario del 01/10 sera (T14), copia senza spazi delle chart e bozza della coda del blocco (T11), variante (i) di `apply_to_worktree` (T9b) |
 | Fine del run 1 (02/10) | T3 (minuti), T4 (circa 1-1,5 ore), T5 D.2 e D3 con nuova build e V11, T6, T7 (0,9-2 ore) | Rapporto del gate 3b |
 | Dopo T7 (02/10 sera, giorno libero, se l'utente è d'accordo) | Lancio del test del blocco (T11, circa 10 ore) | — |
 | Durante il test del blocco (`-j 2`, almeno 4 GB, niente sopra 2 GB) | T9a (sandbox: configure, build, test, V1 hu10), T5 D.1 (mutazioni) | T14 |
 | 02/10, 20:00-24:00 | T8 (archivio del run 1), mai durante un salvataggio del run del blocco | — |
-| 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00) | Fine del blocco [INFERRED: circa 02:00-08:00 se partito fra le 16 e le 22], parte A sul blocco (2 × 1-2 ore), T9a ctest completa e V1 completo, T9b-c, T10 | Rapporti e diario |
+| 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00) | Fine del blocco [INFERRED: 10-11,6 ore dopo la partenza a 1,5-1,74 s per iterazione, cioè circa 02:00-09:40 se partito fra le 16 e le 22], parte A sul blocco (2 × 1-2 ore), T9a ctest completa e V1 completo, T9b-c, T10 | Rapporti e diario |
 
 Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa prima di T11: va detto in modo esplicito.
 
@@ -675,7 +772,7 @@ Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa pri
 
 | # | Decisione | Lavoro |
 |---|---|---|
-| U1 | Liberare circa 1,5 GB di RAM perché il run 1 parta (chiudere applicazioni) | stato urgente, T1 |
+| U1 | ~~Liberare circa 1,5 GB di RAM perché il run 1 parta~~: non serve più, il gate si è aperto alle 00:09:29 | stato in alto, T1 |
 | U2 | Ora di partenza del test del blocco (sera del 02/10 oppure 00:00 del 03/10) | T11 |
 | U3 | Ordine di history7 rispetto al test del blocco, e variante (i) o (ii) dei commit | T9 |
 | U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c | T13 |
@@ -711,7 +808,9 @@ Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa pri
 10. **Numeri della parte A.** Il guadagno campionato è una stima per eccesso. Le SE pooled sono corrette solo con la patch D1.
     L'identità del rake non prova i kernel.
 11. **Memoria della macchina.** Le applicazioni dell'utente (Brave, Claude, ChatGPT, Steam, ...) possono tenere chiuso il gate
-    dei 18,87 GB. È successo il 01/10 alle 16:50 e il 02/10 alle 00:00.
+    dei 18,87 GB. È successo il 01/10 alle 16:50 e il 02/10 alle 00:00 (gate aperto alle 00:09:29).
+12. **`grep -c` sul `CTestTestfile.cmake`.** Il conteggio dei file di config sull'intero file non prova la registrazione del
+    referee 3-way, perché lo stesso file compare nel test dello schema delle fixture (T4, punto 7).
 
 ## 9. Fonti lette per questo documento
 
@@ -730,3 +829,7 @@ Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa pri
 - `docs/solver-ui/WEB_UI_PROTOTYPE_PROMPT.md` §0.1, §1, §2.
 - In sola lettura: `M/out/frozen/queue_3way50_15x4.sh`, `M/out/frozen/threeway_step2_12fe441/tools/monker_compare/run_step2_continuous.sh`,
   `OUT1/queue.log`; `git status`, `git log`, `git rev-parse` e `git worktree list` in `M` e in `WT`.
+- Verifica delle 00:15-00:40 del 02/10: `SP/cleanup/*` (script, manifest, log, dry run rieseguiti),
+  `P3B/cleanup_audit.md`, `OUT1/{queue.log,train.jsonl}`, `WT/tests/CMakeLists.txt`,
+  `WT/out/build/windows-release-suite/tests/CTestTestfile.cmake`, `H7/{apply_to_worktree.sh,removal_full.patch}`,
+  `git log 2aa24d8..c2e9138` e `git branch -a`.
