@@ -13,6 +13,7 @@ add_library(gtosd_preflop_blueprint
   src/traversal.cpp
   src/river_engine.cpp
   src/trainer.cpp
+  src/preflop_class_cache.cpp
   src/best_response.cpp
   src/policy_file.cpp
   src/certifier.cpp

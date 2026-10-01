@@ -458,6 +458,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_allin5x.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake5cap075.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY100_donk.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
@@ -744,6 +746,28 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     PROPERTIES LABELS "preflop_blueprint;research;monker;three_way")
   if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
     set_tests_properties(gtosd_preflop_blueprint_checkdown_classes_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
+  # Phase 3 (3-way step 2), V4 at the level of the preflop class cache
+  # (preflop_class_cache.hpp): census of the terms on the step-2 and
+  # checkdown-compiled 3WAY50 trees, tensors byte-identical to step 1's
+  # three_way_terminals, compute_reach and contract against step 1, and the
+  # C(30,5)/C(34,5) scale against a brute force over every board. Needs the
+  # complete three-player table (SKIP, exit 77, without the resources).
+  add_executable(gtosd_preflop_blueprint_class_cache_tests
+    preflop_blueprint_class_cache_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_class_cache_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_class_cache_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_class_cache_tests)
+  add_test(NAME gtosd_preflop_blueprint_class_cache_tests
+    COMMAND gtosd_preflop_blueprint_class_cache_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources)
+  set_tests_properties(gtosd_preflop_blueprint_class_cache_tests
+    PROPERTIES LABELS "preflop_blueprint;research;monker;three_way;phase3" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_class_cache_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
   add_executable(gtosd_preflop_blueprint_monker_values_tests
