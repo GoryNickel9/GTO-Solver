@@ -21,6 +21,17 @@ merge `238a41e` del 1° ottobre (9.7).
 | Arresto del passo 2 | Distanza media sotto 0,01 fra due salvataggi consecutivi delle chart (ogni 4.000 iterazioni) |
 | In pausa | Fasi 1 e 2 dei 35 minuti di HU40 sull'i3; la best response astratta veloce è progettata (piano del 28 mattina) ma non implementata |
 
+**Aggiornamenti del 1° e del 2 ottobre** [V, diario del 2026-10-01 notte - 2026-10-02].
+
+- **Ambito del prodotto** (utente, verso le 23:55 del 1° ottobre): "Il solver preflop, non va eliminato. Questo solver dovrà
+  avere sia il preflop che il postflop". Il prodotto è un solo solver con preflop e postflop: il solver preflop (passo 1 e
+  passo 2) non si toglie, e il codice legacy del postflop HU esatto resta finché non c'è una decisione di progetto con l'utente.
+- **history7 ritirato** (utente, sera del 1° ottobre): non lo usa HU50 con le righe per classe di board, che è lo standard.
+  L'ultimo albero con history7 ha il tag `history7-final` (= `88118a6`); la rimozione è pronta in una sandbox e rivista, ma non
+  ancora applicata né compilata. Con history7 si ritirano la suite HU10-HU40 e il criterio di accettazione della tabella (best
+  response esatta dentro l'astrazione ≤ 0,03 a), che per le righe per classe di board non si può calcolare. I criteri del
+  prodotto sono da proporre all'utente.
+
 ## 2. Cosa fanno gli altri solver (ricerche del 28 settembre)
 
 Tre ricerche con agenti e verifica avversaria sulle fonti primarie (33 affermazioni controllate, 10
@@ -2241,6 +2252,41 @@ per un checkpoint a 15 × 4 (regret e somme, cioè lo stato di 14,32 GB senza i 
 5. Il push del branch (12 commit locali al merge, più gli aggiornamenti dei documenti), quando l'utente lo chiede. La parte B (migliore risposta completa, NashConv) resta la
    fase 3c su un server, fuori dall'ambito ridotto.
 
+**Aggiornamento della notte fra il 1° e il 2 ottobre** [V: del run solo `queue.log`, `run.log` e `train.jsonl`, letti senza
+toccarlo; `threeway/phase3b/partA.md`, `review_partA.md`, `referee3.md` e `chain.log`; `gui_removal/removal.md`; il diario del
+2026-10-01 notte - 2026-10-02].
+
+- **Il run 1 è partito.** Alle 00:00:17 del 2 ottobre il gate della memoria era chiuso (17.392.736 KB liberi contro
+  18.874.368: l'utente aveva riaperto Brave); si è aperto alle 00:09:29 con 20.549.132 KB, dopo che l'utente ha richiuso Brave,
+  e il round 1 è partito alle 00:09:30. Albero `fnv1a64:71abeabaab92fe56` (7.225 nodi, 3.122 decisioni), stato 14.324.289.748
+  byte, 8 thread. Passo: 1,745 s per iterazione sulle prime 1.500 iterazioni, 1,686 di media a 2.500 (01:19:53) [I,
+  rapporti]: un po' più lento degli 1,499 s dello smoke. Fine prevista a 1,745 s [I, sessione principale]: 16.000 iterazioni
+  verso le 08:00 del 2 ottobre, l'arresto fra 24.000 e 40.000 verso le 11:50-19:40, il tetto di 48.000 verso le 23:40, prima
+  della prima pausa (3 ottobre alle 19:40).
+- **Parte A della fase 3b**, scritta fra le 22:00 e le 22:23 del 1° ottobre nel worktree della fase 3 e **non committata**:
+  `Trainer::evaluate_policy_values` (inizializzazione senza tabella dei regret, traversate a peso 0, valori raccolti per combo,
+  stato ripristinabile per blocchi di board), la CLI `gtosd_preflop_blueprint_policy_values` (flop fisici campionati, i 573
+  flop canonici esatti o una lista esplicita; errori standard; JSON che `monker_in_our_game.py` legge anche con tre posti),
+  `tools/monker_compare/part_a_values.py` e i test V11 (v11hucd, v11three, v11hu, v11smoke, v11state, v11huexact lungo). **Mai
+  compilata.** La review per lettura (22:50-23:20) non trova difetti di correttezza: l'EV per posto, la normalizzazione della
+  portata degli altri posti, i pesi del campionamento, l'identità del rake e la migliore risposta solo preflop sono quelli
+  della specifica. D1 (bassa): gli errori standard dell'EV aggregata, del guadagno preflop e della perdita delle chart trascurano il
+  termine del denominatore di uno stimatore a rapporto (le stime puntuali non cambiano; quello dell'EV diretta è esatto); patch
+  pronta, non applicata. D3 (bassa): la normalizzazione della portata a tre posti è coperta da un solo controllo; tre
+  controlli suggeriti.
+- **Arbitro del postflop 3-way**, commit `2aa24d8` su `feat/threeway-step2` (21:56): regole riscritte in Python dalle regole
+  del gioco, non dal codice del motore; `3WAY50_donk`, `_rake` (5 % / cap 3a), `_rake25cap2` (il gioco del run),
+  `_rake5cap075` e `_allin5x` tutti PASS con 0 errori di regola; i primi quattro hanno 7.225 nodi e 10.410 righe di payoff,
+  l'ultimo 7.126 e 10.236. I side pot sono irraggiungibili (stack uguali: lemma R9b, controllato su tutti i nodi); le 459
+  righe con unità dispari del gioco del run vanno ai posti più bassi come vuole la convenzione; otto mutazioni di prova del
+  dump del motore sono state prese tutte (review). La sua ctest va riconfigurata dopo il run.
+- **Catene annullate.** `chain.sh` (build, V11, V1 e CLI della parte A) e `h7_chain.sh` (rimozione di history7) avrebbero
+  compilato e provato dalle 00:00 accanto al run (-j 2, almeno 4 GB liberi); la sessione principale le ha annullate alle
+  23:37-23:38 per proteggere il run. Si rilanciano dopo il run (`after_run.md`; handoff T4-T9).
+- Nello stesso branch, dalle 00:23 alle 00:25 del 2 ottobre, quattro commit tolgono la vecchia GUI desktop (decisione
+  dell'utente); non toccano il codice del 3-way. Build e ctest dopo il run.
+- **Cosa resta**: i punti 1-5 qui sopra; il punto 2 riparte dalla prima build della parte A e da V11 (handoff T4-T7).
+
 ## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre pomeriggio)
 
 Dalle prime prove di calibrazione (15:46 del 30) alla fine della coda notturna (07:52 del 1° ottobre); la chiusura, con la coda
@@ -2253,6 +2299,14 @@ e review). Run in `out/monker/correctness/` (il rapporto del 30 copiato come `re
 e memoria in `benchmarks/monker/correctness/README.md`; riferimenti indipendenti in `tools/independent/`. Segni: **[V]** =
 verificato (misurato, o letto nei file dei run, nei log, nei rapporti o nel codice); **[I]** = inferito (ragionamento, stima o
 estrapolazione).
+
+**Dati dei run cancellati (2 ottobre)** [V, `delete_data.log`, `post_delete.log`, `ls`]. Il 2 ottobre fra le 00:48:55 e le
+00:53:13 l'utente ha cancellato i dati dei run della batteria su F: (`F:\GTO-Solver-out\out\monker\correctness`, 58,08 GiB), e
+alle 00:54:30 sono state tolte le 26 junction di `out/monker/correctness/` rimaste senza destinazione. Le conclusioni restano in
+questa sezione e nei rapporti citati sopra. Su C: restano `buckets/`, `independent/`, `results_2026-09-30.md` e i file `.out`
+(vuoti) dei run. Le due istantanee di riferimento usate dagli strumenti S1 e S5a di `tools/independent`,
+`out/monker/correctness/smoke/P1/charts/it_50` e `out/monker/correctness/smoke/P3/charts/it_50`, sono state salvate prima della
+cancellazione e rimesse al loro posto come cartelle vere su C:.
 
 **In breve.**
 
