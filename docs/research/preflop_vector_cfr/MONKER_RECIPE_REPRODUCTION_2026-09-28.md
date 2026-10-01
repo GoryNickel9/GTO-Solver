@@ -2044,3 +2044,423 @@ dei run bloccati a 30 × 4 (48.000) va rivisto confrontando 24.000 e 48.000, e i
 Le cifre HU della specifica che venivano dai run del pomeriggio (0,057 di distanza, preferenza suited uguale a MonkerSolver)
 sono confermate dai file (5.11).
 
+## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre mattina)
+
+Dalle prime prove di calibrazione (15:46 del 30) alla fine della coda notturna (07:52 del 1° ottobre). Rapporti e script
+nella cartella temporanea della sessione, `scratchpad/correctness/`: `design.md` (progetto), `results.md` (run del 30),
+`coverage/plan.md` (piano di copertura, con i cinque studi `river_key_turn.md`, `bets_raises.md`, `shared_components.md`,
+`seeds_variants.md`, `rake.md` e la critica `critic.md`), `night2/results.md` e `night2/checks.md` (coda notturna),
+`night2/t1t3/RESULTS.md` (T1, T3, U1-U3), `night2/t1a2/`, `night2/t1a2b/`, `night2/t1a1/` (rafforzamenti di T1, con rapporto
+e review). Run in `out/monker/correctness/` (il rapporto del 30 copiato come `results_2026-09-30.md`); giochi, tabelle, driver
+e memoria in `benchmarks/monker/correctness/README.md`; riferimenti indipendenti in `tools/independent/`. Segni: **[V]** =
+verificato (misurato, o letto nei file dei run, nei log, nei rapporti o nel codice); **[I]** = inferito (ragionamento, stima o
+estrapolazione).
+
+**In breve.**
+
+- **Nessun errore del motore**: 0 FAIL in tutta la batteria [V].
+- Sui giochi senza perdita il percorso di codice di HU50 porta la NashConv fisica esatta verso 0 senza pavimento: V2 (preflop
+  libero, river esatto) **0,0014 % del piatto a 32.000**; V2L (preflop bloccato, river esatto) **0,059 % a 448.000**, sotto la
+  soglia di livello dello 0,10 %; V1L (flop e turn esatti) **0,553 % a 448.000** con pendenza costante circa −0,5 [V] (10.3).
+- **PASS**: T1 (le chiavi del river nel codice contro un oracolo esatto, anche dopo tre rafforzamenti), T3 (riferimenti
+  indipendenti S1-S6, S5a e l'arbitro S3), T4 (rake: V2Z, V2R, V2R5, U1-U3), T5 (seed e determinismo), T6, D6, e in T2 B0L e
+  B0M [V].
+- **INCONCLUSIVE**: B2L e B1L (T2), solo sul criterio 3, il pavimento stimato con un fit a + b T^-p sugli ultimi cinque
+  snapshot; trend, componenti, controllo e strumento passano. Estensione in corso oggi [V] (10.5).
+- **Provenienza (D6)**: gli eseguibili che hanno prodotto i risultati HU50 (`bin_rake`) e quelli dei certificati (`c123`)
+  danno su HU50 risultati identici bit per bit, quindi i certificati coprono i risultati HU50 [V sui casi provati, I per il
+  resto] (10.9).
+- **Non certificabile formalmente**: la convergenza dell'astrazione stessa di HU50, un river senza perdita dopo puntate su una
+  street precedente, l'equilibrio di Nash con il rake e alcuni altri punti (10.10).
+
+### 10.1 La domanda e il metodo
+
+**La domanda: il solver calcola l'equilibrio del gioco che gli diamo?** È distinta da altre due domande che la batteria non
+tocca: se l'astrazione di HU50 (30 × 4, TX2, river per classe del turn) è buona, e se le nostre regole sono quelle di
+MonkerSolver (5.1-5.11). Alla domanda dell'utente "Sul river non servono bucket esatti?" la risposta del progetto è: per un
+certificato formale sì; per i run di produzione HU50 no, e lì non sono nemmeno realizzabili (con la chiave del river "turn"
+servirebbero almeno 14.880 id per classe di turn, sopra il limite di 4.096 del formato dei bucket, e circa 26 GB di stato) [V,
+`design.md` sezione 0].
+
+**Il metodo** (progetto `design.md`, finito alle 16:23 del 30):
+
+- **Giochi piccoli senza perdita**: ogni insieme di informazione del gioco astratto è uno del gioco reale (riga = board
+  canonico × orbita della mano sotto le permutazioni dei semi che fissano il board: l'astrazione per isomorfismo classica). In
+  un gioco a due giocatori a somma zero così, la NashConv fisica della media DCFR deve tendere a 0: un pavimento sopra 0
+  vorrebbe dire che il trainer ottimizza un gioco diverso da quello che il valutatore misura, cioè un bug [I, teoria di CFR e
+  MCCFR].
+- **Lo stesso percorso di codice di HU50**: `gtosd_preflop_blueprint_train --board-class-rows` con una mappa di texture,
+  DCFR 1,5 / 0 / 2 alternato, 32 board per giocatore per iterazione, sconto lazy, `--batch-policy-refresh`, tabelle in double.
+  Unica differenza `--partition-target 4` invece di 64 (sui 37 nodi dei giochi piccoli 64 darebbe una sola unità di lavoro
+  senza nodi top); la disposizione di HU50 è coperta da D5 e D6 (10.8, 10.9) [V].
+- **Uno strumento indipendente dai regret del trainer**: la migliore risposta fisica esatta di
+  `gtosd_preflop_blueprint_monker_values --all-flops` (573 flop canonici, 605.088 board per snapshot, modalità exact), già
+  validata contro l'oracolo FiniteGame (P6) e dal certificatore (P7).
+- **Controlli grossolani**: stesso gioco, eseguibili e calendario, un solo id per board sulla street che decide. Devono
+  fermarsi su un pavimento: così si vede che la misura riconosce un non-equilibrio. I controlli a 3 livelli (V2LG, V1LG) non
+  discriminavano (2,1 e 1,3 volte sopra a 32.000, ancora in calo) e sono stati sostituiti da quelli a un livello (V2LG1,
+  V1LG1) [V].
+- **Preflop bloccato** (rilievo D1 della review del progetto): nei giochi a 6a quasi ogni mano folda o shova preflop (in
+  `HU6_all` a 32.000 il flop arriva nello 0,3 % circa delle mani), quindi un errore postflop sposta pochissimo la NashConv.
+  Le chart `lock_limp_check/` bloccano il CO al limp e il BTN al check per tutte le 81 classi (`--lock-charts/--lock-nodes`,
+  lo stesso percorso dei test con il preflop bloccato di HU50): ogni mano arriva al flop con 4a nel piatto e i range pieni.
+  Questi run si giudicano sulla **NashConv postflop = gain_lower CO + gain_lower BTN** (chi risponde segue il preflop bloccato
+  e risponde al meglio dal flop in poi); la NashConv piena resta a 2,000 a (lo shove contro i nodi preflop mai raggiunti, che
+  restano a 50/50) e non è un criterio [V].
+- **Criteri** (sezione 10 del progetto): G1 livello (NashConv all'ultimo snapshot <= 0,10 % del piatto per V1 e V2), G2
+  trend (pendenza log-log fra Tmax/8 e Tmax <= −0,35, nessuna risalita oltre il 10 % dai 2.000), G3 componenti in calo, G4
+  controllo almeno 5 volte sopra e piatto, G5 valutatore PASS in modalità exact. PASS = G1-G5; INCONCLUSIVE = G2-G5 senza G1;
+  FAIL = plateau, risalita su due raddoppi, curva entro 1,5 volte dal controllo, o G5. Per i giochi con puntate e rilanci (T2)
+  cinque criteri: trend, componenti, pavimento (fit a + b T^-p sugli ultimi cinque snapshot con a <= 0,1 della NashConv
+  finale, o negativo), controllo, strumento; INCONCLUSIVE quando 1, 4 e 5 tengono e 2 o 3 è al limite, e allora si estende
+  (`coverage/bets_raises.md` sezione 6) [V].
+- **Codice nuovo**, additivo (uscite e impronte esistenti invariate): C1 la chiave di configurazione
+  `postflop_betting_streets` (`591724c`), C2 `--turn-exact` e `--river-exact` nel costruttore dei bucket (`dc34131`), C3 la
+  chiave del river "river-board" (`68cf367`); driver `run_correctness.sh` (`b505ad5`) con il blocco del preflop e la guardia
+  dell'impronta dell'albero (`6bdb86f`): con gli eseguibili precedenti, che ignorano `postflop_betting_streets`, si è fermato
+  al primo segmento invece di allenare l'albero sbagliato [V]. Eseguibili congelati `out/monker/bin_correct/c123` (C++
+  `2184d66` + `591724c` + `dc34131` + `68cf367`), driver congelati `out/frozen/run_correctness_lock.sh` e (dalla notte)
+  `out/frozen/run_correctness_v2.sh` [V].
+
+### 10.2 Giochi e astrazioni
+
+Tutti HU (CO poi BTN), ante 1a, blind del BTN 1a, piatto iniziale 3a, donk bet ammessi; tabelle in
+`out/monker/correctness/buckets` [V, README].
+
+| Gioco | Stack | Puntate postflop | Nodi | Albero | Run senza perdita | Controllo |
+|---|---:|---|---:|---|---|---|
+| `HU6_V0_flop` | 6a | flop, solo all-in | 25 | `cd66796bdbdac5c1` | V0 (solo smoke): flop esatto (`buckets_flopexact_15x4`), mappa identità | — |
+| `HU6_V1_flopturn` | 6a | flop e turn, solo all-in | 31 | `da5c6942354ad5ad` | V1L: flop 528 e turn 496 id esatti, mappa identità | V1LG (turn 3 × 1), V1LG1 (un id per board di turn) |
+| `HU6_V2_river` | 6a | solo river, solo all-in | 25 | `2f109f6f1891d9f2` | V2 (preflop libero), V2L: 465 id per board a 5 carte, chiave "river-board" | V2LG (3 livelli), V2LG1 (un livello: river cieco alla mano) |
+| `HU19_B0_flop` | 19a | flop: `bet_4`, `raise_16`, all-in | 73 | `b58f4ac0e4cf68b1` | B0L: flop esatto, turn e river solo check | B0LG1 (`g1x1`) |
+| `HU19_B0M_flop` | 19a | come B0 più un open al piatto: 3 ingressi postflop | 163 | `194fd41496666162` | B0M: flop esatto, blocco a forma di classi (`lock_b0m/`, 243 righe) | B0MG1 |
+| `HU19_B2_river` | 19a | river, stesse forme | 49 | `23b83f3f3b18d1c0` | B2L: river esatto, chiave "river-board" | B2LG1 (`v2g_river1`) |
+| `HU8_B1_flopturn` | 8a | flop e turn (turn dopo bet-call al flop, donk all-in) | 85 | `5269db409b4bcf45` | B1L: flop e turn esatti | B1LG1 (turn un id per board) |
+| `HU6_V2_river_rake25cap2` | 6a | come V2, rake 2,5 % / cap 2a, no flop no drop | 25 | `cd2e1217488aaea9` | V2R | — |
+| `HU6_V2_river_rakeinert` | 6a | come V2R con piatto minimo 13a (nessuna mano pagata) | 25 | `eb528dbdd5dbe94c` | V2Z: deve uguagliare V2 bit per bit | — |
+| `HU6_V2_river_rake5cap05` | 6a | rake 5 %, cap 0,5a (morde sui piatti di 12a) | 25 | `0133288de510b8f0` | V2R5 | — |
+
+- **Perché nei giochi a 6a il river è senza perdita solo in V2.** Con la chiave del river di HU50 ("turn") un river senza
+  perdita dopo puntate al flop o al turn non si può esprimere: 6.336 collisioni di orbite di river, almeno 14.880 id per classe
+  di turn contro il limite di 4.096, 205-294 milioni di righe per nodo di river [V, `coverage/river_key_turn.md`]. Senza
+  decisioni fra flop e river l'ordine delle cinque carte non conta, quindi la riga del river è (linea preflop, mano, board a 5
+  carte non ordinato) a meno di simmetria: 19.998 board canonici × al massimo 465 id, 1,2 GB [V per i conteggi, I per
+  l'argomento].
+- **I giochi B** riproducono le forme postflop di HU50 nei piatti limpati (`check;bet_4;all_in`,
+  `fold;call;raise_16;all_in`, `check;bet_12;all_in` dopo un bet-call), con `maximum_raise_count` 1 come HU50 (0 in
+  `HU8_B1`); il preflop è lo stesso albero di 4 decisioni dei giochi a 6a, quindi il blocco limp/check vale invariato. `bet_4`
+  = 100 % di 4a e `raise_16` = 4 + (4 + 4 + 4) controllati a mano contro la regola del piatto di MonkerSolver [V, README e
+  `bets_raises.md`].
+- **B0M**: il CO apre 26 classi (4 metà open e metà limp), limpa circa il 40 % delle classi e folda il resto, ordinate per il
+  valore dello shove in V2; il BTN checka dietro ogni limp e chiama ogni open. Due ingressi postflop con range del CO non
+  uniformi e il range pieno del BTN [V, README]: le due caratteristiche di HU50 che nessun gioco senza perdita copriva.
+
+### 10.3 V0, V1, V2, V1L, V2L e l'estensione fino a 448.000
+
+**Calibrazione** (copia degli eseguibili `bin_probe`, albero di prova `573abdc7da5c939c` a tutte le street, lo stesso gioco di
+`HU6_all` con un altro id, 15:46-16:21): probe A (flop esatto
+più turn 15 × 4 e river 15, mappa identità) 0,027 % del piatto a 32.000; probe B (15 × 4) 0,046 % a 16.000; controllo C (3 × 1)
+fermo allo 0,53 % a 16.000 [V]. Correzione in 10.11: A e B usano la mappa identità, non TX2, e su questo gioco il postflop pesa
+poco.
+
+**V0 e V1 senza blocco** hanno girato solo come smoke (100 iterazioni, 16:56-17:02: V0 0,0411 a = 1,371 % del piatto, V1 0,0878
+a = 2,927 %, valutatore PASS exact) e poi sono stati tolti dal piano: senza blocco il flop si raggiunge nello 0,003 % circa
+delle mani di V2 [V, critica], quindi nessuna potenza. Li sostituisce B0M (10.5).
+
+**I run del 30** (17:45-19:47, 2 thread di training e 2 di valutazione ciascuno, macchina condivisa con le due prove HU20_deep)
+e **l'estensione della notte** (00:00:38-06:42:31 del 1° ottobre, dalla decisione dell'utente verso le 20:00 "Mettili in coda";
+stessi eseguibili, driver, tabelle, mappe, blocco e thread). NashConv postflop per i run bloccati, NashConv piena per V2; in
+percentuale del piatto iniziale di 3a [V, `convergence.txt` dei run]:
+
+| Run | 4.000 | 16.000 | 32.000 | 64.000 | 448.000 | Pendenze log-log | Controllo |
+|---|---:|---:|---:|---:|---:|---|---|
+| V2 (preflop libero, river esatto) | 0,001716 a (0,0572 %) | 0,000102 a (0,0034 %) | **0,0000424 a (0,0014 %)** | — | — | −1,78 fra 4.000 e 32.000 | affidato ai run bloccati (senza blocco un controllo non discrimina) |
+| V2L (preflop bloccato, river esatto) | 0,594 a (19,8 %) | 0,186 a (6,21 %) | 0,0874 a (2,91 %) | 0,0349 a (1,16 %) | **0,00176 a (0,059 %)** | da −0,73 a −1,41 fino a 64.000; poi −1,55, −1,62, −1,63, −1,57, −1,47, −1,39, −1,29 | V2LG1 fermo a 1,465 a: 7,9 volte sopra a 16.000 [V], circa 42 volte a 64.000 [I] |
+| V1L (preflop bloccato, flop e turn esatti) | 0,198 a (6,59 %) | 0,0921 a (3,07 %) | 0,0633 a (2,11 %) | 0,0438 a (1,46 %) | **0,01658 a (0,553 %)** | da −0,53 a −0,56 fra 4.000 e 64.000; poi da −0,48 a −0,52 | V1LG1 fermo a 0,609 a: 6,6 volte sopra a 16.000 [V], circa 14 volte a 64.000 [I] |
+
+- **Verdetti del 30 sera** [V]: V2 PASS (G1, G2, G3, G5; G4 affidato ai controlli bloccati). V2L e V1L passano G2-G5 e sono
+  INCONCLUSIVE sulla lettera (G1 non raggiunto: 1,16 % e 1,46 % a 64.000), senza condizioni di FAIL; la review del progetto
+  aveva raccomandato di giudicare i run bloccati su pendenza e controllo, e su quel criterio passano. Fit a + b T^-p sugli
+  ultimi cinque snapshot fino a 64.000: a = −0,0208 a (V2L) e −0,0014 a (V1L), compatibili con 0.
+- **Estensione fino a 448.000** (tutti gli snapshot PASS exact) [V]:
+  - **V2L** scende a 0,00176 a = **0,059 % del piatto, sotto lo 0,10 % di G1**; la soglia (0,003 a) è passata fra 256.000
+    (0,128 %) e 320.000 (0,092 %). La stima del 30 era circa 420.000 iterazioni a pendenza −1,3 [I allora]: la pendenza è
+    arrivata a −1,63 e poi si è addolcita fino a −1,29.
+  - **V1L** scende a 0,01658 a = 0,553 %, con pendenza costante circa −0,5 (−0,48 / −0,49 negli ultimi tre intervalli): il
+    ritmo Monte Carlo, perché i valori delle righe di flop e turn sono campionati sulle carte che restano [I]. Allo stesso
+    ritmo lo 0,10 % chiederebbe circa 14 milioni di iterazioni [I: (0,01658 / 0,003)^2 × 448.000]. Nessun segno di pavimento.
+  - **Fit del pavimento sull'estensione** (ultimi cinque snapshot, 192.000-448.000; calcolato per questa nota con la stessa
+    procedura di `summarize_night2.py` sui valori non arrotondati di `convergence.json`) [V]: V1L a = −0,0012 a, compatibile
+    con 0; **V2L a = +0,00053 a** (il 30 % della NashConv a 448.000, p = 1,77). È lo stesso tipo di esito che ha reso B2L e
+    B1L INCONCLUSIVE (10.5): un fit con una sola potenza legge come pavimento una pendenza che si addolcisce. Lettura [I]:
+    quando la parte deterministica dell'errore scende, pesa di più il rumore del campionamento dei board, che cala più
+    lentamente (come V1L, a −0,5), e la pendenza passa da −1,6 verso valori più piatti senza che esista un pavimento; il
+    controllo V2LG1 resta circa 830 volte sopra (1,465 a, misurato fino a 16.000).
+- **Il ribasamento delle epoche dello sconto lazy** (quando l'obiettivo supera la base di 65.535 iterazioni:
+  `trainer.cpp:1332-1335`; nell'estensione a 65.535, 131.070, 196.605, 262.140, 327.675 e 393.210) gira qui per la prima volta
+  in un run; prima solo nel test unitario con epoca 4. Il run HU50 di riferimento (5.11) non l'ha mai attraversato
+  (0 -> 32.117 -> 64.000). Nessun gradino: V1L −0,53 fra 48.000 e 64.000 contro −0,51 fra 64.000 e 96.000, V2L −1,41 contro
+  −1,55; le pendenze restano regolari su tutti i ribasamenti [V, `night2/results.md`].
+
+### 10.4 T1: le chiavi del river nel codice, contro un oracolo esatto, e tre rafforzamenti
+
+La chiave "turn" di HU50 non può essere senza perdita in un run (10.2), quindi T1 la copre a livello di codice: trainer e
+valutatore con righe per classe di board (chiavi "turn" e "river-board"; mappe identità, turn-as-flop, TX2 e
+identity_river_board) confrontati con un FiniteGame sul gioco fisico senza perdita, risolto con LinearCfr, su HU10 ridotto e su
+CO40-test. Test `gtosd_preflop_blueprint_board_texture_tests` (`tests/preflop_blueprint_board_texture_tests.cpp`), commit
+`e459c17`, `1c5932d`, `45d1485`, `b738e71` e `9d0072e` (30/09, 21:06-21:54). Cinque asserzioni:
+
+- **A1**: aritmetica del trainer (regret e somme della strategia) = FiniteGame LinearCfr entro 1e-9;
+- **A2**: `estimate_exploitability` (motore del river congiunto sulle righe per classe) = `calculate_nash_conv` sul gioco
+  senza perdita entro 1e-9;
+- **A3**: struttura del raggruppamento (la chiave "turn" mette insieme i river di un turn e mai turn o flop diversi;
+  turn-as-flop mette insieme dei turn, TX2 dei flop; "river-board" mette insieme i due ordini di un board a 5 carte e mai due
+  board);
+- **A4**: l'aggiornamento alternato campionato sulle righe raggruppate è non distorto;
+- **A5**: `gain_lower`, il criterio di tutti i run bloccati, = migliore risposta per forza bruta dal flop in poi sotto un
+  preflop bloccato (prima era controllato solo per segno, limite e accordo con una passata che riusa gli stessi valori).
+
+**Prima esecuzione** (notte, 00:02-00:32) [V, `t1t3/RESULTS.md`]: tutto PASS; errori massimi 2,3e-12 (A1) e 4,4e-16 (A4); A5
+[0,617306; 0,441533] = oracolo, e la chiave sposta il valore di circa 1e-5, molto sopra la tolleranza; `assertions=50079891`,
+36,2 s. Limite O1: con le mani della prova (Ts Th Js Jh contro Qs Qh Ks Kh) ogni mano ha lo stesso esito di showdown su tutti
+i 9 board, quindi l'A2 probabilmente non avrebbe visto un indice di classe sbagliato [I].
+
+**Rafforzamento 1** (`bf0f63e`, 02:55-03:20; review 03:20-03:50) [V, `t1a2/`]:
+
+- 7 board "decisivi" (flop 9s8s6d; turn Ad e 6c) su cui il river cambia il vincitore: 36 coppie di mani su 36 cambiano esito
+  sui 4 river di Ad, 26 su 36 sui 2 di 6c (scala sopra tris, A-6-7-8-9 come scala più bassa, colore sopra scala). Il reviewer ha riprodotto
+  tutte le 252 celle con un valutatore suo.
+- **Scoperta: l'A2 senza blocco era cieco sulle righe del river.** 0 insiemi di informazione del river su 14.336 avevano una
+  media non uniforme (sui nove board vecchi 0 su 1.728), perché il preflop allenato non porta al river (la migliore risposta del
+  giocatore 0 è il fold preflop): un valutatore con la chiave sbagliata che leggesse righe uniformi sarebbe passato.
+  Correzione: le asserzioni di potenza girano con un preflop bloccato misto (`mixed_preflop_lock`, ogni azione preflop con
+  frequenza positiva): 481-558 insiemi del river su 1.344 non uniformi su HU10, 966-1.327 su 1.792 su CO40-test.
+- Potenza: le due chiavi differiscono in NashConv di 0,0320 / 0,2188 (6 / 1 gruppi di river) e in EV di almeno 1,50e-4; tre
+  letture sbagliate (M1 una tabella "river-board" letta con le righe della chiave "turn", come farebbe il ramo "turn" del
+  motore del river; M2 i river di un turn messi insieme; M2' i due ordini di un board a 5 carte messi insieme) spostano la
+  NashConv della forza bruta di almeno 0,0181, mille volte la tolleranza.
+- Mutazioni del reviewer sul lato oracolo dell'A2 (in una copia del test, mai committata): con il blocco l'A2 fallisce in
+  ognuna delle 5 modalità (4 varianti su 4), senza blocco passa sempre (cieco). Limite trovato: con questi range la migliore
+  risposta del giocatore 1 non dipende dalle righe postflop del giocatore 0 (BR[1] = 2,225498844 in tutte le varianti),
+  quindi un errore confinato alle righe del giocatore 0 si vedeva solo nell'EV.
+
+**Rafforzamento 2** (`c50ff3c`, 03:45-03:53; review 04:00-04:45) [V, `t1a2b/`]:
+
+- Potenza per giocatore: 24 letture sbagliate confinate alle righe di un giocatore (2 orientamenti × 2 numeri di gruppi × 3
+  mutazioni × 2 giocatori); ognuna sposta l'EV del giocatore o la migliore risposta dell'avversario di almeno 1,149e-4, e le
+  righe del giocatore che conta per la NashConv (il giocatore 1 nell'orientamento originale, il giocatore 0 in quello
+  specchiato) la spostano di almeno 0,0181 e 0,0150.
+- Varianti specchiate (mani scambiate: BR[0] = 1,966232108 costante, quindi ora sono le righe del giocatore 0 a muovere la
+  NashConv) e non vacuità dell'A1 sul river (celle del river con regret sopra 1e-6: 6.600 su 6.604 sui nove board, 6.022 su
+  6.022 sui board decisivi).
+- Review: le 24 letture confinate fanno fallire l'A2 tutte e 24. Un errore che legge le righe del giocatore 0 con la chiave
+  sbagliata solo nel passaggio della migliore risposta del giocatore 1 prima passava l'A2 in tutte le varianti; ora fallisce in
+  tutte le 4 varianti HU10 specchiate per M1, M2 e M2'. 90 righe confrontate con un'implementazione indipendente, 0
+  differenze.
+- **Correzione del reviewer**: nelle 21 varianti senza blocco nessuna cella del river cambia dopo la prima iterazione (dalla
+  seconda il river non riceve reach), quindi l'A1 senza blocco controllava solo l'iterazione 1, a giocata uniforme. La frase
+  [I] del rapporto ("i regret possono ancora cambiare attraverso il reach dell'avversario") è smentita dalla misura.
+
+**Rafforzamento 3** (`5bc2a9c`, 04:45-05:20; review 05:00-05:30) [V, `t1a1/`]: l'A1 sotto il blocco del preflop.
+
+- Derivazione dal codice (`trainer.cpp`, `solver.cpp`, supporto dei test), confermata dal reviewer: il trainer tiene una
+  frequenza bloccata nel reach dell'attore (somme della strategia) e in quello dell'avversario (regret), il FiniteGame nel
+  reach del caso di entrambi. Con una sola classe preflop per giocatore (TsJs, ThJh contro QdKd, QcKc) vale esattamente:
+  regret del trainer = regret dell'oracolo / f_attore, somma del trainer = somma dell'oracolo / f_avversario, medie uguali.
+- 8 varianti, 6.140 celle, errori massimi 9,5e-11 / 2,8e-12 / 1,3e-12 su valori fino a 846,6; senza i fattori la relazione
+  sbaglia di almeno 59,2, con i fattori scambiati di almeno 290,5.
+- Sulle righe del river raggruppate cambiano dopo l'iterazione 1 il regret di 670 celle e la somma di 603 su 1.510, e 363 medie
+  su 688 non sono uniformi; il reviewer ha contato 4.366 coppie (riga, iterazione) raggiunte dopo la prima, tutte con strategia
+  corrente non uniforme, 333 righe raggiunte da due o più board canonici nella stessa iterazione.
+- Mutazioni del reviewer: una cella di regret spostata di 1e-8 relativo; le celle raggruppate ferme ai valori
+  dell'iterazione 1; l'oracolo con VanillaCfr (peso 1 invece di t); l'oracolo con il blocco spostato di 1,25e-4: l'A1 fallisce
+  in 8 varianti su 8 per ciascuna. Gli scambi di righe falliscono dove cambiano il gioco (sono vacui con un solo gruppo di
+  river). La stessa mutazione "celle ferme" senza blocco passa: la cecità dell'A1 vecchio, ora chiusa.
+
+Il test passa da `assertions=50079891` a 100.785.546, 100.988.843 e 134.975.163, da 36 a circa 100-109 s; nessun cambiamento
+di `libs/`, `include/` o del supporto dei test (l'ultimo commit che tocca `libs/` o `include/` è `68cf367`), e dopo ogni giro
+l'output precedente è identico riga per riga [V]. Non asserita: la frase secondo cui con più classi preflop in una riga non
+vale nessuna relazione (solo un commento) [I].
+
+### 10.5 T2: puntate e rilanci sotto l'all-in (coda notturna)
+
+[V, `night2/results.md`; NashConv postflop a 64.000, in percentuale del piatto iniziale di 3a]
+
+| Run | Orario | NashConv a 64.000 | Pendenza fra 8.000 e 64.000 | Fit del pavimento: a contro 0,1 × NC(64.000) | Controllo a 16.000 (rapporto; a 64.000 [I]) | Verdetto |
+|---|---|---:|---:|---|---|---|
+| B0L | 02:38-04:06 | 0,07093 a (2,364 %) | −0,520 | 0,002319 contro 0,007093 | B0LG1 3,596 a (24,9 volte; 50,7) | **PASS** |
+| B0M | 06:09-07:52 | 0,05900 a (1,967 %) | −0,506 | −0,009184 | B0MG1 1,906 a (16,1 volte; 32,3) | **PASS** |
+| B2L | 00:16-02:52 | 0,13120 a (4,373 %) | −1,247 | **0,014306 contro 0,013120** | B2LG1 8,114 a (11,6 volte; 61,8) | INCONCLUSIVE |
+| B1L | 02:52-04:49 | 0,09389 a (3,130 %) | −0,657 | **0,025975 contro 0,009389** | B1LG1 1,333 a (5,9 volte; 14,2) | INCONCLUSIVE |
+
+- In tutti e quattro: ogni snapshot PASS exact; smoke del primo segmento PASS (capacità, byte di stato, texture, righe
+  bloccate 162 o 243, picco di memoria); etichette dell'albero presenti (`check;bet_4;all_in` e `fold;call;raise_16;all_in`;
+  in B1L, che non ha rilanci, solo la prima);
+  in B2L a 4.000 il motore del river di riferimento dà valori identici bit per bit a quello congiunto (NashConv
+  3,848271659043531 a). Passano il criterio 1 (trend: nessuna pendenza locale sopra −0,2 dai 4.000, nessuna risalita),
+  il 2 (gain_lower di CO e BTN in calo in ogni raddoppio da 8.000 a 64.000), il 4 (controlli piatti e almeno 5 volte sopra) e
+  il 5 (strumento). Nessuna condizione di FAIL.
+- **B2L e B1L mancano solo il criterio 3.** Il fit con una sola potenza sugli ultimi cinque snapshot (24.000-64.000) dà un
+  pavimento positivo perché la pendenza si addolcisce: B2L da −1,32 (8.000-16.000) a −1,15 / −1,18, B1L da −0,70 a −0,58.
+  Secondo la regola dello studio l'esito è INCONCLUSIVE e si estende, come per V1L e V2L; l'estensione gira oggi. Lo stesso
+  fit sull'estensione di V2L dà un a positivo (10.3).
+- Livelli (riportati, non sono criteri): fra l'1,5 e il 3,3 % del piatto del flop (4a) a 64.000.
+
+### 10.6 T3: riferimenti indipendenti (notte, 00:02-01:17)
+
+Pacchetto `tools/independent/sdref` e script `sd_*.py`, scritti a partire dalle regole del gioco (S3 solo in parte: vedi i
+limiti sotto), commit dalle 21:10 alle 21:55 del 30 (README `c1db800`); i C++ di supporto sono il dump dell'albero
+`--dump-nodes` (`fdf8114`) e le CTest dell'arbitro (`65598b3`, `c2bddc5`) [V, `t1t3/RESULTS.md`]:
+
+| Controllo | Esito | Cosa prova |
+|---|---|---|
+| S1 classifica | 10/10 PASS, 188,9 s | La tabella dei ranghi short deck del motore = un valutatore indipendente su tutti gli 8.347.680 insiemi di 7 carte e su tutti quelli di 5 (ordinali e ordine debole), 0 differenze |
+| S2 tabella degli all-in HU | 8/8 PASS, 522,8 s | Vittorie, pareggi e sconfitte esatti per tutte le 176.715 coppie di combo disgiunte, 0 differenze su 376.992 board |
+| S3 arbitro | PASS, uscita 0 | Un'implementazione indipendente delle regole riproduce albero, azioni legali, piatti, rimborsi e ogni riga di payoff su 24 configurazioni CTest (la famiglia HU6 e i 3 gemelli con rake, compreso V2R5 dove il cap morde; B0, B0M, B2, B1; la famiglia HU50_step2 e 2size; CO40-test; HU50 checkdown; preflop 3-way) e su HU20_deep: `rule_failures=0 abstraction_failures=0 convention_mismatches=0`. Autotest PASS (payoff+1 e call+1 presi). Con `--expect-tree` il build della notte produce l'albero di produzione HU50 `dde527d0de7e7ae9` (571 nodi) |
+| S4 valore del passo 1 (programmazione lineare) | HU50 PASS; HU6_all VALUE_ONLY | HU50: v* = −0,121044566662 dentro la finestra certificata del motore [−0,1210452592; −0,1210436490], e la finestra esclude tre giochi mutati vicini. HU6_all: c'è solo il valore di riferimento, nessun riepilogo del motore da confrontare (INCONCLUSIVE per costruzione) |
+| S5a identità EV del passo 2 | 16/16 PASS, 1.354 s | Per 8 politiche di progetto su HU6_all e sul suo gemello con rake il valutatore c123 dà esattamente i valori in forma chiusa (EV; valori e pesi per radice, combo e classe; reach dell'avversario; migliore risposta preflop; guadagno; somma zero; rake atteso), differenza massima 3,4e-14 |
+| S6 catalogo e tabelle | 142/142 e 48/48 PASS | Conteggi di Burnside = enumerazione su 7.539.840 storie; ogni tabella rispetta la simmetria dei semi e quelle esatte sono davvero senza perdita (orbite = id), compresa la tabella esatta del flop di V0 |
+
+Con loro, nella stessa notte: U1-U3 (10.7) e l'intera etichetta CTest `preflop_blueprint`, 88 test su 88 (806 s). Limiti
+[V]: S3 è indipendente solo in parte (le convenzioni C1-C16 rispecchiano il motore per progetto, e nessuna configurazione
+esercita in modo che possa fallire l'arrotondamento C2, il confine del cap dell'all-in C8 o la fiche dispari C11); per
+default S3 asserisce le impronte registrate solo per i 5 giochi HU6 (HU50 una volta, a mano); S5a non è girato su HU50 (il
+riferimento sta su F:, fuori dai limiti della notte); il build della notte e gli eseguibili c123 non sono confrontati in
+binario [I che coincidano: stesse impronte degli alberi].
+
+### 10.7 T4: il rake
+
+- **U1** (`0bd2a5e`): i payoff dei due giochi HU6 con rake 2,5 % / cap 2a = una tabella derivata a mano (18 terminali di
+  `HU6_all`, 10 di `HU6_V2_river`): i fold preflop non pagano, showdown e fold postflop pagano 0,1a / 0,3a, pareggi divisi,
+  eccesso non chiamato restituito, albero invariato. Qui il cap non morde [V].
+- **U2**: un piatto minimo sopra ogni piatto dà i payoff senza rake (quindi il minimo non è ignorato) [V].
+- **U3** (`b8e1df0`): l'aggiornamento alternato con il rake = la sua attesa condizionata, errore massimo 4,4e-16 e 8,9e-16
+  (161 e 401 showdown pagati, di cui 121 e 361 al cap): il giocatore 1 usa il proprio payoff con il rake, senza la scorciatoia
+  della somma zero [V].
+- **V2Z** (00:19-00:31): policy identiche a quelle di V2 bit per bit a 250, 500 e 1.000 iterazioni (`8f8d9a7ad1b9b35b`,
+  `78d88ff2691e3d28`, `a02df4573c30e57a`), stime identiche, rake atteso circa 1e-16: **PASS** [V].
+- **V2R** (00:31-02:26, senza blocco, NashConv piena): 0,0000567 a a 32.000 (sotto lo 0,0003 a = 0,01 %) e **0,000028 a =
+  0,00092 % del piatto a 64.000**; pendenza fra 4.000 e 32.000 −2,015; mai sopra 3 volte V2 (a 8.000, 16.000 e 32.000).
+  Controllo di potenza R3: la policy di V2 a 32.000 giocata nel gioco con il rake lascia 0,002850 a (prevista circa 0,0028 a
+  [I]), 100 volte il livello di V2R; al contrario la policy di V2R nel gioco senza rake lascia 0,002232 a: il run converge
+  all'equilibrio del gioco con il rake, non a quello senza. Contabilità: il rake atteso per eroe = −(EV0 + EV1) =
+  0,24763207 a entro 1e-9. Valori: le 4 mani che la previsione al primo ordine toglie dallo shove (J6s, T6s, 96s, Q6o) shovano
+  allo 0,0000, gli altri shover di V2 almeno allo 0,9955; EV entro 2e-5 dalla previsione. **PASS**, condizionato a U1-U3, che
+  passano [V].
+- **V2R5** (06:52-07:17; rake 5 %, cap 0,5a, che morde sui piatti di 12a): 0,0000566 a a 32.000, pendenza −2,116, rake atteso
+  0,39514 a fra 0 e il cap: **PASS** [V].
+- Un gioco con il rake è a somma non zero: CFR garantisce solo equilibri correlati grossolani, quindi un piccolo pavimento
+  sarebbe ammesso anche con il codice giusto [I]; V2R e V2R5 non ne mostrano fino a 64.000 e 32.000 iterazioni.
+
+### 10.8 T5 e T6: seed, determinismo, mappa TX2
+
+- **Secondo seed** (opzione `SEED` del driver, `6f4a296`), V2L_s2 (04:49-05:56) e V1L_s2 (04:06-05:19) fino a 64.000 [V]: il
+  rapporto fra le NashConv dei due seed sta fra 0,99 e 1,01 a ogni snapshot da 4.000 a 64.000; a 64.000 0,03488 contro 0,03499
+  a (V2L) e 0,04375 contro 0,04376 a (V1L), cioè entro 1,1e-4 a; pendenze fra 8.000 e 64.000 −1,112 contro −1,114 e −0,538
+  contro −0,540; a 16.000 il seed 2 è almeno 5 volte sotto il controllo del seed 1; l'identità del trainer e lo stato a 250
+  differiscono dal seed 1 (il seed cambia davvero il campionamento). **PASS**.
+- **Determinismo** (00:00-00:16) [V, `night2/checks.md`]: D1 V1 bloccato con 4 thread e partizione 1, D2 V2 bloccato con 1
+  thread e partizione 64, D3 V2 libero con 2 thread e partizione 64: stato a ogni salvataggio e valori identici bit per bit ai
+  run registrati; D4 valutatore con 2 thread contro 8: identico; D5 il gioco HU20 con la disposizione di HU50 (32 unità, 18
+  nodi top), partizione 64 con 4 thread contro partizione 4 con 2 thread (192 unità): impronte di identità, stato e policy e 8
+  chart identiche; lo stesso su HU50 (10.9). Il determinismo prova la riproducibilità, non la correttezza.
+- **T6 P2-V0**: V0 con la mappa TX2 contro la mappa identità a 50 e 100 iterazioni: NashConv identica bit per bit e chart
+  identiche byte per byte (4 file) [V]. È solo uno smoke: in V0 la sezione del flop di TX2 è l'identità e le classi di turn
+  fuse raggiungono solo nodi con un'azione (rilievo D-c della critica); il controllo di TX2 con potenza è D6.
+
+### 10.9 D6: la provenienza dei risultati HU50
+
+La critica (20:35-21:00 del 30) ha trovato una lacuna nuova: i risultati HU50 (per esempio `HU50_m30x4_rake25`, 5.11) vengono
+da `out/monker/bin_rake` (costruito il 30 alle 01:36, C++ circa `3ec4027` [I, dalle date e dalle stringhe mancanti]), i
+certificati da `c123`, e fra i due è cambiato proprio il codice delle righe che dipende dalla chiave (uguale per ispezione per
+la chiave "turn", nessun run lo confrontava). D6 (00:08-00:14 del 1° ottobre) [V, `night2/checks.md`]:
+
+- `HU50_step2_donk_rake25cap2` (30 × 4, TX2, partizione 64, 4 thread), 200 iterazioni con `bin_rake` e con `c123`: identità del
+  trainer `1f515aa183549007` (uguale a quella registrata del run HU50), stato `fa83d13ba4c7bf5d` e policy `556b52343b075485`
+  uguali, 8 chart identiche byte per byte; anche `c123` con partizione 4 e 2 thread (192 unità) dà le stesse impronte.
+- I due valutatori sulla policy di `bin_rake`, 20 flop, `--expected-rake`: NashConv 13,250337907950401 a, identica bit per bit.
+- Quindi **`bin_rake` = `c123` bit per bit sul percorso HU50, e i certificati valgono per i risultati HU50** [V sulle 200
+  iterazioni e sui 20 flop provati; I per i run interi: codice deterministico, stesse sorgenti salvo la selezione della chiave, che
+  per "turn" è uguale per ispezione].
+
+### 10.10 Cosa non si può certificare formalmente, e perché
+
+Dalla sezione 6 del piano di copertura (`coverage/plan.md`), aggiornata con i risultati:
+
+1. **La convergenza dell'astrazione stessa di HU50** (bucket 30 × 4, classi di turn fuse di TX2, chiave del river "turn" che
+   mette insieme i river e dimentica il bucket del turn): è con perdita per costruzione e a memoria imperfetta, nessun teorema
+   di convergenza di CFR si applica e il suo pavimento mescola l'errore di astrazione con qualunque altra cosa. Restano solo
+   misure empiriche (prove A, B e C, prove profonde, valutazioni esatte di HU50). T1 prova soltanto che il codice calcola
+   esattamente quel gioco astratto.
+2. **Un river senza perdita dopo puntate su una street precedente**, cioè proprio la situazione "punta al flop o al turn, poi
+   river" di HU50: con la chiave "turn" servono almeno 14.880 id per classe di turn (limite 4.096), cioè 205-294 milioni di
+   righe per nodo di river, 14,7-40 GB di stato e circa 18-21 ore per run: codice nuovo e fuori dalla macchina. È coperto a
+   pezzi: decisioni di river senza perdita (V2L, B2L), turn dopo puntate al flop senza perdita (B1L), raggruppamento della
+   chiave "turn" a livello di codice (T1); la combinazione solo con perdita (HU20_deep, prova debole: 10.11).
+3. **L'equilibrio di Nash con il rake**: il gioco è a somma non zero e CFR garantisce solo equilibri correlati grossolani; un
+   piccolo pavimento positivo è possibile anche con il codice giusto (del secondo ordine nel rake [I]). V2R lo misura e non ne
+   vede; niente può provare che sia zero.
+4. **Rake postflop e cap che morde in un run convergente**: nessun gioco senza perdita ha potenza (senza blocco il flop arriva
+   nello 0,003 % delle mani; nei giochi bloccati l'effetto del rake è 0,001-0,003 a contro gli 0,035 a di V2L a 64.000 [I]); se
+   ne certifica solo l'aritmetica (S3, che include HU50 con il suo cap, e U1). In V2R5 il cap morde solo preflop.
+5. **Quello che sta sotto la risoluzione dei run**: un errore il cui effetto ai nodi postflop bloccati è più piccolo della
+   NashConv finale non si vede. L'estensione ha abbassato la soglia allo 0,059 % (V2L) e allo 0,553 % (V1L) del piatto; i
+   giochi B sono fra il 2,0 e il 4,4 % a 64.000. Un secondo seed non cambia questo limite.
+6. **Errori comuni ai riferimenti indipendenti**: il Python, scritto dalle regole, potrebbe condividere un malinteso delle
+   regole con il C++. Mitigazione: la DLL dell'utente come terzo parere (S2-DLL, decisa per oggi). È un indizio, non una prova.
+7. **Il determinismo non è la correttezza**: D1-D6 provano riproducibilità e uguaglianza dei build, nient'altro.
+8. **Se le nostre regole e convenzioni sono quelle di MonkerSolver** (dettagli del rake, unità dispari, size postflop,
+   astrazione di MonkerSolver): non è una domanda di correttezza del solver e la NashConv non la vede. La scala sopra il tris
+   era già confermata il 30 (5.9).
+9. **La profondità e la parametrizzazione preflop di HU50 in un run senza perdita** (open fisso a 5a,
+   `allow_configured_incomplete_raise`, 48a dietro): coperte solo a livello di albero e di payoff (albero uguale a quello di
+   MonkerSolver, S3). È accettabile perché le righe preflop per classe sono senza perdita per simmetria dei semi e V2 certifica
+   il percorso del preflop [I].
+10. **Fuori ambito**: il multiway, dove l'esattezza non è richiesta, e gli strumenti di confronto delle chart
+    (`compare_charts.py`, `monker_in_our_game.py`), che la NashConv non vede.
+
+### 10.11 Correzioni fatte lungo la strada
+
+1. **La prova A usava la mappa identità e aveva poca potenza sul postflop** [V, critica]. Il rapporto del 30 sera diceva che
+   la chiave "turn" di HU50 era misurata empiricamente dalle prove A e B (0,027 % del piatto a 32.000). Ma le tre prove di
+   calibrazione usano la mappa identità, non TX2 (evento di partenza: `"name":"identity"`); A è flop esatto più turn 15 × 4 e
+   river 15, non l'astrazione di HU50; e in `HU6_all` il flop arriva nello 0,3 % circa delle mani, quindi un errore postflop
+   o di river sposta pochissimo la NashConv. La chiave "turn" è ora coperta a livello di codice da T1.
+2. **La prova profonda dice poco sulle puntate postflop** [V, `deep/*/curve.txt`]. HU20_deep (20a, 571 nodi, 228 decisioni,
+   15 × 4 + TX2, partizione 64, `bin_probe`; dalle 16:30 circa alle 20:34 del 30) arriva all'1,692 % del piatto a 32.000
+   contro il 3,441 % del controllo 3 × 1, ma la differenza sta nel guadagno congiunto preflop e postflop del CO: il
+   gain_lower, solo postflop, è appena 1,35 volte circa sotto il controllo (0,00219 / 0,00227 contro 0,00288 / 0,00302 a a 16.000; 0,00124 / 0,00121 contro
+   0,00172 / 0,00169 a a 32.000). Le puntate e i rilanci postflop erano quindi in pratica scoperti: B0, B1 e B2 sono stati il
+   primo vero test.
+3. **S7 (scala contro tris in MonkerSolver) era già risolto.** Lo studio sui componenti condivisi lo proponeva come domanda
+   aperta e "senza risposta possibile dalla NashConv"; la critica ha ricordato che il 30 settembre gli EV del set 3-way a 60a
+   lo avevano già confermato (tris sopra scala dà un RMS di almeno 1,84 a, 5.9). S7 è stato tolto.
+4. **"Le regole sono già coperte" era vero solo in parte** [V, `coverage/shared_components.md`]. Prima della batteria c'erano
+   controlli esterni per la classifica (V9: la DLL dell'utente su 300 terne di combo 3-way entro 1e-12, 9.2) e per l'albero
+   preflop (insiemi di nodi di MonkerSolver per HU50 e 3WAY50, 0 differenze). Ma la tabella dei ranghi era controllata solo
+   contro lo stesso valutatore (P2), mai in modo esaustivo e indipendente; la tabella degli all-in solo per via transitiva;
+   importi postflop, righe di payoff e cap del rake per niente in modo indipendente. Ora li coprono S1, S2, S3 e U1-U3.
+5. **Due cecità di T1** (10.4): l'A2 senza blocco leggeva solo righe del river uniformi, e l'A1 senza blocco vedeva solo
+   l'iterazione 1. Entrambe trovate dagli implementatori o dai reviewer e chiuse con il blocco del preflop; il meccanismo [I]
+   del secondo rapporto è stato smentito dalla misura del reviewer.
+6. **Altri rilievi della critica**: P2-V0 è quasi senza potenza (resta uno smoke); "il gemello P1 non è mai girato" era
+   falso (è la prova B); V2LT (id esatti sotto la chiave "turn") metterebbe insieme board senza relazione ed è stato tolto;
+   il guadagno `gain_lower` non era controllato contro la forza bruta (ora A5); la lacuna di provenienza (ora D6).
+
+### 10.12 Stato alle 08:00 del 1° ottobre e decisioni dell'utente
+
+| Quando | Decisione dell'utente |
+|---|---|
+| 30/09, verso le 20:00 | Estendere V1L e V2L oltre 64.000 ("Mettili in coda"): coda dalle 00:00, fino a 448.000 |
+| 30/09, verso le 20:50 | Mettere tutto in coda per la notte dalle 00:00: T2, la parte di T4 con i run, T5 e T6 |
+| 30/09 sera | Scrivere T1 e T3 (test in C++ e riferimenti in Python), da eseguire nella notte |
+| 1/10 notte | Rafforzare T1: tre giri fra le 02:55 e le 05:30 (10.4) |
+| 1/10, verso le 08:00 | Estendere B2L e B1L (oggi) |
+| 1/10, verso le 08:00 | Eseguire HU19_B1 (bozza del 30: 175 nodi, albero `d71ba6ee3c439917`, le forme complete di flop e turn dei piatti limpati compreso il donk `bet_12` sotto l'all-in; circa 10,5 GB in double e 4,1 ore, mai insieme a B2L o B1L secondo il piano [I]) |
+| 1/10, verso le 08:00 | Terzo parere con la DLL dell'utente (S2-DLL, classifica ed equity) in sola lettura: il suo repository non si compila e non si modifica |
+| 1/10, 08:00 | Push del branch `feat/monker-step1-checkdown` su origin: fatto |
+
+Non eseguiti, dal piano: V2L15 e V2LT15 (costo del raggruppamento della chiave "turn" a parità di livelli), V2-s2, S5b, S5a
+su HU50. Guardie ancora armate oggi: `ext/stop_ext_1958.ps1` e `night2/stop_night2_1958.ps1` (CANCEL alle 19:40, kill alle
+19:58 dei processi che corrispondono ai loro schemi).
+

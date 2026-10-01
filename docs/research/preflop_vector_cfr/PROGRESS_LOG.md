@@ -17,12 +17,12 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 | Branch di fase | `feat/monker-step1-checkdown` (dal 2026-09-28, da `feat/preflop-phase1-time`); in precedenza `feat/preflop-phase1-time` e `codex/fix-preflop-deep-stack-convergence` |
 | Worktree | `C:/Users/GoryNickel/Documents/GitHub/GTO-Solver` |
 | Commit di partenza | `744113c69342a82f3b920add498106af2b763d52`; correzione normalizzazione in `17984a9` |
-| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `67de1d7` del 2026-09-30; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin`, `out/monker/bin_texture`, `out/monker/bin_allin` (`410a380`), `out/monker/bin_abd` (`5578ab8`), `out/monker/bin_lock` (`c7d6ba0`), `out/monker/bin_rake` (`3ec4027`), `out/monker/bin_threeway` (tabella a tre giocatori) e `out/monker/bin_3way_step1` (`67de1d7`, passo 1 a tre giocatori); copie congelate del runner in `out/frozen/` (anche `run_step2_continuous_lock.sh`, `run_step2_continuous_rake.sh` e, dal 2026-09-30, `run_step2_continuous_algo.sh` con `LAZY_ARG` per l'opzione A); eseguibili, bucket, risorse, runner congelati e build restano sull'SSD C: |
+| Build | `out/build/windows-release-suite` (dal 2026-09-28 le build di `feat/monker-step1-checkdown`, fino a `67de1d7` del 2026-09-30; in precedenza HEAD `ba93c75` per la baseline e le candidate), Release, MSVC, /W4 /WX; copie degli eseguibili per i run lunghi in `out/monker/bin`, `out/monker/bin_texture`, `out/monker/bin_allin` (`410a380`), `out/monker/bin_abd` (`5578ab8`), `out/monker/bin_lock` (`c7d6ba0`), `out/monker/bin_rake` (`3ec4027`), `out/monker/bin_threeway` (tabella a tre giocatori), `out/monker/bin_3way_step1` (`67de1d7`, passo 1 a tre giocatori) e `out/monker/bin_correct/c123` (dal 2026-09-30, gli eseguibili congelati dei certificati di correttezza: `2184d66` + `591724c` + `dc34131` + `68cf367`); copie congelate del runner in `out/frozen/` (anche `run_step2_continuous_lock.sh`, `run_step2_continuous_rake.sh` e, dal 2026-09-30, `run_step2_continuous_algo.sh` con `LAZY_ARG` per l'opzione A); eseguibili, bucket, risorse, runner congelati e build restano sull'SSD C: |
 | Archivio dei run | Dal 2026-09-30 (decisione dell'utente verso le 12:00, prima dell'inizio dello spostamento alle 12:01:28): i run si allenano sull'SSD C: e dopo la loro valutazione vanno sul disco USB F: (Seagate Basic da 2 TB) in `F:\GTO-Solver-out`, stessi percorsi relativi, con una directory junction al vecchio percorso (lettura trasparente); script `archive_run.ps1` nella cartella temporanea della sessione, che salta le cartelle con `NO_ARCHIVE` e dalle 14:31 prende un lock esclusivo per cartella. Spostate 37 cartelle (299,7 GiB, 4.515 file) dalle 12:01 alle 14:18, ognuna verificata in file e byte; dopo, C: ha 308,5 GiB liberi. Una junction non si cancella mai in modo ricorsivo |
 | Merge su `main` | eseguito dall'utente il 2026-09-16 (`97d8121`, tag P3/P6/P8); il completamento di P8 (viewer) è unito nell'integrazione e in `main` con lo stesso mandato; `main` non è pushato (non richiesto); correzione EV e size HU10 5a/8a unite in integrazione (`f047484`) e in `main` (`9c68a63`) il 2026-09-16, branch di fase e integrazione pushati |
 | Gate di accettazione | **Dal 2026-09-28 (12:40): solo best response esatta dentro l'astrazione <= 0,03 a (1 % del piatto iniziale); il limite di 0,15 a sul certificato fisico e' tolto, il fisico resta una misura di qualita' dell'astrazione.** HU10 e HU20 passano (fisico 0,0020 e 0,0280 a, e l'astratta non supera il fisico). HU30 a 48.000 iterazioni: astratta 0,0269 a (passa), fisico 0,1609 a (7 % oltre il vecchio limite di 0,15 a). HU40 a 64.000 iterazioni: 0,0417 / 0,2383 a, FAIL. Fino al 2026-09-27 il gate era il certificato fisico all'1 %. |
 | Limite RAM corrente | **8 GiB** di picco solo per la suite di benchmark HU10-HU40 sul PC di sviluppo (precisazione dell'utente del 2026-09-28); il prodotto è pensato per un server da 256 GB. I censimenti a 12 e 25 GiB restano misure storiche. |
-| Prossimo passo | In corso alle 14:40 del 2026-09-30: estensione del run 30 × 4 con rake 2,5 % / cap 2a fino a 64.000 iterazioni (valutazione esatta, poi archivio su F:), in coda il run con le texture TXM2 nello stesso gioco (64.000). Decisioni in attesa: le D1-D7 della specifica della fase 3 del 3-way (astrazione, rake del passo 2, regola di arresto 0,008 sulle 18 chart non all-in, ambito della valutazione, server a noleggio, build fino alle 24:00, conferme); configurazione HU di riferimento dopo l'estensione e il TXM2 (candidato 30 × 4 con rake 2,5 % / cap 2a); opzione A (algoritmo): la condizione dell'utente delle 12:26 (dopo il risultato del 30 × 4 e il test 7) è soddisfatta; non rimessa in coda, aspetta la conferma dell'utente (gioco: G1 come preparata, oppure il 30 × 4 con rake 2,5 % / cap 2a secondo il piano delle 12:26); criterio di somiglianza in EV; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente. Poi il codice della fase 3 (dalle 15:00 circa secondo la specifica). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.11, 6, 8 e 9.6, e nella [specifica della fase 3](threeway/PHASE3_SPEC_2026-09-30.md). |
+| Prossimo passo | **Aggiornamento del 2026-10-01 alle 08:00** (batteria di correttezza del passo 2 HU50, sezione 10 di [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md)): 0 FAIL; B2L e B1L INCONCLUSIVE solo sul fit del pavimento; oggi, per decisione dell'utente, estensione di B2L e B1L, run HU19_B1 e terzo parere con la DLL dell'utente (sola lettura, il suo repository non si compila né si modifica); branch `feat/monker-step1-checkdown` pushato alle 08:00 con il consenso dell'utente. Quanto segue è lo stato degli altri filoni alle 14:40 del 2026-09-30, non aggiornato. In corso alle 14:40 del 2026-09-30: estensione del run 30 × 4 con rake 2,5 % / cap 2a fino a 64.000 iterazioni (valutazione esatta, poi archivio su F:), in coda il run con le texture TXM2 nello stesso gioco (64.000). Decisioni in attesa: le D1-D7 della specifica della fase 3 del 3-way (astrazione, rake del passo 2, regola di arresto 0,008 sulle 18 chart non all-in, ambito della valutazione, server a noleggio, build fino alle 24:00, conferme); configurazione HU di riferimento dopo l'estensione e il TXM2 (candidato 30 × 4 con rake 2,5 % / cap 2a); opzione A (algoritmo): la condizione dell'utente delle 12:26 (dopo il risultato del 30 × 4 e il test 7) è soddisfatta; non rimessa in coda, aspetta la conferma dell'utente (gioco: G1 come preparata, oppure il 30 × 4 con rake 2,5 % / cap 2a secondo il piano delle 12:26); criterio di somiglianza in EV; push del branch (commit solo locali); correzione del campionamento distorto del multiway con range nel calcolatore web dell'utente. Poi il codice della fase 3 (dalle 15:00 circa secondo la specifica). Da stimare: migliore risposta preflop contro un postflop risolto esattamente per flop. L'utente non conosce le impostazioni di MonkerSolver usate per le chart: non chiederle più. Dettagli in [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md), sezioni 5.11, 6, 8 e 9.6, e nella [specifica della fase 3](threeway/PHASE3_SPEC_2026-09-30.md). |
 
 ## 2. Registro dei gate
 
@@ -43,6 +43,145 @@ sessione, a ogni gate e a ogni dubbio bloccante.
 Esiti ammessi: `PASS`, `FAIL`, `INCONCLUSIVE`, `NOT_RUN`.
 
 ## 3. Diario
+
+### 2026-10-01 (mattina) — esiti della coda di correttezza, estensione di V1L e V2L fino a 448.000, decisioni dell'utente, push
+
+Dalle 06:42 alle 08:00 circa; dettagli nella sezione 10 di
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md). [V] = verificato, [I] = inferito.
+
+- **06:42:31, fine dell'estensione di V1L e V2L** (partita alle 00:00:38, rc 0 per entrambi; tutti gli snapshot PASS exact)
+  [V]. V2L: NashConv postflop **0,00176 a = 0,059 % del piatto a 448.000**, sotto lo 0,10 % del criterio di livello G1 (soglia
+  passata fra 256.000 e 320.000; la stima del 30 era circa 420.000). V1L: **0,01658 a = 0,553 %**, pendenza costante circa
+  −0,5 (ritmo Monte Carlo [I]); allo stesso ritmo lo 0,10 % chiederebbe circa 14 milioni di iterazioni [I]. Il ribasamento
+  delle epoche dello sconto lazy (a 65.535 e multipli) gira qui per la prima volta in un run: nessun gradino a 96.000.
+- **07:52:34, fine della coda notturna** e riepilogo automatico (`night2/results.md`) [V]: PASS T5 (D1-D4, V2L_s2, V1L_s2),
+  T6 (P2-V0), T4 (V2Z, V2R, V2R5), T2 B0L e B0M; INCONCLUSIVE B2L e B1L, solo sul criterio 3 (fit del pavimento a + b T^-p
+  sugli ultimi cinque snapshot: a = 0,014306 contro 0,013120 e 0,025975 contro 0,009389), con trend, componenti, controllo e
+  strumento che passano; 0 FAIL in tutta la batteria.
+- **Nota di questa voce** [V, calcolo con la stessa procedura di `summarize_night2.py` sui valori non arrotondati]: lo
+  stesso fit sugli ultimi cinque snapshot dell'estensione di V2L (192.000-448.000) dà a = +0,00053 a (30 % del livello), quello
+  di V1L −0,0012 a. Il criterio del pavimento con una sola potenza reagisce a una pendenza che si addolcisce (V2L da −1,63 a
+  −1,29), come in B2L e B1L: da tenere presente leggendo le loro estensioni [I sulla causa: il rumore del campionamento dei
+  board pesa di più quando la parte deterministica dell'errore scende].
+- **Decisioni dell'utente, verso le 08:00**: estendere B2L e B1L; eseguire HU19_B1 (forme complete di flop e turn dei piatti
+  limpati, circa 10,5 GB secondo il piano [I]); terzo parere con la sua DLL (S2-DLL, classifica ed equity) in sola lettura:
+  il suo repository non si compila e non si modifica; push del branch `feat/monker-step1-checkdown` su origin, **fatto alle
+  08:00**.
+- **Regole di oggi**: run fino alle 20:00, build e test fino alle 21:00, run possibili in coda per le 00:00; l'utente può usare
+  il PC, quindi al massimo 6 thread nostri in tutto e controllo della memoria fisica libera prima di ogni lavoro pesante.
+  Guardie ancora armate: `ext/stop_ext_1958.ps1` e `night2/stop_night2_1958.ps1` (CANCEL alle 19:40, kill alle 19:58 dei
+  processi che corrispondono ai loro schemi).
+- Documentazione: sezione 10 del documento della ricetta e queste tre voci del diario.
+
+### 2026-10-01 (notte) — coda di correttezza (T2, T4, T5, T6, D6, D5), T1 e T3 eseguiti, tre rafforzamenti di T1
+
+Dalle 00:00 alle 07:52; sezione 10 di [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+Tutti i tempi e i numeri da `night2/queue.log`, `night2/checks.md`, `night2/results.md` e dai rapporti dei workflow [V].
+
+**Coda `night2/queue_night2.sh`** (eseguibili `out/monker/bin_correct/c123`, driver congelato
+`out/frozen/run_correctness_v2.sh`, due slot da 2 thread accanto ai 4 thread dell'estensione di V1L e V2L; ogni run lungo
+aspetta la memoria libera necessaria più 3 GB, e il suo primo segmento viene controllato: capacità, byte di stato, texture,
+righe bloccate, picco, valutazione exact):
+
+- 00:00-00:08: tabella `g1x1` e controlli rapidi D4 (valutatore 2 contro 8 thread), D1, D2, D3 (stato e valori con altri
+  thread e partizioni) e P2-V0 (mappa TX2 contro identità): tutti identici bit per bit ai valori registrati.
+- 00:08-00:16, D6 e D5 (aggiunti con un hook): su HU50 `bin_rake` e `c123` danno con 200 iterazioni la stessa identità del
+  trainer (`1f515aa183549007`, quella del run HU50), lo stesso stato, la stessa policy e 8 chart identiche; i due valutatori la
+  stessa NashConv su 20 flop (13,250337907950401 a); partizione 64 con 4 thread contro partizione 4 con 2 thread identiche su
+  HU50 e su HU20. Quindi i certificati di `c123` coprono i risultati HU50 prodotti da `bin_rake`.
+- Slot A: B2L 00:16-02:52, B1L 02:52-04:49, V2L_s2 04:49-05:56, B0LG1 05:56-06:19, B0MG1 06:19-06:52, V2R5 06:52-07:17.
+- Slot B: V2Z 00:19-00:31, V2R 00:31-02:26, R3 02:28-02:38, B0L 02:38-04:06, V1L_s2 04:06-05:19, B2LG1 05:19-05:42, B1LG1
+  05:42-06:09, B0M 06:09-07:52.
+- Esiti: V2Z identico a V2 bit per bit (PASS); V2R 0,000028 a = 0,00092 % del piatto a 64.000, la policy di V2 nel gioco con il
+  rake lascia 0,002850 a (100 volte di più: potenza), rake atteso per eroe = −(EV0 + EV1) (PASS); V2R5 0,0000566 a a 32.000
+  (PASS); seed 2 di V2L e V1L: rapporto con il seed 1 fra 0,99 e 1,01 da 4.000 a 64.000, a 64.000 0,03499 contro 0,03488 a e
+  0,04376 contro 0,04375 a (PASS); B0L 0,07093 a e B0M 0,05900 a a 64.000 (PASS); B2L 0,13120 a e B1L 0,09389 a
+  (INCONCLUSIVE sul solo criterio del pavimento).
+
+**T1 e T3** (workflow sulla build `out/build/windows-release-suite`; C++ 00:02-00:32, Python 00:34-01:17, rapporto
+`t1t3/RESULTS.md` alle 01:22): 0 FAIL, 1 INCONCLUSIVE per costruzione (S4 su HU6_all: nessun riepilogo del motore da
+confrontare), 0 differenze del motore, 0 correzioni. T1 A1-A5 PASS (errore massimo 2,3e-12); U1-U3 PASS; S1 10/10, S2 8/8,
+S3 PASS su 24 configurazioni più HU20_deep e l'albero di produzione HU50, S4 PASS su HU50, S5a 16/16, S6 142/142 e 48/48;
+etichetta `preflop_blueprint` 88/88. Limite O1: sui 9 board della prova di T1 ogni mano ha lo stesso esito di showdown su ogni
+river, quindi l'A2 forse non vedeva un indice di classe sbagliato.
+
+**Rafforzamento di T1** (decisione dell'utente): tre giri, ognuno con un implementatore e un reviewer indipendente che muta
+una copia del test (mai committata); solo `tests/preflop_blueprint_board_texture_tests.cpp`, nessun cambiamento di `libs/`,
+`include/` o del supporto dei test, output precedente identico riga per riga dopo ogni giro, commit con percorso esplicito.
+
+- `bf0f63e` (02:55-03:20, review 03:20-03:50): 7 board su cui il river cambia il vincitore (36 coppie di mani su 36 cambiano
+  esito fra i river del turn Ad).
+  **Scoperta**: l'A2 senza blocco era cieco sulle righe del river (0 insiemi su 14.336 con media non uniforme: il preflop
+  allenato non porta al river); le asserzioni di potenza girano ora con un preflop bloccato misto, e tre letture con la chiave
+  sbagliata spostano la NashConv di almeno 0,0181 (mille volte la tolleranza). Il reviewer: l'A2 fallisce con ogni mutazione
+  sotto il blocco e passa con tutte senza blocco.
+- `c50ff3c` (03:45-03:53, review 04:00-04:45): potenza per giocatore (24 letture sbagliate confinate a un giocatore, tutte
+  prese), varianti specchiate, non vacuità dell'A1 sul river. **Correzione del reviewer**: senza blocco nessuna cella del
+  river cambia dopo la prima iterazione, quindi l'A1 senza blocco controllava solo l'iterazione 1.
+- `5bc2a9c` (04:45-05:20, review 05:00-05:30): A1 sotto il blocco del preflop con una relazione esatta derivata dal codice
+  (regret del trainer = regret dell'oracolo / fattore di blocco dell'attore, somma = somma / fattore dell'avversario, medie
+  uguali), 6.140 celle entro 9,5e-11; 670 / 603 celle del river raggruppate cambiano dopo l'iterazione 1. Il reviewer: quattro
+  mutazioni (una cella spostata di 1e-8 relativo, celle ferme all'iterazione 1, VanillaCfr nell'oracolo, blocco spostato di
+  1,25e-4) fanno fallire l'A1 in 8 varianti su 8, gli scambi e i rimescolamenti di righe dove cambiano il gioco; la mutazione
+  "celle ferme" senza blocco passa (la cecità vecchia, ora chiusa).
+- Asserzioni del test da 50.079.891 a 134.975.163, tempo da 36 a circa 100-109 s. Commit non pushati fino al push delle 08:00.
+
+### 2026-09-30 (pomeriggio tardi e sera) — batteria di correttezza del passo 2 HU50: progetto, giochi senza perdita, V2, V1L e V2L, piano di copertura, coda notturna; incidente di processo
+
+Dalle 15:30 circa a mezzanotte; sezione 10 di [MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+La domanda: il solver calcola l'equilibrio del gioco che gli diamo? Il metodo: giochi piccoli senza perdita (ogni insieme di
+informazione astratto è uno reale), lo stesso percorso di codice di HU50, la migliore risposta fisica esatta su tutti i 573
+flop (la NashConv deve andare a 0: un pavimento sarebbe un bug), controlli grossolani che devono fermarsi.
+
+- **Progetto e calibrazione** (fino alle 16:23, `design.md`), dopo la domanda dell'utente "Sul river non servono bucket
+  esatti?" (per un certificato sì; nei run HU50 no, e non sarebbero realizzabili). Prove sul gioco a tutte le street (lo
+  stesso di `HU6_all`; 15:46-16:21): A 0,027 % del piatto a 32.000, B 0,046 % a 16.000, controllo C fermo allo 0,53 % [V]. Dalle 16:30
+  circa la prova profonda HU20_deep (20a, 15 × 4 + TX2 e controllo 3 × 1), finita alle 20:28 e alle 20:34 a 32.000.
+- **Codice** (16:55-17:46): chiave `postflop_betting_streets` (`591724c`), `--turn-exact` e `--river-exact` (`dc34131`),
+  chiave del river "river-board" (`68cf367`), driver `run_correctness.sh` (`b505ad5`), README (`28d4a78`); dalla review del
+  progetto il preflop bloccato limp/check per dare potenza al postflop e la guardia dell'impronta dell'albero (`6bdb86f`,
+  `2c0ee74`). Eseguibili congelati `out/monker/bin_correct/c123`; smoke 16:56-17:02.
+- **Run** (17:45-19:47, con estensioni di V1L e V2L a 40.000 e 48.000 fino alle 19:29; rapporto alle 19:49) [V]: V2 (preflop
+  libero, river esatto) 0,0014 % del piatto a 32.000, PASS; V2L 1,16 % e V1L 1,46 % del piatto a 64.000, PASS su trend e
+  controllo (V2LG1 e V1LG1 fermi, 7,9 e 6,6 volte sopra a 16.000), INCONCLUSIVE sulla lettera del livello; i controlli a 3
+  livelli non discriminavano.
+- **Verso le 20:00, decisione dell'utente** ("Mettili in coda"): estendere V1L e V2L fino a 448.000 dalle 00:00 (coda lanciata
+  alle 19:59 con la guardia `ext/stop_ext_1958.ps1`).
+- **Piano di copertura** (20:00-21:15): cinque studi sulle lacune (chiave del river "turn", puntate e rilanci, componenti
+  condivisi, seed, rake; finiti fra le 20:20 e le 20:31), una critica (20:35-21:00: tre errori di fatto, due argomenti deboli,
+  una lacuna nuova di provenienza degli eseguibili, conflitti fra i piani) e il piano (`coverage/plan.md`, 21:00-21:15), con la
+  sezione su cosa non si può certificare.
+- **Verso le 20:50, decisione dell'utente**: tutto in coda per la notte dalle 00:00 (T2, la parte di T4 con i run, T5, T6), e
+  scrivere i test T1 e T3.
+- **Codice della sera** (workflow, 21:01-21:55): giochi B, gemelli di V2 con il rake e opzione `SEED` (`6f4a296`), B0M
+  (`ba90a30`), dump dell'albero `--dump-nodes` (`fdf8114`), U1-U3 (`0bd2a5e`, `b8e1df0`), T1 (`e459c17`, `1c5932d`,
+  `45d1485`, `b738e71`), riferimenti indipendenti in `tools/independent/` (da `207c00f` a `c1db800` e `ccd922e`), arbitro S3
+  (`4d3a44c`, `65598b3`) e le correzioni delle review del codice (`8de0299`, `000521c`, `b440103`, `b1fffd8`, `c2bddc5`,
+  `9d0072e`).
+- **21:42:46**: coda notturna in attesa delle 00:00 e sua guardia armata (`night2/stop_night2_1958.ps1`: CANCEL alle 19:40 e
+  kill alle 19:58 del 1° ottobre).
+- **Correzioni registrate** (critica e piano) [V]: le prove A e B usavano la mappa identità, non TX2, e in `HU6_all` il flop
+  arriva nello 0,3 % circa delle mani, quindi poca potenza sul postflop (non misuravano davvero la chiave "turn" di HU50);
+  nella prova profonda il gain_lower postflop è solo 1,35 volte circa sotto il controllo (la differenza 1,692 % contro 3,441 %
+  sta nel guadagno preflop e postflop del CO), quindi le puntate postflop erano in pratica scoperte; S7 (scala contro tris in
+  MonkerSolver) era già risolto il 30 (5.9 del documento della ricetta) ed è stato tolto; l'affermazione che le regole fossero
+  "già coperte" era vera solo in parte (controlli esterni per la classifica e l'albero preflop, nessun controllo indipendente
+  di tabella dei ranghi, importi postflop, righe di payoff e cap del rake: ora S1, S2, S3, U1-U3).
+
+**Incidente di processo (verso le 21:20)** [V per i fatti nei file; la causa è quella ricostruita dalla sessione principale].
+Mentre i workflow della preparazione della notte erano in esecuzione, la sessione principale ha mandato messaggi (SendMessage)
+ad agenti ancora in corso; invece di raggiungerli, i messaggi hanno avviato loro copie parallele, e due agenti hanno scritto
+nella stessa cartella `night2` (notato alle 21:22, `night2/COORDINATION.md`). **Nessun danno**: i due si sono coordinati per
+iscritto in quel file; il secondo ha aggiunto D6, D5 e B0M solo attraverso file di hook ed `extra_runs.txt`, senza toccare la
+coda né gli altri file del primo; un verificatore indipendente ha controllato la coda con un dry run (uguale a parte il testo
+del gate di memoria), ha serializzato il gate di memoria dei due slot e ha racchiuso la coda in `main()`, così una modifica
+successiva del file non può corrompere la coda in attesa (provato), e ha prescritto di lanciare coda e guardia come due
+comandi separati (la riga di comando di un wrapper contiene tutto il testo del comando, e la guardia l'avrebbe uccisa). La
+coda ha girato senza errori fino alle 07:52.
+
+**Lezione**: non mandare messaggi agli agenti di un workflow in esecuzione; per cambiarne il lavoro si aspetta che finisca, o
+si passa da file che gli agenti leggono quando ci arrivano (hook, file di coordinamento); ogni file ha un solo scrittore, e
+prima di lanciare si controlla che nessun altro agente scriva negli stessi file.
 
 ### 2026-09-30 (pomeriggio) — 30 × 4 con rake, test 7, studio I/N, texture di MonkerSolver (TXM, TXM2), file .tree, run su F:, specifica della fase 3
 
