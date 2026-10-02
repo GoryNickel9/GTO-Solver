@@ -2286,6 +2286,141 @@ toccarlo; `threeway/phase3b/partA.md`, `review_partA.md`, `referee3.md` e `chain
 - Nello stesso branch, dalle 00:23 alle 00:25 del 2 ottobre, quattro commit tolgono la vecchia GUI desktop (decisione
   dell'utente); non toccano il codice del 3-way. Build e ctest dopo il run.
 - **Cosa resta**: i punti 1-5 qui sopra; il punto 2 riparte dalla prima build della parte A e da V11 (handoff T4-T7).
+- **Aggiornamento del 2 ottobre** (9.8): i punti 1 e 2 sono fatti (run 1 fermato a 24.000 con distanza 0,0645;
+  parte A compilata, committata ed eseguita sul run 1; G3 "PASS provvisorio"), il punto 3 (test del blocco) è in
+  coda per le 20:00 del 2 ottobre.
+
+### 9.8 Primo run 3-way del passo 2 e parte A (2 ottobre)
+
+Rapporti nella cartella temporanea della sessione, `threeway/phase3b/`: `run1_result.md` (risultato del run, controllo
+dell'albero, misure fuori dal gate), `t4_results.md` (build e V11 della parte A), `t56_results.md` (errori standard, controlli
+della portata, commit), `partA_run1.md` (parte A sul run 1 e G3), `verify_g3/` (ricalcolo indipendente), `mutations_results.md`
+(mutazioni); `threeway/lock/LOCK_TEST_PLAN.md` (test del blocco). Cartella del run `out/monker/step2_3way/3WAY50_15x4_rake25cap2`
+(`run.log`, `train.jsonl`, `part_a/`). Cronologia e decisioni dell'utente nel diario (PROGRESS_LOG, voce del 2026-10-02
+09:00-19:00). [V] = verificato (misurato, o letto nei file, nei log o nel codice); [I] = inferito.
+
+**Il run 1** [V, `run.log`, `train.jsonl`].
+
+- 3WAY50, 15 × 4 + TX2, double, rake 2,5 % / cap 2a (no flop no drop), donk bet, 8 thread, 96 board per iterazione. Partito
+  alle 00:09:30 del 2 ottobre, fermato dalla regola di arresto alle 10:36:07: `STABLE at 24000 (non_all_in change 0.007 <
+  0.008)`, `PREFLOP_BLUEPRINT_TRAIN=STOPPED`, ultima iterazione 24.010. 10 h 29 min in tutto, **1,561 s per iterazione** (lo
+  smoke del gate 3a: 1,499); picco del working set 14,86 GB.
+- Controllo dell'albero sulle chart di `it_24000`: `PREFLOP_BLUEPRINT_MONKER_TREE=PASS nodes=54 files=54`; impronta
+  dell'albero `fnv1a64:71abeabaab92fe56`, quella del referee.
+
+| Iterazione | Cambio sulle 18 non all-in | Distanza (54 chart) | 36 all-in | 18 non all-in | Differenza di range |
+|---|---:|---:|---:|---:|---:|
+| 4.000 | — | 0,0791 | 0,0546 | 0,1281 | 0,4375 |
+| 8.000 | 0,0477 | 0,0732 | 0,0575 | 0,1045 | 0,3098 |
+| 16.000 | 0,0153 | 0,0672 | 0,0521 | 0,0974 | 0,2655 |
+| **24.000** | **0,007** (arresto) | **0,0645** | **0,0478** | **0,0980** | **0,2729** |
+
+Stessa azione principale nel 93,5 % dei casi. L'attesa della specifica (distanza 0,06-0,12) è rispettata, al bordo basso;
+due attese che non sono gate sono mancate: le chart all-in non stanno a 0,02 o meno (media 0,0478, 24 su 36 sopra 0,02, la
+peggiore 0,207) e lo scarto non sta soprattutto nelle non all-in (50,6 % della somma, in HU il 91,5 %).
+
+**Confronto con il passo 1** (9.5) [V numeri; I letture].
+
+| Misura | Passo 1 3-way | Passo 2, run 1 (`it_24000`) | MonkerSolver |
+|---|---|---|---|
+| Distanza / differenza di range (54 chart) | 0,264 / 0,721 con lo stesso rake (`rake25_dead`); 0,245-0,288 / 0,699-0,736 sui cinque giochi | **0,0645 / 0,2729** | — |
+| Distanza sulle 40 chart con mani in comune fra passo 1 e MonkerSolver | 0,264 (0,2641) | **0,072** (0,0718) | — |
+| UTG alla radice: all-in / open 6a / limp / fold (% delle combo) | 16,1 / 0,0 / 46,4 / 37,5 (`rake25_dead`) | 16,5 / 0,2 / 37,8 / 45,5 | 17,6 / 0,1 / 35,3 / 47,0 |
+| CO dopo il fold dell'UTG | 30,2 / 0,0 / 63,8 / 6,0 | 34,8 / 2,1 / 34,0 / 29,1 | 32,8 / 3,8 / 31,4 / 32,0 |
+| Preferenza suited UTG / CO | non calcolata | 0,257 / 0,308 | 0,204 / 0,255 |
+| EV UTG / CO / BTN (a per mano) | −0,3154 / −0,0548 / +0,0231 | −0,3510 / −0,1028 / +0,0366 (parte A, aggregata) | — |
+| Rake atteso | 0,347 a | 0,416 a | — |
+
+- La distanza scende di 3,8-4,5 volte e la differenza di range di 2,6-2,7 volte: lo stesso fattore del passo 2 HU (0,262 →
+  0,057-0,072, 3,6-4,6 volte).
+- Il difetto del passo 1 (mai un open, limp troppo frequente, il CO che folda il 6 % al primo ingresso) è sparito: al primo
+  ingresso UTG e CO stanno a 3 punti da MonkerSolver su ogni azione. Resta una preferenza suited più alta della sua di 0,053 a
+  entrambi i nodi; al CO la preferenza suited e l'open 6a si muovono ancora a 24.000.
+- Con il postflop giocato l'UTG e il CO perdono di più e il rake atteso sale; il BTN guadagna un po' di più.
+- Le due misure di MonkerSolver "nello stesso gioco" non sono confrontabili fra i passi: al passo 1 è il guadagno della
+  migliore risposta contro le sue chart bloccate su tutti i nodi (UTG / CO / BTN 5,06 / 4,52 / 1,41 % con `rake25_dead`); al
+  passo 2 la parte A misura la perdita di un posto che gioca le chart mentre gli altri giocano le nostre (qui sotto). La
+  misura del passo 2 che corrisponde a quella del passo 1 viene dal test del blocco.
+
+**Parte A: build, V11 e commit** [V, `t4_results.md`, `t56_results.md`].
+
+- Build della parte A senza warning, V11 PASS (770 asserzioni dopo i controlli D3), V1 IDENTICAL, ctest 102/102, gamba esatta
+  HU `--long` a ≤ 3,2e-14, referee 2/2, smoke della CLI; errori standard aggregati con il termine del denominatore (D.2);
+  commit `ec3eec5` su `feat/threeway-step2`; CLI congelata in `out/monker/bin_3way_partA/` (sha256 `b0a26878…`).
+- V11 ha trovato due affermazioni false del disegno, corrette nei file della parte A (il codice del trainer non cambia):
+  - per classe e per combo coincidono solo su liste chiuse per permutazione dei semi, non sulle liste canoniche (scarto
+    0,25389; su una lista chiusa di 1.892 board 1,0e-14 in HU e 6,2e-15 a 3 posti);
+  - in `class_cache`, il modo di produzione, l'identità del rake a 3 posti vale solo in media sui board: i terminali preflop
+    portano i valori della cache senza board, e ogni posto li pesa con le proprie mani vive (residuo −1,147 su un flop, media
+    −0,138 ± 0,28 su 6 flop). In `board_kernels` e sulla lista esatta resta a 1e-14. La CLI ora vincola l'identità dove è
+    esatta e altrimenti la riporta con il suo errore standard (`rake_identity_exact`, `rake_identity_standard_error_antes`).
+- Mutazioni (T5 D.1, sandbox di `ec3eec5`): le cinque previste dalla review del 1° ottobre falliscono V11; i controlli D3
+  prendono la portata a 3 posti senza rimozione delle carte (scarto 0,517). Una sesta mutazione (nessun rake nel ramo
+  `class_cache` di `terminal3`) passa tutte le gambe a 3 posti, perché in quel modo l'identità è solo stampata: proposto un
+  vincolo a 1e-9 nel passaggio `class_cache` di v11three sulla lista canonica esatta (provato nella sandbox: 9,99e-16 senza
+  mutazioni, FAIL con la mutazione), da adottare il 3 ottobre se l'utente approva.
+
+**Parte A sul run 1 e verdetto di G3** [V, `partA_run1.md`, `part_a/values_64.json`, `part_a/report_64.json`;
+`verify_g3/verify_g3.log`].
+
+64 flop fisici (seed 20261002), policy finale (iterazione 24.010), `class_cache`, 8 thread: 62,9 minuti, picco 7,31 GB. Valori
+in ante per mano, percentuali del piatto iniziale di 4a.
+
+| Posto | EV aggregata ± SE | EV diretta ± SE | Guadagno preflop ± SE | Chart di MonkerSolver nel nostro gioco: perdita ± SE |
+|---|---|---|---|---|
+| UTG | −0,35095 ± 0,00908 | −0,34383 ± 0,00696 | 0,02352 ± 0,01504 (0,588 %) | −0,00034 ± 0,00212 (−0,008 %) |
+| CO | −0,10283 ± 0,00423 | −0,09372 ± 0,00899 | **0,03053 ± 0,01130 (0,763 %)** | −0,00108 ± 0,00203 (−0,027 %) |
+| BTN | +0,03659 ± 0,00982 | +0,04658 ± 0,01663 | 0,01842 ± 0,00816 (0,461 %) | +0,00101 ± 0,00173 (+0,025 %) |
+
+- Rake atteso 0,41579 a. Identità diretta: residuo **+0,02481 ± 0,02484 a** (z +1,00); EV aggregate più il rake −0,00140
+  (z −0,38).
+- **Il guadagno preflop è soprattutto rumore** [I]: è una stima per eccesso (la migliore risposta si sceglie sullo stesso
+  campione su cui si valuta). Sulle metà di 32 flop raddoppia; scelta su 32 flop e valutata sugli altri 32, la migliore risposta
+  perde 0,027-0,060 a; l'estrapolazione 2 g(64) − g(32) dà −0,007 / −0,002 / +0,001. La specifica si aspettava lo 0,3 % o meno:
+  0,46-0,76 % per eccesso non contraddice un guadagno vero vicino a zero.
+- **Le chart di MonkerSolver dentro il nostro gioco**: ogni perdita sta entro 0,6 errori standard da zero e sotto lo 0,03 % del
+  piatto (in HU al massimo lo 0,09 %, 5.4): a questo campione il preflop di MonkerSolver e il nostro sono indistinguibili nel
+  nostro gioco [I]. Righe di ripiego: 5 del CO, 0,056 combo di portata.
+- Il ricalcolo indipendente dai JSON della CLI riproduce EV, guadagni, scelte, perdite per nodo, rake e residuo; gli errori
+  standard del jackknife sono vicini a quelli del metodo delta.
+
+| Condizione di G3 | Esito |
+|---|---|
+| Run finito per la regola di arresto | PASS (`STOPPED` a 24.000) |
+| Albero 54/54 | PASS |
+| Guadagno preflop ≤ 0,04 a per posto | PASS: massimo CO 0,0305 a, 0,84 errori standard sotto il limite |
+| Controlli verdi | PASS |
+| Identità del rake ≤ 1e-9 | Non applicabile in `class_cache` campionato; in forma statistica (decisione dell'utente del 2 ottobre verso le 13:25, "Lista esatta più avanti"): +0,0248 ± 0,0248 a, compatibile con zero |
+
+**Verdetto: G3 "PASS provvisorio"**, campionato su 64 flop fisici con l'identità del rake in forma statistica. La parte A sulla
+lista esatta dei 573 flop canonici (8-18 ore sull'i3, o un server; U4 dell'handoff) toglie la distorsione e il rumore e
+riporta l'identità a 1e-9. L'identità del rake è un controllo di coerenza e non prova i kernel (quella prova sono V2, V8, V13 e
+V11).
+
+**Il test del blocco (piano)** [V, `LOCK_TEST_PLAN.md`, coda congelata, `queue.log` del blocco; I dove è segnato].
+
+- Coda congelata `out/frozen/queue_3way50_15x4_lock_2000.sh` (sha256 `002bc77458b1…`), lanciata alle 13:26:23 del 2 ottobre
+  con 38 controlli ok: aspetta le 20:00 e il gate della memoria (18.874.368 KB liberi, nessun trainer, nessun processo della
+  parte A). Uscita `out/monker/step2_3way/3WAY50_15x4_rake25cap2_lock_all`.
+- Stesso gioco e stessa astrazione del run 1; il preflop delle 54 chart 3-way 50a di MonkerSolver è bloccato su tutti i nodi
+  (copia senza spazi in `out/monker_lock/charts_3way_50a`, manifest fissato) e il nostro postflop si allena contro i loro
+  range. Soglia 0, minimo e tetto 24.000 (fine con `ITERATION_LIMIT`), policy a 8.000, 16.000 e 24.000, checkpoint a 16.000.
+  All'avvio ci si aspetta 2.681 righe bloccate, 1.688 fuori range e 5 di ripiego (V12, 9.7).
+- Durata circa 10,5 ore: fine verso le 06:30 del 3 ottobre se parte alle 20:00 [I]. Rischio: senza nulla di nostro in
+  esecuzione la memoria libera era 18,2-18,6 GB, sotto il gate, per le applicazioni dell'utente; se resta così la coda aspetta.
+- Valutazione (3 ottobre): parte A con la CLI congelata su `it_16000` e `it_24000`, stesso seed, poi la tabella dei guadagni
+  della migliore risposta preflop per posto contro il run 1 (0,018-0,031 a qui sopra), il blocco HU (CO 0,92-1,80 % del piatto,
+  5.9-5.11) e il blocco del passo 1 (UTG e CO 3,65-5,46 %, BTN 1,40-1,64 %, 9.5). È la misura che dice quanto il preflop di
+  MonkerSolver è lontano da un equilibrio del nostro gioco 3-way con un postflop allenato.
+
+**Cosa resta.**
+
+1. Il test del blocco e la sua parte A (3 ottobre).
+2. La rimozione di history7 nel worktree (T9b-T9d), con le radici dei V1 corte (il trainer non scrive percorsi oltre 259
+   caratteri) e, se l'utente approva, il vincolo del rake del `class_cache` in V11; poi il merge in
+   `feat/monker-step1-checkdown`.
+3. La parte A sulla lista esatta (U4), che rende definitivo G3.
+4. La proposta della batteria di correttezza 3-way e la fase 3c (parte B, migliore risposta completa) su un server.
 
 ## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre pomeriggio)
 
