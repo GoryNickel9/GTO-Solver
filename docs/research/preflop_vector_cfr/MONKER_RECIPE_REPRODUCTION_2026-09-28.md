@@ -2288,7 +2288,8 @@ toccarlo; `threeway/phase3b/partA.md`, `review_partA.md`, `referee3.md` e `chain
 - **Cosa resta**: i punti 1-5 qui sopra; il punto 2 riparte dalla prima build della parte A e da V11 (handoff T4-T7).
 - **Aggiornamento del 2 ottobre** (9.8): i punti 1 e 2 sono fatti (run 1 fermato a 24.000 con distanza 0,0645;
   parte A compilata, committata ed eseguita sul run 1; G3 "PASS provvisorio"), il punto 3 (test del blocco) è in
-  coda per le 20:00 del 2 ottobre.
+  coda per le 20:00 del 2 ottobre. Il punto 5 è fatto in parte: push di `88118a6..a35f56c` alle 09:17 del 2 ottobre,
+  su richiesta dell'utente [V, reflog di `origin/feat/monker-step1-checkdown`]; i commit successivi sono locali.
 
 ### 9.8 Primo run 3-way del passo 2 e parte A (2 ottobre)
 
@@ -2323,7 +2324,7 @@ peggiore 0,207) e lo scarto non sta soprattutto nelle non all-in (50,6 % della s
 
 | Misura | Passo 1 3-way | Passo 2, run 1 (`it_24000`) | MonkerSolver |
 |---|---|---|---|
-| Distanza / differenza di range (54 chart) | 0,264 / 0,721 con lo stesso rake (`rake25_dead`); 0,245-0,288 / 0,699-0,736 sui cinque giochi | **0,0645 / 0,2729** | — |
+| Distanza / differenza di range (54 chart; al passo 1 la distanza è la media sulle 40 chart con mani in comune) | 0,264 / 0,721 con lo stesso rake (`rake25_dead`); 0,245-0,288 / 0,699-0,736 sui cinque giochi | **0,0645 / 0,2729** | — |
 | Distanza sulle 40 chart con mani in comune fra passo 1 e MonkerSolver | 0,264 (0,2641) | **0,072** (0,0718) | — |
 | UTG alla radice: all-in / open 6a / limp / fold (% delle combo) | 16,1 / 0,0 / 46,4 / 37,5 (`rake25_dead`) | 16,5 / 0,2 / 37,8 / 45,5 | 17,6 / 0,1 / 35,3 / 47,0 |
 | CO dopo il fold dell'UTG | 30,2 / 0,0 / 63,8 / 6,0 | 34,8 / 2,1 / 34,0 / 29,1 | 32,8 / 3,8 / 31,4 / 32,0 |
@@ -2332,7 +2333,9 @@ peggiore 0,207) e lo scarto non sta soprattutto nelle non all-in (50,6 % della s
 | Rake atteso | 0,347 a | 0,416 a | — |
 
 - La distanza scende di 3,8-4,5 volte e la differenza di range di 2,6-2,7 volte: lo stesso fattore del passo 2 HU (0,262 →
-  0,057-0,072, 3,6-4,6 volte).
+  0,057-0,072, 3,6-4,6 volte). Al passo 1 la distanza è la media sulle sole chart con mani in comune con MonkerSolver
+  (40 su 54 in tutti e cinque i giochi: le altre 14 non hanno distanza) [V, `vs_monker.json` del passo 1]: alla pari,
+  sulle stesse 40 chart di `rake25_dead`, il fattore è 3,7 (0,2641 contro 0,0718).
 - Il difetto del passo 1 (mai un open, limp troppo frequente, il CO che folda il 6 % al primo ingresso) è sparito: al primo
   ingresso UTG e CO stanno a 3 punti da MonkerSolver su ogni azione. Resta una preferenza suited più alta della sua di 0,053 a
   entrambi i nodi; al CO la preferenza suited e l'open 6a si muovono ancora a 24.000.
@@ -2379,7 +2382,7 @@ in ante per mano, percentuali del piatto iniziale di 4a.
   perde 0,027-0,060 a; l'estrapolazione 2 g(64) − g(32) dà −0,007 / −0,002 / +0,001. La specifica si aspettava lo 0,3 % o meno:
   0,46-0,76 % per eccesso non contraddice un guadagno vero vicino a zero.
 - **Le chart di MonkerSolver dentro il nostro gioco**: ogni perdita sta entro 0,6 errori standard da zero e sotto lo 0,03 % del
-  piatto (in HU al massimo lo 0,09 %, 5.4): a questo campione il preflop di MonkerSolver e il nostro sono indistinguibili nel
+  piatto (in HU al massimo lo 0,09 %, 5.4-5.8): a questo campione il preflop di MonkerSolver e il nostro sono indistinguibili nel
   nostro gioco [I]. Righe di ripiego: 5 del CO, 0,056 combo di portata.
 - Il ricalcolo indipendente dai JSON della CLI riproduce EV, guadagni, scelte, perdite per nodo, rake e residuo; gli errori
   standard del jackknife sono vicini a quelli del metodo delta.
@@ -2407,7 +2410,8 @@ V11).
   range. Soglia 0, minimo e tetto 24.000 (fine con `ITERATION_LIMIT`), policy a 8.000, 16.000 e 24.000, checkpoint a 16.000.
   All'avvio ci si aspetta 2.681 righe bloccate, 1.688 fuori range e 5 di ripiego (V12, 9.7).
 - Durata circa 10,5 ore: fine verso le 06:30 del 3 ottobre se parte alle 20:00 [I]. Rischio: senza nulla di nostro in
-  esecuzione la memoria libera era 18,2-18,6 GB, sotto il gate, per le applicazioni dell'utente; se resta così la coda aspetta.
+  esecuzione la memoria libera era 17,9-18,6 GB (17.914.556 KB alle 16:00:57, 18,2 GB alle 15:58, 18,3-18,6 GB fra le
+  18:06 e le 18:23), sotto il gate, per le applicazioni dell'utente; se resta così la coda aspetta.
 - Valutazione (3 ottobre): parte A con la CLI congelata su `it_16000` e `it_24000`, stesso seed, poi la tabella dei guadagni
   della migliore risposta preflop per posto contro il run 1 (0,018-0,031 a qui sopra), il blocco HU (CO 0,92-1,80 % del piatto,
   5.9-5.11) e il blocco del passo 1 (UTG e CO 3,65-5,46 %, BTN 1,40-1,64 %, 9.5). È la misura che dice quanto il preflop di
