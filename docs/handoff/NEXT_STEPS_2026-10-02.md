@@ -681,7 +681,16 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
      Eccezione già avvenuta: le GUI desktop, tolte in `WT` dai 4 commit del 02/10 (sezione 4), secondo il messaggio di
      `921f424` su decisione dell'utente.
   4. **`docs/specifications/`** (17 file), il README e la ROADMAP del prodotto legacy. Descrivono il contratto "HU postflop
-     esatto" che l'utente mantiene [VERIFIED: audit §3.5]. Chiedere.
+     esatto" che l'utente mantiene [VERIFIED: audit §3.5]. **Deciso il 02/10** (risposte all'audit dei documenti
+     `SP/docs_audit/docs_audit.md`, piano corretto del critico al §9) [VERIFIED: `MEM/docs-archive-decisions-2026-10-02.md`]:
+     - il piano si esegue **dopo il merge di T10**, solo commit di documenti: tag `docs-pre-cleanup-2026-10-02`, poi
+       `git rm` dei 18 file (15 JSON del 19-23/09 e i 3 `cfr_*.md`) e `git mv` dei 70 file in `docs/archive/` per periodo;
+       poi i 129 link relativi e i 2 percorsi nelle note di memoria; poi gli aggiornamenti U1-U10 (README riscritto);
+     - `docs/specifications/` resta come contratto di `gto_cli` (KEEP + UPDATE); solo `DESKTOP_UI.md` va in archivio;
+     - la ROADMAP legacy va in archivio; i due piani `POSTFLOP_RESEARCH_DECISION_2026-09-10.md` e
+       `POSTFLOP_AGENT_EXECUTION_ROADMAP_2026-09-10.md` **restano** al loro posto;
+     - `GTO_PLUS_PARITY_JOURNEY.md` resta finché i test legacy del postflop non sono rifatti (T17.6); poi chiedere
+       all'utente se la parità con GTO+ è ancora un obiettivo.
   5. **Le sandbox `WT/out/laneH` e `WT/out/review3b`**, dopo T9 e T5 [INFERRED].
   6. **`benchmarks/results`** (6,8 GB, non tracciato e ignorato da git [VERIFIED: `git ls-files`]): fuori dalla pulizia salvo
      `-IncludeBenchmarkResults`.
@@ -798,7 +807,7 @@ Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa pri
 | U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c | T13 |
 | U5 | Criteri di accettazione del prodotto e loro soglie | T16 |
 | U6 | Eseguire la batteria di correttezza 3-way proposta | T12 |
-| U7 | Pulizia: esecuzione degli script; binari HU50 del passo 2; `main`/`origin/main`; codice legacy ("non ancora"); `docs/specifications`; sandbox | T15 |
+| U7 | Pulizia: esecuzione degli script; binari HU50 del passo 2; `main`/`origin/main`; codice legacy ("non ancora"); sandbox. (`docs/specifications` e archivio dei documenti: decisi il 02/10, T15.4) | T15 |
 | U8 | Push dei branch | T10, T17 |
 | U9 | Decisioni HU aperte: configurazione di riferimento, TXM2, criterio in EV, opzione A, radice del CO, test della migliore risposta contro un postflop esatto, HU40 | T17 |
 | U10 | Decisioni D1-D8 della web UI; QA3, QA6 e QA7 dell'addendum (QA1, QA2, QA4 e QA5 hanno già risposta) | T17 |
