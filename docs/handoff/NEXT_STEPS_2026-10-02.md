@@ -9,6 +9,19 @@ i lavori della sezione 5 nell'ordine dato.
 stima o proposta, non misurata. Le decisioni che spettano all'utente sono segnate **DECISIONE UTENTE** e raccolte nella
 sezione 7.
 
+> **Stato alle 11:00 del 02/10: il run 1 è finito, la roadmap è approvata.**
+> - Il run 3-way 1 si è fermato alle 10:38:40 per la regola di arresto: `STABLE at 24000 (non_all_in change 0.007 < 0.008)`,
+>   `PREFLOP_BLUEPRINT_TRAIN=STOPPED`, ultima iterazione 24.010, coda chiusa alle 10:38:45 (`run finished ... queue done`).
+>   Durata 10 h 29 min [VERIFIED: `OUT1/run.log`, `OUT1/queue.log`, `OUT1/train.jsonl`].
+> - A `it_24000`: distanza da MonkerSolver 0,0645 (36 all-in 0,0478, 18 non all-in 0,098), differenza di range 0,2729, stessa
+>   azione principale nel 93,5 % dei casi. Sulle stesse 40 chart dello step 1: 0,072 contro 0,264 dello step 1 con lo stesso
+>   rake (`rake25_dead`) [VERIFIED: `charts/it_24000/vs_monker.json`; generatore del viewer].
+> - Policy finale `OUT1/policy.bin`; snapshot di policy in `charts/it_16000`; checkpoint `OUT1/state.ckpt`.
+> - Il viewer 3-way (artifact "Short Deck 3-way 50a") mostra già il run 1 del passo 2: versione 2 pubblicata il 02/10 verso le
+>   10:50 [VERIFIED: pubblicazione]. Generatore e controlli in `SP/threeway/viewer/` (`STEP2_NOTES.md`).
+> - **La roadmap approvata dall'utente** il 02/10 verso le 11:00 ("Puoi startare da subito la roadmap") è la **sezione 6**. Le
+>   decisioni U2 e U3 sono prese con le opzioni consigliate (sezione 7).
+
 > **Stato alle 00:35 del 02/10 (aggiornato).** Il run 3-way 1 **è partito**. Alle 00:00:17 il gate della memoria era chiuso
 > (17.392.736 KB liberi contro i 18.874.368 richiesti) e lo era ancora alle 00:08; si è aperto alle 00:09:29 con 20.549.132 KB
 > liberi, e alle 00:09:30 è partito il runner del round 1 [VERIFIED: `OUT1/queue.log`]. Il trainer
@@ -784,26 +797,56 @@ l'aggiornamento della tabella di stato §1. Le voci vecchie non si toccano.
 
 ---
 
-## 6. Calendario proposto [INFERRED, da annunciare all'utente prima di applicarlo, R9]
+## 6. Roadmap approvata (02/10, 11:00)
 
-| Quando | Macchina | Agente, senza macchina |
+Approvata dall'utente il 02/10 verso le 11:00, dopo la fine del run 1: "Puoi startare da subito la roadmap", poi "Prima di
+startare, scrivi la roadmap qua in chat, poi aggiorna" questo documento. Sostituisce il calendario proposto alla scrittura.
+Per U2 e U3 valgono le opzioni consigliate. Gli orari sono stime [INFERRED]. Ogni spostamento di un passo va detto
+all'utente (R9).
+
+**Oggi, 02/10 (giorno libero, nessun limite di orario).**
+
+| # | Quando (stima) | Passo | Accettazione |
+|---|---|---|---|
+| 1 | 11:00-11:15 | **T3**: risultato del run 1, controllo dell'albero sulle chart di `it_24000` (scrive `OUT1/part_a/tree_check.json` e `tree_check.txt`), preferenza suited e mix di primo ingresso contro MonkerSolver | Albero 54/54, impronta confermata |
+| 2 | 11:15-12:45 | **T4**: build completa della parte A, V11, V1 completo, ctest completa, gamba esatta HU (`--long`), referee, smoke della CLI | `BUILD_OK` senza warning, V11 PASS, V1 IDENTICAL, 0 failed, referee 2/2, smoke exit 0 |
+| 3 | 12:45-13:15 | **T5 D.2 e D3, poi T6**: patch delle SE, tre controlli in più nei test, nuova build e V11; commit della parte A in `WT`; CLI congelata in `M/out/monker/bin_3way_partA/` | V11 PASS, commit fatto, sha256 registrati |
+| 4 | 13:15-15:15 | **T7**: parte A sul run 1 (64 flop, seed 20261002) e rapporto | **Gate G3**: guadagno preflop ≤ 0,04 a per seggio, identità del rake ≤ 1e-9, controlli verdi |
+| 5 | in parallelo a 1-4 | **Preparazione di T11**: copia senza spazi delle 54 chart in `M/out/monker_lock/charts_3way_50a`, coda nuova in `SP/threeway/lock/`, `Q_DRY_RUN=1`, congelamento come file nuovo `M/out/frozen/queue_3way50_15x4_lock.sh` | `DRY_RUN_OK`; **nessun lancio** |
+| 6 | dopo 4 | Controlli indipendenti: review del commit della parte A, ricalcolo dei numeri di G3, viewer ricostruito con parte A e controllo dell'albero; la sessione principale lo ripubblica | Review approvata, numeri uguali |
+| 7 | ~15:30 → ~01:30-03:00 del 03/10 | **T11, test del blocco**, lanciato dalla sessione principale come processo in background: preflop di MonkerSolver bloccato, nostro postflop allenato contro i suoi range, 24.000 iterazioni | Fine con `ITERATION_LIMIT` a 24.000; evento di partenza con righe 2.681, `outside_range_rows` 1.688, `fallback_rows` 5 |
+| 8 | durante 7 (`-j 2`, R8) | **T9a** (sandbox di history7: configure, build, test, smoke, V1 hu10, **senza** `h7.NO_TRAINER_OK`) e **T5 D.1** (5 mutazioni nella sandbox della parte A) | Test PASS, V1 hu10 SAME, ogni mutazione presa |
+| 9 | sera | **T14**: diario e ricetta | — |
+
+**Domani, 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00).**
+
+| # | Passo | Accettazione |
 |---|---|---|
-| 02/10, dalla partenza del run 1 (00:09:30) alla fine (circa 11,6-19,3 ore dopo, fra le 11:45 e le 19:30 circa; tetto verso le 23:30) | Solo il run 1 (T1) | T12 (proposta della batteria), bozza di T16, voce del diario del 01/10 sera (T14), copia senza spazi delle chart e bozza della coda del blocco (T11), variante (i) di `apply_to_worktree` (T9b) |
-| Fine del run 1 (02/10) | T3 (minuti), T4 (circa 1-1,5 ore), T5 D.2 e D3 con nuova build e V11, T6, T7 (0,9-2 ore) | Rapporto del gate 3b |
-| Dopo T7 (02/10 sera, giorno libero, se l'utente è d'accordo) | Lancio del test del blocco (T11, circa 10 ore) | — |
-| Durante il test del blocco (`-j 2`, almeno 4 GB, niente sopra 2 GB) | T9a (sandbox: configure, build, test, V1 hu10), T5 D.1 (mutazioni) | T14 |
-| 02/10, 20:00-24:00 | T8 (archivio del run 1), mai durante un salvataggio del run del blocco | — |
-| 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00) | Fine del blocco [INFERRED: 10-11,6 ore dopo la partenza a 1,5-1,74 s per iterazione, cioè circa 02:00-09:40 se partito fra le 16 e le 22], parte A sul blocco (2 × 1-2 ore), T9a ctest completa e V1 completo, T9b-c, T10 | Rapporti e diario |
+| 10 | **Parte A sul test del blocco** (`it_16000` e `it_24000`, stesso seed; 2 × 1-2 ore) e tabella dei guadagni per seggio contro run 1, blocco HU e blocco del passo 1 (T11 "Valutazione") | Controlli verdi, tabella scritta |
+| 11 | **T9a** ctest completa e V1 completo sulla sandbox; **T9b** variante (i) (la parte A è già committata); **T9c** verifica dell'insieme; **T9d** review indipendente | V1 IDENTICAL, 0 failed, parte A intatta |
+| 12 | Commit GUI rinviato (`SP/gui_removal/deferred_commit.sh`, fonte `SP/gui_removal/removal.md`) e **test legacy del postflop e di `gto_cli`** (`SP/gui_removal/post_run_ctest.cmd`, T17.6) | `0 0 0 2` attesi; i guasti si correggono prima che la UI usi `gto_cli` |
+| 13 | **T10**: merge di `feat/threeway-step2` in `feat/monker-step1-checkdown` (il messaggio cita la rimozione delle GUI) | Diff vuoto su `libs include benchmarks tests tools`; **push solo con l'OK dell'utente** |
+| 14 | **Archivio dei documenti** (T15.4): tag `docs-pre-cleanup-2026-10-02`, 18 file eliminati, 70 spostati, link, README e aggiornamenti U1-U10 | Solo commit di documenti |
+| 15 | **T13 "fatto" della fase 3**: diario, ricetta, viewer con la parte A e il blocco. **T8**: archivio su F: del run 1 e del blocco, la sera fra le 20:00 e le 24:00 e mai durante un salvataggio | — |
 
-Se l'utente preferisce chiudere history7 prima del test del blocco, T9 passa prima di T11: va detto in modo esplicito.
+**Dopo la fase 3, nell'ordine deciso dall'utente** (T17.6 e sezione 7):
+16. lettore del postflop dello step 2;
+17. i tre comandi nuovi dentro `gto_cli`; poi la domanda sulla parità con GTO+ (T15.4);
+18. test reali della web UI a macchina libera (QA5) e le domande QA3, QA6, QA7;
+19. studio di fattibilità 4-6-way (T17.4);
+20. decisioni da prendere con l'utente: criteri di accettazione del prodotto (T16), batteria di correttezza 3-way (T12),
+    decisioni HU aperte (T17.2), calcolatore di equity (T17.1).
+
+**Regole che valgono sempre**: push solo su richiesta (R10); niente build pesanti con un run in corso (R8); i run usano copie
+congelate (R3); subagent solo Opus 5.5 (R2).
 
 ## 7. Decisioni dell'utente da raccogliere
 
 | # | Decisione | Lavoro |
 |---|---|---|
 | U1 | ~~Liberare circa 1,5 GB di RAM perché il run 1 parta~~: non serve più, il gate si è aperto alle 00:09:29 | stato in alto, T1 |
-| U2 | Ora di partenza del test del blocco (sera del 02/10 oppure 00:00 del 03/10) | T11 |
-| U3 | Ordine di history7 rispetto al test del blocco, e variante (i) o (ii) dei commit | T9 |
+| U2 | ~~Ora di partenza del test del blocco~~: **decisa il 02/10 alle 11:00**, subito dopo T7 (circa 15:30 del 02/10) | T11, sezione 6 |
+| U3 | ~~Ordine di history7~~: **deciso il 02/10 alle 11:00**: sandbox durante il test del blocco, applicazione il 03/10 con la variante (i) | T9, sezione 6 |
 | U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c | T13 |
 | U5 | Criteri di accettazione del prodotto e loro soglie | T16 |
 | U6 | Eseguire la batteria di correttezza 3-way proposta | T12 |
