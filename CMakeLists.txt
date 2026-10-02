@@ -98,7 +98,6 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   add_subdirectory(libs/preflop_blueprint)
 endif()
 add_subdirectory(libs/storage)
-add_subdirectory(libs/gui_prototype)
 add_subdirectory(apps/gto_cli)
 
 if(GTOSD_BUILD_TESTS)
@@ -123,7 +122,6 @@ install(TARGETS
     gtosd_preflop
     gtosd_preflop_certifier
     gtosd_storage
-    gtosd_gui_prototype
     gto_cli
   EXPORT gtosdTargets
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -303,17 +303,6 @@ if(GTOSD_BUILD_NIGHTLY_TESTS)
   endif()
 endif()
 
-add_executable(gtosd_phase9_tests phase9_tests.cpp)
-target_link_libraries(gtosd_phase9_tests PRIVATE gtosd::gui_prototype)
-gtosd_set_warnings(gtosd_phase9_tests)
-add_test(NAME gtosd_phase9_tests COMMAND gtosd_phase9_tests)
-set_tests_properties(gtosd_phase9_tests
-  PROPERTIES LABELS "phase9;gui;virtualization;d3d11;workflow")
-if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-  set_tests_properties(gtosd_phase9_tests PROPERTIES
-    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
-endif()
-
 add_executable(gtosd_phase10_tests phase10_tests.cpp)
 target_compile_definitions(gtosd_phase10_tests PRIVATE
   GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
