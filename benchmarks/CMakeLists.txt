@@ -438,6 +438,13 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   target_link_libraries(gtosd_preflop_blueprint_monker_values
     PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
   gtosd_set_warnings(gtosd_preflop_blueprint_monker_values)
+  # Part A of phase 3b: the values of a fixed policy (2 or 3 seats) through the
+  # trainer's traversal (Trainer::evaluate_policy_values), JSON for
+  # tools/monker_compare/{monker_in_our_game,part_a_values}.py.
+  add_executable(gtosd_preflop_blueprint_policy_values preflop_blueprint_policy_values.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_policy_values
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_policy_values)
   add_test(NAME gtosd_preflop_blueprint_game_report
     COMMAND gtosd_preflop_blueprint_game
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)

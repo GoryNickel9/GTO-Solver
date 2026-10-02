@@ -886,6 +886,42 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_monker_values_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Phase 3b, V11 (part A): Trainer::evaluate_policy_values against the
+  # heads-up physical evaluator on sampled flops (per-combo values, EVs,
+  # opponent reach, preflop response), the 3-way checkdown tree in
+  # board_kernels mode over the 19,998 canonical boards against the step-1
+  # class solver (EVs and per-seat preflop gains), the expected-rake and root
+  # identities, the resumable state and thread determinism. SKIP (exit 77)
+  # without the three-way table.
+  add_executable(gtosd_preflop_blueprint_policy_values_tests
+    preflop_blueprint_policy_values_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_policy_values_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_policy_values_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_policy_values_tests)
+  add_test(NAME gtosd_preflop_blueprint_policy_values_tests
+    COMMAND gtosd_preflop_blueprint_policy_values_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_values_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_policy_values_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;monker" SKIP_RETURN_CODE 77)
+  # The exact heads-up leg (HU10 reduced with rake over the 573 canonical flops
+  # against the physical evaluator's exact pass): about 15-30 min at 2 threads.
+  add_test(NAME gtosd_preflop_blueprint_policy_values_long_tests
+    COMMAND gtosd_preflop_blueprint_policy_values_tests --long
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_values_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_policy_values_long_tests
+    PROPERTIES LABELS "phase3_long" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_policy_values_tests
+      gtosd_preflop_blueprint_policy_values_long_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   # Exact-flop per-board bucket tables (gtosd_preflop_blueprint_monker_buckets
   # --flop-exact, written by the benchmarks fixture): suit orbits and ids on
   # named and on all canonical flops, the 15x4 turn and 15-level river
