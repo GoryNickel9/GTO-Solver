@@ -804,6 +804,11 @@ startare, scrivi la roadmap qua in chat, poi aggiorna" questo documento. Sostitu
 Per U2 e U3 valgono le opzioni consigliate. Gli orari sono stime [INFERRED]. Ogni spostamento di un passo va detto
 all'utente (R9).
 
+**Modifica dell'utente delle 11:15 circa:** il test del blocco (T11) parte **alle 20:00** del 02/10 invece che verso le 15:30
+("Sì, spostalo alle 20 e aggiorna roadmap e handoff. Cerca di fare qualcosa fra le 15.30 e le 20"). Fine stimata fra le
+06:30 e le 08:00 del 03/10 [INFERRED: il run 1 ha fatto 24.000 iterazioni in 10 h 27 min], dentro la finestra del 03/10. Lo
+slot libero 15:30-20:00 prende i lavori che erano previsti a `-j 2` durante il blocco o il 03/10 (riga 7).
+
 **Oggi, 02/10 (giorno libero, nessun limite di orario).**
 
 | # | Quando (stima) | Passo | Accettazione |
@@ -814,17 +819,17 @@ all'utente (R9).
 | 4 | 13:15-15:15 | **T7**: parte A sul run 1 (64 flop, seed 20261002) e rapporto | **Gate G3**: guadagno preflop ≤ 0,04 a per seggio, identità del rake ≤ 1e-9, controlli verdi |
 | 5 | in parallelo a 1-4 | **Preparazione di T11**: copia senza spazi delle 54 chart in `M/out/monker_lock/charts_3way_50a`, coda nuova in `SP/threeway/lock/`, `Q_DRY_RUN=1`, congelamento come file nuovo `M/out/frozen/queue_3way50_15x4_lock.sh` | `DRY_RUN_OK`; **nessun lancio** |
 | 6 | dopo 4 | Controlli indipendenti: review del commit della parte A, ricalcolo dei numeri di G3, viewer ricostruito con parte A e controllo dell'albero; la sessione principale lo ripubblica | Review approvata, numeri uguali |
-| 7 | ~15:30 → ~01:30-03:00 del 03/10 | **T11, test del blocco**, lanciato dalla sessione principale come processo in background: preflop di MonkerSolver bloccato, nostro postflop allenato contro i suoi range, 24.000 iterazioni | Fine con `ITERATION_LIMIT` a 24.000; evento di partenza con righe 2.681, `outside_range_rows` 1.688, `fallback_rows` 5 |
-| 8 | durante 7 (`-j 2`, R8) | **T9a** (sandbox di history7: configure, build, test, smoke, V1 hu10, **senza** `h7.NO_TRAINER_OK`) e **T5 D.1** (5 mutazioni nella sandbox della parte A) | Test PASS, V1 hu10 SAME, ogni mutazione presa |
+| 7 | 15:30-20:00 (nessun run attivo: build a `-j 4`-`-j 6`, un lavoro pesante alla volta) | **Slot del pomeriggio**, in quest'ordine: **(a)** commit GUI rinviato D1 (`SP/gui_removal/deferred_commit.sh`, solo codice, dopo il commit della parte A), poi `post_run_build.cmd` e `post_run_ctest.cmd`: **test legacy del postflop e di `gto_cli`** (T17.6); **(b)** **T9a completo** sulla sandbox di history7 (configure, build, test, smoke, V1 hu10, con `h7.NO_TRAINER_OK` perché nessun trainer è vivo) più ctest completa (C.3) e V1 completo (C.2) della sandbox, prima previsti il 03/10; **(c)** **T5 D.1**, le 5 mutazioni nella sandbox della parte A; **(d)** facoltativo, se avanza tempo: parte A sullo snapshot `charts/it_16000/policy.bin` del run 1 (curva appaiata, stesso seed). Alle 20:00 la memoria deve essere libera: quello che non è finito continua a `-j 2` (R8) o passa al 03/10 | (a) `0 0 0 2` attesi e 0 test GUI dopo D1; (b) test PASS, V1 hu10 SAME, 0 failed, V1 IDENTICAL; (c) ogni mutazione presa dal suo caso |
+| 8 | **20:00** → ~06:30-08:00 del 03/10 | **T11, test del blocco**: coda congelata con `START_AT=2026-10-02 20:00` (un file nuovo in `M/out/frozen`), lanciata in background dalla sessione principale dopo T7; aspetta da sola l'ora e il gate della memoria. Preflop di MonkerSolver bloccato, nostro postflop allenato contro i suoi range, 24.000 iterazioni, checkpoint a 16.000 verso le 03:00 | Fine con `ITERATION_LIMIT` a 24.000; evento di partenza con righe 2.681, `outside_range_rows` 1.688, `fallback_rows` 5 |
 | 9 | sera | **T14**: diario e ricetta | — |
 
 **Domani, 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00).**
 
 | # | Passo | Accettazione |
 |---|---|---|
-| 10 | **Parte A sul test del blocco** (`it_16000` e `it_24000`, stesso seed; 2 × 1-2 ore) e tabella dei guadagni per seggio contro run 1, blocco HU e blocco del passo 1 (T11 "Valutazione") | Controlli verdi, tabella scritta |
-| 11 | **T9a** ctest completa e V1 completo sulla sandbox; **T9b** variante (i) (la parte A è già committata); **T9c** verifica dell'insieme; **T9d** review indipendente | V1 IDENTICAL, 0 failed, parte A intatta |
-| 12 | Commit GUI rinviato (`SP/gui_removal/deferred_commit.sh`, fonte `SP/gui_removal/removal.md`) e **test legacy del postflop e di `gto_cli`** (`SP/gui_removal/post_run_ctest.cmd`, T17.6) | `0 0 0 2` attesi; i guasti si correggono prima che la UI usi `gto_cli` |
+| 10 | Dalle ~08:00: **parte A sul test del blocco** (`it_16000` e `it_24000`, stesso seed; 2 × 1-2 ore, fin verso le 12:00) e tabella dei guadagni per seggio contro run 1, blocco HU e blocco del passo 1 (T11 "Valutazione") | Controlli verdi, tabella scritta |
+| 11 | **T9b** variante (i) (parte A e D1 già committati); **T9c** verifica dell'insieme (build, ctest completa, V1 completo, V11); **T9d** review indipendente. Quello che di T9a non è finito il 02/10 si fa prima. **Attenzione:** D1 (commit GUI) cambia `CMakeLists.txt`, `tests/CMakeLists.txt` e `tests/verify_preflop_blueprint_isolation.cmake`, che la sandbox (a `2aa24d8`) non ha: verificare che `copy_and_add` non li sovrascriva; se li tocca, passare a patch come per i file della parte A [INFERRED] | V1 IDENTICAL, 0 failed, parte A e D1 intatti |
+| 12 | Se i test legacy del 02/10 hanno trovato guasti: correzione e nuova prova (T17.6) | `0 0 0 2` |
 | 13 | **T10**: merge di `feat/threeway-step2` in `feat/monker-step1-checkdown` (il messaggio cita la rimozione delle GUI) | Diff vuoto su `libs include benchmarks tests tools`; **push solo con l'OK dell'utente** |
 | 14 | **Archivio dei documenti** (T15.4): tag `docs-pre-cleanup-2026-10-02`, 18 file eliminati, 70 spostati, link, README e aggiornamenti U1-U10 | Solo commit di documenti |
 | 15 | **T13 "fatto" della fase 3**: diario, ricetta, viewer con la parte A e il blocco. **T8**: archivio su F: del run 1 e del blocco, la sera fra le 20:00 e le 24:00 e mai durante un salvataggio | — |
@@ -845,7 +850,7 @@ congelate (R3); subagent solo Opus 5.5 (R2).
 | # | Decisione | Lavoro |
 |---|---|---|
 | U1 | ~~Liberare circa 1,5 GB di RAM perché il run 1 parta~~: non serve più, il gate si è aperto alle 00:09:29 | stato in alto, T1 |
-| U2 | ~~Ora di partenza del test del blocco~~: **decisa il 02/10 alle 11:00**, subito dopo T7 (circa 15:30 del 02/10) | T11, sezione 6 |
+| U2 | ~~Ora di partenza del test del blocco~~: **decisa dall'utente il 02/10 verso le 11:15: alle 20:00 del 02/10**; lo slot 15:30-20:00 va riempito (sezione 6, riga 7) | T11, sezione 6 |
 | U3 | ~~Ordine di history7~~: **deciso il 02/10 alle 11:00**: sandbox durante il test del blocco, applicazione il 03/10 con la variante (i) | T9, sezione 6 |
 | U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c | T13 |
 | U5 | Criteri di accettazione del prodotto e loro soglie | T16 |
