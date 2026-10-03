@@ -1,5 +1,17 @@
 # P0 — Contratto, snapshot e scaffolding
 
+> **Stato al 2026-10-03.** Questo è il report del gate di P0, di settembre 2026, ed è
+> congelato. Il modulo che descrive è ancora in produzione nel solver preflop blueprint.
+> I riferimenti a HU10, CO40, P9 e alla best response astratta come lavoro o gate correnti
+> sono però storici:
+>
+> - P9 è in [`archive/preflop-blueprint-research-2026-09/`](../../archive/preflop-blueprint-research-2026-09/README.md);
+> - history7 e la suite HU10-HU40 sono stati tolti il 2026-10-03, e l'ultimo albero che li
+>   contiene è al tag `history7-final`.
+>
+> Lo stato corrente è nel [diario](PROGRESS_LOG.md) e nella
+> [ricetta di MonkerSolver](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+
 Data: 2026-09-15
 Esito del gate: **PASS**
 Roadmap: [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../../archive/preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md), fase P0
@@ -37,7 +49,8 @@ Roadmap: [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../../archive/preflop-
    nlohmann_json privato.
 2. **Controllo di dipendenza.** `tests/verify_preflop_blueprint_isolation.cmake` rifiuta nei
    CMakeLists dei nuovi target ogni link a solver, best_response, memory, postflop,
-   postflop_subgame, preflop legacy, storage, isomorphism, gui_prototype e, nei sorgenti e header
+   postflop_subgame, preflop legacy, storage, isomorphism, gui_prototype (tolto dalla lista il
+   2026-10-02 con la libreria, commit `8c70044`) e, nei sorgenti e header
    nuovi, ogni include di `gtosd/postflop/`, `gtosd/preflop/`, `gtosd/solver/`, `gtosd/memory/`,
    `gtosd/storage/`, `gtosd/isomorphism/` e ogni riferimento a `hu_preflop`. Registrato come test
    `gtosd_preflop_blueprint_dependency_check`.

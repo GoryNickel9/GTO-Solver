@@ -3,6 +3,35 @@
 Questo changelog registra modifiche ai contratti in `docs/specifications`, non
 sostituisce la cronologia Git né i report di fase.
 
+## 2026-10-03
+
+### Aggiornato
+
+- Ambito dichiarato in `README.md`. Queste specifiche descrivono `gto_cli` e
+  le librerie postflop, i contratti di ricerca R2-S e, marcato legacy, il
+  preflop external sampling. Il solver preflop blueprint
+  (`libs/preflop_blueprint`, `libs/card_abstraction`) è documentato in
+  `docs/research/preflop_vector_cfr/`.
+- La GUI desktop Qt è stata tolta il 2026-10-02 (commit `921f424`, `1591a10`,
+  `797a7d4`, `c2e9138`, `8c70044`). `DESKTOP_UI.md` è archiviato in
+  `docs/archive/legacy-postflop-2026-07-09/`. ARCHITECTURE perde il modulo
+  `gto_gui` e Qt, TESTING il preset `windows-gui-release` e gli E2E GUI,
+  LIMITATIONS il vincolo Windows/Qt 6.
+- ARCHITECTURE: nuova sezione "Altri moduli" con `postflop_subgame`,
+  `solver_validation`, il preflop legacy, `card_abstraction` e
+  `preflop_blueprint`, e con la regola di isolamento del preflop blueprint.
+- LIMITATIONS: le funzioni non supportate valgono per `gto_cli`. Nuova
+  sezione sui limiti del solver preflop blueprint. I tempi GTO+ della
+  final-head del 2026-09-01, prima nel `README.md` del repository, sono ora
+  qui con il loro documento di riferimento.
+- TESTING: stato della suite al 2026-10-02 (`102/102` preflop blueprint e
+  card abstraction, `48/48` le altre label) e nuova sezione sul preflop
+  blueprint. Le sezioni del preflop external sampling sono marcate legacy.
+- CLI e SOLUTION_FORMAT: le sezioni del preflop external sampling sono
+  marcate legacy, con il rimando ai documenti del preflop blueprint.
+- I link ai documenti archiviati il 2026-10-03 sono aggiornati. I file
+  cancellati sono al tag `docs-pre-cleanup-2026-10-02`.
+
 ## 2026-09-04
 
 ### Corretto
@@ -197,4 +226,4 @@ Le decisioni e misure precedenti sono conservate in:
 - [ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md](../archive/legacy-postflop-2026-07-09/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md);
 - [IMPLEMENTATION_STATUS.md](../archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md);
 - [GTO_PLUS_PARITY_JOURNEY.md](../GTO_PLUS_PARITY_JOURNEY.md);
-- report `PHASE_*_COMPLETION_REPORT.md` nella directory `docs`.
+- report `PHASE_*_COMPLETION_REPORT.md` in `docs/archive/legacy-postflop-2026-07-09/`.

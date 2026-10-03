@@ -53,6 +53,16 @@ solve, checkpoint o resume.
 
 ## Checkpoint della certificazione HU preflop
 
+> **Legacy** (nota del 2026-10-03). Questi sono i formati del preflop
+> external sampling (`libs/preflop`), programma chiuso il 2026-09-15. I
+> formati del solver preflop blueprint sono descritti altrove: checkpoint e
+> policy binari del trainer, chart `gtosd.preflop_blueprint_chart.v1`
+> (`schemas/preflop_blueprint_chart.schema.json`) e chart nel formato di
+> MonkerSolver. Le fonti sono i report P6 e P8 in
+> `docs/research/preflop_vector_cfr/` e l'Appendice E di
+> `docs/solver-ui/WEB_UI_PROTOTYPE_PROMPT.md`. Nessuno di questi formati è un
+> chunk `.gtsd`.
+
 Il formato JSON `gtosd.hu_preflop_whole_game_coverage.v1` conserva lo stato
 streaming della copertura Flop. Contiene fingerprint di tree, blueprint e piano
 di decomposizione, target NashConv, un mask CO/BTN e una probabilità per ogni
@@ -189,7 +199,8 @@ che source e destination rappresentino lo stesso gioco e conservare la source.
 
 ## Dati futuri
 
-Node lock di prodotto, preflop e multiway richiederanno payload versionati. Il
+Nel container `.gtsd`, node lock di prodotto, preflop e multiway richiederanno
+payload versionati. Il
 chunk `NODELOCKS` esistente riserva il tipo, ma non dimostra che il node locking
 globale sia implementato. Nessun reader deve trasformare `none` in una strategia
 vincolata o viceversa.
@@ -207,7 +218,7 @@ sostituzione atomica nello stesso filesystem. L'integrazione futura richiede
 comunque chunk `.gtsd` autenticati e migrazione esplicita: l'envelope di
 laboratorio non è un formato production promosso.
 
-La diagnostica HU preflop può produrre il sidecar JSON
+La diagnostica HU preflop legacy (external sampling) può produrre il sidecar JSON
 `gtosd.hu_preflop_root_decision_trace.v1`. Il file conserva gli identificatori
 di algoritmo, albero, astrazione ed evaluator, oltre ai seed; per ogni classe registra stato
 di training e valutazioni paired delle cinque azioni root. I rami e i bucket

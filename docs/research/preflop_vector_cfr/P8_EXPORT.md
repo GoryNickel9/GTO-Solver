@@ -1,5 +1,23 @@
 # P8 — Export, query, comparatore, viewer
 
+> **Stato al 2026-10-03.** Questo è il report del gate di P8, di settembre 2026, ed è
+> congelato. Il modulo che descrive è ancora in produzione nel solver preflop blueprint.
+> I riferimenti a HU10, CO40, P9 e alla best response astratta come lavoro o gate correnti
+> sono però storici:
+>
+> - P9 è in [`archive/preflop-blueprint-research-2026-09/`](../../archive/preflop-blueprint-research-2026-09/README.md);
+> - history7 e la suite HU10-HU40 sono stati tolti il 2026-10-03, e l'ultimo albero che li
+>   contiene è al tag `history7-final`.
+>
+> Lo stato corrente è nel [diario](PROGRESS_LOG.md) e nella
+> [ricetta di MonkerSolver](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+>
+> Cambi del 2026-10-03, con la rimozione di history7 (commit `82315d2` e `bac0f18`):
+>
+> - `gtosd_preflop_blueprint_export` non accetta più `--history-rows`;
+> - le impronte del JSON delle chart (`fingerprints`) non hanno più la voce `history_map`;
+> - la riga ready di `--serve` non ha più `historyMapFingerprint`.
+
 Data: 2026-09-16. Branch di fase: `feature/preflop-blueprint-p8-export`. Esito del gate:
 **PASS** (§6): test PASS, export HU10 completo e ridotto certificati `CERTIFIED_EXACT`, query,
 comparatore e validatore verificati; il viewer, aggiornato nel suo repository dopo

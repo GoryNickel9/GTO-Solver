@@ -1,5 +1,25 @@
 # P6 — Trainer con campionamento del board
 
+> **Stato al 2026-10-03.** Questo è il report del gate di P6, di settembre 2026, ed è
+> congelato. Il modulo che descrive è ancora in produzione nel solver preflop blueprint.
+> I riferimenti a HU10, CO40, P9 e alla best response astratta come lavoro o gate correnti
+> sono però storici:
+>
+> - P9 è in [`archive/preflop-blueprint-research-2026-09/`](../../archive/preflop-blueprint-research-2026-09/README.md);
+> - history7 e la suite HU10-HU40 sono stati tolti il 2026-10-03, e l'ultimo albero che li
+>   contiene è al tag `history7-final`.
+>
+> Lo stato corrente è nel [diario](PROGRESS_LOG.md) e nella
+> [ricetta di MonkerSolver](MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+>
+> Cambi del 2026-10-03, con la rimozione di history7 (commit `82315d2` e `bac0f18`):
+>
+> - `gtosd_preflop_blueprint_train` non accetta più `--history-rows` (argomento sconosciuto);
+> - l'evento `start` e il `memory_breakdown` non contengono più `history_map_resident_bytes`.
+>
+> Le CLI correnti sono descritte nell'Appendice A di
+> [`WEB_UI_PROTOTYPE_PROMPT.md`](../../solver-ui/WEB_UI_PROTOTYPE_PROMPT.md).
+
 Data: 2026-09-16. Branch di fase: `feature/preflop-blueprint-p6-trainer`. Esito del gate:
 **PASS** (§7): oracolo, determinismo e ripresa PASS; HU10 completo raggiunge la regola D3 con la stima
 campionata a 1.000 flop. Lo stimatore prescritto da P6.3/§5 era chiaroveggente ed è stato

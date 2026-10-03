@@ -7,6 +7,18 @@ Regole del diario: le voci non si cancellano; una correzione è una nuova voce c
 precedente. Un fallimento si registra prima di tentare la correzione. Aggiornare a fine di ogni
 sessione, a ogni gate e a ogni dubbio bloccante.
 
+> **Nota del 2026-10-03 (archivio dei documenti).** Le voci precedenti al 2026-10-03 citano
+> strumenti che ora esistono solo al tag `history7-final` (= `88118a6`, l'ultimo albero con history7):
+> `tools/preflop_suite/` (`suite.py`, `run_queue.sh`), `benchmarks/suite/` tranne `fixtures/`,
+> l'opzione `--history-rows` delle CLI, gli eseguibili `gtosd_preflop_blueprint_abstract_br`,
+> `gtosd_preflop_blueprint_history_rows` e `gtosd_preflop_blueprint_history_census` e gli script
+> `scripts/research/run_hu40_history7_solve.ps1` e `finalize_hu40_t37000.ps1`.
+>
+> I report di P9, della suite e di history7 citati qui sono in `docs/archive/`, e i link sono
+> aggiornati. Alcuni dump JSON del 19/09 citati per nome, come
+> `CO40_FULL_BUCKET_AUDIT_2026-09-19.json` e `TEMPORAL_SCREEN_2026-09-19.json`, sono stati
+> cancellati e restano al tag `docs-pre-cleanup-2026-10-02`. Le voci non sono state riscritte.
+
 ## 1. Stato corrente
 
 | Campo | Valore |

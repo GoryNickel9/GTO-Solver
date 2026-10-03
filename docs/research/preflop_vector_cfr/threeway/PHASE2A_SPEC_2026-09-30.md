@@ -29,7 +29,7 @@ Numbers marked *estimate* have not been measured. Every other number cites its s
   in cache.
   - Total work: 1.85e12 pair steps.
   - i3-10100F at 8 threads: *expected 10-20 min*. The upper bound is **40 min**, the time this work would take
-    at the per-pair cost of the measured HU all-in build (53 s, `P2_EXACT_RESOURCES.md:85`).
+    at the per-pair cost of the measured HU all-in build (53 s, `P2_EXACT_RESOURCES.md:97`).
   - 104-thread server: *1-2 min*.
   - An optional symmetry option cuts the work by 3.1 times.
   - Exact is cheaper than sampling at any useful precision, and has no noise.
@@ -80,7 +80,7 @@ Numbers marked *estimate* have not been measured. Every other number cites its s
   8,347,680 seven-card sets (colex index, `:31-32`), derived from the exact 5-card evaluator.
 - `rank_of(hand, board)` is at `:45-46`.
 - File: `out/preflop_blueprint_resources/rank_table_v1.bin`, 17,449,440 B. Built in 1.4 s
-  (`P2_EXACT_RESOURCES.md:84`).
+  (`P2_EXACT_RESOURCES.md:96`).
 - Checked against the evaluator by `benchmarks/preflop_blueprint_resources.cpp:42` (`verify_against_oracle`,
   called at `:119`).
 
@@ -99,7 +99,7 @@ Numbers marked *estimate* have not been measured. Every other number cites its s
   - board-major over all C(36,5) = 376,992 boards (`:67`);
   - per board, rank the 465 live hands, then compare every pair with an overlap check (`:36-54`);
   - per-thread counter arrays of 2.4 MB, merged at `:84-90`;
-  - 4.07e10 pair steps, **53.2-53.4 s at 8 threads on the i3** (`P2_EXACT_RESOURCES.md:79-92`).
+  - 4.07e10 pair steps, **53.2-53.4 s at 8 threads on the i3** (`P2_EXACT_RESOURCES.md:91-104`).
 - **Combos and classes.** `ComboTable` (`include/gtosd/card_abstraction/showdown_counts.hpp:122-128`) holds
   cards, masks and `hand_class` for the 630 combos in `all_combos()` order.
   - Class ids come from `libs/core/src/ranges.cpp:19-34`: 0-8 are pairs (AA = 0), 9-44 suited, 45-80 offsuit.

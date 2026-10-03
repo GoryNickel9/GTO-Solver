@@ -101,6 +101,18 @@ prima di ogni processo.
 
 ## HU preflop research
 
+> **Legacy** (nota del 2026-10-03). Questa sezione descrive i runner del
+> preflop external sampling (`libs/preflop`, `benchmarks/hu_preflop_*.cpp`).
+> Il programma è chiuso dal 2026-09-15 (archivio
+> [`preflop-es-2026-09`](../archive/preflop-es-2026-09/README.md)). Il codice è
+> ancora compilato e testato, ma non è il solver preflop del prodotto. Le CLI
+> del solver preflop blueprint (`gtosd_preflop_blueprint_*`) non fanno parte
+> di questo contratto. Sono descritte nell'Appendice A di
+> [`WEB_UI_PROTOTYPE_PROMPT.md`](../solver-ui/WEB_UI_PROTOTYPE_PROMPT.md),
+> aggiornata dall'addendum, e nei report P6-P8. I cambi di formato del
+> 2026-10-03, dovuti alla rimozione di history7, sono nell'Appendice K dello
+> stesso prompt.
+
 Il runner locale `benchmarks/gtosd_hu_preflop_solve` accetta il fixture CO40 e
 supporta la telemetria V19 senza cambiare il training:
 
@@ -241,5 +253,9 @@ o un processo terminato non viene aggregato come successo.
 ## Evoluzione
 
 Nuovi sottocomandi mantengono compatibilità oppure incrementano la versione dei
-report/schema. Node lock, preflop e multiway non sono comandi supportati oggi;
-non devono essere emulati modificando checkpoint a mano.
+report/schema. Node lock, preflop e multiway non sono comandi di `gto_cli`
+e non devono essere emulati modificando checkpoint a mano; preflop HU e 3-way
+sono coperti dal solver preflop blueprint, con CLI proprie. Sono previsti tre
+comandi nuovi (decisione del 2026-10-02): solve con i range dell'utente e un
+target di precisione, eventi di avanzamento JSONL e un worker `serve` di lunga
+durata per le query. Saranno documentati qui quando esisteranno.

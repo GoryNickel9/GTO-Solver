@@ -1,17 +1,57 @@
 # GTOSD
 
-Exact Short Deck Heads-Up solver foundation following
-`docs/archive/legacy-postflop-2026-07-09/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md`.
+A Short Deck poker solver in C++20 for Windows and MSVC. It is one product with two engines: a
+preflop blueprint solver for heads-up and 3-way play, and an exact heads-up postflop solver.
 
-I contratti tecnici correnti sono raccolti nell'indice
-[`docs/specifications/README.md`](docs/specifications/README.md). Roadmap e
-report di fase conservano ordine dei gate ed evidenza storica.
+Solving uses only the CPU and system RAM. GPU, CUDA, ROCm, OpenCL, Vulkan Compute, DirectCompute
+and other accelerators are never used for tree building, CFR traversal, best response,
+certification or post-processing of a solution. This is a permanent product decision, recorded in
+[`docs/specifications/LIMITATIONS.md`](docs/specifications/LIMITATIONS.md).
 
-Il calcolo del solver è **CPU + RAM only**. GPU, CUDA, ROCm, OpenCL, Vulkan
-Compute, DirectCompute e altri acceleratori non possono essere usati per tree
-building, traversal CFR, best response, certificazione o post-processing della
-soluzione. Un'eventuale accelerazione grafica della GUI riguarda soltanto il
-rendering e non partecipa mai al solve.
+## Engines
+
+### Preflop blueprint: `libs/preflop_blueprint` and `libs/card_abstraction`
+
+This is the current line of work: reproducing the MonkerSolver preflop recipe, heads-up first and
+then multiway. The solver runs vector CFR over hand classes and combos, sampling the public cards.
+Its command-line tools are built from `benchmarks/preflop_blueprint_*.cpp`. The game
+configurations are in `benchmarks/monker/` (for example `HU50_step2.json` and
+`3WAY50_donk_rake25cap2.json`) and in `benchmarks/fixtures/`.
+
+- **Step 1, checkdown preflop.** The postflop is empty: every pot that reaches the flop is checked
+  down to the river. `gtosd_preflop_blueprint_checkdown` solves heads-up at the combo level, with
+  no card abstraction. `gtosd_preflop_blueprint_checkdown_classes` solves 2 or 3 seats at the class level.
+- **Step 2, preflop with a sparse abstracted postflop.** `gtosd_preflop_blueprint_train` trains
+  heads-up and 3-seat games. The postflop uses bucket tables (`gtosd_preflop_blueprint_buckets`,
+  `gtosd_preflop_blueprint_monker_buckets`) and board-class rows. The heads-up reference is HU50
+  with board-class rows.
+- **Charts and evaluation.**
+  - Charts are written in the MonkerSolver text format, by the trainer (`--chart-every`) or by
+    `gtosd_preflop_blueprint_monker_charts`.
+  - `gtosd_preflop_blueprint_monker_values` is heads-up only. It computes the best response on the
+    real cards and plays MonkerSolver charts inside our game.
+  - `gtosd_preflop_blueprint_policy_values` gives the per-seat values of a fixed policy, for 2 or
+    3 seats.
+- **Scope.** 3-way does not have to be exact: sampling and abstraction are allowed. Games with 4
+  to 6 players are not implemented yet.
+
+The preflop blueprint must not link the postflop libraries.
+`tests/verify_preflop_blueprint_isolation.cmake` enforces this through the CTest
+`gtosd_preflop_blueprint_dependency_check`.
+
+### Exact heads-up postflop: `gto_cli`
+
+`apps/gto_cli` uses the libraries `core`, `equity`, `tree`, `isomorphism`, `solver`,
+`best_response`, `memory`, `postflop` and `storage`. It enumerates the configured discretized game
+without sampling or bucketing. It solves with the `ProductionDcfr` profile, certifies the solution
+with an exact best response, and writes checkpoints and authenticated `.gtsd` archives. Run
+`gto_cli` with no arguments to print its commands. Its contract is in
+[`docs/specifications/`](docs/specifications/README.md). It is also the heads-up postflop engine of
+the web UI.
+
+The external-sampling preflop code in `libs/preflop` and `benchmarks/hu_preflop_*.cpp` is still
+built and tested. That program closed on 2026-09-15
+([`docs/archive/preflop-es-2026-09/`](docs/archive/preflop-es-2026-09/README.md)).
 
 ## Build
 
@@ -22,245 +62,104 @@ $env:VCPKG_ROOT = "C:\path\to\vcpkg"
 & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
 ```
 
-From a Visual Studio Developer PowerShell with Ninja available:
+Then, from a Visual Studio Developer PowerShell with Ninja available:
 
 ```powershell
 $env:GTOSD_NINJA_EXE = (Get-Command ninja).Source
 cmake --preset windows-release
 cmake --build --preset windows-release
+```
+
+`GTOSD_NINJA_EXE` must hold Ninja's absolute path. This keeps the vcpkg toolchain search root from
+interfering with tool discovery in recent CMake versions. The presets are `windows-debug`,
+`windows-release` and `windows-asan` (`CMakePresets.json`). Warnings are errors (`/W4 /WX`). The
+option `GTOSD_BUILD_PREFLOP_BLUEPRINT` (default `ON`) builds the preflop blueprint, and
+`cmake --build --preset windows-release --target format-check` runs clang-format when it is
+installed.
+
+The root `install()` rules still list four schema files that are not in `schemas/`
+(`postflop_tree_config`, `gto_plus_reference`, `gto_plus_convergence_benchmark` and its `v2`).
+`cmake --install` should therefore fail until that list is fixed. This has not been run.
+
+## Tests
+
+```powershell
 ctest --preset windows-release
-cmake --install out/build/windows-release --config Release `
-  --prefix out/install/windows-release
 ```
 
-`GTOSD_NINJA_EXE` must contain Ninja's absolute path. This prevents the vcpkg
-toolchain search root from interfering with tool discovery in recent CMake
-versions.
-
-Phase 0 is complete: the pinned build, Debug/Release/ASan presets, framework
-tests, benchmark runner, static checks, CI matrix and install tree are tracked
-in `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`.
-
-Phase 1 is complete: cards, fixed-point chip arithmetic, CO/BTN preflop
-posting, legal actions, street closure, uncalled returns, rake, split pots and
-terminal payoff accounting are covered by the full F1 rules suite. See
-`docs/archive/legacy-postflop-2026-07-09/PHASE_1_COMPLETION_REPORT.md`.
-
-Phase 2 is complete: the first-party exact Short Deck evaluator, typed
-`IHandEvaluator` adapter, scalar/batch API, exact 2–6 player showdown,
-independent exhaustive oracle and deterministic million-deal nightly are
-tracked in `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`.
-
-Phase 3 is complete: `gtosd::tree` builds and preflights the physical
-flop–turn–river public tree, enumerates all legal board runouts, supports
-CO/BTN scenario sizing and all-in runouts, resolves exact showdown terminals,
-and exposes a deterministic inspector:
+Many preflop blueprint tests read precomputed resources from `out/preflop_blueprint_resources` and
+the 200/500/1000 bucket tables from `out/preflop_blueprint_buckets_200_500_1000`. If those files are
+missing, the tests skip themselves with exit code 77. Build the resources once, from the
+repository root (commands from the P2 and P3 reports and from the MonkerSolver recipe):
 
 ```powershell
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  tree-inspect tests\fixtures\postflop_check_only.json
+$b = ".\out\build\windows-release\benchmarks"
+& "$b\gtosd_preflop_blueprint_resources.exe" --threads 8 --verify-oracle 200000 `
+  --output-dir out/preflop_blueprint_resources
+& "$b\gtosd_preflop_blueprint_buckets.exe" --resources-dir out/preflop_blueprint_resources `
+  --output-dir out/preflop_blueprint_buckets_200_500_1000 --threads 8 --flop 200 --turn 500 `
+  --river 1000 --restarts 10 --screening-iterations 10 --max-iterations 25 --screening-sample 500000
+& "$b\gtosd_preflop_blueprint_three_way_table.exe" --resources-dir out/preflop_blueprint_resources `
+  --hero-classes all --threads 3 --output out/preflop_blueprint_resources/preflop_three_way_v1.bin
 ```
 
-Phase 4 is complete: `gtosd::isomorphism` canonicalizes board, physical
-private deals, weighted ranges, dead/future cards and nodelocks under one
-global suit permutation. It retains inverse mappings and exact physical
-chance multiplicities. Audit all 24 representatives with:
+Useful subsets, by CTest label:
 
 ```powershell
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  isomorphism-audit tests\fixtures\postflop_check_only.json
+# preflop blueprint and card abstraction, without the long 3-way entry
+ctest --preset windows-release -L "preflop_blueprint|card_abstraction" -LE phase3_long
+# gto_cli, the postflop libraries and the rest of the legacy suite
+ctest --preset windows-release -LE "preflop_blueprint|card_abstraction|research|monker|monker_exact|phase3_long|nightly|slow"
 ```
 
-Phase 5 is complete locally: `gtosd::solver` and `gtosd::best_response`
-provide finite extensive-form reference games, Vanilla CFR, CFR+, Linear CFR,
-DCFR, laboratory MCCFR, exact infoset-aware best response, NashConv,
-checkpoint/resume and convergence curves:
+A plain run includes two long entries:
 
-```powershell
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  solver-lab kuhn cfr+ 20000 1 1
-```
+- `phase3_long`, about 30-60 minutes at 2 threads;
+- `monker_exact`, about 13 minutes on 3 threads.
 
-Phase 6 is complete locally: `gtosd::memory` compares lazy in-RAM, street
-decomposition and memory-mapped out-of-core layouts on the versioned
-PF-F1/PF-F2/PF-F3 fixtures:
+Run them on purpose, or leave them out with `-LE`. The correctness battery of the HU50 step-2
+path is described in [`benchmarks/monker/correctness/README.md`](benchmarks/monker/correctness/README.md).
+The independent references, including the 3-way referee, are described in
+[`tools/independent/README.md`](tools/independent/README.md).
 
-```powershell
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  memory-lab pf-f1 lazy
+## User interface
 
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  memory-probe pf-f1 .\out\pf-f1-probe.bin
-```
+The desktop Qt GUI was removed on 2026-10-02. Its replacement is a web UI that launches the frozen
+solver executables. It is developed in `apps/solver-ui` on the branch `feat/solver-ui`, which is not
+part of this branch. Its specification is
+[`docs/solver-ui/WEB_UI_PROTOTYPE_PROMPT.md`](docs/solver-ui/WEB_UI_PROTOTYPE_PROMPT.md), with the
+addendum [`WEB_UI_ADDENDUM_ENGINES_2026-10-02.md`](docs/solver-ui/WEB_UI_ADDENDUM_ENGINES_2026-10-02.md).
 
-Phase 7 is complete locally: `gtosd::postflop` integrates exact physical-combo
-CFR+, periodic best response/NashConv certification, atomic checkpoint/resume,
-pause/cancel controls, strategy queries, Markdown/JSON reports and a paged
-out-of-core fallback. PF-F1 reached `NashConv / pot = 0.741405%` at iteration
-125 and passes the `<1%` gate.
+## Documentation
 
-```powershell
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  postflop benchmark-config pf-f1 .\out\pf-f1.json
+- Current work and next steps:
+  [`docs/handoff/NEXT_STEPS_2026-10-02.md`](docs/handoff/NEXT_STEPS_2026-10-02.md).
+- The diary, with the state table, the gate register and the decisions taken since 21/09:
+  [`docs/research/preflop_vector_cfr/PROGRESS_LOG.md`](docs/research/preflop_vector_cfr/PROGRESS_LOG.md).
+- The MonkerSolver recipe:
+  [`MONKER_RECIPE_REPRODUCTION_2026-09-28.md`](docs/research/preflop_vector_cfr/MONKER_RECIPE_REPRODUCTION_2026-09-28.md).
+- The 3-way specifications: [`docs/research/preflop_vector_cfr/threeway/`](docs/research/preflop_vector_cfr/threeway/).
+- The module reports of the preflop blueprint (`P0`-`P8`) and the RAM and time work
+  (`MEMORY_TIME_OPTIMIZATION_2026-09-21.md`), in the same folder.
+- The design decisions up to 21/09:
+  [`docs/research/PREFLOP_ARCHITECTURE_DECISION_LOG.md`](docs/research/PREFLOP_ARCHITECTURE_DECISION_LOG.md).
+  The log is frozen; later decisions are in the diary.
+- The `gto_cli` contract: [`docs/specifications/`](docs/specifications/README.md).
+- Also in `docs/`:
+  - the postflop ADRs (`ADR_0002`, `ADR_0003`);
+  - the error and versioning policy;
+  - the GTO+ convergence benchmark and its guide;
+  - the GTO+ memory semantics;
+  - the GTO+ parity journey;
+  - the two postflop optimization plans of 2026-09-10.
+- The archive, by era, in [`docs/archive/`](docs/archive/):
+  - `legacy-postflop-2026-07-09/`: the F0-F10 postflop and GTO+ program, including the old
+    roadmap, the phase reports and the GUI documents;
+  - `preflop-es-2026-09/`: the external-sampling preflop;
+  - `preflop-blueprint-research-2026-09/`: the P0-P10 roadmap and P9;
+  - `history7-suite-2026-09/`: history7 and the HU10-HU40 suite;
+  - `legacy-memory-gate/`: the false memory gate.
 
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  postflop solve .\out\pf-f1.json 125 .\out\pf-f1.chk `
-  .\out\pf-f1-report 12 8 25
-
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  postflop certify .\out\pf-f1.json .\out\pf-f1.chk
-```
-
-The claim is scoped to the versioned PF-F1 configuration and is backed by
-exact best response, not profile EV alone. See
-`docs/archive/legacy-postflop-2026-07-09/PHASE_7_COMPLETION_REPORT.md`.
-
-Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
-container, per-chunk Zstandard compression, independent authenticated
-XChaCha20-Poly1305 secretstreams, bounded-memory random access, atomic save,
-non-destructive migration, a verification tool and an external SQLite catalog.
-The encryption key is supplied by the license layer; `.gtsd` never derives a
-key from a user password.
-
-```powershell
-$key = .\out\build\windows-release\apps\gto_cli\gto_cli.exe storage keygen
-
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  storage pack .\out\pf-f1.json .\out\pf-f1.chk .\out\pf-f1.gtsd $key
-
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  storage verify .\out\pf-f1.gtsd $key
-
-.\out\build\windows-release\apps\gto_cli\gto_cli.exe `
-  storage query .\out\pf-f1.gtsd $key 0 100
-```
-
-The F8 storage benchmark used the full PF-F1 topology at one iteration:
-1,068,121,299 logical bytes became a 5,618,173-byte encrypted file, and its
-root index opened with 676 bytes of metadata. This measures the format, not
-convergence; the F7 125-iteration certification remains authoritative. See
-`docs/archive/legacy-postflop-2026-07-09/PHASE_8_COMPLETION_REPORT.md`.
-
-Phase 9 is complete locally: Qt 6 Widgets and Dear ImGui docking prototypes
-share a 100,000-node virtual tree, the exact Short Deck 9×9 matrix, lazy
-authenticated `.gtsd` opening and ten automated workflows. Qt 6 Widgets is
-selected for the F10 product GUI by `docs/archive/legacy-postflop-2026-07-09/ADR_0001_GUI_FRAMEWORK.md`.
-
-```powershell
-cmake --preset windows-gui-release
-cmake --build --preset windows-gui-release
-ctest --preset windows-gui-release -L phase9
-powershell -ExecutionPolicy Bypass -File .\tools\run_f9_benchmarks.ps1
-powershell -ExecutionPolicy Bypass -File .\tools\verify_f9_install.ps1
-```
-
-On the measured four-core i3-10100F host, Qt raster reached 238.95 FPS,
-Dear ImGui DX11 4,362.19 FPS and forced WARP 62.20 FPS; all p95 frame times
-were below 16.666667 ms. This is a local four-physical-core result, not an
-emulation of a 2 GHz / 16 GB machine. See
-`docs/archive/legacy-postflop-2026-07-09/PHASE_9_COMPLETION_REPORT.md`.
-
-Phase 10 is complete locally: `gto_gui` is the Qt 6 product application. It
-connects weighted physical CO/BTN ranges to exact CFR+/BR, performs resource
-preflight, solves on a worker thread, writes authenticated crash-recovery
-checkpoints, saves/opens `.gtsd`, and navigates real strategy data by 9×9 hand
-class and physical combo. Configuration is visual: starting pot/stack/rake,
-separate CO/OOP and BTN/IP betting panels, street overrides and a visual
-three-to-five-card Short Deck board picker; the versioned JSON remains an
-internal persistence/API format. The interactive solve target is GTO+-style
-maximum unilateral deviation gain divided by pot (default 1%); NashConv/Pot is
-shown separately. Certification runs every 20 iterations and at solve end. RAM, disk and backing mode
-are selected automatically by preflight. Range classes start at 0% and are
-painted directly with click/drag or a percentage slider. Pause and cancel
-remain available during solving; local solution keys are managed transparently
-and diagnostic logs are available from the application toolbar.
-
-```powershell
-cmake --preset windows-gui-release
-cmake --build --preset windows-gui-release --target gto_gui
-ctest --preset windows-gui-release -L phase10
-.\out\build\windows-gui-release\apps\gto_gui\gto_gui.exe
-```
-
-The automated product workflow is
-`create → solve → save → reopen → navigate → resume`. On the measured
-i3-10100F host, the installed application completed the reduced E2E fixture in
-1.937 s with a 104.239.104-byte peak RSS and a 12,0331 ms maximum UI heartbeat
-gap during solving. These values validate integration and responsiveness, not
-convergence or the exact 2 GHz / 16 GB release target. See
-`docs/archive/legacy-postflop-2026-07-09/PHASE_10_COMPLETION_REPORT.md`.
-
-The automated GTO+ convergence benchmark applies the same Target dEV definition
-under a fixed, versioned fixture and timing protocol. Run five independent
-Release processes with:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
-  .\tools\run_gto_plus_convergence_benchmark.ps1
-```
-
-The versioned per-run JSON and aggregate mediana/p95 report are described in
-`docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`.
-
-Further roadmap phases are frozen by the three-fixture GTO+ parity gate. The
-authoritative checkpoint is the five-process production final-head dated
-2026-09-01 and recorded in
-`docs/archive/legacy-postflop-2026-07-09/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs
-AHKHQH, TH7D6S and TSTC9D target-driven to strict `Target dEV < 1%`. The
-deterministic iteration counts are `80/80/160`; solver median/p95 times are
-`0.758705/0.790918 s`, `19.948228/24.192260 s` and
-`184.095930/197.865030 s`. TSTC9D remains the timing blocker: its median is
-`55.107041 s` (`42.722%`) above the `128.988889 s` limit. Its user-confirmed
-raw GTO+ reference remains `116.09 s` at the first strict sub-1% point.
-
-The GTO+ values `8 MB`, `399 MB` and `2,000 MB` come from the UI label
-“Memory needed for solving”. They are internal pre-solve solver-memory
-estimates, not process Peak RSS references and not a general desktop limit.
-Their exact component scope is still unresolved, so the GTO+ memory comparison
-is currently `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. Process Peak RSS,
-private bytes and `solver_state_bytes` remain useful but separate diagnostics;
-none can be substituted for the GTO+ field without an equivalence proof. The
-current fixtures use `gtosd.gto_plus_convergence_benchmark.v4`; run and summary
-reports separate `gto_plus_reference_memory`, `solver_memory_accounting` and
-`process_memory`, while `memory_comparison` is explicitly `not_evaluated` with
-`passed: null`. Legacy v3 inputs remain readable only through an explicit
-`legacy_metric_misclassified` conversion and never become a process-memory
-budget. Correctness and timing results are unaffected. See
-`docs/GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`.
-
-The repository also preserves the rejected research families and their
-reproduction tools without enabling them in production. S6 remains rejected;
-Pure/Sync-PCFR and range-aware physical-orbit paths are compile-time-gated
-diagnostic oracles and default to OFF. The strict-cap and exact-algorithm
-reports record why those families were closed. GTO+ black-box observation is
-classified as partially automatable and still requires a manual run marker;
-it does not automate solver clicks or alter the production engine. See
-`docs/archive/legacy-postflop-2026-07-09/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`,
-`docs/archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`,
-`docs/archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`,
-`docs/archive/legacy-postflop-2026-07-09/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`,
-`docs/archive/legacy-postflop-2026-07-09/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md` and
-`docs/archive/legacy-postflop-2026-07-09/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`.
-
-The three-fixture suite also contains `GTP-TH7D6S-101` and
-`GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected
-generally: percentage pushes use stack above the call divided by the pot after
-the call, `Add` and `Go` remain distinct, and configurations may declare sizes
-per raise count. Aggressive target amounts now use a general, serializable
-piecewise rounding policy in the core; TST selects the observed `5.3/14/47`
-policy without benchmark-ID branches. GTO+ benchmarks are target-driven with
-no iteration cap and stop only at a certified `Target dEV < 1%`. Periodic
-best-response certification starts only after average-strategy sampling begins;
-finite completion, pause and cancellation still force a final certification.
-The production core uses benchmark-independent signed regret and average
-strategy state through `ScaledUint16RegretStrategy`. Its common
-`production_dcfr` contract is `1.5/0/3`, with average resets at one-based
-iterations `1,2,5,17,65` and a one-iteration-lagged regret clock after 65.
-Current historical five-process Release runs pass dEV, root EV, layout and
-exact outcomes on all three fixtures. Final dEV/root
-EV values are AHKHQH `0.951423% / 19.118978`, TH7D6S
-`0.807956% / 8.226793` and TSTC9D `0.904505% / 8.495661`. TH and TST execution
-time evidence remains reported independently. The GTO+ displayed memory values
-are preserved as external references, but no memory PASS/FAIL or parity claim is
-made until metric equivalence is established. Process Peak RSS and logical state
-bytes remain separate diagnostics.
+  Each folder has a README. Files deleted in the cleanup of 2026-10-03 are at the tag
+  `docs-pre-cleanup-2026-10-02`. The last tree with history7 is the tag `history7-final`.
+- Third-party licenses: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

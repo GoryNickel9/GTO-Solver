@@ -7,6 +7,38 @@ coda. L'analisi tecnica di partenza è in
 
 Ultimo aggiornamento: 2026-09-21.
 
+> **Registro congelato il 2026-10-03.** Dal 2026-09-21 in poi le decisioni non vengono più
+> registrate qui. Si trovano in tre posti:
+>
+> - nelle voci datate del diario [`PROGRESS_LOG.md`](preflop_vector_cfr/PROGRESS_LOG.md);
+> - per la ricetta di MonkerSolver, in
+>   [`MONKER_RECIPE_REPRODUCTION_2026-09-28.md`](preflop_vector_cfr/MONKER_RECIPE_REPRODUCTION_2026-09-28.md)
+>   (§1 per le decisioni del 28/09, §8 per i passi successivi);
+> - per il 3-way, nelle specifiche di `preflop_vector_cfr/threeway/`.
+>
+> Le decisioni ancora da prendere sono nell'handoff
+> [`NEXT_STEPS_2026-10-02.md`](../handoff/NEXT_STEPS_2026-10-02.md), §7.
+>
+> L'architettura descritta in §3-§6 resta la motivazione del solver in uso. Dopo il 21/09 alcune
+> decisioni di questo registro sono cambiate:
+>
+> - **D1, D2, D27, gate di accettazione: superate.** Dal 2026-09-28 il gate era solo la best
+>   response esatta dentro l'astrazione ≤ 0,03 a, e il fisico restava una misura di qualità.
+>   Quel gate è stato ritirato il 2026-10-01 insieme a history7. I nuovi criteri sono una
+>   proposta da approvare (handoff, T16).
+> - **D28-D31: ritirate.** Budget di memoria e mandato del goal HU20/HU30/HU40 valevano per la
+>   suite HU10-HU40, ritirata il 2026-10-01; il codice è stato tolto il 2026-10-03 e l'ultimo
+>   albero che lo contiene è al tag `history7-final`.
+>
+> Le decisioni principali prese dopo il 21/09:
+>
+> - la ricetta di MonkerSolver come via verso il multiway (28/09);
+> - HU50 con le righe per classe di board come standard HU, e la rimozione di history7 (01/10);
+> - le fasi 1-3 del 3-way;
+> - un solo solver con preflop e postflop, in cui `gto_cli` resta il motore del postflop HU
+>   esatto (01-02/10);
+> - l'archivio dei documenti (02/10, eseguito il 03/10).
+
 ## 1. Decisioni prese
 
 | # | Decisione | Dettaglio | Data |
@@ -37,11 +69,11 @@ Ultimo aggiornamento: 2026-09-21.
 | D24 | Parametri di default e paletti | L'agent può validare e cambiare i parametri di default (capacità dei bucket, bin, gruppi OCHS, riavvii k-means, batch, board di valutazione, schema dei pesi) partendo sempre dai default come baseline, entro gli intervalli e le condizioni della roadmap §3.4, con confronto matched registrato nel diario. Non modificabili senza decisione dell'utente: regole, size, ledger, soglie D2 e D3, definizione delle metriche, feature esatte (niente Monte Carlo), deal fisici, separazione dal postflop. | 2026-09-15 |
 | D25 | Rimozione dei documenti superati (eseguita) | Rimossi dal working tree 706 file tracciati: vecchia roadmap R0–R9, studi 12 ore e CPU/RAM, evidenze `preflop_12h_evidence`, fasi R1–R5, cartella R6 (V6–V23). `docs/` passa da 7,0 GB a 1,8 MB. I 16 `.bin` non tracciati (6,9 GB) sono spostati in `benchmarks/results/legacy_preflop_es/`: le 14 policy V8–V16 e V18 sono cancellabili, le due V17 restano fino al gate P9. Restano `preflop_r0` (contratto monetario) e il benchmark CO40, con banner e gate riallineati a D1–D4. Indice: `PREFLOP_LEGACY_INDEX.md`. | 2026-09-15 |
 | D26 | Pulizia dei branch (eseguita, con residuo) | Sei tag `archive/research/<nome>` creati e pubblicati su origin insieme a `preflop-legacy-es-2026-09-15`. Cancellati su origin `research/s6-production-qualification-20260831`, `research/tst-strict-2gb-bottleneck-loop-20260831` e `copilot/fix-windows-asan-clang-job`; su origin restano solo `main` e i tag. In locale rimossi tre worktree puliti e cancellati i branch `dcfr-epoch-reset`, `gto-plus-autonomous-black-box`, `range-aware-orbit-oracle`. Residuo: tre worktree con scratch e i loro tre branch (A8). | 2026-09-15 |
-| D27 | Soglia fisica stretta all'1 % del piatto | Il gate di accettazione passa da 0,1 ante per giocatore (3,3 % del piatto iniziale di 3a) a **0,03 ante, l'1 % del piatto**. Decisione dell'utente del 2026-09-18. Motivazione: D2 era dichiarata "soglia fisica *iniziale*" e "da stringere quando l'astrazione migliora", e l'1 % del piatto è già lo standard con cui è stato accettato il prodotto postflop, come registra D3. La soglia resta ancorata al piatto e indipendente dallo stack. Conseguenza immediata: l'unico gioco qualificato resta **HU10** (0,003981a, 0,13 % del piatto); HU20 con `class` vale 0,060957a, il 2,03 % del piatto, e manca il gate di 2,03 volte; CO40 con `class` vale 0,500181a, 16,7 volte il gate. | 2026-09-18 |
-| D28 | Memoria per il goal HU20/HU30/HU40 | L'utente elimina esplicitamente il limite di 4 GiB e lo sostituisce con **12 GiB**. Si aggiorna il limite dello stato numerico in roadmap §3.4; restano float64, fixture congelate e gate fisico 0,03 ante. Vanno riportati anche memoria di processo e picchi di salvataggio/esportazione. | 2026-09-19 |
-| D29 | Persistenza sul goal HU20/HU30/HU40 | Per mandato esplicito dell'utente, continuare fino alla qualificazione dei tre giochi. Per questo goal è superata la regola D22 di fermarsi al primo FAIL/INCONCLUSIVE: registrare l'esito e proseguire con un controllo fondato. Non cambia i criteri di correttezza né autorizza ad allentare il gate. | 2026-09-19 |
-| D30 | Memoria disponibile durante l'audit HU30 | L'utente sostituisce il limite D28 di 12 GiB con **25 GiB** per gli esperimenti diagnostici del 2026-09-21. I risultati precedenti restano validi come misure storiche. La stima include stato numerico, mappa, temporanei e picchi di persistenza; il layout completo HU30 da 31.138.638.936 byte per R+S+policy non entra nel limite. | 2026-09-21 |
-| D31 | Budget di prodotto del solver HU | HU10, HU20, HU30 e HU40 devono essere risolti con un picco di processo **non superiore a 8 GiB**. I 25 GiB di D30 restano il tetto storico dell'audit, non un obiettivo di prodotto. `history7` HU20 a 11,44 GiB e cap 23 HU30 a 24,67 GiB non soddisfano D31 anche quando producono dati diagnostici utili. | 2026-09-21 |
+| D27 | Soglia fisica stretta all'1 % del piatto | Il gate di accettazione passa da 0,1 ante per giocatore (3,3 % del piatto iniziale di 3a) a **0,03 ante, l'1 % del piatto**. Decisione dell'utente del 2026-09-18. Motivazione: D2 era dichiarata "soglia fisica *iniziale*" e "da stringere quando l'astrazione migliora", e l'1 % del piatto è già lo standard con cui è stato accettato il prodotto postflop, come registra D3. La soglia resta ancorata al piatto e indipendente dallo stack. Conseguenza immediata: l'unico gioco qualificato resta **HU10** (0,003981a, 0,13 % del piatto); HU20 con `class` vale 0,060957a, il 2,03 % del piatto, e manca il gate di 2,03 volte; CO40 con `class` vale 0,500181a, 16,7 volte il gate. | 2026-09-18; **superata il 2026-09-28, gate ritirato il 2026-10-01** (vedi la nota in testa) |
+| D28 | Memoria per il goal HU20/HU30/HU40 | L'utente elimina esplicitamente il limite di 4 GiB e lo sostituisce con **12 GiB**. Si aggiorna il limite dello stato numerico in roadmap §3.4; restano float64, fixture congelate e gate fisico 0,03 ante. Vanno riportati anche memoria di processo e picchi di salvataggio/esportazione. | 2026-09-19; **ritirata il 2026-10-01** (vedi la nota in testa) |
+| D29 | Persistenza sul goal HU20/HU30/HU40 | Per mandato esplicito dell'utente, continuare fino alla qualificazione dei tre giochi. Per questo goal è superata la regola D22 di fermarsi al primo FAIL/INCONCLUSIVE: registrare l'esito e proseguire con un controllo fondato. Non cambia i criteri di correttezza né autorizza ad allentare il gate. | 2026-09-19; **ritirata il 2026-10-01** (vedi la nota in testa) |
+| D30 | Memoria disponibile durante l'audit HU30 | L'utente sostituisce il limite D28 di 12 GiB con **25 GiB** per gli esperimenti diagnostici del 2026-09-21. I risultati precedenti restano validi come misure storiche. La stima include stato numerico, mappa, temporanei e picchi di persistenza; il layout completo HU30 da 31.138.638.936 byte per R+S+policy non entra nel limite. | 2026-09-21; **ritirata il 2026-10-01** (vedi la nota in testa) |
+| D31 | Budget di prodotto del solver HU | HU10, HU20, HU30 e HU40 devono essere risolti con un picco di processo **non superiore a 8 GiB**. I 25 GiB di D30 restano il tetto storico dell'audit, non un obiettivo di prodotto. `history7` HU20 a 11,44 GiB e cap 23 HU30 a 24,67 GiB non soddisfano D31 anche quando producono dati diagnostici utili. | 2026-09-21; **ritirata il 2026-10-01** (vedi la nota in testa) |
 | D32 | Un solo solver per la matrice HU | I benchmark misurano il solver e non ne selezionano i parametri. Possono variare soltanto stack, numero di size preflop e numero di size postflop. Astrazione, feature, clustering, regola di capacità, algoritmo, batch, arresto e certificazione seguono una sola politica automatica. Nessuna correzione può dipendere da nome, stack o fingerprint della fixture; deve passare HU10/HU20/HU30/HU40. | 2026-09-21 |
 
 ## 2. Punti aperti

@@ -1,6 +1,6 @@
 # Prompt per l'agent coder: prototipo della web UI di comando di GTO-Solver
 
-Versione del 30/09/2026, revisione 2. Questa revisione incorpora le correzioni di una revisione critica fatta sul codice.
+Versione del 30/09/2026, revisione 2. Questa revisione incorpora le correzioni di una revisione critica fatta sul codice. **Nota del 03/10/2026:** la GUI desktop e history7 sono stati tolti e uniti nel branch principale (merge `a97e7b5`). I punti che ne parlavano sono corretti in §4.6, §11.4, A.1, A.2 e A.8, senza cambiare il numero delle righe, e i cambi di formato sono nell'Appendice K. I numeri di riga marcati [V] si riferiscono al codice del 30/09; alcuni file sono cambiati dopo (per esempio `benchmarks/preflop_blueprint_train.cpp` il 01/10 e il 03/10), quindi rileggi le righe sul codice prima di usarle. Dove questo prompt e l'addendum `WEB_UI_ADDENDUM_ENGINES_2026-10-02.md` non coincidono, vale l'addendum.
 
 Il destinatario è un agent coder che non ha mai visto questo progetto. Il documento è autosufficiente: le appendici contengono i fatti d'interfaccia del solver, raccolti con ricerche in sola lettura nel repository. Lo stato di riferimento è il branch `feat/monker-step1-checkdown` del 30/09/2026 sera. Il branch è attivo: altre sessioni committano in parallelo, quindi numeri di riga e dettagli possono essersi spostati.
 
@@ -332,8 +332,8 @@ speed = 50
 ### 4.6 Posizione nel repo e layout
 
 **Posizione (D1).** Il default raccomandato è `tools/solver-ui/`, per tre motivi [V]:
-- `CMakeLists.txt:64-69` esegue `file(GLOB_RECURSE GTOSD_FORMAT_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/apps/*.cpp ...)` per il target `format-check`. Sotto `apps/`, `node_modules` e i venv verrebbero riscansionati a ogni build, e ogni `.cpp` dentro un pacchetto entrerebbe nel controllo clang-format.
-- `apps/` contiene l'eseguibile `gto_cli` (`CMakeLists.txt:104-117`). Le app desktop `gto_gui`, `gui_qt_prototype` e `gui_imgui_prototype` sono state tolte il 02/10 per decisione dell'utente (commit `921f424`..`c2e9138` di `feat/threeway-step2`, non ancora nel branch principale). Il codice C++ di `gto_cli` non va toccato da questo lavoro; come la UI lo usa è scritto in `WEB_UI_ADDENDUM_ENGINES_2026-10-02.md`.
+- `CMakeLists.txt:62-67` (righe al 03/10) esegue `file(GLOB_RECURSE GTOSD_FORMAT_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/apps/*.cpp ...)` per il target `format-check`. Sotto `apps/`, `node_modules` e i venv verrebbero riscansionati a ogni build, e ogni `.cpp` dentro un pacchetto entrerebbe nel controllo clang-format.
+- `apps/` contiene solo l'eseguibile `gto_cli` (`CMakeLists.txt:101`, righe al 03/10). Le app desktop `gto_gui`, `gui_qt_prototype` e `gui_imgui_prototype` e la libreria `gtosd::gui_prototype` sono state tolte il 02/10 per decisione dell'utente (commit `921f424`..`c2e9138` e `8c70044`), e sono nel branch principale dal merge `a97e7b5` del 03/10. Il codice C++ di `gto_cli` non va toccato da questo lavoro; come la UI lo usa è scritto in `WEB_UI_ADDENDUM_ENGINES_2026-10-02.md`.
 - Nessun glob scansiona `tools/`.
 
 Non modificare `CMakeLists.txt`.
@@ -1149,7 +1149,7 @@ Non vedi la memoria del progetto: le regole che ti servono sono tutte qui.
 3. **Subagent**: se ne usi, falli girare sempre con il modello **opus**, mai con Fable 5.1 (regola dell'utente).
 4. **Solo lettura**: non modificare codice o librerie del solver:
    - `libs/`, `include/`, `benchmarks/*.cpp/hpp`, `tests/`, `CMakeLists.txt`, `CMakePresets.json`, `apps/`;
-   - gli script esistenti (`tools/monker_compare/*`, `benchmarks/monker/correctness/run_correctness.sh`, `tools/preflop_suite/*`);
+   - gli script esistenti (`tools/monker_compare/*`, `benchmarks/monker/correctness/run_correctness.sh`). `tools/preflop_suite/*` è stato tolto il 03/10 ed esiste solo al tag `history7-final`;
    - `out/frozen/`, `out/monker/bin*`, i bucket, le resources, le config in `benchmarks/`;
    - GTO-Chart-Browser. Se ne copi componenti, indica l'origine in un commento.
    - Se il solver ha bisogno di una modifica (per esempio `--version`, un gestore di segnali, la telemetria RAM su Linux, colonne `*_EV` nei reader), scrivi una proposta e chiedi.
@@ -1310,7 +1310,7 @@ Sono nella sezione 0.1 (D1-D8). Se qualcuna è senza risposta, chiedile tutte in
 - checkpoint: `checkpoint rejected: <integrity_failure|unsupported_version|io_failure>`;
 - scrittura: `periodic checkpoint write failed`, `final checkpoint write failed: ...`, `policy write failed: ...`.
 
-**Percorsi**: sono usati così come vengono passati, relativi alla cwd del processo. Il backend passa percorsi assoluti e imposta cwd = run dir.
+**Percorsi**: sono usati così come vengono passati, relativi alla cwd del processo. Il backend passa percorsi assoluti e imposta cwd = run dir. I cambi di opzioni e di output del 03/10 (rimozione di history7) sono nell'Appendice K.
 
 ### A.2 `gtosd_preflop_blueprint_train` (step 2, solo HU)
 
@@ -1356,7 +1356,7 @@ Colonna "Identity": **sì** = nell'hash del checkpoint [V `trainer.cpp:689-742`]
 | `--batch-policy-refresh` | flag | no-op di compatibilità, passato dai driver | no |
 | `--prefetch-refresh N` / `--prefetch-update N` | 4 / 8 | | no |
 
-- **Opzioni da non esporre**: `--class-rows`, `--history-rows`, `--certificate-out`, `--coverage-out`, `--eval-only`, `--fixed-boards`, `--permute-suits`, `--profile-traversal`.
+- **Opzioni da non esporre**: `--class-rows`, `--certificate-out`, `--coverage-out`, `--eval-only`, `--fixed-boards`, `--permute-suits`, `--profile-traversal`. `--history-rows` non esiste più dal 03/10 (Appendice K).
 - **DCFR**: alpha/beta/gamma sono fissi a 1.5/0/2 e non si cambiano da CLI.
 - **Output**: stdout = JSON Lines (Appendice D) + la riga finale `PREFLOP_BLUEPRINT_TRAIN=<STATUS>`. Stderr contiene solo l'avviso sul file di stop stale e la riga `FAIL`.
 - **`convergence_status` dell'evento `end`**: `CERTIFIED_EXACT | PLATEAU | CERTIFIED_FAIL | ESTIMATED | NOT_REACHED`.
@@ -1464,7 +1464,7 @@ Esiste solo in `out/monker/bin_3way_step1`: vedi D3.
 - `monker_buckets`: costruisce le bucket table.
 - `monker_charts`: produce chart da una policy.
 - `resources` e `three_way_table`: risorse una tantum.
-- `export`, `compare` e `abstract_br`: percorso P8 per le policy history-rows. Non capiscono le board-class-rows [I].
+- `export` e `compare`: percorso P8. Non capiscono le board-class-rows [I]. Le policy history-rows e `abstract_br` sono stati tolti il 03/10 ed esistono solo al tag `history7-final` (Appendice K).
 
 ---
 
@@ -2011,3 +2011,29 @@ Nessun set contiene tutti i tool della UI: vedi D3.
   - Ignora `*_EV` come azioni.
   - Normalizza per `Total`.
   - **Pota i rami con frequenza 0** e non rappresenta i fold impliciti. La nostra UI non deve potare in silenzio: mostra i rami a 0 come "mai giocato".
+
+## Appendice K: cambi del 03/10 (rimozione di history7) [V]
+
+Commit `5d10baa`, `82315d2` e `bac0f18`, uniti nel merge `a97e7b5`. L'ultimo albero con history7 è il tag
+`history7-final` (= `88118a6`).
+
+- **Opzioni.**
+  - `--history-rows` non esiste più in `train`, `certify`, `export` e `bucket_diagnostics`. I primi tre la
+    rifiutano con `unknown argument --history-rows`, `bucket_diagnostics` con `unknown option --history-rows`.
+  - `bucket_diagnostics` rifiuta anche `--rows history`, con il messaggio `rows must be class or base`.
+- **Chiavi tolte dall'output.**
+  - `history_map_resident_bytes`: dall'evento `start` e dal `memory_breakdown` del train, e dal JSON di
+    certify.
+  - La voce `history_map` delle impronte (`fingerprints`) del JSON delle chart.
+  - `historyMapFingerprint`: dalla riga ready di `export --serve`.
+- **Run precedenti.** Contengono ancora quelle chiavi, quindi i parser devono trattarle come facoltative
+  (addendum, F7). La fixture `fixtures/runs/V1L/train.jsonl` della web UI non va modificata.
+- **Eseguibili e script tolti.** Esistono solo al tag `history7-final`:
+  - `gtosd_preflop_blueprint_abstract_br`, `gtosd_preflop_blueprint_history_rows` e
+    `gtosd_preflop_blueprint_history_census`;
+  - `tools/preflop_suite/` (`suite.py`, `run_queue.sh`);
+  - `benchmarks/suite/` tranne `fixtures/`;
+  - `scripts/research/run_hu40_history7_solve.ps1` e `scripts/research/finalize_hu40_t37000.ps1`.
+- **Invariato.** La modalità a policy fissa del trainer, su cui si basa la parte A della fase 3b
+  (`gtosd_preflop_blueprint_policy_values`), non cambia. Restano anche le 7 fixture
+  `benchmarks/suite/fixtures/*.json`, lette dal game test.

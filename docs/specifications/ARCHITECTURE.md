@@ -3,8 +3,8 @@
 ## Obiettivi
 
 L'architettura mantiene separati regole, rappresentazione del gioco, solver,
-persistenza e presentazione. Il core matematico deve funzionare senza Qt,
-filesystem di prodotto o servizi remoti. GTOSD è C++20, locale e modulare.
+persistenza e presentazione. Il core matematico deve funzionare senza interfaccia
+grafica, filesystem di prodotto o servizi remoti. GTOSD è C++20, locale e modulare.
 
 ## Modello di esecuzione CPU/RAM
 
@@ -14,7 +14,7 @@ traversal CFR, regret/strategy update, best response, certificazione o analisi
 della soluzione. Sono vietati CUDA, ROCm, OpenCL, Vulkan Compute,
 DirectCompute, compute shader e deleghe equivalenti ad acceleratori.
 
-La GUI può utilizzare una GPU soltanto per disegnare l'interfaccia. Tale
+Un'interfaccia (oggi la web UI) può usare una GPU soltanto per disegnare. Tale
 rendering è esterno al core matematico, non riceve workload del solver e non può
 essere incluso in un benchmark di solving. Tutte le stime di capacità e i gate
 prestazionali del solver devono quindi essere soddisfatti con CPU e RAM.
@@ -26,7 +26,7 @@ core -> equity -> tree -> isomorphism
   \        \        \          \
    \        +--------+-----------+-> postflop -> storage
     +-----------------> solver -> best_response       \
-                         memory ------------------------+-> CLI / Qt GUI
+                         memory ------------------------+-> gto_cli
 ```
 
 Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
@@ -43,7 +43,7 @@ Le frecce indicano dipendenze concettuali; CMake applica i link effettivi.
 | `gtosd_postflop` | solver exact HU range-aware e analytics |
 | `gtosd_storage` | container `.gtsd`, cifratura, compressione e catalogo |
 | `gto_cli` | automazione, solve, inspect e benchmark |
-| `gto_gui` | workflow desktop Qt 6 Widgets |
+| altri moduli | ricerca, preflop legacy e preflop blueprint: vedi "Altri moduli" |
 
 Le API pubbliche vivono sotto `include/gtosd`; le implementazioni sotto
 `libs/*`. Le applicazioni possono dipendere dalle librerie, mai il contrario.
@@ -78,7 +78,7 @@ senza delta `O(worker * actions)` e exact BR streaming. CFR-D è un livello succ
 per i giochi che non rispettano il preflight dopo la riduzione lossless; non è
 un sostituto implicito dell'algoritmo postflop corrente.
 
-La preparazione è riutilizzabile: benchmark e GUI possono eseguire più tranche
+La preparazione è riutilizzabile: benchmark e CLI possono eseguire più tranche
 senza ricostruire la topologia. L'analytics è opt-in per non gonfiare il path di
 solving quando non serve.
 
@@ -91,7 +91,7 @@ esplicita e il report deve rendere visibile la residenza scelta.
 
 ## Confini e invarianti
 
-- `core` non conosce solver, GUI o storage.
+- `core` non conosce solver, interfacce o storage.
 - `equity` non decide frequenze o azioni.
 - `tree` contiene solo stato pubblico; le combo private entrano negli infoset.
 - `isomorphism` applica una permutazione globale, mai una canonicalizzazione
@@ -100,7 +100,34 @@ esplicita e il report deve rendere visibile la residenza scelta.
 - `postflop`, `solver` e `best_response` non delegano calcolo a GPU o altri
   acceleratori: CPU e RAM sono l'unico backend autorizzato.
 - `storage` non modifica semantica o precisione del solve.
-- GUI e CLI non ricalcolano metriche con formule divergenti dal core.
+- Le interfacce e la CLI non ricalcolano metriche con formule divergenti dal core.
+
+## Altri moduli
+
+Aggiornato il 2026-10-03.
+
+| Modulo | Responsabilità | Stato |
+|---|---|---|
+| `gtosd_postflop_subgame` | bridge exact e bounded da un river postflop a `FiniteGame`, boundary e splice (R2-S); dipende da `postflop` e `solver` | ricerca, compilato e testato |
+| `gtosd_solver_validation` | validazione TRE su tre corpus chance (training, risposta, valutazione); dipende da `best_response` | ricerca, compilato e testato |
+| `gtosd_preflop_trainer`, `gtosd_preflop`, `gtosd_preflop_certifier` (`libs/preflop`) | preflop external sampling R0-R6 | legacy: programma chiuso il 2026-09-15, codice compilato e testato |
+| `gtosd_card_abstraction` | risorse esatte del preflop blueprint: rank, tabelle all-in e 3-way, board canonici, feature esatte, tabelle bucket | prodotto |
+| `gtosd_preflop_blueprint` | solver preflop blueprint: modello di gioco, kernel HU e multiway, trainer, best response, certificatore, export, chart e query | prodotto |
+
+`gtosd_card_abstraction` dipende da `core` ed `equity`; `gtosd_preflop_blueprint`
+da `core`, `equity`, `tree` e `card_abstraction`. Le due librerie si compilano
+con l'opzione `GTOSD_BUILD_PREFLOP_BLUEPRINT` (default `ON`). La guardia
+`tests/verify_preflop_blueprint_isolation.cmake` (CTest
+`gtosd_preflop_blueprint_dependency_check`) rifiuta nei loro CMakeLists i link a
+`solver`, `best_response`, `solver_validation`, `isomorphism`, `memory`,
+`postflop`, `postflop_subgame`, al preflop legacy e a `storage`. Nei loro
+sorgenti e nelle CLI `benchmarks/preflop_blueprint_*.cpp` rifiuta gli include
+di `gtosd/postflop/`, `gtosd/preflop/`, `gtosd/solver/`, `gtosd/memory/`,
+`gtosd/storage/` e `gtosd/isomorphism/`. I test possono usare le librerie
+postflop come oracolo.
+
+Questa specifica non descrive il progetto del preflop blueprint. I documenti
+sono i report di modulo P0-P8 e il diario in `docs/research/preflop_vector_cfr/`.
 
 ## Persistenza e sicurezza
 
@@ -114,17 +141,21 @@ SQLite esterno indicizza le soluzioni, ma non è necessario per aprirle.
 
 ## Estensioni previste
 
-Node locking, preflop HU e multiway devono aggiungere moduli o contratti senza
-inserire dipendenze nella GUI. Il root lock F10.4 implementato è un esperimento
-diagnostico test-only e non costituisce l'API di node locking di prodotto.
+Il node locking deve aggiungere moduli o contratti senza far dipendere il core
+dalle interfacce. Il root lock F10.4 implementato è un esperimento diagnostico
+test-only e non costituisce l'API di node locking di prodotto.
 
-Il preflop richiederà action abstraction, decomposizione e stima risorse; il
-multiway richiederà utility e metriche differenti. Nessuna delle due estensioni
-può essere ottenuta reinterpretando silenziosamente il solver HU postflop.
+Il preflop e il multiway non reinterpretano il solver HU postflop. Sono in una
+libreria separata, `gtosd_preflop_blueprint`, con action abstraction, card
+abstraction e campionamento dei board propri (vedi "Altri moduli"). Gli
+interventi previsti su `gto_cli` sono solve con i range dell'utente, eventi di
+avanzamento JSONL e un worker `serve`. Sono comandi nuovi della CLI e non
+cambiano i contratti esistenti.
 
 ## Toolchain e distribuzione
 
 La build canonica usa CMake preset, vcpkg e MSVC su Windows. Le librerie
-installano target CMake namespaced `gtosd::`; la GUI desktop è un'opzione di
-build separata. Qt è confinato all'applicazione desktop. Test e benchmark sono
-target distinti, così una build consumer non incorpora il laboratorio.
+installano target CMake namespaced `gtosd::`. La GUI desktop Qt, le sue opzioni
+di build e la feature vcpkg `gui-prototypes` sono state tolte il 2026-10-02: il
+progetto non dipende più da Qt. Test e benchmark sono target distinti, così una
+build consumer non incorpora il laboratorio.

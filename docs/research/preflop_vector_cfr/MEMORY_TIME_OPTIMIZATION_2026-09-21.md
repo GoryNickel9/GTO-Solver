@@ -1,5 +1,23 @@
 # Riduzione di RAM e tempi sulla suite di benchmark: ottimizzazioni, test e risultati
 
+> **Stato al 2026-10-03.** Il lavoro si è fermato il 2026-09-28 (§5.4.15, pausa della linea HU),
+> quindi la riga "Stato: in corso" più sotto è superata. Il documento resta perché è l'unico
+> documento di progetto di due parti ancora in produzione: `--table-storage double|mixed|float32`
+> e il motore river del certificatore (§5.4.10).
+>
+> La suite su cui è stato misurato è ritirata. Questi strumenti esistono solo al tag
+> `history7-final` (= `88118a6`, l'ultimo albero con history7):
+> `tools/preflop_suite/` (`suite.py`, `run_queue.sh`), `benchmarks/suite/` tranne `fixtures/`,
+> l'opzione `--history-rows` delle CLI, gli eseguibili `gtosd_preflop_blueprint_abstract_br`,
+> `gtosd_preflop_blueprint_history_rows` e `gtosd_preflop_blueprint_history_census` e gli script
+> `scripts/research/run_hu40_history7_solve.ps1` e `finalize_hu40_t37000.ps1`.
+>
+> Censimento, protocollo e report della suite sono in
+> [`archive/history7-suite-2026-09/`](../../archive/history7-suite-2026-09/README.md). Il JSON
+> del report (`BENCHMARK_SUITE_REPORT_2026-09-23.json`) è stato cancellato il 2026-10-03 e resta
+> al tag `docs-pre-cleanup-2026-10-02`. Dal 2026-10-03 il certificato non contiene più
+> `history_map_resident_bytes` (§3).
+
 Data di inizio: 2026-09-21. Documento del milestone, parti 6-8. Il censimento e' in
 [BENCHMARK_SUITE_INVENTORY_2026-09-21.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_INVENTORY_2026-09-21.md), il
 protocollo e i criteri preregistrati in

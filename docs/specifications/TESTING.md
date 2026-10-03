@@ -1,8 +1,8 @@
 # Testing
 
 Il backend sottoposto a unit, integration, differential e benchmark test è
-esclusivamente CPU/RAM. I test grafici possono usare una GPU per il rendering,
-ma non costituiscono né attivano un percorso di solving GPU.
+esclusivamente CPU/RAM. Non ci sono più test grafici: la GUI desktop e i suoi
+E2E sono stati tolti il 2026-10-02.
 
 ## Strati
 
@@ -15,7 +15,8 @@ La suite copre:
 - solver laboratory, best response e checkpoint;
 - memoria e postflop exact;
 - storage autenticato e migrazioni;
-- GUI prototype/product E2E;
+- solver preflop blueprint, card abstraction, 3-way e riferimenti
+  indipendenti (sezione dedicata più sotto);
 - riferimento e benchmark GTO+.
 
 I bug matematici producono test permanenti. La parità interna non basta se i due
@@ -24,32 +25,75 @@ indipendenti.
 
 ## Preset canonici Windows
 
-La build completa desktop usa l'ambiente Visual Studio Developer Command:
+La build completa usa l'ambiente Visual Studio Developer Command:
 
 ```powershell
-cmake --preset windows-gui-release
-cmake --build --preset windows-gui-release
-ctest --test-dir out/build/windows-gui-release --output-on-failure
-cmake --build --preset windows-gui-release --target format-check
+cmake --preset windows-release
+cmake --build --preset windows-release
+ctest --preset windows-release
+cmake --build --preset windows-release --target format-check
 ```
 
-Altri preset coprono Debug, Release senza GUI, ASan e nightly. L'assenza degli
-header standard in MSVC è un problema di ambiente, non una regressione del
-codice: i gate Windows devono essere eseguiti nel developer environment.
+I preset `windows-debug` e `windows-asan` coprono Debug e ASan; i test nightly
+richiedono `GTOSD_BUILD_NIGHTLY_TESTS=ON`. Il preset desktop
+`windows-gui-release` è stato tolto il 2026-10-02 insieme alla GUI. L'assenza
+degli header standard in MSVC è un problema di ambiente, non una regressione
+del codice: i gate Windows devono essere eseguiti nel developer environment.
 
 ## Suite corrente
 
-Il preset desktop `windows-gui-release` registra 38 test CTest: infrastruttura,
-core, fasi 1-10, contratto `production_dcfr`, timer product, riferimento GTO+,
-layout canonico, oracoli, benchmark smoke e sette E2E GUI. Sanitizer e nightly
-restano prove separate e il report deve dire con precisione cosa è stato escluso.
+Ultima verifica (2026-10-02): worktree della fase 3 al commit `8c70044`, build
+Release `out/build/windows-release-suite`, senza la GUI. Nessun test GUI
+risulta registrato. I risultati:
 
-Ultima verifica core completa (2026-09-06): Release `35/35 PASS` in `260,92 s`.
-La verifica GUI Release separata resta `38/38 PASS` in `203,93 s` al
-2026-09-05. Sono inoltre passati il resume production byte-equivalent attraverso
+- `ctest -L "preflop_blueprint|card_abstraction" -LE phase3_long`: `102/102`
+  in `1.078,97 s`, 3 processi;
+- le altre label
+  (`-LE "preflop_blueprint|card_abstraction|research|monker|monker_exact|phase3_long|nightly|slow"`):
+  `48/48` in `466,38 s`. Coprono infrastruttura e core, fasi 2-10, solver,
+  postflop, oracoli, il riferimento GTO+ e i quattro CTest di `gto_cli`.
+
+Sanitizer, nightly, `slow`, `research`, `monker_exact` e `phase3_long` restano
+prove separate, e il report deve dire con precisione cosa è stato escluso.
+
+Storico: al 2026-09-05 il preset desktop `windows-gui-release`, ora tolto,
+registrava 38 test CTest, fra cui sette E2E GUI (`38/38 PASS` in `203,93 s`).
+Al 2026-09-06 la verifica core completa dava Release `35/35 PASS` in
+`260,92 s`. Sono inoltre passati il resume production byte-equivalent attraverso
 il reset finale, il contratto delle tre fixture e i 15 solve target-driven della
 baseline B0 controllata. Questa baseline chiude R2 come misura riproducibile,
 non come parità: TH e TST falliscono il gate tempo.
+
+## Solver preflop blueprint, card abstraction e 3-way
+
+Aggiunto il 2026-10-03. Le label `preflop_blueprint` e `card_abstraction`
+raccolgono i test di `libs/preflop_blueprint` e `libs/card_abstraction`: i
+moduli P0-P8, gli step 1 e 2, il 3-way (label `three_way`) e gli smoke delle
+CLI `gtosd_preflop_blueprint_*` registrati in `benchmarks/CMakeLists.txt`. Ne
+fa parte anche il controllo di isolamento `gtosd_preflop_blueprint_dependency_check`.
+
+Molti di questi test leggono due insiemi di file:
+
+- le risorse esatte in `out/preflop_blueprint_resources`;
+- le tabelle bucket in `out/preflop_blueprint_buckets_200_500_1000`.
+
+Se mancano, i test escono con il codice 77 e CTest li segna come saltati. I
+comandi per costruirli sono nel `README.md` del repository.
+
+Due test sono lunghi e vanno lanciati a parte:
+
+- `gtosd_preflop_blueprint_trainer3_long_tests`, label `phase3_long`, circa
+  30-60 minuti a 2 thread;
+- `gtosd_preflop_blueprint_monker_values_rake_exact_smoke`, label
+  `research;monker_exact`, circa 13 minuti a 3 thread.
+
+I riferimenti indipendenti scritti dalle regole, con l'arbitro 3-way, sono in
+`tools/independent/` (CTest `gtosd_preflop_blueprint_independent_referee*`,
+label `independent`) e sono descritti in `tools/independent/README.md`. La
+batteria di correttezza del passo 2 HU50 è in
+`benchmarks/monker/correctness/README.md`. Il progetto dei test è nei report
+P0-P8, nel diario `docs/research/preflop_vector_cfr/PROGRESS_LOG.md` e nelle
+specifiche `threeway/`.
 
 ## Invarianti obbligatori
 
@@ -88,7 +132,7 @@ I test Release coprono allocazione, update e certificazione dello stato core
 `ScaledUint16RegretStrategy`, validazione dei valori finiti, scale per decision
 node, resume continuo/segmentato byte-equivalent e persistenza autenticata con
 round-trip byte-for-byte. Il preset Release corrente passa `35/35` in
-`260,92 s`; il preset GUI verificato separatamente resta `38/38` in `203,93 s`.
+`260,92 s`; il preset GUI di allora, ora tolto, passava `38/38` in `203,93 s`.
 I tre benchmark RAM restano integration gate separati dalla suite e dai time
 gate.
 
@@ -100,11 +144,11 @@ stato e il round-trip del checkpoint ProductionDcfr v2. I test phase8 coprono
 la persistenza in `.gtsd` di algoritmo, precisione ed esponenti nello schema
 metrics v4. Il test di residency verifica che il dispatch ai due lati del budget
 produca checkpoint materializzati byte-identici. Il smoke CLI verifica il
-profilo e i tre intervalli product tramite il vero entry point. Il caller GUI è
-verificato dal preset `windows-gui-release`: l'E2E
-create-solve-save-reopen-navigate-resume passa in 12,96 s. Il test usa una linea
-bet-call raggiunta a iterazione 2; una linea a reach zero non viene trasformata
-in analytics uniforme.
+profilo e i tre intervalli product tramite il vero entry point. Fino al
+2026-10-02 il caller GUI era verificato dal preset `windows-gui-release`: l'E2E
+create-solve-save-reopen-navigate-resume passava in 12,96 s, su una linea
+bet-call raggiunta a iterazione 2, e una linea a reach zero non veniva
+trasformata in analytics uniforme. Preset ed E2E sono stati tolti con la GUI.
 
 Phase10 verifica inoltre la policy postflop `exact_identity` 1.0: mapping
 implicito a zero byte, conteggi infoset/action invariati, perfect recall,
@@ -230,6 +274,11 @@ La regressione Release completa con il nuovo preflight passa `36/36` in
 
 ## HU preflop reference
 
+> Legacy: preflop external sampling (`libs/preflop`), programma chiuso il
+> 2026-09-15; il codice è ancora compilato e testato. I test del solver
+> preflop in uso sono nella sezione "Solver preflop blueprint, card
+> abstraction e 3-way".
+
 `gtosd_hu_preflop_reference_preflight` valida l'unica fixture esterna HU
 preflop. Copre grammatica delle frequenze, 81 classi, masse 630, righe
 arrotondate a 100/101%, root state CO 40a e quantità fold/call/raise 6a/raise
@@ -245,6 +294,11 @@ La verifica 2026-09-06 passa in Release e ASan; la suite Release completa con
 il nuovo benchmark passa `37/37` in `275,08 s`.
 
 ## HU preflop tree e sampled solve
+
+> Legacy: preflop external sampling (`libs/preflop`), programma chiuso il
+> 2026-09-15; il codice è ancora compilato e testato. I test del solver
+> preflop in uso sono nella sezione "Solver preflop blueprint, card
+> abstraction e 3-way".
 
 `gtosd_hu_preflop_tests` verifica la configurazione JSON, il catalogo root,
 le continuazioni 10,5a/14,5a, la struttura dopo limp, l'override isolato per il
@@ -295,6 +349,11 @@ fixture completa la qualifica con esito `REJECTED` e Peak RSS
 `155.385.856 B`.
 
 ## Decomposizione HU preflop exact
+
+> Legacy: preflop external sampling (`libs/preflop`), programma chiuso il
+> 2026-09-15; il codice è ancora compilato e testato. I test del solver
+> preflop in uso sono nella sezione "Solver preflop blueprint, card
+> abstraction e 3-way".
 
 `gtosd_hu_preflop_tests` copre blueprint denso, partizione delle probabilità,
 573 flop canonici con molteplicità totale 7.140, 5.157 task entry/flop,

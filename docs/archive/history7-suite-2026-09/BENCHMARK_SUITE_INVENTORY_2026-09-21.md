@@ -1,5 +1,15 @@
 # Censimento della suite di benchmark del solver preflop blueprint
 
+> **Nota del 2026-10-03.** Documento archiviato. history7 e la suite HU10-HU40 sono stati
+> ritirati il 2026-10-01 e il loro codice è stato tolto il 2026-10-03. Gli strumenti citati
+> qui esistono solo al tag `history7-final` (= `88118a6`):
+> `tools/preflop_suite/` (`suite.py`, `run_queue.sh`), `benchmarks/suite/` tranne `fixtures/`,
+> l'opzione `--history-rows` delle CLI, gli eseguibili `gtosd_preflop_blueprint_abstract_br`,
+> `gtosd_preflop_blueprint_history_rows` e `gtosd_preflop_blueprint_history_census` e gli script
+> `scripts/research/run_hu40_history7_solve.ps1` e `finalize_hu40_t37000.ps1`.
+>
+> Vedi il [README dell'archivio](README.md).
+
 Data: 2026-09-21. Stato del repository: branch `codex/fix-preflop-deep-stack-convergence`,
 HEAD `ba93c75` (working tree pulito). Documento del milestone "riduzione RAM e tempi su tutta
 la suite di benchmark", parte 1 (censimento) e rapporto sulle differenze originarie.
