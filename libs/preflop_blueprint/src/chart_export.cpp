@@ -5,7 +5,6 @@
 #include "gtosd/core/ranges.hpp"
 #include "gtosd/preflop_blueprint/action_labels.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 
 #include "hashing.hpp"
@@ -166,12 +165,9 @@ Result<ChartExport, ChartExportError> export_chart(const CompiledGame &game,
   result.root_ev = estimate.value().ev;
   result.policy_fingerprint = policy_fingerprint(policy);
   const auto &config = game.config();
-  const std::string history_fingerprint =
-      resources.history_rows == nullptr ? "" : resources.history_rows->fingerprint();
   const bool certified = options.certificate != nullptr && options.certificate->exact &&
                          options.certificate->policy_fingerprint == result.policy_fingerprint &&
-                         options.certificate->tree_fingerprint == game.fingerprint() &&
-                         options.certificate->history_map_fingerprint == history_fingerprint;
+                         options.certificate->tree_fingerprint == game.fingerprint();
   result.badge = certified ? "CERTIFIED_EXACT" : "ESTIMATED";
   const double initial_pot =
       static_cast<double>(config.ante.units() * config.player_count + config.button_blind.units()) *
@@ -187,8 +183,7 @@ Result<ChartExport, ChartExportError> export_chart(const CompiledGame &game,
           ", \"flop_table\": " + json_quote(resources.flop->fingerprint()) +
           ", \"turn_table\": " + json_quote(resources.turn->fingerprint()) +
           ", \"river_table\": " + json_quote(resources.river->fingerprint()) +
-          ", \"policy\": " + json_quote(result.policy_fingerprint) +
-          ", \"history_map\": " + json_quote(history_fingerprint) + "},\n";
+          ", \"policy\": " + json_quote(result.policy_fingerprint) + "},\n";
   json += "  \"game\": {\"positions\": [";
   for (std::size_t index = 0; index < config.positions.size(); ++index) {
     json += (index > 0U ? ", " : "") + json_quote(config.positions[index]);

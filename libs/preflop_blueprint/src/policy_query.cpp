@@ -3,7 +3,6 @@
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/action_labels.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include <algorithm>
 
@@ -95,19 +94,6 @@ Result<std::uint32_t, QueryError> policy_row(const CompiledGame &game, const Que
     if (!assigned) {
       return Outcome::failure(assigned.error());
     }
-  }
-  if (tables.history_rows != nullptr) {
-    if (tables.flop == nullptr || tables.turn == nullptr || tables.river == nullptr ||
-        !tables.history_rows->matches(*tables.flop) || !tables.history_rows->matches(*tables.turn) ||
-        !tables.history_rows->matches(*tables.river)) {
-      return Outcome::failure(QueryError::MissingTable);
-    }
-    const auto mapped = tables.history_rows->row(
-        entry.street, ca::combo_table().hand_class[combo], buckets[0], buckets[1], buckets[2]);
-    if (mapped == no_history_row) {
-      return Outcome::failure(QueryError::MissingTable);
-    }
-    return Outcome::success(mapped);
   }
   return Outcome::success(
       static_cast<std::uint32_t>(buckets[static_cast<std::size_t>(entry.street) - 1U]));

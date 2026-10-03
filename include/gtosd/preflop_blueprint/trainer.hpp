@@ -216,7 +216,6 @@ struct TrainerResources {
   const card_abstraction::BucketTable *river{nullptr};
   // Optional immutable (preflop class, street bucket) map. Must outlive trainer.
   const ClassBucketRows *class_rows{nullptr};
-  const HistoryBucketRows *history_rows{nullptr};
   // MonkerSolver-style (board class, per-board bucket) rows. Must outlive trainer.
   const BoardClassRows *board_class_rows{nullptr};
   // Optional fixed preflop rows (see the contract above). Must outlive trainer.
@@ -378,7 +377,6 @@ struct MemoryBreakdown {
   std::uint64_t board_list_bytes{0U};
   std::uint64_t hand_mask_bytes{0U};
   std::uint64_t tree_bytes{0U};
-  std::uint64_t history_map_resident_bytes{0U};
   std::uint64_t bucket_table_bytes{0U};
   std::uint64_t rank_table_bytes{0U};
   std::uint64_t catalog_bytes{0U};
@@ -397,7 +395,7 @@ struct MemoryBreakdown {
            compact_policy_offsets_bytes + discount_timestamp_bytes + discount_factor_bytes +
            discount_offset_bytes + all_in_dense_bytes + board_batch_bytes + workspace_bytes +
            unit_bytes + layout_offset_bytes + partition_bytes + board_list_bytes +
-           hand_mask_bytes + tree_bytes + history_map_resident_bytes + bucket_table_bytes +
+           hand_mask_bytes + tree_bytes + bucket_table_bytes +
            rank_table_bytes + catalog_bytes + all_in_table_bytes + class_cache_bytes +
            class_values_bytes;
   }

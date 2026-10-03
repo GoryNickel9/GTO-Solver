@@ -20,8 +20,6 @@
 // of the next street and answers at the following decision node.
 namespace gtosd::preflop_blueprint {
 
-class HistoryBucketRows;
-
 enum class QueryError : std::uint8_t {
   UnknownAction,
   IllegalHistory,
@@ -37,7 +35,6 @@ struct QueryTables {
   const card_abstraction::BucketTable *flop{nullptr};
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
-  const HistoryBucketRows *history_rows{nullptr};
 };
 
 struct QueryRequest {

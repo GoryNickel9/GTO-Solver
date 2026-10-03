@@ -309,7 +309,7 @@ void test_river_board_and_pair_kernels(const Resources &resources) {
                   river.cards()[hand] == context.cards()[hand] &&
                   river.ranks()[hand] == context.ranks()[hand] &&
                   river.order_by_rank()[hand] == context.order_by_rank()[hand] &&
-                  river.rows()[hand] == pb::no_history_row,
+                  river.rows()[hand] == pb::no_row,
               "river board has the hands, ranks and rank order of the context");
     }
     const auto starts = river.group_starts();

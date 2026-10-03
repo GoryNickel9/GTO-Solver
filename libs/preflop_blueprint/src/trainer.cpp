@@ -1,6 +1,4 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
-#include "gtosd/preflop_blueprint/abstract_best_response.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/multiway_kernels.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/preflop_class_cache.hpp"
@@ -668,24 +666,16 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     const auto capacity = [&](const card_abstraction::BucketTable &table) {
       if (resources_.board_class_rows)
         return resources_.board_class_rows->count(table.street());
-      if (resources_.history_rows)
-        return resources_.history_rows->count(table.street());
       return resources_.class_rows ? resources_.class_rows->count(table.street())
                                    : static_cast<std::uint32_t>(table.capacity());
     };
-    if (resources_.history_rows &&
-        (resources_.class_rows || !resources_.history_rows->matches(*resources_.flop) ||
-         !resources_.history_rows->matches(*resources_.turn) ||
-         !resources_.history_rows->matches(*resources_.river)))
-      return Outcome::failure(TrainerError::InvalidConfiguration);
     if (resources_.class_rows && (!resources_.class_rows->matches(*resources_.flop) ||
                                   !resources_.class_rows->matches(*resources_.turn) ||
                                   !resources_.class_rows->matches(*resources_.river))) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
     }
     if (resources_.board_class_rows &&
-        (resources_.class_rows || resources_.history_rows ||
-         !resources_.board_class_rows->matches(*resources_.flop) ||
+        (resources_.class_rows || !resources_.board_class_rows->matches(*resources_.flop) ||
          !resources_.board_class_rows->matches(*resources_.turn) ||
          !resources_.board_class_rows->matches(*resources_.river))) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
@@ -901,8 +891,6 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   if (resources_.class_rows) {
     identity += "|class-major-rows-v1";
   }
-  if (resources_.history_rows)
-    identity += "|history-rows=" + resources_.history_rows->fingerprint();
   if (resources_.board_class_rows)
     identity += "|" + resources_.board_class_rows->fingerprint();
   // Double storage keeps the historical identity; a narrower storage cannot
@@ -1047,7 +1035,6 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
   tables.turn = resources_.turn;
   tables.river = resources_.river;
   tables.class_rows = resources_.class_rows;
-  tables.history_rows = resources_.history_rows;
   tables.board_class_rows = resources_.board_class_rows;
   const bool with_tables = resources_.catalog != nullptr && resources_.flop != nullptr &&
                            resources_.turn != nullptr && resources_.river != nullptr;
@@ -3173,8 +3160,6 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
   breakdown.tree_bytes = game_->nodes().size() * sizeof(CompiledNode) +
                          game_->edges().size() * sizeof(CompiledEdge) +
                          game_->states().size() * sizeof(PublicState);
-  breakdown.history_map_resident_bytes =
-      resources_.history_rows ? resources_.history_rows->resident_byte_size() : 0U;
   for (const auto *table : {resources_.flop, resources_.turn, resources_.river})
     if (table != nullptr)
       breakdown.bucket_table_bytes += table->payload_bytes();
@@ -3238,7 +3223,6 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
   resources.turn = resources_.turn;
   resources.river = resources_.river;
   resources.class_rows = resources_.class_rows;
-  resources.history_rows = resources_.history_rows;
   resources.board_class_rows = resources_.board_class_rows;
   BestResponseOptions options;
   options.threads = config_.evaluation_threads == 0U ? config_.threads
@@ -3428,165 +3412,6 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   return Outcome::success(true);
 }
 
-Result<AbstractBestResponseReport, TrainerError>
-TrainerAccess::abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                                      const TrainerResources &resources,
-                                      const std::vector<FlopGroup> &groups,
-                                      const AbstractBestResponseOptions &options) {
-  using Outcome = Result<AbstractBestResponseReport, TrainerError>;
-  const auto started = Clock::now();
-  if (options.threads == 0U || groups.empty() || resources.history_rows == nullptr ||
-      game.config().player_count != 2U)
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-  const auto &source_layout = policy.layout();
-  if (source_layout.entries != policy.table().size())
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-
-  double group_weight = 0.0;
-  for (const auto &group : groups) {
-    if (!(group.weight > 0.0) || !std::isfinite(group.weight) || group.boards.empty())
-      return Outcome::failure(TrainerError::InvalidConfiguration);
-    group_weight += group.weight;
-    double board_weight = 0.0;
-    for (const auto &board : group.boards) {
-      if (!(board.weight > 0.0) || !std::isfinite(board.weight))
-        return Outcome::failure(TrainerError::InvalidConfiguration);
-      board_weight += board.weight;
-    }
-    if (!(board_weight > 0.0) || !std::isfinite(board_weight))
-      return Outcome::failure(TrainerError::InvalidConfiguration);
-  }
-  if (!(group_weight > 0.0) || !std::isfinite(group_weight))
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-
-  TrainerConfig config;
-  config.flop_capacity = source_layout.flop_capacity;
-  config.turn_capacity = source_layout.turn_capacity;
-  config.river_capacity = source_layout.river_capacity;
-  config.batch_boards = 1U;
-  config.threads = options.threads;
-  std::vector<double> fixed_policy = std::move(policy.table());
-  std::unique_ptr<Trainer> evaluator(new Trainer(game, resources, config));
-  HandSubsets subsets;
-  subsets.combos = options.hand_subsets;
-  const bool restricted = !subsets.combos[0].empty() || !subsets.combos[1].empty();
-  const auto initialized =
-      evaluator->initialize(nullptr, restricted ? &subsets : nullptr, &fixed_policy);
-  if (!initialized)
-    return Outcome::failure(initialized.error());
-
-  AbstractBestResponseReport report;
-  report.flops = static_cast<std::uint32_t>(groups.size());
-  Trainer::BoardWork work;
-  for (std::size_t group_index = 0; group_index < groups.size(); ++group_index) {
-    const auto &group = groups[group_index];
-    const double normalized_group = group.weight / group_weight;
-    const double board_total = std::accumulate(
-        group.boards.begin(), group.boards.end(), 0.0,
-        [](const double sum, const WeightedBoard &board) { return sum + board.weight; });
-    for (const auto &board : group.boards) {
-      const auto prepared = evaluator->prepare_board(
-          board.history, normalized_group * board.weight / board_total, work);
-      if (!prepared)
-        return Outcome::failure(prepared.error());
-      evaluator->pass(work, 0U, 1.0);
-      evaluator->pass(work, 1U, 1.0);
-      ++report.boards;
-    }
-    if (options.progress) {
-      AbstractBestResponseProgress progress;
-      progress.flops_done = static_cast<std::uint32_t>(group_index + 1U);
-      progress.flops_total = report.flops;
-      progress.boards_done = report.boards;
-      progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-      options.progress(progress);
-    }
-  }
-
-  struct Predecessor {
-    std::uint32_t node{no_node};
-    std::uint8_t action{0U};
-  };
-  std::vector<Predecessor> predecessors(game.nodes().size());
-  for (const auto &node : game.nodes()) {
-    if (node.kind != NodeKind::Decision)
-      continue;
-    auto child = node.id;
-    auto parent = node.parent;
-    while (parent != no_node) {
-      const auto &ancestor = game.nodes()[parent];
-      if (ancestor.kind == NodeKind::Decision && ancestor.actor == node.actor) {
-        const auto edges = game.edges_of(parent);
-        const auto edge = std::find_if(edges.begin(), edges.end(),
-                                       [&](const CompiledEdge &entry) {
-                                         return entry.child == child;
-                                       });
-        if (edge == edges.end())
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        predecessors[node.id] =
-            {parent, static_cast<std::uint8_t>(edge - edges.begin())};
-        break;
-      }
-      child = parent;
-      parent = ancestor.parent;
-    }
-  }
-
-  const auto predecessor_row = [&](const Street street, const std::uint32_t row,
-                                   const Street target) {
-    auto current_street = street;
-    auto current_row = row;
-    while (current_street != target && current_row != no_history_row) {
-      if (current_street == Street::Preflop)
-        return no_history_row;
-      current_row = resources.history_rows->parent_row(current_street, current_row);
-      current_street = static_cast<Street>(static_cast<std::uint8_t>(current_street) - 1U);
-    }
-    return current_street == target ? current_row : no_history_row;
-  };
-
-  for (const std::uint8_t hero : {std::uint8_t{0}, std::uint8_t{1}}) {
-    double gain = 0.0;
-    for (auto iterator = game.nodes().rbegin(); iterator != game.nodes().rend(); ++iterator) {
-      const auto &node = *iterator;
-      if (node.kind != NodeKind::Decision || node.actor != hero)
-        continue;
-      const auto rows = StateLayout::rows_for(node.street, source_layout.flop_capacity,
-                                              source_layout.turn_capacity,
-                                              source_layout.river_capacity);
-      const auto &predecessor = predecessors[node.id];
-      for (std::uint32_t row = 0; row < rows; ++row) {
-        const auto offset = source_layout.offsets[node.id] +
-                            static_cast<std::uint64_t>(row) * node.action_count;
-        double value = -std::numeric_limits<double>::infinity();
-        for (std::uint8_t action = 0; action < node.action_count; ++action)
-          value = std::max(value, evaluator->regret(offset + action));
-        if (!std::isfinite(value))
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        if (predecessor.node == no_node) {
-          gain += value;
-          continue;
-        }
-        const auto &parent = game.nodes()[predecessor.node];
-        const auto parent_row = predecessor_row(node.street, row, parent.street);
-        if (parent_row == no_history_row)
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        const auto parent_offset =
-            source_layout.offsets[parent.id] +
-            static_cast<std::uint64_t>(parent_row) * parent.action_count + predecessor.action;
-        evaluator->add_regret(parent_offset, value);
-      }
-    }
-    if (!std::isfinite(gain) || gain < -1e-9)
-      return Outcome::failure(TrainerError::IntegrityFailure);
-    report.gain[hero] = std::max(0.0, gain);
-  }
-  report.max_gain = std::max(report.gain[0], report.gain[1]);
-  report.process_bytes = process_working_set_bytes();
-  report.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-  return Outcome::success(report);
-}
-
 Result<bool, TrainerError> TrainerAccess::set_regrets(Trainer &trainer,
                                                       const std::span<const double> regrets) {
   using Outcome = Result<bool, TrainerError>;
@@ -3705,14 +3530,6 @@ TrainerAccess::terminal3_values(Trainer &trainer, const std::span<const std::uin
                       workspace.levels[0].scratch.data(), hero, work, workspace);
   }
   return Outcome::success(std::move(values));
-}
-
-Result<AbstractBestResponseReport, TrainerError>
-evaluate_abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                                const TrainerResources &resources,
-                                const std::vector<FlopGroup> &groups,
-                                const AbstractBestResponseOptions &options) {
-  return TrainerAccess::abstract_best_response(game, std::move(policy), resources, groups, options);
 }
 
 // ===========================================================================

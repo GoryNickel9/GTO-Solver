@@ -7,7 +7,6 @@ add_library(gtosd_preflop_blueprint
   src/board_context.cpp
   src/board_texture.cpp
   src/class_bucket_rows.cpp
-  src/history_bucket_rows.cpp
   src/decision_gap.cpp
   src/kernels.cpp
   src/multiway_kernels.cpp

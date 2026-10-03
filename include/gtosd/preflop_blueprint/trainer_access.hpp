@@ -1,6 +1,5 @@
 #pragma once
 
-#include "gtosd/preflop_blueprint/abstract_best_response.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 
 #include <array>
@@ -8,10 +7,10 @@
 #include <span>
 #include <vector>
 
-// Friend entry points of the trainer for the abstract best response and for
-// the tests of the 3-seat path (PHASE3_SPEC_2026-09-30, V8 and V13). Nothing
-// here is used in production: the hooks run the production functions
-// (traverse3 with the top phase and the units, terminal3) on injected reach.
+// Friend entry points of the trainer for the tests of the 3-seat path
+// (PHASE3_SPEC_2026-09-30, V8 and V13). Nothing here is used in production:
+// the hooks run the production functions (traverse3 with the top phase and
+// the units, terminal3) on injected reach.
 namespace gtosd::preflop_blueprint {
 
 // One hero decision visited by a 3-seat traversal, reported after the child
@@ -51,11 +50,6 @@ struct SubtreeValues3 {
 
 class TrainerAccess {
 public:
-  [[nodiscard]] static Result<AbstractBestResponseReport, TrainerError>
-  abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                         const TrainerResources &resources, const std::vector<FlopGroup> &groups,
-                         const AbstractBestResponseOptions &options);
-
   // Replaces the regret table (as double; rounded through the storage type).
   // With lazy discount the trainer must not have iterated yet.
   [[nodiscard]] static Result<bool, TrainerError> set_regrets(Trainer &trainer,
