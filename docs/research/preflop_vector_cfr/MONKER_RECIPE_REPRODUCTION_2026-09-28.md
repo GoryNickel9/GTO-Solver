@@ -4,7 +4,8 @@ Documento del programma avviato il 28 settembre: riprodurre il modo in cui Monke
 le chart preflop, verificarlo contro le chart MonkerSolver che l'utente possiede, e usarlo come base
 del solver multiway. Branch `feat/monker-step1-checkdown` (da `feat/preflop-phase1-time`), commit
 `e576396` (passo 1) e `7ff711b` (passo 2). Il passo 2 a tre giocatori (fase 3a del 3-way) è entrato nel branch con il
-merge `238a41e` del 1° ottobre (9.7).
+merge `238a41e` del 1° ottobre (9.7). La fase 3b (parte A, V11, rimozione di history7) è entrata con il merge
+`a97e7b5` del 3 ottobre; il test del blocco 3-way e la chiusura della fase 3 sono in 9.9.
 
 ## 1. Decisioni dell'utente del 28 settembre
 
@@ -2425,6 +2426,104 @@ V11).
    `feat/monker-step1-checkdown`.
 3. La parte A sulla lista esatta (U4), che rende definitivo G3.
 4. La proposta della batteria di correttezza 3-way e la fase 3c (parte B, migliore risposta completa) su un server.
+
+**Aggiornamento del 3 ottobre** (9.9): i punti 1 e 2 sono fatti (test del blocco e sua parte A; history7 tolto, vincolo
+del rake del `class_cache` in V11 e merge `a97e7b5` in `feat/monker-step1-checkdown`); restano i punti 3 e 4.
+
+### 9.9 Test del blocco 3-way e chiusura della fase 3 (3 ottobre)
+
+Rapporti nella cartella temporanea della sessione, `threeway/phase3b/`: `partA_lock16k.md` e `partA_lock.md` (parte A sul
+blocco e tabella di T11), `verify_lock/` (ricalcolo indipendente), `history7_removal/t9bc_results.md` (rimozione di history7
+nel worktree). Cartella del blocco `out/monker/step2_3way/3WAY50_15x4_rake25cap2_lock_all` (`queue.log`, `run.log`,
+`train.jsonl`, `part_a/`). Cronologia nel diario (PROGRESS_LOG, voce del 2026-10-03 00:00-11:00). [V] = verificato
+(misurato, o letto nei file, nei log o nel codice); [I] = inferito.
+
+**Il run** [V, `queue.log`, `run.log`, `train.jsonl`].
+
+- Gioco e astrazione del run 1 (9.8); il preflop delle 54 chart 3-way 50a di MonkerSolver è bloccato su tutti i nodi e il
+  nostro postflop si allena contro i loro range; soglia 0, tetto 24.000.
+- Partito alle 20:00:27 del 2 ottobre, all'ora prevista: il gate della memoria si è aperto alle 20:00:26 con 21,6 GB liberi,
+  dopo che l'utente aveva chiuso alcune applicazioni. Finito alle 06:06:41 del 3 ottobre con `ITERATION_LIMIT` a 24.000.
+- All'avvio `LOCK_START_OK`: 2.681 righe bloccate, 1.688 fuori range e 5 di ripiego (CO: A9s e KJs in due nodi, KQo in uno;
+  0,056 combo), come V12 (9.7).
+- **1,495 s per iterazione** (il run 1: 1,561); picco del working set 14,87 GB; cartella di 38 GiB.
+
+**Parte A a 16.000 e 24.000** [V].
+
+- Il comando di T7: stessa CLI congelata, gli stessi 64 flop fisici del run 1 (seed 20261002). Circa 48-49 minuti per
+  passata, 45 s per flop, picco 6,81 GiB.
+- Controlli verdi. Le righe preflop della policy sono le chart entro 1,1e-16; sul run 1, controllo negativo, 1.580 righe
+  differiscono.
+- Identità del rake in forma statistica: +0,0259 ± 0,0261 a, uguale ai due punti entro 1,2e-11.
+- Plateau dal 16.000: fino a 24.000 i guadagni cambiano di 0,02 punti del piatto o meno, entro 0,6 errori standard appaiati.
+
+| Guadagno della migliore risposta solo preflop (% del piatto iniziale) | UTG | CO | BTN |
+|---|---|---|---|
+| **Blocco 3-way, 24.000** (campionato su 64 flop, stima per eccesso) | **0,751 ± 0,301 %** | **0,858 ± 0,240 %** | **0,623 ± 0,171 %** |
+| Blocco 3-way, 16.000 | 0,750 ± 0,338 % | 0,870 ± 0,256 % | 0,641 ± 0,172 % |
+| Run 1, il nostro preflop (stessi flop) | 0,588 ± 0,376 % | 0,763 ± 0,283 % | 0,461 ± 0,204 % |
+| Differenza appaiata blocco 24.000 − run 1 | +0,163 ± 0,348 % | +0,095 ± 0,160 % | +0,163 ± 0,156 % |
+| Parte esatta: call contro gli all-in (blocco; run 1 sotto lo 0,002 %) | 0,006 % | 0,024 % | 0,117 % |
+| Blocco HU, test 6c (alla pari: 15 × 4, rake 2,5 % / cap 2a; esatto, piatto di 3a) | — | 0,923 % | 0,475 % |
+| Blocco HU, test 5-7 | — | 0,92-1,80 % | 0,47-0,71 % |
+| **Blocco del passo 1 3-way, stesso rake** (esatto, 9.5) | **5,06 %** | **4,52 %** | **1,41 %** |
+| Blocco del passo 1, cinque giochi | 3,95-5,46 % | 3,65-4,71 % | 1,40-1,64 % |
+
+**Lettura** [I, dai numeri misurati].
+
+1. **Il passo 2 cambia il quadro del passo 1.** Con il postflop allenato contro i suoi range, il preflop 3-way di
+   MonkerSolver lascia alla migliore risposta lo 0,62-0,86 % del piatto per posto, per eccesso: 6,7 / 5,3 / 2,3 volte meno
+   del blocco del passo 1 con lo stesso rake. Come in HU, quasi tutto lo sfruttamento apparente del passo 1 era il postflop a
+   checkdown.
+2. **Nei totali, il preflop di MonkerSolver è vicino a una migliore risposta del nostro gioco quanto il nostro.** Le
+   differenze appaiate con il run 1 non sono risolte (z 0,47-1,04). È l'opposto del quadro HU, dove il blocco valeva 7-15
+   volte il nostro preflop a ogni rake e astrazione provati (5.9-5.11).
+3. **Due differenze identificate, entrambe al BTN, circa 0,0066-0,0075 a in tutto (0,16-0,19 % del piatto).**
+   - I call contro gli all-in, parte esatta [V numeri]: con il rake 2,5 % / cap 2a le chart di MonkerSolver chiamano gli
+     all-in troppo spesso (BTN 0,0047 a, CO 0,0009, UTG 0,0003). Questa parte coincide nodo per nodo con il class solver del passo 1 (entro 1,1e-7); negli altri
+     giochi del passo 1 quasi sparisce con il cap di 0,75a (BTN 0,00011 a) e cresce con il cap di 3a (0,0111). È lo stesso
+     indizio di HU (5.10) e della verifica del 3-way a 50a (5.9): un cap sugli all-in vicino a 0,75a. È un'impostazione del
+     rake, non una differenza del postflop.
+   - Il check del BTN dietro i limp, parte campionata: la sua migliore risposta fa check con mani che MonkerSolver isola o
+     spinge (AQo, QQ, KQo). Scelta su 32 flop e valutata sugli altri 32 guadagna ancora: +0,0019 a (31 divisioni su 40),
+     mentre la stessa deviazione contro il nostro preflop perde 0,0050. Ogni test del blocco HU l'aveva (in 6c 0,0101 a); qui
+     vale circa 0,002-0,007 a.
+4. **UTG e CO: nessun guadagno positivo stabilito.** La correzione della distorsione 2 g(64) − g(32) dà −0,009 e +0,001 a.
+5. **Limiti.**
+   - Un postflop imparato contro range fissi non scoraggia le deviazioni preflop (5.9): un guadagno piccolo dice che il
+     preflop di MonkerSolver è coerente con il nostro gioco, non che i due giochi sono lo stesso.
+   - La misura è campionata e per eccesso. A 2 errori standard appaiati i totali escludono un eccesso sul nostro preflop
+     oltre circa 0,034 a (UTG), 0,017 a (CO) e 0,019 a (BTN); per l'UTG non è escluso nemmeno un eccesso della taglia HU.
+   - La parte A sulla lista esatta (U4) o su un server deciderebbe UTG e CO e misurerebbe il check dietro i limp senza
+     distorsione.
+6. **Per la riproduzione.** La leva successiva sarebbe il cap del rake sugli all-in, la cui parte esatta si calcola in pochi
+   secondi con il class solver del passo 1. Il rake serve solo alla riproduzione: nelle sue soluzioni l'utente sceglierà il
+   proprio.
+
+**History7 tolto e fase 3b unita** [V, `git log`, `t9bc_results.md`].
+
+- Nel worktree della fase 3, dalle 08:17 alle 09:35 del 3 ottobre: `5d10baa`, `82315d2` e `bac0f18` tolgono history7 in tre
+  commit, ognuno compilato prima del commit. `e557db6` aggiunge a V11 il vincolo a 1e-9 dell'identità del rake del
+  `class_cache` sulla lista esatta: prende la mutazione pm6 di 9.8.
+- Verifiche: ctest 102/102, la voce `--long` di V11 1/1, legacy 48/48, V1 IDENTICAL 39/39, V11 con 771 asserzioni; il blocco
+  della parte A di `trainer.cpp` è identico a quello di `ec3eec5`. Review indipendente approvata con note.
+- Dalle uscite spariscono `history_map_resident_bytes`, `fingerprints.history_map` e `historyMapFingerprint`.
+- Merge `a97e7b5` in `feat/monker-step1-checkdown` alle 10:01 del 3 ottobre, con il referee 3-way, la parte A e la rimozione
+  delle GUI desktop.
+
+**Chiusura della fase 3.** Le cinque condizioni di "fatto" della specifica (§1.4) sono soddisfatte nell'ambito ridotto:
+la 3a è unita (`238a41e`); il run 1 soddisfa G3, "PASS provvisorio"; la parte A sul run 1 è fatta, campionata; il test del
+blocco è allenato e valutato; il diario e il viewer (versione 4, pubblicata verso le 10:00 del 3 ottobre) sono aggiornati.
+
+**Cosa resta.**
+
+1. L'archivio su F: del run 1 e del blocco, la sera del 3 ottobre fra le 20:00 e le 24:00.
+2. La parte A sulla lista esatta (U4, sull'i3 o su un server): rende definitivo G3 e, per il blocco, decide UTG e CO e misura
+   senza distorsione il check dietro i limp.
+3. La proposta della batteria di correttezza 3-way e la fase 3c (parte B, migliore risposta completa) su un server.
+4. Se l'utente vuole spingere la riproduzione: il cap del rake sugli all-in.
+5. Dopo il 3-way, nell'ordine dell'utente: il lettore del postflop dello step 2, i tre comandi dentro `gto_cli`, i test reali
+   della web UI, lo studio 4-6 way.
 
 ## 10. Batteria di correttezza del passo 2 HU50 (dal 30 settembre pomeriggio al 1° ottobre pomeriggio)
 

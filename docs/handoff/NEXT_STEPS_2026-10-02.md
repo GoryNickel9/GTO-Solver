@@ -9,6 +9,25 @@ i lavori della sezione 5 nell'ordine dato.
 stima o proposta, non misurata. Le decisioni che spettano all'utente sono segnate **DECISIONE UTENTE** e raccolte nella
 sezione 7.
 
+> **Stato alle 11:00 del 03/10: fase 3 fatta nell'ambito ridotto, righe 8 e 10-14 della roadmap fatte; T8 stasera.**
+> - T11, test del blocco: gate della memoria aperto alle 20:00:26 del 02/10 con 21.582.996 KB liberi (l'utente aveva chiuso
+>   Brave, Discord e Steam verso le 19:55 [V, sessione principale]), runner partito alle 20:00:27, `LOCK_START_OK` 2.681 /
+>   1.688 / 5; `ITERATION_LIMIT` a 24.000 alle 06:06:41 del 03/10, coda chiusa alle 06:06:58; 1,495 s per iterazione
+>   [VERIFIED: `LOCK/queue.log`, `LOCK/run.log`, `LOCK/train.jsonl`].
+> - Riga 10, parte A sul blocco (06:11-08:16): controlli verdi a 16.000 e 24.000; guadagno preflop a 24.000 UTG / CO / BTN
+>   0,751 / 0,858 / 0,623 % del piatto (stime per eccesso su 64 flop) contro 0,588 / 0,763 / 0,461 % del run 1, il blocco HU
+>   6c (CO 0,923 %, BTN 0,475 %) e il blocco del passo 1 (5,06 / 4,52 / 1,41 %); plateau dal 16.000; nessuna differenza
+>   appaiata con il run 1 risolta [VERIFIED: `P3B/partA_lock.md`; ricalcolo `P3B/verify_lock/`, 537 controlli OK su 542, le 5
+>   differenze nell'ultima cifra arrotondata].
+> - Riga 11: history7 tolto in `WT` (`5d10baa`, `82315d2`, `bac0f18`) e vincolo pm6 (`e557db6`); ctest 102/102, `--long` 1/1,
+>   legacy 48/48, V1 IDENTICAL 39/39, V11 771 asserzioni; review T9d approvata con note [VERIFIED: `H7/t9bc_results.md`; il
+>   verdetto dal messaggio di `a97e7b5`].
+> - Riga 13: merge `a97e7b5` alle 10:01:16. Riga 14: tag `docs-pre-cleanup-2026-10-02` e commit `a30b53b`, `5944433`,
+>   `0c030b5`, `3858dbd` [VERIFIED: `git log`]. Viewer v4 con il test del blocco pubblicato verso le 10:00 [V, sessione
+>   principale; build delle 09:54 in `SP/threeway/viewer/STEP2_NOTES.md`].
+> - Riga 15: T13 fatto (le cinque condizioni); **T8 da fare stasera fra le 20:00 e le 24:00**. Diario (voce del 03/10
+>   00:00-11:00) e ricetta (9.9) aggiornati. Le decisioni aperte sono in testa alla sezione 7.
+
 > **Stato alle 19:00 del 02/10: righe 1-7 della roadmap fatte, test del blocco in coda per le 20:00.**
 > - T3-T7: run 1 fermato a 24.000 (1,561 s per iterazione); parte A committata in `WT` (`ec3eec5`), CLI congelata in
 >   `M/out/monker/bin_3way_partA/`; T7 sul run 1: **G3 PASS provvisorio** (guadagno massimo CO 0,0305 ± 0,0113 a; identità del
@@ -85,6 +104,7 @@ sezione 7.
 | `P3A`, `P3B` | `SP/threeway/phase3a`, `SP/threeway/phase3b` | script e rapporti delle fasi 3a e 3b |
 | `H7` | `P3B/history7_removal` | artefatti della rimozione di history7 |
 | `OUT1` | `M/out/monker/step2_3way/3WAY50_15x4_rake25cap2` | cartella del run 3-way 1 |
+| `LOCK` | `M/out/monker/step2_3way/3WAY50_15x4_rake25cap2_lock_all` | cartella del test del blocco 3-way (T11), con `part_a/` |
 | `MONKER3` | `C:/Users/GoryNickel/Documents/GitHub/GTO-Chart-Browser/ranges/Short Deck/Symmetrical Chart/3-way/50a` | le 54 chart 3-way 50a di MonkerSolver (sola lettura) |
 | `DOCS` | `M/docs/research/preflop_vector_cfr` | diario, ricetta, specifiche |
 | `MEM` | `C:/Users/GoryNickel/.claude/projects/C--Users-GoryNickel-Documents-GitHub-GTO-Solver/memory` | note di memoria con le regole dell'utente |
@@ -367,6 +387,10 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
 
 ### T8. Archivio del run 1 su F:
 
+- **Stato alle 11:00 del 03/10: non ancora fatto.** Stasera, fra le 20:00 e le 24:00, due cartelle una alla volta (R12):
+  `OUT1` (26 GiB) e `LOCK` (38 GiB, con `part_a/`); F: ha 505 GB liberi [VERIFIED: `du -sh`, `Get-PSDrive` alle 11:00]. Per
+  `LOCK` lo stesso comando con `out\monker\step2_3way\3WAY50_15x4_rake25cap2_lock_all`. A circa 37 MB/s servono circa 30
+  minuti in tutto [INFERRED].
 - **Quando.** Dopo T3 e T7, ed eventualmente dopo le curve appaiate. Fra le 20:00 e le 24:00, mai durante il salvataggio di un
   altro run (R12).
 - **Comando** (da `M`, PowerShell):
@@ -381,6 +405,8 @@ La rimozione di history7 si costruisce e si prova dopo la parte A [VERIFIED: `DO
 
 ### T9. Rimozione di history7 (lane H): verifica, applicazione, commit
 
+- **Stato del 03/10: fatto** (righe 11 e 13 della sezione 6): variante (i), quattro commit, T9c verde, review T9d approvata
+  con note, merge `a97e7b5`. Resta 9f: la cancellazione delle sandbox è una decisione dell'utente (sezione 7).
 - **Decisione.** L'utente l'ha decisa il 01/10 verso le 19:30 [VERIFIED: `MEM/history7-retire-decision.md`].
 - **Cosa si toglie** [VERIFIED: `P3B/removal_note.md`]:
   - la famiglia `HistoryBucketRows` (GTOSDHR1/HR2);
@@ -503,6 +529,8 @@ ancora la chiave come dato: non toccarla, dirlo all'utente [VERIFIED: `P3B/revie
 
 ### T10. Merge in `feat/monker-step1-checkdown`
 
+- **Stato del 03/10: fatto**: `a97e7b5` alle 10:01:16, con il diff vuoto su `libs include benchmarks tests tools` (riga 13
+  della sezione 6). Push non fatto (U8).
 - **Prerequisiti.** T4-T7 e T9 verdi, oppure solo T4-T7 per un primo merge di parte A e referee: si può fare in due merge.
 - **Comando** (precedente: il merge `238a41e` della fase 3a [VERIFIED: `git log`]):
   ```bash
@@ -519,6 +547,7 @@ ancora la chiave come dato: non toccarla, dirlo all'utente [VERIFIED: `P3B/revie
 
 ### T11. Test del blocco 3-way (ambito ridotto, specifica §6.3, after_run B.5)
 
+- **Stato del 03/10: fatto** (righe 8 e 10 della sezione 6; `P3B/partA_lock16k.md`, `P3B/partA_lock.md`).
 - **Obiettivo.** Bloccare il preflop delle 54 chart 3-way di MonkerSolver e allenare il nostro postflop contro i suoi
   range. Poi misurare con la parte A il guadagno preflop per seggio.
 - **Parametri** [VERIFIED: `PHASE3_SPEC` §6.3; `P3B/after_run.md` B.5]:
@@ -576,6 +605,8 @@ ancora la chiave come dato: non toccarla, dirlo all'utente [VERIFIED: `P3B/revie
 
 ### T13. "Fatto" della fase 3 e fase 3c
 
+- **Stato alle 11:00 del 03/10: fatto** nell'ambito ridotto, con G3 provvisorio (riga 15 della sezione 6). La parte A
+  esatta resta la decisione U4.
 - **"Fatto"** [VERIFIED: `PHASE3_SPEC` §1.4]:
   1. 3a unita: fatto;
   2. un run che soddisfa G3: T3 e T7;
@@ -835,19 +866,19 @@ slot libero 15:30-20:00 prende i lavori che erano previsti a `-j 2` durante il b
 | 5 | in parallelo a 1-4 | **Preparazione di T11**: copia senza spazi delle 54 chart in `M/out/monker_lock/charts_3way_50a`, coda nuova in `SP/threeway/lock/`, `Q_DRY_RUN=1`, congelamento come file nuovo `M/out/frozen/queue_3way50_15x4_lock.sh` | `DRY_RUN_OK`; **nessun lancio**. **Fatto** (11:00-11:08): `DRY_RUN_OK`; dopo lo spostamento alle 20:00, la variante `_2000` della riga 8 |
 | 6 | dopo 4 | Controlli indipendenti: review del commit della parte A, ricalcolo dei numeri di G3, viewer ricostruito con parte A e controllo dell'albero; la sessione principale lo ripubblica | Review approvata, numeri uguali. **Fatto** (15:13-15:30): numeri di G3 ricalcolati, uguali a T7 (`P3B/verify_g3/`); le due serie di diff `x_*` e `y_*` sono identiche byte per byte, cioè il commit contiene le modifiche riviste [INFERRED] (`P3B/review_commit/`, senza un rapporto scritto del verdetto); viewer v3 con la parte A pubblicato verso le 15:30 |
 | 7 | 15:30-20:00 (nessun run attivo: build a `-j 4`-`-j 6`, un lavoro pesante alla volta) | **Slot del pomeriggio**, in quest'ordine: **(a)** commit GUI rinviato D1 (`SP/gui_removal/deferred_commit.sh`, solo codice, dopo il commit della parte A), poi `post_run_build.cmd` e `post_run_ctest.cmd`: **test legacy del postflop e di `gto_cli`** (T17.6); **(b)** **T9a completo** sulla sandbox di history7 (configure, build, test, smoke, V1 hu10, con `h7.NO_TRAINER_OK` perché nessun trainer è vivo) più ctest completa (C.3) e V1 completo (C.2) della sandbox, prima previsti il 03/10; **(c)** **T5 D.1**, le 5 mutazioni nella sandbox della parte A; **(d)** facoltativo, se avanza tempo: parte A sullo snapshot `charts/it_16000/policy.bin` del run 1 (curva appaiata, stesso seed). Alle 20:00 la memoria deve essere libera: quello che non è finito continua a `-j 2` (R8) o passa al 03/10 | (a) `0 0 0 2` attesi e 0 test GUI dopo D1; (b) test PASS, V1 hu10 SAME, 0 failed, V1 IDENTICAL; (c) ogni mutazione presa dal suo caso. **Fatto** (15:30-18:23): (a) `8c70044`, `0 0 0 2`, 102/102 e legacy 48/48, 0 test GUI; (b) T9a PASS, ctest 101/101, V1 IDENTICAL al secondo tentativo con una radice corta (MAX_PATH); (c) le cinque mutazioni prese, buco pm6 e proposta di vincolo (riga 11); (d) non fatto |
-| 8 | **20:00** → ~06:30-08:00 del 03/10 | **T11, test del blocco**: coda congelata `M/out/frozen/queue_3way50_15x4_lock_2000.sh` (sha256 `002bc774…`, variante della `queue_3way50_15x4_lock.sh` preparata fra le 11:00 e le 11:08 (congelata alle 11:04) con `START_AT=now`, prova a secco `DRY_RUN_OK`), **lanciata alle 13:26** in background dalla sessione principale; aspetta da sola l'ora e il gate della memoria. Preflop di MonkerSolver bloccato, nostro postflop allenato contro i suoi range, 24.000 iterazioni, checkpoint a 16.000 verso le 03:00. **Stato alle 18:44:** in attesa; `queue.log` con le sole 40 righe dell'avvio delle 13:26 (38 controlli ok, 0 FAIL), nessun round partito [VERIFIED]. Rischio: a macchina ferma 17,9-18,6 GB liberi (17,91 alle 16:00:57) contro i 18,87 del gate; chiesto all'utente di chiudere Brave (e Discord e Steam) entro le 19:50; se il gate resta chiuso la coda aspetta e scrive ogni 10 minuti (trappola 11) | Fine con `ITERATION_LIMIT` a 24.000; evento di partenza con righe 2.681, `outside_range_rows` 1.688, `fallback_rows` 5 |
+| 8 | **20:00** → ~06:30-08:00 del 03/10 | **T11, test del blocco**: coda congelata `M/out/frozen/queue_3way50_15x4_lock_2000.sh` (sha256 `002bc774…`, variante della `queue_3way50_15x4_lock.sh` preparata fra le 11:00 e le 11:08 (congelata alle 11:04) con `START_AT=now`, prova a secco `DRY_RUN_OK`), **lanciata alle 13:26** in background dalla sessione principale; aspetta da sola l'ora e il gate della memoria. Preflop di MonkerSolver bloccato, nostro postflop allenato contro i suoi range, 24.000 iterazioni, checkpoint a 16.000 verso le 03:00. **Stato alle 18:44:** in attesa; `queue.log` con le sole 40 righe dell'avvio delle 13:26 (38 controlli ok, 0 FAIL), nessun round partito [VERIFIED]. Rischio: a macchina ferma 17,9-18,6 GB liberi (17,91 alle 16:00:57) contro i 18,87 del gate; chiesto all'utente di chiudere Brave (e Discord e Steam) entro le 19:50; se il gate resta chiuso la coda aspetta e scrive ogni 10 minuti (trappola 11) | Fine con `ITERATION_LIMIT` a 24.000; evento di partenza con righe 2.681, `outside_range_rows` 1.688, `fallback_rows` 5. **Fatto** (dalle 20:00:27 del 02/10 alle 06:06:58 del 03/10): gate della memoria aperto alle 20:00:26 con 21.582.996 KB liberi; `LOCK_START_OK` 2.681 / 1.688 / 5; `ITERATION_LIMIT` a 24.000 alle 06:06:41; 1,495 s per iterazione; snapshot e checkpoint a 16.000 fra le 02:36 e le 02:38 [VERIFIED: `LOCK/queue.log`, `LOCK/run.log`, `LOCK/train.jsonl`, date di `LOCK/charts/it_16000`] |
 | 9 | sera | **T14**: diario e ricetta | **Fatto** verso le 19:00: voce del diario del 02/10 09:00-19:00, ricetta 9.8 |
 
 **Domani, 03/10 (finestra normale: run fino alle 19:40, build e test fino alle 21:00).**
 
 | # | Passo | Accettazione |
 |---|---|---|
-| 10 | Dalle ~08:00: **parte A sul test del blocco** (`it_16000` e `it_24000`, stesso seed; 2 × 1-2 ore, fin verso le 12:00) e tabella dei guadagni per seggio contro run 1, blocco HU e blocco del passo 1 (T11 "Valutazione") | Controlli verdi, tabella scritta |
-| 11 | **T9b** variante (i) (parte A e D1 già committati); **T9c** verifica dell'insieme (build, ctest completa, V1 completo, V11); **T9d** review indipendente. Quello che di T9a non è finito il 02/10 si fa prima. **Attenzione:** D1 (commit GUI) cambia `CMakeLists.txt`, `tests/CMakeLists.txt` e `tests/verify_preflop_blueprint_isolation.cmake`, che la sandbox (a `2aa24d8`) non ha: verificare che `copy_and_add` non li sovrascriva; se li tocca, passare a patch come per i file della parte A [INFERRED]. **Da T9a e T5 D.1 del 02/10:** (1) ogni V1 con una radice di uscita corta (`H7/v1_sbx` o `H7/v1_full`, al massimo 12 caratteri): il trainer non è long-path aware (il suo manifest non dichiara `longPathAware`) anche con `LongPathsEnabled=1`, e oltre 259 caratteri lo scrittore delle chart fallisce senza far fallire il run (`charts_failed`, exit 0) [VERIFIED: `H7/t9a_results.md` §4, registro, manifest]; (2) adottare il vincolo del rake del `class_cache` in v11three (`P3B/review_partA/v11three_cc_rake_gate.diff`, solo test) insieme al rerun di V11 di T9c, proposto all'utente in chat il 02/10 verso le 18:30, da fare salvo sua obiezione (nessuna risposta fino alle 19:00) [V, sessione principale] (proposta di `P3B/mutations_results.md` §4; nessun file registra che gli sia già stata presentata) | V1 IDENTICAL, 0 failed, parte A e D1 intatti |
+| 10 | Dalle ~08:00: **parte A sul test del blocco** (`it_16000` e `it_24000`, stesso seed; 2 × 1-2 ore, fin verso le 12:00) e tabella dei guadagni per seggio contro run 1, blocco HU e blocco del passo 1 (T11 "Valutazione") | Controlli verdi, tabella scritta. **Fatto** (06:11-08:16): controlli verdi a 16.000 e 24.000 (CLI exit 0, `PART_A_VALUES=PASS`, `MONKER_IN_OUR_GAME=PASS`, `LOCK_ROWS_CHECK=PASS`: 2.681 righe uguali alle chart a 1,1e-16, 5 di ripiego allenate); a 24.000 UTG / CO / BTN 0,751 / 0,858 / 0,623 % del piatto (a 16.000 0,750 / 0,870 / 0,641 %), run 1 0,588 / 0,763 / 0,461 %, blocco HU 6c CO 0,923 % e BTN 0,475 %, blocco del passo 1 5,06 / 4,52 / 1,41 %; differenze appaiate con il run 1 non risolte (z 0,47-1,04); al BTN due parti identificate (call contro gli all-in, esatta, 0,117 %; check dietro i limp, campionata) (`P3B/partA_lock16k.md`, `P3B/partA_lock.md`; ricalcolo indipendente `P3B/verify_lock/`: 537 controlli OK su 542, le 5 differenze nell'ultima cifra arrotondata) |
+| 11 | **T9b** variante (i) (parte A e D1 già committati); **T9c** verifica dell'insieme (build, ctest completa, V1 completo, V11); **T9d** review indipendente. Quello che di T9a non è finito il 02/10 si fa prima. **Attenzione:** D1 (commit GUI) cambia `CMakeLists.txt`, `tests/CMakeLists.txt` e `tests/verify_preflop_blueprint_isolation.cmake`, che la sandbox (a `2aa24d8`) non ha: verificare che `copy_and_add` non li sovrascriva; se li tocca, passare a patch come per i file della parte A [INFERRED]. **Da T9a e T5 D.1 del 02/10:** (1) ogni V1 con una radice di uscita corta (`H7/v1_sbx` o `H7/v1_full`, al massimo 12 caratteri): il trainer non è long-path aware (il suo manifest non dichiara `longPathAware`) anche con `LongPathsEnabled=1`, e oltre 259 caratteri lo scrittore delle chart fallisce senza far fallire il run (`charts_failed`, exit 0) [VERIFIED: `H7/t9a_results.md` §4, registro, manifest]; (2) adottare il vincolo del rake del `class_cache` in v11three (`P3B/review_partA/v11three_cc_rake_gate.diff`, solo test) insieme al rerun di V11 di T9c, proposto all'utente in chat il 02/10 verso le 18:30, da fare salvo sua obiezione (nessuna risposta fino alle 19:00) [V, sessione principale] (proposta di `P3B/mutations_results.md` §4; nessun file registra che gli sia già stata presentata) | V1 IDENTICAL, 0 failed, parte A e D1 intatti. **Fatto** (08:17-09:46): T9b con `H7/apply_to_worktree_variant_i.sh` (prova a secco `CHECK_OK` su 645 percorsi), commit `5d10baa`, `82315d2`, `bac0f18` e `e557db6` (il vincolo pm6, senza obiezioni dell'utente), ognuno compilato prima del commit con 0 warning; T9c: V1 IDENTICAL 39/39 due volte con radici corte, ctest 102/102, `--long` V11 1/1, legacy 48/48, V11 `PASS assertions=771`, D1 intatto, blocco della parte A di `trainer.cpp` identico byte per byte a `ec3eec5`, formati 9e come previsti (`H7/t9bc_results.md`); T9d: review indipendente "approvata con note, nessun problema bloccante" (messaggio di `a97e7b5`; le note non sono in un file) |
 | 12 | ~~Se i test legacy del 02/10 hanno trovato guasti: correzione e nuova prova (T17.6)~~: **non serve più**, il 02/10 i test legacy hanno dato 0 guasti (48/48, `0 0 0 2`) | — |
-| 13 | **T10**: merge di `feat/threeway-step2` in `feat/monker-step1-checkdown` (il messaggio cita la rimozione delle GUI) | Diff vuoto su `libs include benchmarks tests tools`; **push solo con l'OK dell'utente** |
-| 14 | **Archivio dei documenti** (T15.4): tag `docs-pre-cleanup-2026-10-02`, 18 file eliminati, 70 spostati, link, README e aggiornamenti U1-U10 | Solo commit di documenti |
-| 15 | **T13 "fatto" della fase 3**: diario, ricetta, viewer con la parte A e il blocco. **T8**: archivio su F: del run 1 e del blocco, la sera fra le 20:00 e le 24:00 e mai durante un salvataggio | — |
+| 13 | **T10**: merge di `feat/threeway-step2` in `feat/monker-step1-checkdown` (il messaggio cita la rimozione delle GUI) | Diff vuoto su `libs include benchmarks tests tools`; **push solo con l'OK dell'utente**. **Fatto** alle 10:01:16: `a97e7b5`, 77 file, +3.991 / −10.373; diff vuoto [VERIFIED: `git diff e557db6 a97e7b5 -- libs include benchmarks tests tools`]; il messaggio cita le GUI e la review di T9d. Push non fatto (U8) |
+| 14 | **Archivio dei documenti** (T15.4): tag `docs-pre-cleanup-2026-10-02`, 18 file eliminati, 70 spostati, link, README e aggiornamenti U1-U10 | Solo commit di documenti. **Fatto** (10:08-10:56): tag annotato `docs-pre-cleanup-2026-10-02` su `a97e7b5`; `a30b53b` (18 file eliminati, 71 spostati: i 70 del piano più la ROADMAP legacy), `5944433` (161 link e 26 percorsi in 58 file), `0c030b5` (U1-U10, 26 file), `3858dbd` (correzioni del controllo indipendente); nessun link rotto nuovo (`SP/docs_audit/archive_done.md`, `SP/docs_audit/verify/`) |
+| 15 | **T13 "fatto" della fase 3**: diario, ricetta, viewer con la parte A e il blocco. **T8**: archivio su F: del run 1 e del blocco, la sera fra le 20:00 e le 24:00 e mai durante un salvataggio | **T13: fatto** alle 11:00, nell'ambito ridotto: (1) 3a unita (`238a41e`); (2) run 1 con G3 "PASS provvisorio"; (3) parte A sul run 1 (T7, campionata); (4) test del blocco allenato e valutato (righe 8 e 10); (5) diario (voce del 03/10 00:00-11:00), ricetta 9.9 e viewer v4. **T8: non ancora fatto**: archivio su F: di `OUT1` (26 GiB) e `LOCK` (38 GiB) stasera fra le 20:00 e le 24:00, una cartella alla volta; F: 505 GB liberi alle 11:00 [VERIFIED: `du -sh`, `Get-PSDrive`] |
 
 **Dopo la fase 3, nell'ordine deciso dall'utente** (T17.6 e sezione 7):
 16. lettore del postflop dello step 2;
@@ -857,21 +888,58 @@ slot libero 15:30-20:00 prende i lavori che erano previsti a `-j 2` durante il b
 20. decisioni da prendere con l'utente: criteri di accettazione del prodotto (T16), batteria di correttezza 3-way (T12),
     decisioni HU aperte (T17.2), calcolatore di equity (T17.1).
 
+**Stato alle 11:00 del 03/10:** la fase 3 è chiusa (riga 15) e si passa a questi lavori. Dalle 10:15 la sessione
+principale ha cartelle di lavoro per il 16 (`SP/reader/`, progetto del lettore) e per il 19 (`SP/fourplus/`, conteggi degli
+alberi da 4 a 6 giocatori), solo nella cartella temporanea [VERIFIED: date dei file]. Se il 19 avanza prima del 17 e del 18,
+va detto all'utente (R9).
+
 **Regole che valgono sempre**: push solo su richiesta (R10); niente build pesanti con un run in corso (R8); i run usano copie
 congelate (R3); subagent solo Opus 5.5 (R2).
 
 ## 7. Decisioni dell'utente da raccogliere
+
+**Aperte alle 11:00 del 03/10**, dopo la chiusura della fase 3:
+
+1. **Push** (U8). `feat/monker-step1-checkdown` ha 24 commit locali dopo `origin/feat/monker-step1-checkdown` = `a35f56c`
+   (23 fino a `3858dbd`, più il commit del diario del 03/10); `feat/threeway-step2` non ha upstream [VERIFIED: `git rev-list
+   --count`, `git log`]. Push solo su richiesta (R10).
+2. **Cancellazione dei resti** (R4: solo l'utente, o con il suo OK) [VERIFIED: `du -sh`, `ls` alle 11:00]:
+   - le sandbox `WT/out/laneH` (1,7 GiB; 9f) e `WT/out/review3b` (156 MiB; mutazioni di T5);
+   - le cartelle V1 in `H7`: `v1_wt`, `v1_wt2` e `v1_sbx` (4,8 GiB ciascuna) e `v1_full_sandbox` (2,9 GiB, il primo
+     tentativo, senza chart);
+   - i vecchi eseguibili `B/benchmarks/gtosd_preflop_blueprint_{abstract_br,history_rows,history_census}.exe` del 02/10 alle
+     11:18: ninja non toglie le uscite dei target tolti, e uno script che li chiamasse farebbe girare il vecchio codice di
+     history7;
+   - `M/tools/preflop_suite/__pycache__`, ignorato da git e rimasto dopo la rimozione di `tools/preflop_suite`.
+3. **Parità con GTO+** (Q5 dell'audit dei documenti, T15.4). I test legacy del postflop hanno dato 48/48 il 02/10 e il 03/10
+   (T9c): si può chiedere se la parità con GTO+ è ancora un obiettivo di `gto_cli`. `GTO_PLUS_PARITY_JOURNEY.md` resta al
+   suo posto fino alla risposta.
+4. **Parte A sulla lista esatta** (U4): sull'i3 (8-18 ore ripristinabili per policy [INFERRED]) oppure su un server. Rende
+   definitivo G3 del run 1 e, per il test del blocco, decide UTG e CO e misura senza distorsione il check del BTN dietro i
+   limp.
+5. **QA3, QA6 e QA7 della web UI** (addendum, sezione 8): bin set da registrare (`bin_3way_step2`, e uno per `gto_cli`); code
+   3-way a mano oppure un pulsante di annullamento (il test del blocco che QA6 cita è finito); soglie mostrate come verdetto
+   (HU solo riferimento; G3 per classe o per combo).
+6. **Prossimi lavori**, nell'ordine dell'utente (sezione 6, "Dopo la fase 3"): lettore del postflop dello step 2; i tre
+   comandi nuovi dentro `gto_cli`; test reali della web UI a macchina libera (QA5); studio di fattibilità 4-6 way. Restano
+   aperti anche T16 (criteri del prodotto), T12 (batteria 3-way), T17.1 e T17.2.
+
+Da dire all'utente, senza una decisione: la fixture `apps/solver-ui/fixtures/runs/V1L/train.jsonl` del worktree della UI
+contiene ancora la chiave tolta `history_map_resident_bytes` (9e). Piccoli lavori di codice rimasti fuori dai commit di
+documenti: i quattro schemi assenti dall'`install()` della radice (`cmake --install` probabilmente fallisce [INFERRED, non
+provato]); il commento di `tests/preflop_blueprint_game_tests.cpp:1033-1035`, che nomina `benchmarks/suite/actions`; la
+parola "proposal" nel commento e nella riga stampata del vincolo di `e557db6`.
 
 | # | Decisione | Lavoro |
 |---|---|---|
 | U1 | ~~Liberare circa 1,5 GB di RAM perché il run 1 parta~~: non serve più, il gate si è aperto alle 00:09:29 | stato in alto, T1 |
 | U2 | ~~Ora di partenza del test del blocco~~: **decisa dall'utente il 02/10 verso le 11:15: alle 20:00 del 02/10**; lo slot 15:30-20:00 va riempito (sezione 6, riga 7) | T11, sezione 6 |
 | U3 | ~~Ordine di history7~~: **deciso il 02/10 alle 11:00**: sandbox durante il test del blocco, applicazione il 03/10 con la variante (i) | T9, sezione 6 |
-| U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c. **Decisione parziale del 02/10 verso le 13:25:** l'identità del rake di G3 (≤ 1e-9) non vale per pozzo nella valutazione veloce (`class_cache`, 64 flop campionati): vale solo in media, mentre in `board_kernels` torna a 1e-14 (T4, `P3B/t4_results.md`). L'utente ha scelto "Lista esatta più avanti": oggi T7 riporta l'identità in forma statistica (residuo ± SE), come **provvisoria**; la valutazione sulla lista esatta si fa più avanti (i3 o server da decidere) | T7, T13 |
+| U4 | Parte A esatta del run 1 sull'i3 (8-18 ore) oppure su un server; server a noleggio per la fase 3c. **Decisione parziale del 02/10 verso le 13:25:** l'identità del rake di G3 (≤ 1e-9) non vale per pozzo nella valutazione veloce (`class_cache`, 64 flop campionati): vale solo in media, mentre in `board_kernels` torna a 1e-14 (T4, `P3B/t4_results.md`). L'utente ha scelto "Lista esatta più avanti": oggi T7 riporta l'identità in forma statistica (residuo ± SE), come **provvisoria**; la valutazione sulla lista esatta si fa più avanti (i3 o server da decidere); **03/10:** anche il test del blocco aspetta la lista esatta per UTG e CO (elenco qui sopra, punto 4) | T7, T13 |
 | U5 | Criteri di accettazione del prodotto e loro soglie | T16 |
 | U6 | Eseguire la batteria di correttezza 3-way proposta | T12 |
-| U7 | Pulizia: esecuzione degli script; binari HU50 del passo 2; `main`/`origin/main`; codice legacy ("non ancora"); sandbox. (`docs/specifications` e archivio dei documenti: decisi il 02/10, T15.4) | T15 |
-| U8 | Push dei branch | T10, T17 |
+| U7 | Pulizia: esecuzione degli script; binari HU50 del passo 2; `main`/`origin/main`; codice legacy ("non ancora"); sandbox. (`docs/specifications` e archivio dei documenti: decisi il 02/10, T15.4); resti del 03/10: elenco qui sopra, punto 2 | T15 |
+| U8 | Push dei branch. **03/10:** 24 commit locali, elenco qui sopra, punto 1 | T10, T17 |
 | U9 | Decisioni HU aperte: configurazione di riferimento, TXM2, criterio in EV, opzione A, radice del CO, test della migliore risposta contro un postflop esatto, HU40 | T17 |
 | U10 | Decisioni D1-D8 della web UI; QA3, QA6 e QA7 dell'addendum (QA1, QA2, QA4 e QA5 hanno già risposta) | T17 |
 | U11 | Correzione del calcolatore di equity nel suo repository | T17 |
@@ -925,3 +993,7 @@ congelate (R3); subagent solo Opus 5.5 (R2).
   `P3B/cleanup_audit.md`, `OUT1/{queue.log,train.jsonl}`, `WT/tests/CMakeLists.txt`,
   `WT/out/build/windows-release-suite/tests/CTestTestfile.cmake`, `H7/{apply_to_worktree.sh,removal_full.patch}`,
   `git log 2aa24d8..c2e9138` e `git branch -a`.
+- Aggiornamento delle 11:00 del 03/10: `P3B/{partA_lock16k.md, partA_lock.md, verify_lock/verify_lock.log}`,
+  `H7/t9bc_results.md`, `P3B/t10/{merge.log, merge_msg.txt}`, `SP/threeway/viewer/STEP2_NOTES.md`,
+  `SP/docs_audit/archive_done.md`; `LOCK/{queue.log, run.log, train.jsonl}` e le date dei file di `LOCK/charts` e
+  `LOCK/part_a`; `git log`, `git diff` e `git rev-list` in `M` e in `WT`; `du -sh` e `Get-PSDrive`.
