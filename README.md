@@ -1,7 +1,7 @@
 # GTOSD
 
 Exact Short Deck Heads-Up solver foundation following
-`docs/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md`.
+`docs/archive/legacy-postflop-2026-07-09/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md`.
 
 I contratti tecnici correnti sono raccolti nell'indice
 [`docs/specifications/README.md`](docs/specifications/README.md). Roadmap e
@@ -39,17 +39,17 @@ versions.
 
 Phase 0 is complete: the pinned build, Debug/Release/ASan presets, framework
 tests, benchmark runner, static checks, CI matrix and install tree are tracked
-in `docs/IMPLEMENTATION_STATUS.md`.
+in `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`.
 
 Phase 1 is complete: cards, fixed-point chip arithmetic, CO/BTN preflop
 posting, legal actions, street closure, uncalled returns, rake, split pots and
 terminal payoff accounting are covered by the full F1 rules suite. See
-`docs/PHASE_1_COMPLETION_REPORT.md`.
+`docs/archive/legacy-postflop-2026-07-09/PHASE_1_COMPLETION_REPORT.md`.
 
 Phase 2 is complete: the first-party exact Short Deck evaluator, typed
 `IHandEvaluator` adapter, scalar/batch API, exact 2–6 player showdown,
 independent exhaustive oracle and deterministic million-deal nightly are
-tracked in `docs/IMPLEMENTATION_STATUS.md`.
+tracked in `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`.
 
 Phase 3 is complete: `gtosd::tree` builds and preflights the physical
 flop–turn–river public tree, enumerates all legal board runouts, supports
@@ -113,7 +113,7 @@ out-of-core fallback. PF-F1 reached `NashConv / pot = 0.741405%` at iteration
 
 The claim is scoped to the versioned PF-F1 configuration and is backed by
 exact best response, not profile EV alone. See
-`docs/PHASE_7_COMPLETION_REPORT.md`.
+`docs/archive/legacy-postflop-2026-07-09/PHASE_7_COMPLETION_REPORT.md`.
 
 Phase 8 is complete locally: `gtosd::storage` adds the durable `.gtsd` 1.0
 container, per-chunk Zstandard compression, independent authenticated
@@ -139,12 +139,12 @@ The F8 storage benchmark used the full PF-F1 topology at one iteration:
 1,068,121,299 logical bytes became a 5,618,173-byte encrypted file, and its
 root index opened with 676 bytes of metadata. This measures the format, not
 convergence; the F7 125-iteration certification remains authoritative. See
-`docs/PHASE_8_COMPLETION_REPORT.md`.
+`docs/archive/legacy-postflop-2026-07-09/PHASE_8_COMPLETION_REPORT.md`.
 
 Phase 9 is complete locally: Qt 6 Widgets and Dear ImGui docking prototypes
 share a 100,000-node virtual tree, the exact Short Deck 9×9 matrix, lazy
 authenticated `.gtsd` opening and ten automated workflows. Qt 6 Widgets is
-selected for the F10 product GUI by `docs/ADR_0001_GUI_FRAMEWORK.md`.
+selected for the F10 product GUI by `docs/archive/legacy-postflop-2026-07-09/ADR_0001_GUI_FRAMEWORK.md`.
 
 ```powershell
 cmake --preset windows-gui-release
@@ -158,7 +158,7 @@ On the measured four-core i3-10100F host, Qt raster reached 238.95 FPS,
 Dear ImGui DX11 4,362.19 FPS and forced WARP 62.20 FPS; all p95 frame times
 were below 16.666667 ms. This is a local four-physical-core result, not an
 emulation of a 2 GHz / 16 GB machine. See
-`docs/PHASE_9_COMPLETION_REPORT.md`.
+`docs/archive/legacy-postflop-2026-07-09/PHASE_9_COMPLETION_REPORT.md`.
 
 Phase 10 is complete locally: `gto_gui` is the Qt 6 product application. It
 connects weighted physical CO/BTN ranges to exact CFR+/BR, performs resource
@@ -188,7 +188,7 @@ i3-10100F host, the installed application completed the reduced E2E fixture in
 1.937 s with a 104.239.104-byte peak RSS and a 12,0331 ms maximum UI heartbeat
 gap during solving. These values validate integration and responsiveness, not
 convergence or the exact 2 GHz / 16 GB release target. See
-`docs/PHASE_10_COMPLETION_REPORT.md`.
+`docs/archive/legacy-postflop-2026-07-09/PHASE_10_COMPLETION_REPORT.md`.
 
 The automated GTO+ convergence benchmark applies the same Target dEV definition
 under a fixed, versioned fixture and timing protocol. Run five independent
@@ -205,7 +205,7 @@ The versioned per-run JSON and aggregate mediana/p95 report are described in
 Further roadmap phases are frozen by the three-fixture GTO+ parity gate. The
 authoritative checkpoint is the five-process production final-head dated
 2026-09-01 and recorded in
-`docs/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs
+`docs/archive/legacy-postflop-2026-07-09/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`. Every process runs
 AHKHQH, TH7D6S and TSTC9D target-driven to strict `Target dEV < 1%`. The
 deterministic iteration counts are `80/80/160`; solver median/p95 times are
 `0.758705/0.790918 s`, `19.948228/24.192260 s` and
@@ -235,12 +235,12 @@ diagnostic oracles and default to OFF. The strict-cap and exact-algorithm
 reports record why those families were closed. GTO+ black-box observation is
 classified as partially automatable and still requires a manual run marker;
 it does not automate solver clicks or alter the production engine. See
-`docs/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`,
+`docs/archive/legacy-postflop-2026-07-09/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`,
 `docs/archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`,
 `docs/archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`,
-`docs/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`,
-`docs/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md` and
-`docs/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`.
+`docs/archive/legacy-postflop-2026-07-09/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`,
+`docs/archive/legacy-postflop-2026-07-09/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md` and
+`docs/archive/legacy-postflop-2026-07-09/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`.
 
 The three-fixture suite also contains `GTP-TH7D6S-101` and
 `GTP-TSTC9D-101`. On 2026-08-13 the TST action-tree contract was corrected

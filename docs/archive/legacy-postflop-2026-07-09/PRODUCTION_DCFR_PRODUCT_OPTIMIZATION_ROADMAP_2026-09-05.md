@@ -2,7 +2,7 @@
 
 > **Nuovo mandato postflop — 2026-09-10.** La richiesta dell'utente riapre
 > algoritmi alternativi, sampling e astrazione. Per questa nuova ricerca
-> seguire la [roadmap dell'agente](POSTFLOP_AGENT_EXECUTION_ROADMAP_2026-09-10.md).
+> seguire la [roadmap dell'agente](../../POSTFLOP_AGENT_EXECUTION_ROADMAP_2026-09-10.md).
 > I vincoli successivi di solo ProductionDcfr, stessa traiettoria e tetti di
 > iterazioni appartengono alla campagna precedente; non vietano gli esperimenti
 > ora autorizzati. Restano validi integrità delle evidenze, qualità nel gioco
@@ -51,7 +51,7 @@ Sono misure storiche della qualificazione gamma3, non nuovi risultati. p95, memo
 
 Il wall è tempo reale trascorso fra due eventi espliciti, non la somma dei tempi CPU dei thread. Qui il **wall operativo** parte da Build Tree con applicazione già pronta e configurazione disponibile e termina alla soluzione consultabile, senza pause dell'utente. Startup e chiusura del processo sono esclusi. La mediana è il valore centrale dei campioni ordinati; il limite riguarda quella mediana, non il massimo di ogni singola esecuzione.
 
-Per il primo benchmark, **AHKHQH**, la [fixture corrente](../benchmarks/fixtures/gto_plus_ahkhqh_101.json) registra GTO+ **1,71 s**, target dEV 1%, stessa macchina, GTO+ v1.6.9 64-bit. Il perimetro dichiarato è: click su Run Solver, **albero già preparato**, fino a soluzione completa consultabile. È un riferimento registrato, non una nuova misura eseguita oggi e non una mediana di cinque processi dichiarata dalla fixture.
+Per il primo benchmark, **AHKHQH**, la [fixture corrente](../../../benchmarks/fixtures/gto_plus_ahkhqh_101.json) registra GTO+ **1,71 s**, target dEV 1%, stessa macchina, GTO+ v1.6.9 64-bit. Il perimetro dichiarato è: click su Run Solver, **albero già preparato**, fino a soluzione completa consultabile. È un riferimento registrato, non una nuova misura eseguita oggi e non una mediana di cinque processi dichiarata dalla fixture.
 
 I nostri riferimenti storici AHK sono **0,758705 s solver** e **6,231883 s wall del processo**. Non confrontare direttamente 6,231883 con 1,71 come se includessero lo stesso lavoro. Il valore solver storico inferiore a 1,71 non dimostra da solo che la GUI consegni una soluzione consultabile prima di GTO+.
 
@@ -440,7 +440,7 @@ Esiti finali distinti: `PRODUCT_COST_IMPROVED`, `PRODUCT_CONVERGENCE_IMPROVED`, 
 
 ## 12. R8 — Riprendere la parity
 
-Il successo contro la nostra baseline non equivale al superamento dei limiti GTO+. Riprendere il [parity journey](GTO_PLUS_PARITY_JOURNEY.md) con la configurazione congelata e metriche omogenee.
+Il successo contro la nostra baseline non equivale al superamento dei limiti GTO+. Riprendere il [parity journey](../../GTO_PLUS_PARITY_JOURNEY.md) con la configurazione congelata e metriche omogenee.
 
 Diramazioni: correttezza passa ma timing no → nuovo R3 con il divario residuo; memoria esterna non comparabile → mantenere `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`, non inventare un PASS; evidenza esterna stale/incompleta → raccogliere evidenza valida prima di concludere. F11+ non viene dichiarata sbloccata da questa roadmap.
 

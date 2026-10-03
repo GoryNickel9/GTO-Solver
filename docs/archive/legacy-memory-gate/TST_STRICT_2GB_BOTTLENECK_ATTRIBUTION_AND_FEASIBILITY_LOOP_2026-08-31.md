@@ -27,7 +27,7 @@ principale.
 Gerarchia applicata:
 
 1. fixture B committate e test `gtosd_production_dcfr_contract`;
-2. `docs/GTO_PLUS_PARITY_JOURNEY.md`, `docs/IMPLEMENTATION_STATUS.md` e
+2. `docs/GTO_PLUS_PARITY_JOURNEY.md`, `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md` e
    `docs/specifications/PERFORMANCE.md` per gate/dashboard/contratto;
 3. qualification S6 per il più recente confronto schedule, senza promuoverla;
 4. report di profiling, architettura, state representation e real-node replay

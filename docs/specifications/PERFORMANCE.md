@@ -17,7 +17,7 @@
 > `BLOCKED_WITH_EVIDENCE`. Il prodotto resta exact, H resta sigillato e la
 > comparabilità RAM GTO+ resta `NOT_EVALUATED_COMPARABILITY_UNRESOLVED`. La
 > suite Release finale passa `35/35` in `260,92 s`. Evidenza:
-> [`../PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md`](../PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md).
+> [`../PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md`](../archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md).
 
 > **Correzione semantica memoria GTO+ — 2026-09-04.** I riferimenti
 > `8/399/2.000 MB` sono il campo UI “Memory needed for solving”, non Peak RSS e
@@ -44,7 +44,7 @@
 > `1.5/0/2` e' ora comparator storico. La nuova schedule e' superiore alla
 > Release, ma TH e TST restano sopra i limiti GTO+ rispettivamente del
 > `1,661%` e `42,722%`; il parity gate non e' ancora superato. Evidenza:
-> [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
+> [`../DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](../archive/legacy-postflop-2026-07-09/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md).
 
 > **Schema memoria v4 — implementato.** `gto_plus_reference.solver_memory`
 > conserva label, valore, unità, normalizzazione e semantica; i report v4 usano
@@ -76,12 +76,12 @@
 > profiling is opt-in. GTO+ black-box observation remains only partially
 > automatable and requires a manual marker. These paths do not change
 > `production_dcfr 1.5/0/3`. Evidence:
-> [`../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
+> [`../S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
 > [`../TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](../archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
 > [`../STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
-> [`../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
-> [`../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) and
-> [`../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
+> [`../SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](../archive/legacy-postflop-2026-07-09/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
+> [`../RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](../archive/legacy-postflop-2026-07-09/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) and
+> [`../GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
 
 > **Precedenza storica.** I checkpoint e feasibility block datati 2026-08-31 o
 > precedenti sotto questa nota restano evidenza storica. Le loro diciture
@@ -97,7 +97,7 @@
 > `82,4768/84,2703` iterazioni. S6 è ancora `1,35433%` @120 e crossing circa
 > @145; nessun tiny, curve o target-driven FD è stato autorizzato. Production
 > resta `1.5/0/2`; S6 resta STRONG RESEARCH BASELINE. Protocollo e misure:
-> [`../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
+> [`../MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Lazy-CFR feasibility — 2026-08-31; blocker memoria ritirato.** La famiglia
 > era stata chiusa come **LAZY FAMILY RAM BLOCKER**. Un solo accumulatore
@@ -111,7 +111,7 @@
 > solver-owned. Production
 > resta common `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH BASELINE.
 > Protocollo e lower bound:
-> [`../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+> [`../EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Predictive-CFR feasibility — 2026-08-31; blocker memoria ritirato.** PCFR+
 > e PDCFR+ erano stati chiusi come **PREDICTIVE FAMILY EXHAUSTED UNDER THE
@@ -123,20 +123,20 @@
 > richiede un nuovo pre-gate memoria. Nessun solve o target-driven era stato
 > autorizzato. Production resta common `1.5/0/2`; S6 `1.5/0/5` resta
 > STRONG RESEARCH BASELINE. Protocollo e state proof:
-> [`../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+> [`../EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Common schedule result — 2026-08-31.** **COMMON EXACT SCHEDULE SPACE
 > EXHAUSTED** per le famiglie schedule/fixed exact studiate. S6 `1.5/0/5`
 > migliora TST di circa 20–21% in iterazioni ma resta a `1,35433%` @120 e
 > proietta il target circa @160 (`1,25–1,46x`). Non è production; B
 > `1.5/0/2` rimane authority. Evidenza:
-> [`../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
+> [`../COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
 
 > **Constraint governance gate — 2026-08-31; frontier memoria ritirata.** Il
 > boundary temporale `>=1,615339x` resta una proiezione storica. Le alternative
 > RAM e la pair da `3.432.437.888 B` dipendevano dal falso cap e non sono più
 > requisiti correnti. Matrice e dominance storiche:
-> [`../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
+> [`../CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
 
 > **Real-node joint lower bound — 2026-08-31.** Il corpus production bounded
 > AHK/TH/TST è replay-fedele su code, scale e parent output. La precision
@@ -149,7 +149,7 @@
 > `<=96,208089 s`; le conclusioni esclusivamente temporali restano storiche,
 > mentre il memory kill gate è ritirato.
 > Protocollo, frontier e ledger:
-> [`../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
+> [`../REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
 
 > **New representation decision — 2026-08-31.** Le scale tile-local condivise
 > fra tutte le actions sono matematicamente valide per regret matching, ma lo
@@ -160,7 +160,7 @@
 > la baseline `ScaledUint16RegretStrategy` non cambia. Non riaprire queste
 > famiglie nella stessa forma senza un real-node replay corpus che dimostri
 > insieme precisione e throughput. Protocollo e ledger:
-> [`../NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](../NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
+> [`../NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](../archive/legacy-postflop-2026-07-09/NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
 
 > **Frozen exact-state decision — 2026-08-30.** Il pass
 > `prequantized values -> node-global scale -> encode` di
@@ -168,7 +168,7 @@
 > Lower bound 32+31 bit/entry; shadow exact massimo `1,024x`, sotto `1,3x`.
 > Non riaprire retain, recompute, provisional tile, sparse journal o delayed
 > finalization senza nuova prova che superi i gate del report
-> [`../EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](../EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
+> [`../EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](../archive/legacy-postflop-2026-07-09/EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
 > Un codec o scale semantics diversi richiedono una baseline nuova esplicita.
 
 > **Direzione architetturale 2026-08-30.** Il cumulative optimization loop è
@@ -179,7 +179,7 @@
 > richiesti, lasciando production invariata. Ogni lavoro successivo deve prima
 > dimostrare un nuovo state/dataflow ceiling exact e RAM-feasible; protocollo,
 > byte model e risultati sono in
-> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](../ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
+> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](../archive/legacy-postflop-2026-07-09/ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
 
 > **Revalidation production final-head 2026-08-30 — storico/superseded.** Sul
 > binario Release da `6508bddd039d44ecb941acded4b5b16d39f4f7e8`, AHKHQH
@@ -190,26 +190,26 @@
 > `174,926380 / 32,780800 s`. Tutte e tre passano dEV e Root; stato e Peak RSS
 > sono misure diagnostiche. Le classificazioni memoria storiche sono ritirate.
 > La fonte completa è
-> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](../OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
+> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](../archive/legacy-postflop-2026-07-09/OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
 > **Correzione root-analysis 2026-08-30.** Il Root FAIL AHKHQH della baseline
 > normalizzata era diagnostico: l'overload prepared valutava il root sul layout
 > fisico del browser. Dopo il dispatch al layout production canonico, AHK, TH e
 > TST hanno Root PASS con contratto invariato. Vedere
-> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](../AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
+> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](../archive/legacy-postflop-2026-07-09/AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
 
 > **Baseline production storica (2026-08-29/30; superseded).** AHKHQH, TH7D6S e TSTC9D
 > usano ora lo stesso DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
 > `averaging_delay=0` e massimo otto thread. Golden, curve fixed e time-to-target
 > sono in
-> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](../PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](../archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
 > Le baseline DCFR+ e il profilo TST-specifico `1.9/0/3` riportati sotto sono
 > storici/superseded per confronti production comuni. Il prerequisito root e'
 > ora superato; l'audit RBP è chiuso Categoria C e non abilita pruning.
 
 Analisi trasversale corrente del motore generale, con profiling fixed-iteration,
 scaling thread, confronto algoritmico e limiti di telemetria:
-[`PERFORMANCE_ANALYSIS_2026-08-29.md`](../PERFORMANCE_ANALYSIS_2026-08-29.md).
+[`PERFORMANCE_ANALYSIS_2026-08-29.md`](../archive/legacy-postflop-2026-07-09/PERFORMANCE_ANALYSIS_2026-08-29.md).
 
 ## Principio di misura
 

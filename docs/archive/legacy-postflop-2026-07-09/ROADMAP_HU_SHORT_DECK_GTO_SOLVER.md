@@ -1,7 +1,7 @@
 # Roadmap tecnica — GTO Solver Short Deck
 
 I contratti tecnici estratti e mantenuti per argomento sono indicizzati in
-[`specifications/README.md`](specifications/README.md). Questa roadmap resta la
+[`specifications/README.md`](../../specifications/README.md). Questa roadmap resta la
 fonte per sequenza, dipendenze e gate.
 
 ## 1. Stato e scopo del documento
@@ -2060,7 +2060,7 @@ Nessun freeze UI durante solve
 Prima di F11 deve essere superata l'intera suite corrente
 `GTP-AHKHQH-101`, `GTP-TH7D6S-101`, `GTP-TSTC9D-101`, con `101` AHK
 equivalente v2 della fixture canonica congelata `GTP-AHKHQH-003`, documentata in
-[`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).
+[`GTO_PLUS_PARITY_JOURNEY.md`](../../GTO_PLUS_PARITY_JOURNEY.md).
 
 ```text
 Tempo GTOSD fino alla convergenza <= 1,900000 / 19,622222 / 128,988889 s

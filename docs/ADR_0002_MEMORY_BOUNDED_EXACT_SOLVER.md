@@ -267,11 +267,11 @@ trasformazioni di reach e counterfactual value.
 - report completi: `out/compact_no_average_simd3_tstc9d.json` e
   `out/ram_final_tstc9d.json`;
 - limite attuale della canonicalizzazione:
-  [`CANONICAL_PUBLIC_DAG.md`](CANONICAL_PUBLIC_DAG.md);
+  [`CANONICAL_PUBLIC_DAG.md`](archive/legacy-postflop-2026-07-09/CANONICAL_PUBLIC_DAG.md);
 - prototipo street:
-  [`PHASE_6_STREET_DECOMPOSITION_REPORT.md`](PHASE_6_STREET_DECOMPOSITION_REPORT.md);
+  [`PHASE_6_STREET_DECOMPOSITION_REPORT.md`](archive/legacy-postflop-2026-07-09/PHASE_6_STREET_DECOMPOSITION_REPORT.md);
 - fallback mmap:
-  [`PHASE_6_OUT_OF_CORE_REPORT.md`](PHASE_6_OUT_OF_CORE_REPORT.md).
+  [`PHASE_6_OUT_OF_CORE_REPORT.md`](archive/legacy-postflop-2026-07-09/PHASE_6_OUT_OF_CORE_REPORT.md).
 
 ## Fonti primarie
 

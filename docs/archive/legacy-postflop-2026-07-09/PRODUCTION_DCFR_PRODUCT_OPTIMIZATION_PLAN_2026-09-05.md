@@ -28,7 +28,7 @@ Non è dimostrato oggi che un candidato soddisfi contemporaneamente tutti questi
 
 ## 2. Contratto attuale e baseline storica
 
-Autorità: [algoritmi](specifications/SOLVER_ALGORITHMS.md), [qualificazione gamma3](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md), [performance](specifications/PERFORMANCE.md), [parity journey](GTO_PLUS_PARITY_JOURNEY.md).
+Autorità: [algoritmi](../../specifications/SOLVER_ALGORITHMS.md), [qualificazione gamma3](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md), [performance](../../specifications/PERFORMANCE.md), [parity journey](../../GTO_PLUS_PARITY_JOURNEY.md).
 
 Il percorso qualificato usa:
 
@@ -127,7 +127,7 @@ Entrambi i file LICENSE consultati contengono GNU AGPL v3: [b-inary](https://raw
 
 ## 5. Non ripetere gli esperimenti già chiusi
 
-La cronologia in [PERFORMANCE](specifications/PERFORMANCE.md) distingue:
+La cronologia in [PERFORMANCE](../../specifications/PERFORMANCE.md) distingue:
 
 | Famiglia | Evidenza locale | Conseguenza per il prossimo lavoro |
 |---|---|---|

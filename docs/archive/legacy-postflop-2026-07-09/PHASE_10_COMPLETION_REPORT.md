@@ -166,4 +166,4 @@ salvata; delimitano le viste e il packaging di release.
 La prosecuzione verso F11 resta congelata. Questo era il handoff alla chiusura
 di F10; F10.4 è ora implementata come diagnostica test-only e non equivale al
 node locking di prodotto F11. Lo stato operativo successivo è la suite a tre
-benchmark nel [`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).
+benchmark nel [`GTO_PLUS_PARITY_JOURNEY.md`](../../GTO_PLUS_PARITY_JOURNEY.md).

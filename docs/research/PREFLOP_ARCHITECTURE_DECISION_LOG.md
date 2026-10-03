@@ -3,7 +3,7 @@
 Documento vivo. Raccoglie decisioni, chiarimenti e punti aperti emersi nelle discussioni sul
 solver preflop Short Deck (HU prima, multiway poi). Ogni aggiornamento è datato nel changelog in
 coda. L'analisi tecnica di partenza è in
-[HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md).
+[HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md](../archive/preflop-blueprint-research-2026-09/HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md).
 
 Ultimo aggiornamento: 2026-09-21.
 
@@ -29,7 +29,7 @@ Ultimo aggiornamento: 2026-09-21.
 | D16 | Budget di tempo | Il budget di 2 ore su HU40 è eliminato. Il solve è guidato dal target (D3) e il tempo è un risultato riportato, non una condizione di PASS/FAIL. La passata esatta di certificazione resta uno strumento di sviluppo separato dal solve dell'utente. | 2026-09-15 |
 | D17 | Verifica a stadi con azioni ridotte | Durante l'implementazione si verifica algoritmo e NashConv su HU10 con un albero ridotto (una size postflop più all-in), poi con le size complete, poi su CO40. Ogni insieme di azioni definisce un gioco diverso: la strategia del gioco ridotto non è un equilibrio del gioco completo e va riaddestrata (con eventuale warm start) sull'albero completo. La correttezza del codice verificata sul piccolo vale sul grande. | 2026-09-15 |
 | D18 | Chart viewer | Aggiornato al nuovo formato di output insieme al trainer (fase P8). Il viewer è un repository git separato in `tools/hu_preflop_chart_viewer`, ignorato dal repository principale: i suoi commit vanno fatti lì. | 2026-09-15 |
-| D19 | Roadmap e diario dell'agent | Roadmap operativa P0–P10 in [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). L'agent coder mantiene il diario `preflop_vector_cfr/PROGRESS_LOG.md` con progressi, fallimenti, dubbi, registro dei gate e decisioni interne. | 2026-09-15 |
+| D19 | Roadmap e diario dell'agent | Roadmap operativa P0–P10 in [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../archive/preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). L'agent coder mantiene il diario `preflop_vector_cfr/PROGRESS_LOG.md` con progressi, fallimenti, dubbi, registro dei gate e decisioni interne. | 2026-09-15 |
 | D20 | Calendario dell'archiviazione (rivisto il 2026-09-15) | Documenti: rimossi subito dal working tree, con tag `preflop-legacy-es-2026-09-15` sul commit `04aa687` e indice `PREFLOP_LEGACY_INDEX.md`; nessuna cartella `docs/archive/` per il preflop, perché un agent che legge `docs/` potrebbe seguirli (eseguito, D25). Codice legacy in due stadi: stadio 1, dopo il gate P6, opzione CMake `GTOSD_BUILD_LEGACY_PREFLOP_RESEARCH` default `OFF` per trainer legacy, decomposizione CFR-D, certificatore per sottogiochi river e relativi test, restando attivi FiniteGame, contratto di averaging, tabella a 7 carte, fixture e comparatore; stadio 2, dopo il gate P9, sorgenti legacy fuori dalla build di default. Mai cancellazioni dalla storia git; mai rimozione di fixture, analisi e decisioni. | 2026-09-15 |
 | D21 | Politica dei branch (confermata il 2026-09-15) | `main` resta sempre verde (build e CTest). Un branch di integrazione `feature/preflop-blueprint` da `main` per tutto il programma P0–P10; un branch per fase `feature/preflop-blueprint-pN-nome`, unito nell'integrazione via PR con l'evidenza del gate nel diario; l'integrazione si unisce a `main` ai gate P3, P6, P8, P9 con tag (`preflop-blueprint-p6-hu10`, `preflop-blueprint-p9-co40`). L'agent lavora in un worktree separato, senza toccare il working tree dell'utente; niente force push, niente riscrittura della storia; commit `feat(preflop-blueprint): ...` con la riga di attribuzione richiesta. I branch `research/*` esistenti restano come evidenza e non vengono uniti. Il viewer segue lo stesso schema nel proprio repository. | 2026-09-15 |
 | D22 | Autonomia dell'agent | L'agent è autonomo da P0 a P10 e si ferma soltanto su `FAIL`, `INCONCLUSIVE` o decisioni fuori perimetro. Nessuna conferma intermedia ai gate. | 2026-09-15 |
@@ -191,7 +191,7 @@ Non si fa: unire nodi pubblici con pari pot e stack (strategie e range differisc
 ## 7. Piano di lavoro
 
 Il piano operativo dettagliato, con fasi P0–P10, gate e test, è nella
-[roadmap per l'agent coder](PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). La sintesi qui sotto
+[roadmap per l'agent coder](../archive/preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). La sintesi qui sotto
 resta come indice.
 
 1. Modulo di astrazione: enumerazione canonica, feature esatte, clustering, tabelle, test di

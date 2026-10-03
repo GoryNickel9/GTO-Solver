@@ -3,7 +3,7 @@
 > **CORREZIONE SEMANTICA 2026-09-04.** Le prove di traiettoria e compressibilità
 > restano valide. Gli scarti che dipendono dal cap 2 GB non sono più normativi e
 > richiedono un nuovo accounting solver-owned. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 Data: 2026-09-01
 

@@ -1,6 +1,6 @@
 # Diario dell'agent coder: solver preflop vettoriale
 
-Roadmap: [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md)
+Roadmap: [PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md](../../archive/preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md)
 Registro decisioni: [PREFLOP_ARCHITECTURE_DECISION_LOG.md](../PREFLOP_ARCHITECTURE_DECISION_LOG.md)
 
 Regole del diario: le voci non si cancellano; una correzione è una nuova voce che rimanda alla
@@ -1512,7 +1512,7 @@ report con confronto verso baseline e A, poi profilo del certificatore.
 Fatto: (1) censimento di tutti i benchmark del solver preflop blueprint (HU10 ridotto e completo,
 HU20, HU30, HU40 = CO40 test, CO40 completo) piu' le famiglie legacy e postflop, con
 implementazione, astrazione, protocollo, certificazione, risultati e stato di ogni run storico:
-[BENCHMARK_SUITE_INVENTORY_2026-09-21.md](BENCHMARK_SUITE_INVENTORY_2026-09-21.md). Rapporto sulle
+[BENCHMARK_SUITE_INVENTORY_2026-09-21.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_INVENTORY_2026-09-21.md). Rapporto sulle
 differenze originarie: tre astrazioni diverse (bucket diretti per HU10, class-major, history7),
 iterazioni 2.000-37.000, size postflop 66 % contro 100 %, HU20 senza la 3-bet a 17a per decisione
 dell'utente (a 20 ante il motore la terrebbe distinta: scenario derivato `HU20-2`), HU30 in
@@ -1530,7 +1530,7 @@ HU40-FULL byte per byte uguali alle storiche, `HU10` nuova con il 100 % postflop
 memoria (campioni ogni 0,5 s piu' contatori esatti dal processo uscito: picco di private commit
 e di working set, page fault, tempi CPU, memoria disponibile e paging del sistema) e manifest con
 hash; `report` con tabelle per scenario. Protocollo, misure e criteri di accettazione
-preregistrati: [BENCHMARK_SUITE_PROTOCOL_2026-09-21.md](BENCHMARK_SUITE_PROTOCOL_2026-09-21.md).
+preregistrati: [BENCHMARK_SUITE_PROTOCOL_2026-09-21.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_PROTOCOL_2026-09-21.md).
 (3) Build pulita dell'HEAD `ba93c75` in `out/build/windows-release-suite` (trainer SHA-256
 `d9d7bba6...`), archiviata in `out/suite/bin/baseline-ba93c75`; baseline canonica in esecuzione
 sequenziale (`out/suite/baseline-ba93c75`). (4) Codice delle candidate scritto nel working tree
@@ -1651,7 +1651,7 @@ resta almeno il 50 % in meno del riferimento HU20 da 74m54s, quindi massimo
 
 Su richiesta dell'utente è stato eseguito un audit senza cambiare il solver e
 senza avviare training. Report completo:
-[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
+[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](../../archive/history7-suite-2026-09/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
 
 La policy HU30 `fnv1a64:e52d2f110dbd2b34` a 32.000 è stata valutata su 16
 flop fissati dal seed `20260921`, otto nodi flop e tutti i futuri esatti. La
@@ -1789,7 +1789,7 @@ Il tempo end-to-end è 4.494,095 s, 74m54s. Policy
 `fnv1a64:362045ee45623b7a`, stato trainer `fnv1a64:449bbb9b17798709`.
 
 Artefatti e SHA-256 sono in
-[HISTORY7_TIME_AUDIT_2026-09-20.md](HISTORY7_TIME_AUDIT_2026-09-20.md).
+[HISTORY7_TIME_AUDIT_2026-09-20.md](../../archive/history7-suite-2026-09/HISTORY7_TIME_AUDIT_2026-09-20.md).
 Regressioni finali: trainer PASS 21.310.536 assertion, kernel PASS 1.636.010,
 certificatore PASS 146.545. HU20 è riproducibile e qualificato; il prossimo
 bersaglio sequenziale è HU30.
@@ -1827,7 +1827,7 @@ restano verificabili il PASS, il max gain, le iterazioni, circa 11,48 GiB e
 la durata riferita di circa tre ore, non la scomposizione delle sue fasi.
 
 Audit completo, inclusi tentativi falliti, budget temporale e opzioni:
-[HISTORY7_TIME_AUDIT_2026-09-20.md](HISTORY7_TIME_AUDIT_2026-09-20.md).
+[HISTORY7_TIME_AUDIT_2026-09-20.md](../../archive/history7-suite-2026-09/HISTORY7_TIME_AUDIT_2026-09-20.md).
 
 ### 2026-09-20 — gerarchia compatta su censimento esatto e arresto automatico
 
@@ -2106,7 +2106,7 @@ che entrano realmente nel nuovo budget. Precisione float64 e gate 0,03 invariati
 L'utente assegna come unico goal il superamento dei tre giochi e chiede di
 non fermarsi prima. Si continua oltre gli esiti intermedi inconcludenti,
 registrandoli, senza cambiare gate, size o regole. Protocollo e stato in
-[HU20_HU30_HU40_GOAL_2026-09-19.md](HU20_HU30_HU40_GOAL_2026-09-19.md).
+[HU20_HU30_HU40_GOAL_2026-09-19.md](../../archive/history7-suite-2026-09/HU20_HU30_HU40_GOAL_2026-09-19.md).
 Base `c319218`, worktree isolato invariato. HU40 corrisponde alla fixture
 heads-up CO40 storica; le tre fixture di test sono congelate.
 
@@ -2152,7 +2152,7 @@ oracolo/riferimenti/toy PASS (80,43 s, precedenti alla traccia fisica); sei test
 Python PASS (4,51 s), Black/Ruff PASS. Confronti lossless indipendenti verificano
 la traccia e la metrica fisica; nessuna modifica alla policy storica. Report,
 protocolli condizionali, dati e limiti in
-[CONSTRAINED_BR_AUDIT_2026-09-19.md](CONSTRAINED_BR_AUDIT_2026-09-19.md).
+[CONSTRAINED_BR_AUDIT_2026-09-19.md](../../archive/preflop-blueprint-research-2026-09/CONSTRAINED_BR_AUDIT_2026-09-19.md).
 Esito sulla causa dominante: INCONCLUSIVE; il gate CO40 non e superato.
 
 ### 2026-09-19 — P9 — controllo MILP sul corpus mirato: arresto per discordanza
@@ -2167,7 +2167,7 @@ rilassa la soglia e non si presenta il confronto come completato.
 ### 2026-09-19 — P9 — best response globale vincolata: nuovo protocollo autorizzato
 
 L'utente autorizza con «Procedi» il seguito della diagnosi. Base `9b9d427`.
-Il [protocollo congiunto](CONSTRAINED_BR_AUDIT_2026-09-19.md) registra dominio,
+Il [protocollo congiunto](../../archive/preflop-blueprint-research-2026-09/CONSTRAINED_BR_AUDIT_2026-09-19.md) registra dominio,
 limiti, controlli analitici e confronto Short Deck prima del relativo training.
 
 Errore riprodotto: la vecchia BR generica restituisce 0 su un gioco con memoria
@@ -2210,7 +2210,7 @@ Sette riepiloghi JSON validati, sorgenti formattati, diff controllato. Le durate
 includono concorrenza e non sono benchmark di throughput. Checkout principale
 pulito; nessuna scrittura sulle policy e risorse storiche.
 
-L'[audit completo](NASH_AUDIT_2026-09-19.md) contiene formule, comandi, pesi,
+L'[audit completo](../../archive/preflop-blueprint-research-2026-09/NASH_AUDIT_2026-09-19.md) contiene formule, comandi, pesi,
 risultati, fallimenti e motivazione dell'arresto. L'eventuale protocollo seguente
 deve misurare la deviazione congiunta vincolata ai bucket, partendo da un gioco
 enumerabile; il presente audit non avvia ulteriori esperimenti ad hoc.
@@ -2311,7 +2311,7 @@ Comandi: CTest `windows-release` per certifier, trainer ed export; ricalcolo
 CO40 dal checkpoint del certificatore su una copia locale dei 573 flop salvati.
 Risultati: certifier PASS (138.974 assert, 42,46 s), trainer PASS (76,66 s),
 export PASS (48,80 s). CO40 ricalcolato in 1,4004197 s, max_gain identico
-0,82717651588212859. [Report e artefatto](NASH_AUDIT_2026-09-19.md).
+0,82717651588212859. [Report e artefatto](../../archive/preflop-blueprint-research-2026-09/NASH_AUDIT_2026-09-19.md).
 Fallimenti: l'include del nuovo test e stato corretto prima della build verificata;
 il precedente CTest su eseguibile obsoleto non e contato in questi risultati.
 Dubbi: rapporti condizionati per range ristretti o cataloghi parziali non validati,
@@ -3478,7 +3478,7 @@ max gain campionato 0,729284 a a 500 iterazioni. Il miglioramento rispetto al
 run base a 500 iterazioni non è conclusivo con otto flop di valutazione.
 Entrambe le prove restano escluse dal prodotto.
 
-Report, limiti e artefatti: [P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+Report, limiti e artefatti: [P9_CONVERGENCE_DIAGNOSIS.md](../../archive/preflop-blueprint-research-2026-09/P9_CONVERGENCE_DIAGNOSIS.md).
 Nessuna convergenza o qualificazione dichiarata.
 
 ### 2026-09-16 — P9 (diagnosi) — CO40 di test con una sola apertura full pot: la riduzione delle size non basta

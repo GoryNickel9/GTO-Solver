@@ -90,7 +90,7 @@ fallimento prestazionale del candidato scartato.
 - report di completamento:
   [`PHASE_9_COMPLETION_REPORT.md`](PHASE_9_COMPLETION_REPORT.md);
 - metriche raw: `out/phase9/*.json`, artefatti di test non versionati;
-- licenze: [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).
+- licenze: [`THIRD_PARTY_NOTICES.md`](../../../THIRD_PARTY_NOTICES.md).
 
 ## Fonti primarie
 

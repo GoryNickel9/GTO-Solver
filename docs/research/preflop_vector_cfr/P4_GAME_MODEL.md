@@ -98,8 +98,8 @@ sezione precedente.
 | Raise massimi per street | 4 | 4 | 4 |
 | Profondità massima | 17 dalla radice preflop | 15 dall'ingresso | 15 |
 
-I valori della roadmap (30.324 / 11.308 / 29.112) provengono da `docs/HU_PREFLOP_CO40_BENCHMARK.md`
-e da `docs/IMPLEMENTATION_STATUS.md`, scritti con regole di puntata anteriori; il codice legacy
+I valori della roadmap (30.324 / 11.308 / 29.112) provengono da `docs/archive/preflop-es-2026-09/HU_PREFLOP_CO40_BENCHMARK.md`
+e da `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`, scritti con regole di puntata anteriori; il codice legacy
 attuale non li riproduce. L'albero compilato coincide con l'analizzatore legacy attuale classe per
 classe, quindi i conteggi attesi sono stati corretti (diario, decisione 20). Nodi totali dell'albero
 compilato: 27.061 (58 preflop + 27.012 postflop − 9 ingressi contati una volta), 27.060 archi.

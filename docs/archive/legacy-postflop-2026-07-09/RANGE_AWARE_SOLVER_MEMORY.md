@@ -4,12 +4,12 @@
 > solving” non è stato dimostrato equivalente né a `solver_state_bytes` né a
 > Peak RSS. Le riduzioni range-aware e i loro byte restano valide; il precedente
 > PASS comparativo contro 8 MB è ritirato. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **STATO: ANALISI STORICA.** I dati iniziali usano `GTP-AHKHQH-001`, fixture
 > ritirata. Per il gate corrente usare `GTP-AHKHQH-003` e il parity journey.
 
-Contratto canonico corrente: [`specifications/PERFORMANCE.md`](specifications/PERFORMANCE.md).
+Contratto canonico corrente: [`specifications/PERFORMANCE.md`](../../specifications/PERFORMANCE.md).
 
 I conteggi AhKhQh sotto riportati documentano la fixture storica
 `GTP-AHKHQH-001` senza raise. Non rappresentano il gate GTO+ corrente
@@ -144,4 +144,4 @@ stabilizzatore globale lossless di F4, mapping inverso implicito nelle query e
 checkpoint separati tramite fingerprint `iso-infosets-v1`. F10.2 aggiunge il
 public DAG canonico e conserva carta, molteplicità e mapping inverso per ogni
 outcome chance. F11 e le fasi successive sono ora congelate dal gate descritto
-in [`GTO_PLUS_PARITY_JOURNEY.md`](GTO_PLUS_PARITY_JOURNEY.md).
+in [`GTO_PLUS_PARITY_JOURNEY.md`](../../GTO_PLUS_PARITY_JOURNEY.md).

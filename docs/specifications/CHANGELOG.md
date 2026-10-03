@@ -194,7 +194,7 @@ sostituisce la cronologia Git né i report di fase.
 
 Le decisioni e misure precedenti sono conservate in:
 
-- [ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md](../ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md);
-- [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md);
+- [ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md](../archive/legacy-postflop-2026-07-09/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md);
+- [IMPLEMENTATION_STATUS.md](../archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md);
 - [GTO_PLUS_PARITY_JOURNEY.md](../GTO_PLUS_PARITY_JOURNEY.md);
 - report `PHASE_*_COMPLETION_REPORT.md` nella directory `docs`.

@@ -46,7 +46,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `184,095930 s` supera `128,988889 s` del `42,722%`. Il parity gate
 > complessivo resta bloccante: la run final-head storica fallisce i tempi TH e
 > TST, mentre la memoria non è valutabile. Evidenza e protocollo:
-> [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
+> [`DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md`](archive/legacy-postflop-2026-07-09/DCFR_EPOCH_RESET_GAMMA3_FEASIBILITY_2026-09-01.md),
 > `out/production-final-head-20260901/`.
 
 > **Schema memoria v4 implementato 2026-09-04.** Le fixture correnti conservano
@@ -72,12 +72,12 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > non cambia il traversal normale. La caratterizzazione black-box GTO+ ha
 > outcome `C. PARTIALLY AUTOMATABLE` e richiede un marker manuale; non avvia
 > autonomamente il solver. Evidenza:
-> [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
+> [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
 > [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
 > [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
-> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
-> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
-> [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
+> [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](archive/legacy-postflop-2026-07-09/SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
+> [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](archive/legacy-postflop-2026-07-09/RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
+> [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](archive/legacy-postflop-2026-07-09/GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
 
 > **Precedenza storica.** Tutti i blocchi datati 2026-08-31 o precedenti sotto
 > questa sezione conservano decisioni e misure valide nel loro contesto, ma le
@@ -94,7 +94,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `<82,4768/<84,2703` iterazioni, contro S6 circa @145. Zero solver run, zero
 > candidate production. B resta `1.5/0/2`; S6 `1.5/0/5` resta STRONG RESEARCH
 > BASELINE. Evidenza:
-> [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
+> [`MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/MEMORY_NEUTRAL_FD_FTRL_OMD_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Lazy-CFR feasibility 2026-08-31 — memory blocker ritirato.** La
 > segmentazione exact pubblicata richiede almeno un residuo di reach
@@ -106,7 +106,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > a zero. Non
 > esiste una derivazione pubblicata Lazy-DCFR/S6; production resta common
 > `1.5/0/2` e S6 `1.5/0/5` resta STRONG RESEARCH BASELINE. Evidenza:
-> [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+> [`EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/EXACT_LAZY_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Predictive-CFR feasibility 2026-08-31 — memory blocker ritirato.** PCFR+ e
 > PDCFR+ richiedono una current
@@ -117,14 +117,14 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > 169 asserzioni. Production resta common signed DCFR `1.5/0/2`; `1.5/0/5`
 > resta STRONG RESEARCH BASELINE, non production. Prossima famiglia soltanto
 > dopo pre-gate RAM: Lazy-CFR. Evidenza:
-> [`EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
+> [`EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/EXACT_PREDICTIVE_CFR_FEASIBILITY_LOOP_2026-08-31.md).
 
 > **Common exact schedule loop 2026-08-31.** **COMMON EXACT SCHEDULE SPACE
 > EXHAUSTED** per static signed DCFR alpha/gamma, beta positivo, DCFR+ e
 > HS-DCFR(30). Il migliore common result è S6 `1.5/0/5`: TST `1,35433%` @120,
 > crossing circa @160 e worst ratio proiettato `1,25–1,46`; resta research
 > comparator e non sostituisce production `1.5/0/2`. Evidenza:
-> [`COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
+> [`COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/COMMON_EXACT_CONVERGENCE_ACCELERATION_LOOP_2026-08-31.md).
 
 > **Constraint governance gate 2026-08-31.** L'optimization research è in
 > pausa al governance gate. RAM-only e certification-only sono insufficienti;
@@ -133,7 +133,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `>=3.432.437.888 B` più exact final BR `<=8,604297 s`. Entrambe sono soltanto
 > `POTENTIALLY SUFFICIENT — NEEDS NEW STUDY`; nessun contratto è stato scelto
 > o implementato. Vedere
-> [`CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
+> [`CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md`](archive/legacy-postflop-2026-07-09/CONSTRAINT_GOVERNANCE_GATE_2026-08-31.md).
 
 > **Real-node replay e producer lower bound 2026-08-31.**
 > **JOINT STATE/PRODUCER LOWER-BOUND BLOCKER.** Il replay production è fedele
@@ -147,7 +147,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > nessun target-driven sono stati autorizzati. Production e baseline restano
 > invariati; il prossimo passo è un gate esplicito sui vincoli, non un altro
 > codec. Evidenza:
-> [`REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
+> [`REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/REAL_NODE_REPLAY_AND_PRODUCER_LOWER_BOUND_LOOP_2026-08-31.md).
 
 > **New production state representation loop 2026-08-31.**
 > **REPRESENTATION SPACE EXHAUSTED** per tile-local float/power-of-two,
@@ -158,7 +158,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > rimosso. Signed-float24/bfloat16 è numericamente migliore ma solo `1,396x`.
 > Production, checkpoint e baseline restano invariati; il nuovo blocker è la
 > combinazione producer whole-vector + costo local-scale/direct packing.
-> Evidenza: [`NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
+> Evidenza: [`NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md`](archive/legacy-postflop-2026-07-09/NEW_PRODUCTION_STATE_REPRESENTATION_LOOP_2026-08-31.md).
 
 > **Exact state representation loop 2026-08-30.** **EXACT REPRESENTATION
 > BLOCKER PROVEN.** Il codec node-global byte-identico richiede almeno 32 bit
@@ -167,7 +167,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > `0,896x`), sotto `1,3x`; TST@202 cambia ancora l'83,018% dei regret code.
 > Nessuna integrazione production o rebaseline. Il prossimo studio deve essere
 > separato e può valutare un nuovo formato non byte-identico. Evidenza:
-> [`EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
+> [`EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md`](archive/legacy-postflop-2026-07-09/EXACT_STATE_REPRESENTATION_FEASIBILITY_LOOP_2026-08-30.md).
 
 > **Architectural traversal/dataflow loop 2026-08-30 — stato operativo
 > corrente.** Il precedente cumulative loop è **EXHAUSTED con blocker
@@ -179,7 +179,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > compilato ha ceiling end-to-end `2,94%`; la continuation exact disponibile è
 > chiusa dal global node scale e dall'ordine di update. Nessuna integrazione
 > production o rebaseline è stata autorizzata. Vedere
-> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
+> [`ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md`](archive/legacy-postflop-2026-07-09/ARCHITECTURAL_TRAVERSAL_FEASIBILITY_LOOP_2026-08-30.md).
 
 > **Checkpoint final-head omogeneo 2026-08-30 — prevale su tutti i checkpoint
 > sottostanti per lo stato corrente.** I tre benchmark target-driven sono stati
@@ -201,14 +201,14 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > memoria pubblicate allora sono ritirate. Full CTest 21/21 PASS; five-process
 > ancora congelata.
 > Evidenza dettagliata:
-> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
+> [`OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md`](archive/legacy-postflop-2026-07-09/OBJECTIVE_DRIVEN_GATE_CLOSURE_2026-08-30.md).
 
 > **Root-analysis fix 2026-08-30.** Il precedente Root FAIL AHKHQH era un bug
 > di dispatch: con browser fisico preparato, il root non usava il layout
 > production canonico autorevole. Dopo il fix, AHK target @80 misura
 > `19,108987 / 19,15` (delta `-0,041013`, PASS); TH e TST restano PASS e CTest
 > e' 20/20. Vedere
-> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
+> [`AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md`](archive/legacy-postflop-2026-07-09/AHKHQH_PREPARED_ROOT_ANALYSIS_FIX_2026-08-30.md).
 > Il parity gate prestazionale complessivo resta non superato; e' superato il
 > solo prerequisito root necessario per poter riprendere l'audit RBP.
 
@@ -216,7 +216,7 @@ Stato del gate: **BLOCCANTE — NON SUPERATO**
 > Le tre fixture usano DCFR exact signed `alpha=1.5`, `beta=0`, `gamma=2`,
 > average immediato e massimo otto thread. Il profilo TST `1.9/0/3` e i percorsi
 > DCFR+ sotto restano storici/superseded. Risultati e golden sono in
-> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
+> [`PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md`](archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_NORMALIZATION_2026-08-29.md).
 > Il Root FAIL AHK e il conseguente blocco RBP pubblicati nella prima versione
 > del report erano diagnostici pre-fix e sono superseded dalla correzione sopra.
 

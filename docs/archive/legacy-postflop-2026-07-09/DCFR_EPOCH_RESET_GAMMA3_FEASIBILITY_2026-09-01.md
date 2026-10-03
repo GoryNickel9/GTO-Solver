@@ -4,7 +4,7 @@
 > restano evidenza. Il vincolo Peak RSS `<2.000.000.000 B` e i relativi PASS
 > erano basati sul display TSTC9D “Memory needed for solving” e non sono
 > normativi. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## Analisi
 

@@ -3,7 +3,7 @@
 > **CORREZIONE SEMANTICA 2026-09-04.** Le misure e i reject di velocità restano
 > evidenza; i PASS di stato/Peak RSS rispetto al valore TST da 2.000 MB non sono
 > un confronto GTO+ valido. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## Esito
 
@@ -28,7 +28,7 @@ L'ultimo full ufficiale resta il baseline DCFR a 170 iterazioni.
 3. Microbenchmark standalone `gtosd_signed_codec_benchmark` per confrontare
    il backend scaled 4-byte e signed13/strategy11 3-byte.
 4. Documentazione completa di misure e decisioni in
-   `docs/speed_optimization_journey.md` §§8.53-8.59.
+   `docs/archive/legacy-postflop-2026-07-09/speed_optimization_journey.md` §§8.53-8.59.
 
 I prototipi persistent scale, cache showdown e action liveness sono stati
 rimossi integralmente dopo il reject. Non rimangono flag dormienti o branch

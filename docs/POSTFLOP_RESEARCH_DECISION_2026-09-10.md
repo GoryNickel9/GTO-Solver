@@ -66,7 +66,7 @@ sizings richiede una verifica distinta contro il catalogo originale.
 La baseline controllata B0 del 5 settembre contiene cinque processi per caso,
 report v4, preflight CPU/RAM e lo stesso profilo ProductionDcfr.
 Questi sono risultati storici riletti dai file locali, non nuove misure del
-10 settembre. Fonte: [registro di esecuzione](PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md),
+10 settembre. Fonte: [registro di esecuzione](archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md),
 sezione R2, e `out/production-dcfr-product-b0-controlled-20260905`.
 
 | Caso | Iterazioni | dEV | Solver mediana / p95, secondi | Esito |
@@ -153,9 +153,9 @@ non è una soluzione RAM.
 Le qualifiche River usano anche soglie più strette del solo target GTO+;
 `0/12` non significa che tutti i casi falliscano necessariamente dEV <1%.
 Significa che nessuno supera l'insieme dei gate dichiarati.
-Fonti: [stato implementazione](IMPLEMENTATION_STATUS.md),
+Fonti: [stato implementazione](archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md),
 `benchmarks/results/river_showdown_distribution_qualification_2026-09-07.json`
-e [registro di esecuzione](PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md).
+e [registro di esecuzione](archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_EXECUTION_2026-09-05.md).
 
 Un collo strutturale distinto è visibile in
 `libs/postflop_subgame/src/postflop_subgame.cpp`:

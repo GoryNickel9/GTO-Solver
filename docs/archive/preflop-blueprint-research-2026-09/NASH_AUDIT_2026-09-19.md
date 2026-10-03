@@ -2,7 +2,7 @@
 
 > **Aggiornamento 2026-09-21:** questo documento conserva l'audit storico
 > CO40. L'ultima diagnosi HU30 è in
-> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md):
+> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](../history7-suite-2026-09/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md):
 > numero di bucket responsabile di perdita locale, clustering convergente a
 > sufficienza, cap river `history7` plausibile ma non isolato. Nessun candidato
 > è stato promosso.
@@ -55,7 +55,8 @@ al rapporto corretto nel caso esatto a range completi.
 | open-call | 1,421923837 | 1,134191379 |
 | open-3bet-call | 0,730602369 | 0,842305039 |
 
-Artefatto: [certificato ricalcolato](CO40_NORMALIZATION_AUDIT_2026-09-19.json).
+Artefatto: certificato ricalcolato, `CO40_NORMALIZATION_AUDIT_2026-09-19.json` (cancellato il 2026-10-03;
+`git show docs-pre-cleanup-2026-10-02:docs/research/preflop_vector_cfr/CO40_NORMALIZATION_AUDIT_2026-09-19.json`).
 Questi valori non usano i range condizionati effettivi di entrambi i giocatori,
 non sono additivi fra ingressi e non decompongono causalmente l'exploitability.
 La conclusione che il postflop fosse irrilevante perche perdeva circa 0,002 ante

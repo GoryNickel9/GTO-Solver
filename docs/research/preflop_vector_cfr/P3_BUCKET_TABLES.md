@@ -71,7 +71,7 @@ iterazioni: 0,060957 a con 200/500/1.000 contro **0,059870 a** con 500/1.000/2.0
 Il sotto-allenamento è escluso: le righe di `class` passano da 71.196 a 99.904 in totale (58.160 al
 river), e `recall32` si era allenato bene con 184.528 righe allo stesso budget. Dettagli e criterio
 fissato in anticipo nel diario, voce del 2026-09-19; conseguenze in
-[P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+[P9_CONVERGENCE_DIAGNOSIS.md](../../archive/preflop-blueprint-research-2026-09/P9_CONVERGENCE_DIAGNOSIS.md).
 
 Lettura delle dispersioni. La distanza flop è una L1 fra cumulate di conteggi su 465 runout e 16
 bin: il massimo teorico è 465 × 15 = 6.975, quindi la media di 150,7 vale circa il 2,2 % del
@@ -87,7 +87,7 @@ gli id confrontabili fra costruzioni.
    0,0225% rispetto alla tabella fermata a 25. Sul river un passo Lloyd esatto aggiuntivo riduce
    l'inerzia dello 0,0243% e cambia lo 0,163% del peso. Il limite di iterazioni non spiega il
    problema di convergenza HU30. Report:
-   [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
+   [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](../../archive/history7-suite-2026-09/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
 2. Il costo è dominato dal river (814 s) e dal turn (416 s): l'assegnazione di 9,3 milioni e 6,8
    milioni di osservazioni pesate a 1.000 e 500 centroidi per iterazione. È una costruzione una
    tantum per identità dell'astrazione; il file salvato evita di ripeterla.

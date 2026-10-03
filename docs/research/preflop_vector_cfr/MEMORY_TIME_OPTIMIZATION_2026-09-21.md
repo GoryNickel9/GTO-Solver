@@ -1,9 +1,9 @@
 # Riduzione di RAM e tempi sulla suite di benchmark: ottimizzazioni, test e risultati
 
 Data di inizio: 2026-09-21. Documento del milestone, parti 6-8. Il censimento e' in
-[BENCHMARK_SUITE_INVENTORY_2026-09-21.md](BENCHMARK_SUITE_INVENTORY_2026-09-21.md), il
+[BENCHMARK_SUITE_INVENTORY_2026-09-21.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_INVENTORY_2026-09-21.md), il
 protocollo e i criteri preregistrati in
-[BENCHMARK_SUITE_PROTOCOL_2026-09-21.md](BENCHMARK_SUITE_PROTOCOL_2026-09-21.md).
+[BENCHMARK_SUITE_PROTOCOL_2026-09-21.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_PROTOCOL_2026-09-21.md).
 
 Stato: **in corso**. Le sezioni "Risultati" vengono riempite dal report generato con
 `python tools/preflop_suite/suite.py report --baseline baseline-ba93c75` man mano che i run
@@ -188,7 +188,7 @@ page fault (3,15 M su HU20).
 ### 5.2 Risultati finali: quattro versioni, quattro benchmark, tre ripetizioni (2026-09-23)
 
 Tabelle complete generate da `suite.py report` (48 run, `UNIFORMITY_CHECK=PASS` per ognuna
-delle quattro versioni): [BENCHMARK_SUITE_REPORT_2026-09-23.md](BENCHMARK_SUITE_REPORT_2026-09-23.md)
+delle quattro versioni): [BENCHMARK_SUITE_REPORT_2026-09-23.md](../../archive/history7-suite-2026-09/BENCHMARK_SUITE_REPORT_2026-09-23.md)
 (JSON grezzo: `BENCHMARK_SUITE_REPORT_2026-09-23.json`; manifest, log, campioni e certificati in
 `out/suite/<versione>/<scenario>/rep<N>/`). Mediane dei tempi sulle ripetizioni pulite (criterio
 del protocollo, sezione 6: core effettivi non inferiori al 90 % del miglior run della stessa

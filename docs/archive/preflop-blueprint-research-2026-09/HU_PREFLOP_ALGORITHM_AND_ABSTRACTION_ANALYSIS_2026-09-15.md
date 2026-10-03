@@ -3,7 +3,7 @@
 Data: 2026-09-15
 Snapshot analizzato: `04aa687` (working tree pulito)
 Stato: `ANALISI / PROPOSTA DI MODIFICA — nessun sorgente modificato`
-Decisioni successive e punti aperti: [PREFLOP_ARCHITECTURE_DECISION_LOG.md](PREFLOP_ARCHITECTURE_DECISION_LOG.md)
+Decisioni successive e punti aperti: [PREFLOP_ARCHITECTURE_DECISION_LOG.md](../../research/PREFLOP_ARCHITECTURE_DECISION_LOG.md)
 (le domande della sezione 7 sono in gran parte risolte lì).
 
 Questo documento risponde a tre domande: quale algoritmo usare per il preflop Short Deck con
@@ -17,7 +17,7 @@ Il percorso V1–V23 non converge per cause strutturali, non per mancanza di ite
 
 1. **I bucket postflop sono dominati dal rumore.** La feature principale è un'equity Monte Carlo
    a 8 campioni contro una mano uniforme (`compute_distributional_strength_bucket`,
-   [hu_preflop_solver.cpp:1276](../../libs/preflop/src/hu_preflop_solver.cpp)). Con 8 campioni
+   [hu_preflop_solver.cpp:1276](../../../libs/preflop/src/hu_preflop_solver.cpp)). Con 8 campioni
    l'errore standard è circa `17,7 pp`; al Flop la V8 conserva 3 bit di equity, cioè bin da
    `12,5 pp`. Il bin è più stretto dell'errore: due mani con equity vera `0,45` e `0,55` finiscono
    in ordine invertito con probabilità vicina a quella di finire in ordine corretto. L'astrazione
@@ -37,7 +37,7 @@ Il percorso V1–V23 non converge per cause strutturali, non per mancanza di ite
    board-major dell'intero albero postflop costa `≈ 0,05 s` per board e copre tutte le 873 shape
    River insieme: la best response esatta nel gioco fisico è dell'ordine di **un'ora su 8 thread**,
    non di anni. Il kernel necessario (somme prefisse per rank con blocker) esiste già in
-   [postflop_solver.cpp:8750](../../libs/postflop/src/postflop_solver.cpp).
+   [postflop_solver.cpp:8750](../../../libs/postflop/src/postflop_solver.cpp).
 5. **V23 certifica un gioco diverso da quello da certificare.** Il `FiniteGame` con `K` deal per
    classe è un gioco a chance empirica di 648 deal su `7,1·10^10`; il profile EV CO cambia di
    `0,23a` fra `K=2` e `K=4`. Il certificato è esatto ma privo di trasferibilità, e la
@@ -55,17 +55,17 @@ CFR+/DCFR sull'astrazione") che non è mai stato eseguito.
 
 | Componente | Stato verificato | Riferimento |
 |---|---|---|
-| Averaging external sampling | Corretto dopo R2: peso `1·w_t` solo nel passaggio dell'avversario del traverser | [external_sampling.hpp](../../include/gtosd/core/external_sampling.hpp), [hu_preflop_solver.cpp:3718](../../libs/preflop/src/hu_preflop_solver.cpp) |
-| Chance | Deal fisico uniforme (hole+hole+board) per traversata | [hu_preflop_solver.cpp:944](../../libs/preflop/src/hu_preflop_solver.cpp) |
-| Chiave postflop V8 | Hash della history pubblica + bucket della street corrente; classe preflop e bucket precedenti dimenticati; board fisico non nella chiave | [hu_preflop_solver.cpp:3440](../../libs/preflop/src/hu_preflop_solver.cpp) |
-| Feature bucket | MC8 vs mano uniforme; 16 bin di equity (riga 1368); V8 conserva 3/4/4 bit di equity su Flop/Turn/River (riga 1427); "profilo" e "texture" quasi mai rappresentati alle capacità `32/128/512` | [hu_preflop_solver.cpp:1204–1470](../../libs/preflop/src/hu_preflop_solver.cpp) |
+| Averaging external sampling | Corretto dopo R2: peso `1·w_t` solo nel passaggio dell'avversario del traverser | [external_sampling.hpp](../../../include/gtosd/core/external_sampling.hpp), [hu_preflop_solver.cpp:3718](../../../libs/preflop/src/hu_preflop_solver.cpp) |
+| Chance | Deal fisico uniforme (hole+hole+board) per traversata | [hu_preflop_solver.cpp:944](../../../libs/preflop/src/hu_preflop_solver.cpp) |
+| Chiave postflop V8 | Hash della history pubblica + bucket della street corrente; classe preflop e bucket precedenti dimenticati; board fisico non nella chiave | [hu_preflop_solver.cpp:3440](../../../libs/preflop/src/hu_preflop_solver.cpp) |
+| Feature bucket | MC8 vs mano uniforme; 16 bin di equity (riga 1368); V8 conserva 3/4/4 bit di equity su Flop/Turn/River (riga 1427); "profilo" e "texture" quasi mai rappresentati alle capacità `32/128/512` | [hu_preflop_solver.cpp:1204–1470](../../../libs/preflop/src/hu_preflop_solver.cpp) |
 | Census V17 | 10.060 contesti decisionali, 1,57 M information set; River `174,7` righe medie per contesto su 512 possibili | V22 fase 1 |
-| Media con massa zero | `average_strategy` restituisce la strategia corrente (regret-matched) quando `strategy_sum` è nulla: la "media" esportata di un infoset visitato solo come traverser è in realtà la policy corrente | [hu_preflop_solver.cpp:186–205](../../libs/preflop/src/hu_preflop_solver.cpp) |
-| Default algoritmo del trainer | `DiscountedMccfr1503` resta il default delle opzioni | [hu_preflop.hpp:1424](../../include/gtosd/preflop/hu_preflop.hpp) |
-| Tabella 7 carte esatta | Implementata e verificata (R3), 8.347.680 voci | [seven_card_table.cpp](../../libs/equity/src/seven_card_table.cpp) |
-| Kernel showdown vettoriale | Somme prefisse per rank e per carta, AVX2, nel solver postflop | [postflop_solver.cpp:8724–8825](../../libs/postflop/src/postflop_solver.cpp) |
+| Media con massa zero | `average_strategy` restituisce la strategia corrente (regret-matched) quando `strategy_sum` è nulla: la "media" esportata di un infoset visitato solo come traverser è in realtà la policy corrente | [hu_preflop_solver.cpp:186–205](../../../libs/preflop/src/hu_preflop_solver.cpp) |
+| Default algoritmo del trainer | `DiscountedMccfr1503` resta il default delle opzioni | [hu_preflop.hpp:1424](../../../include/gtosd/preflop/hu_preflop.hpp) |
+| Tabella 7 carte esatta | Implementata e verificata (R3), 8.347.680 voci | [seven_card_table.cpp](../../../libs/equity/src/seven_card_table.cpp) |
+| Kernel showdown vettoriale | Somme prefisse per rank e per carta, AVX2, nel solver postflop | [postflop_solver.cpp:8724–8825](../../../libs/postflop/src/postflop_solver.cpp) |
 | Certificatore | Root-by-root River (V21), board-batched (V22): `0,31 s` per sottogioco | V22 report |
-| Gioco astratto V23 | `FiniteGame` esplicito con corpus di `K` deal per classe CO | [hu_preflop_abstract_game.cpp](../../libs/preflop/src/hu_preflop_abstract_game.cpp) |
+| Gioco astratto V23 | `FiniteGame` esplicito con corpus di `K` deal per classe CO | [hu_preflop_abstract_game.cpp](../../../libs/preflop/src/hu_preflop_abstract_game.cpp) |
 
 Il census V17 mostra che l'astrazione V8 è **quasi saturata**: la mancata convergenza non dipende
 da information set mai visitati ma dalla qualità della partizione e dal rumore di ogni update.
@@ -346,9 +346,9 @@ Tutto il materiale resta come evidenza e oracle; HU10 a corpus resta il test di 
 ### 5.8 Correzioni minori al trainer corrente (se resta come baseline)
 
 - `average_strategy` con massa nulla: restituire uniforme e contare il caso, non la strategia
-  corrente ([hu_preflop_solver.cpp:205](../../libs/preflop/src/hu_preflop_solver.cpp)).
+  corrente ([hu_preflop_solver.cpp:205](../../../libs/preflop/src/hu_preflop_solver.cpp)).
 - Default `sampling_algorithm` da `DiscountedMccfr1503` a `LinearMccfr`
-  ([hu_preflop.hpp:1424](../../include/gtosd/preflop/hu_preflop.hpp)).
+  ([hu_preflop.hpp:1424](../../../include/gtosd/preflop/hu_preflop.hpp)).
 - River: equity esatta su 406 mani al posto di MC8, a costo quasi nullo.
 
 ## 6. Ordine di esecuzione proposto
@@ -390,8 +390,8 @@ Tutto il materiale resta come evidenza e oracle; HU10 a corpus resta il test di 
 - Documenti interni storici: studio CPU/RAM, README R6, roadmap V20, fase V22 e
   report HU10 V23. Sono stati rimossi dal working tree il 2026-09-15 e restano
   nel tag `preflop-legacy-es-2026-09-15`; percorsi e comandi di recupero sono
-  nell'[indice legacy](PREFLOP_LEGACY_INDEX.md).
+  nell'[indice legacy](../preflop-es-2026-09/PREFLOP_LEGACY_INDEX.md).
   Questi documenti sono stati rimossi dal working tree il 2026-09-15 e restano leggibili al tag
   `preflop-legacy-es-2026-09-15` (`git show preflop-legacy-es-2026-09-15:docs/research/<percorso>`);
-  vedi [PREFLOP_LEGACY_INDEX.md](PREFLOP_LEGACY_INDEX.md). Le citazioni di codice
+  vedi [PREFLOP_LEGACY_INDEX.md](../preflop-es-2026-09/PREFLOP_LEGACY_INDEX.md). Le citazioni di codice
   (`libs/preflop/...`) restano valide finché il legacy è in build.

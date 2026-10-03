@@ -5,7 +5,7 @@
 > i ceiling temporali restano evidenza; classificazioni e scarti che dipendono
 > dal cap memoria devono essere rivalutati con la futura metrica solver-owned.
 > Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## 1. Stato iniziale
 

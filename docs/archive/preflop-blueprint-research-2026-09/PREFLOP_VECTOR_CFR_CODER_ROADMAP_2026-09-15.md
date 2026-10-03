@@ -4,9 +4,9 @@ Data: 2026-09-15
 Stato originario: `ROADMAP CONGELATA`. Stato corrente al 2026-09-21: P0–P8
 completate, P9 aperta; HU10 e HU20 qualificati, HU30 e HU40 non qualificati.
 L'audit corrente è in
-[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](preflop_vector_cfr/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
+[HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](../history7-suite-2026-09/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md).
 Documenti vincolanti: [analisi](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md) e
-[registro decisioni](PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D32). In caso di
+[registro decisioni](../../research/PREFLOP_ARCHITECTURE_DECISION_LOG.md) (decisioni D1–D32). In caso di
 conflitto fra questo documento e il registro, vale il registro, che è più recente.
 
 ## 1. Mandato e risultato richiesto

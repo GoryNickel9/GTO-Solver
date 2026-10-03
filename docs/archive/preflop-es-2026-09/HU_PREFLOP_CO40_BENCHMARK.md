@@ -7,9 +7,9 @@ scientifico resta FAIL**.
 > **Aggiornamento del 2026-09-15.** Il programma external sampling descritto dalla sezione
 > "Primo solve R9-C v1" in giù è chiuso. I gate di questo documento basati sulle frequenze Monker
 > non sono più in vigore: valgono le decisioni D1–D3 del
-> [registro](research/PREFLOP_ARCHITECTURE_DECISION_LOG.md). Restano validi fixture, contratto
+> [registro](../../research/PREFLOP_ARCHITECTURE_DECISION_LOG.md). Restano validi fixture, contratto
 > monetario, provenienza e conteggi dell'albero. Evidenze rimosse: vedi
-> [PREFLOP_LEGACY_INDEX.md](research/PREFLOP_LEGACY_INDEX.md).
+> [PREFLOP_LEGACY_INDEX.md](PREFLOP_LEGACY_INDEX.md).
 
 Fixture SHA-256:
 `D835898479493B24FAC3CE2686B43119CBBED40B5CEF40A01E25BC62B2DBE811`.

@@ -633,7 +633,7 @@ come riferimenti fixture/provenienza GTO+, non come costanti globali del motore.
 ### 14.1 Documenti normativi da correggere
 
 - `README.md`;
-- `docs/IMPLEMENTATION_STATUS.md`;
+- `docs/archive/legacy-postflop-2026-07-09/IMPLEMENTATION_STATUS.md`;
 - `docs/specifications/PERFORMANCE.md`;
 - `docs/specifications/VALIDATION.md`;
 - `docs/GTO_PLUS_CONVERGENCE_BENCHMARK.md`;

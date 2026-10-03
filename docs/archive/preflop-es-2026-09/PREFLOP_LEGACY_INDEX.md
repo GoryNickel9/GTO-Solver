@@ -2,10 +2,10 @@
 
 Il programma preflop basato su external sampling MCCFR (fasi R0–R6, versioni V1–V23, 6–15
 settembre 2026) è stato chiuso con la decisione registrata in
-[PREFLOP_ARCHITECTURE_DECISION_LOG.md](PREFLOP_ARCHITECTURE_DECISION_LOG.md) e sostituito dal
+[PREFLOP_ARCHITECTURE_DECISION_LOG.md](../../research/PREFLOP_ARCHITECTURE_DECISION_LOG.md) e sostituito dal
 solver vettoriale descritto in
-[HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md](HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md)
-e nella [roadmap P0–P10](PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md).
+[HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md](../preflop-blueprint-research-2026-09/HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md)
+e nella [roadmap P0–P10](../preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md).
 
 I documenti del programma chiuso sono stati rimossi dal working tree perché contenevano gate,
 baseline e roadmap in contraddizione con le decisioni correnti (D1–D3: gate di exploitability
@@ -37,9 +37,9 @@ disponibili fino al gate P9; le altre 14 possono essere cancellate.
 
 ## Cosa resta in uso
 
-- `docs/research/preflop_r0_20260910/`: contratto monetario CO40 e hash delle fixture, ancora
+- `docs/archive/preflop-es-2026-09/preflop_r0_20260910/`: contratto monetario CO40 e hash delle fixture, ancora
   validi.
-- `docs/HU_PREFLOP_CO40_BENCHMARK.md`: fixture e contratto; la sezione dei gate rimanda alle
+- `docs/archive/preflop-es-2026-09/HU_PREFLOP_CO40_BENCHMARK.md`: fixture e contratto; la sezione dei gate rimanda alle
   decisioni correnti.
 - `benchmarks/fixtures/hu_preflop_*.json`, `schemas/hu_preflop_*.schema.json`: usati dal codice
   legacy ancora in build (stadio 1 di D20) e dal comparatore.

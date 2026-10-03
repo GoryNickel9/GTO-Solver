@@ -10,7 +10,7 @@ giocatore usa ora un batch indipendente, estratto dopo l'aggiornamento della
 strategia avversaria. Riutilizzare il primo batch introduceva un estimatore
 condizionalmente distorto. Checkpoint versione 2; i checkpoint precedenti non
 sono riprendibili. Prova esatta del difetto e risultati sui tre stack in
-[P9_CONVERGENCE_DIAGNOSIS.md](P9_CONVERGENCE_DIAGNOSIS.md).
+[P9_CONVERGENCE_DIAGNOSIS.md](../../archive/preflop-blueprint-research-2026-09/P9_CONVERGENCE_DIAGNOSIS.md).
 
 ## 1. Cosa è stato prodotto
 
@@ -113,7 +113,7 @@ numeri: la stima naive (limite superiore in attesa) e il **limite inferiore senz
 eroe con la strategia media al preflop e best response esatta dal flop in poi, non distorto e mai
 sotto l'EV. **Correzione 2026-09-19:** con tutti i flop enumerati (P7) la naive coincide con la
 best response esatta; il limite inferiore mantiene invece il preflop dell'eroe congelato e
-puo restare strettamente minore. Il [replay CO40 class](NASH_AUDIT_2026-09-19.md#8-esito-della-misura-completa-e-decisione-sul-candidato)
+puo restare strettamente minore. Il [replay CO40 class](../../archive/preflop-blueprint-research-2026-09/NASH_AUDIT_2026-09-19.md#8-esito-della-misura-completa-e-decisione-sul-candidato)
 mostra 0,500181 contro 0,180378 ante per CO con copertura completa. Per la
 regola D3 il gate usa la stima naive più semiampiezza, che richiede `M ≈ 1.000` flop perché il
 bias scenda sotto 0,015 a (§7).

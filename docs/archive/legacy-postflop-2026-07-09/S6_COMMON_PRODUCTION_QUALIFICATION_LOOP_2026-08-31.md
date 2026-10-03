@@ -3,7 +3,7 @@
 > **CORREZIONE SEMANTICA 2026-09-04 — REPORT STORICO.** Il REJECT temporale S6
 > resta valido perché nasce dagli early gate di tempo/iterazioni. Le diciture
 > RAM PASS e cap desktop non sono più normative. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## Analisi
 

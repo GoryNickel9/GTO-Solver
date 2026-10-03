@@ -4,7 +4,7 @@
 > byte misurati restano evidenza. Tutti i PASS/FAIL che confrontano
 > `solver_state_bytes` o Peak RSS con “Memory needed for solving”, e ogni cap
 > desktop 2 GB implicito, sono ritirati. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **STATO: REGISTRO ENGINEERING / NON SPECIFICA NORMATIVA.** Le sezioni
 > cronologiche conservano misure e decisioni storiche; riaprire un'ottimizzazione
@@ -483,13 +483,13 @@ con gate per fase (smoke bit-exact → dEV ≤ 1e-6 → AhKhQh ±1e-6 → suite 
 Target <90 s tra fase D ed E/F; 17.66 s GTO+ richiede passi oltre (§5 del piano).
 
 **Stato finale sessione: 187.3 s (miglior run pulito), tutti i gate bit-exact,
-suite completa PASS; piano di riscrittura pronto in docs/ARCHITECTURAL_REWRITE_PLAN.md.**
+suite completa PASS; piano di riscrittura pronto in docs/archive/legacy-postflop-2026-07-09/ARCHITECTURAL_REWRITE_PLAN.md.**
 
 ---
 
 ## 8. Fase A del piano di riscrittura — out-param value flow (2026-08-06)
 
-Eseguita la Fase A di `docs/ARCHITECTURAL_REWRITE_PLAN.md`: eliminazione delle copie
+Eseguita la Fase A di `docs/archive/legacy-postflop-2026-07-09/ARCHITECTURAL_REWRITE_PLAN.md`: eliminazione delle copie
 `Result<ComboVector>` (5 KB/nodo) lungo la ricorsione.
 
 ### Modifiche (tutte nel path fisico, DAG invariato)
@@ -636,7 +636,7 @@ comprimibile n−1 (valori non normalizzati, nessuna proprietà somma-zero sui r
 float16 è fuori gate (1e-3 vs 1e-6) → **667MB è il pavimento del nostro formato**.
 
 **Decisione**: mantenere 667MB (fixture intatta, bit-exact) e concentrare gli sforzi
-sul **timing** (Fase D). Documento completo: `docs/GTO_PLUS_MEMORY_ANALYSIS.md`.
+sul **timing** (Fase D). Documento completo: `docs/archive/legacy-postflop-2026-07-09/GTO_PLUS_MEMORY_ANALYSIS.md`.
 
 ## §8.6 Fase D — coda condivisa pull-based + river split (esiti)
 

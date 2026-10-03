@@ -9,7 +9,7 @@
 > `0,02094` per chiavi e `0,69393` per reach; i gain candidati sono negativi. Questi numeri
 > verificano reporting e isolamento dei corpus, non la qualità della soluzione. Il certificato
 > dichiara `physical_nashconv_certified=false`. Report:
-> [`V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md`](research/preflop_r6_20260910/V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md).
+> [`V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md`](../../research/preflop_r6_20260910/V23_TRE_VALIDATION_IMPLEMENTATION_2026-09-15.md).
 
 > **V23 NashConv astratta 2026-09-15 — HU10 K8 TARGET RAGGIUNTO.** La chiave V23
 > conserva classe preflop e history bucket `32/128/512`; l'audit V8 espone sei omissioni, quello
@@ -33,8 +33,8 @@
 > supporto non appreso invece di nasconderlo dietro un lookup implicito. Il runner T/R/E ora usa
 > lo stesso contratto per validare fuori campione risposte congelate.
 > Protocollo e report:
-> [`V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md`](research/preflop_r6_20260910/V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md) e
-> [`V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md`](research/preflop_r6_20260910/V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md).
+> [`V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md`](../../research/preflop_r6_20260910/V23_ABSTRACT_PERFECT_RECALL_NASHCONV_PROTOCOL_2026-09-14.md) e
+> [`V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md`](../../research/preflop_r6_20260910/V23_HU10_ABSTRACT_NASHCONV_REPORT_2026-09-15.md).
 
 > **V20 trace paired V18 AA 2026-09-14 — PASS; EV LOCALE INCONCLUSIVO.** La replica V18 seed 1
 > coincide bit per bit per strategia, regret, vantaggi root, algoritmo e root EV. Con 10.000 deal
@@ -42,7 +42,7 @@
 > `[-0,1426a; +0,5960a]`; sulla continuation corrente Raise 6 precede Call di `0,1052a`, ancora
 > senza separazione. Il precedente vantaggio di Raise 6 su 188 campioni non si replica. La best
 > response resta campionata e `normalized_nashconv=0` non certifica convergenza. Report:
-> [`V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md).
+> [`V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md`](../../research/preflop_r6_20260910/V20_V18_AA_PAIRED_TRACE_REPORT_2026-09-14.md).
 
 > **V20 root decision trace 2026-09-14 — ENGINEERING PASS; ACTION EV INCONCLUSIVE.**
 > La trace post-training forza le cinque azioni root sugli stessi deal fisici e valuta sia la
@@ -52,8 +52,8 @@
 > alternativa osservata non superano però l'intervallo simultaneo al 95%. Build Release, test
 > mirato con 4.537 asserzioni e suite HU 8/8 passano. Il contratto completo Monker è
 > permanentemente indisponibile; WMAE e TV verso Monker restano diagnostiche. Report e roadmap:
-> [`V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md) e
-> [`V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md`](research/preflop_r6_20260910/V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md).
+> [`V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md`](../../research/preflop_r6_20260910/V20_ROOT_DECISION_TRACE_REPORT_2026-09-14.md) e
+> [`V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md`](../../research/preflop_r6_20260910/V20_POST_TRACE_SOLVER_IMPROVEMENT_ROADMAP_2026-09-14.md).
 
 > **HU preflop R6 2026-09-14 — V18 E V19 RESPINTE; V17 BASELINE.** V18 migliora la WMAE media
 > del `4,04%`, ma peggiora la TV fra seed del `18,92%`. V19 aggiunge telemetria action-conditioned
@@ -62,10 +62,10 @@
 > da `10,9453 pp` a `12,1140 pp` e gli errori Call/Fold raggiunti da 7 a 10. Il Gate C fallisce.
 > I run corretti restano sotto 44,1 minuti e 2,81 GB private per seed; il vecchio `memory_failure`
 > usava per errore perfect recall e non era matched. Nessun default, viewer o policy pubblicata cambia. Registri:
-> [`V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md`](research/preflop_r6_20260910/V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md) e
-> [`V19_FASE_A_AUDIT_2026-09-13.md`](research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md),
-> [`V19_FASE_B_CRN_AUDIT_2026-09-14.md`](research/preflop_r6_20260910/V19_FASE_B_CRN_AUDIT_2026-09-14.md) e
-> [`V19_COMPLETION_REPORT_2026-09-14.md`](research/preflop_r6_20260910/V19_COMPLETION_REPORT_2026-09-14.md).
+> [`V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md`](../../research/preflop_r6_20260910/V18_REJECTION_AND_NEXT_GATE_DECISION_2026-09-13.md) e
+> [`V19_FASE_A_AUDIT_2026-09-13.md`](../../research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md),
+> [`V19_FASE_B_CRN_AUDIT_2026-09-14.md`](../../research/preflop_r6_20260910/V19_FASE_B_CRN_AUDIT_2026-09-14.md) e
+> [`V19_COMPLETION_REPORT_2026-09-14.md`](../../research/preflop_r6_20260910/V19_COMPLETION_REPORT_2026-09-14.md).
 
 > **R9-C decomposizione exact 2026-09-09 — IN CORSO.** Blueprint preflop denso,
 > reach sulle 630 combo fisiche, 573 flop canonici/5.157 task, resource estimator,
@@ -248,7 +248,7 @@
 > page-backed resta disponibile soltanto come opt-in esplicito e indipendente
 > tramite `resident_working_set_budget_bytes`. Stato,
 > dEV, root/layout, exact outcomes e test restano invariati. Piano e autorità:
-> [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Production DCFR integration 2026-09-01 — checkpoint di qualificazione.** Il contratto
 > comune AHK/TH/TST e' ora `production_dcfr`: exact alternating signed DCFR
@@ -282,8 +282,8 @@
 > physical-orbit con range asimmetrici. Il workflow black-box GTO+ è
 > `PARTIALLY AUTOMATABLE` e richiede un marker manuale. Report:
 > [`S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md`](S6_COMMON_PRODUCTION_QUALIFICATION_LOOP_2026-08-31.md),
-> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](archive/legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
-> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](archive/legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
+> [`TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md`](../legacy-memory-gate/TST_STRICT_2GB_BOTTLENECK_ATTRIBUTION_AND_FEASIBILITY_LOOP_2026-08-31.md),
+> [`STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md`](../legacy-memory-gate/STRICT_2GB_EXACT_ALGORITHM_RECHECK_2026-09-01.md),
 > [`SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md`](SYNC_PCFR_POSTFLOP_TRAJECTORY_GATE_2026-09-01.md),
 > [`RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md`](RANGE_AWARE_PHYSICAL_ORBIT_ORACLE_2026-09-01.md) e
 > [`GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md`](GTO_PLUS_AUTONOMOUS_BLACK_BOX_DISCOVERY_AND_CHARACTERIZATION_2026-08-31.md).
@@ -422,7 +422,7 @@
 Aggiornato: 2026-09-01
 
 Le specifiche tecniche canoniche sono indicizzate in
-[`specifications/README.md`](specifications/README.md). Questo documento
+[`specifications/README.md`](../../specifications/README.md). Questo documento
 riassume gate ed evidenza di implementazione.
 
 ## Stato sintetico dei gate
@@ -1049,7 +1049,7 @@ circa 9,19 anni seriali per proiezione. Il prossimo componente richiesto è un r
 riusi policy query e transizioni fra board e shape, quindi aggreghi la best response per
 information set prima della massimizzazione.
 
-Protocollo e risultati: [V21 whole-game NashConv](research/preflop_r6_20260910/V21_WHOLE_GAME_NASHCONV_IMPLEMENTATION_REPORT_2026-09-14.md).
+Protocollo e risultati: [V21 whole-game NashConv](../../research/preflop_r6_20260910/V21_WHOLE_GAME_NASHCONV_IMPLEMENTATION_REPORT_2026-09-14.md).
 
 ## Certificatore NashConv generico V22 — 2026-09-14
 
@@ -1069,7 +1069,7 @@ Ogni nuovo solve serializza inoltre una stima separata con stato
 `certified: false`: due risposte MCCFR fattibili possono dimostrare sfruttabilità, ma non fornire
 un upper bound sull'errore. Build Release e suite HU passano con `15.956` asserzioni.
 
-Protocollo e risultati: [V22 NashConv generico](research/preflop_r6_20260910/V22_GENERIC_NASHCONV_CERTIFIER_PHASE1_REPORT_2026-09-14.md).
+Protocollo e risultati: [V22 NashConv generico](../../research/preflop_r6_20260910/V22_GENERIC_NASHCONV_CERTIFIER_PHASE1_REPORT_2026-09-14.md).
 
 Il follow-up board-batched condivide combo vive, showdown e chiavi private fra tutte le 633 River
 shape dello stesso board. L'enumerazione strided riduce la materializzazione del campione da circa
@@ -1078,20 +1078,20 @@ shape dello stesso board. L'enumerazione strided riduce la materializzazione del
 `146,34 giorni` ideali su otto worker. Il gate è `INFEASIBLE_EXACT_BOARD_BATCHED`: il prossimo
 salto richiesto è il riuso dei prefissi pubblici e del reach fra history, non altra cache del board.
 
-Dettagli: [V22 reducer board-batched](research/preflop_r6_20260910/V22_CROSS_ROOT_BOARD_BATCHED_REDUCER_REPORT_2026-09-14.md).
+Dettagli: [V22 reducer board-batched](../../research/preflop_r6_20260910/V22_CROSS_ROOT_BOARD_BATCHED_REDUCER_REPORT_2026-09-14.md).
 
 ## Riavvio del programma preflop — 2026-09-15
 
 Il programma preflop external sampling (R0–R6, V1–V23) è chiuso senza candidato qualificato. I
 suoi documenti sono stati rimossi dal working tree e restano al tag
 `preflop-legacy-es-2026-09-15`; l'indice è in
-[PREFLOP_LEGACY_INDEX.md](research/PREFLOP_LEGACY_INDEX.md). I link delle sezioni precedenti di
+[PREFLOP_LEGACY_INDEX.md](../preflop-es-2026-09/PREFLOP_LEGACY_INDEX.md). I link delle sezioni precedenti di
 questo file verso `research/preflop_r*` si risolvono a quel tag.
 
-Il nuovo programma è definito da tre documenti: l'[analisi](research/HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md)
+Il nuovo programma è definito da tre documenti: l'[analisi](../preflop-blueprint-research-2026-09/HU_PREFLOP_ALGORITHM_AND_ABSTRACTION_ANALYSIS_2026-09-15.md)
 (diagnosi e architettura: astrazione precalcolata con feature esatte, CFR vettoriale con
 campionamento del board, best response esatta nel gioco fisico), il
-[registro delle decisioni](research/PREFLOP_ARCHITECTURE_DECISION_LOG.md) e la
-[roadmap P0–P10](research/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). Lo stato di
-avanzamento è nel [diario dell'agent](research/preflop_vector_cfr/PROGRESS_LOG.md). Il codice
+[registro delle decisioni](../../research/PREFLOP_ARCHITECTURE_DECISION_LOG.md) e la
+[roadmap P0–P10](../preflop-blueprint-research-2026-09/PREFLOP_VECTOR_CFR_CODER_ROADMAP_2026-09-15.md). Lo stato di
+avanzamento è nel [diario dell'agent](../../research/preflop_vector_cfr/PROGRESS_LOG.md). Il codice
 legacy in `libs/preflop/` resta in build come oracolo fino allo stadio 1 dell'archiviazione (D20).

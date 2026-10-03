@@ -3,7 +3,7 @@
 > **CORREZIONE SEMANTICA 2026-09-04.** Il controesempio di correttezza resta
 > valido. Il successivo rinvio al contratto strict-2GB è invece storico e non
 > governa il prossimo lavoro. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## Analisi
 

@@ -28,7 +28,7 @@ o il significato delle metriche.
 | Richiesta corrente e istruzioni applicabili | Definiscono il mandato; prevalgono sulle restrizioni di una campagna precedente |
 | Questa roadmap | Definisce esecuzione, verifiche e decisioni della nuova ricerca postflop |
 | [Report di ricerca](POSTFLOP_RESEARCH_DECISION_2026-09-10.md) | Fornisce diagnosi, dati, fonti e limiti delle evidenze disponibili |
-| [Roadmap del 5 settembre](PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_ROADMAP_2026-09-05.md) | Conserva la storia della campagna precedente; non vieta i nuovi algoritmi qui autorizzati |
+| [Roadmap del 5 settembre](archive/legacy-postflop-2026-07-09/PRODUCTION_DCFR_PRODUCT_OPTIMIZATION_ROADMAP_2026-09-05.md) | Conserva la storia della campagna precedente; non vieta i nuovi algoritmi qui autorizzati |
 | [Contratti card abstraction e subgame](specifications/CARD_ABSTRACTION_AND_SUBGAME_CONTRACT.md) | Descrivono le interfacce esistenti; ogni nuova semantica richiede un contratto e una versione espliciti |
 
 Le fasi preflop presenti nella roadmap precedente non vengono modificate da

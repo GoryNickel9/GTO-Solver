@@ -4,7 +4,7 @@
 > locale resta supportato dalle misure; il precedente “RAM gate” non è invece
 > normativo, perché il riferimento GTO+ non è Peak RSS e non esiste un cap
 > desktop generale. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 Data: 2026-08-31
 

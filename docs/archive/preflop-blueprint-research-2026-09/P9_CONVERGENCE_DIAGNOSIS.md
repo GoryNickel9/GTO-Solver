@@ -5,7 +5,7 @@
 > casi da riconoscere nel codice. HU30 `history7` a 32.000 ha BR astratta esatta
 > 0,034874091 a e BR fisica esatta 0,167619129 a. La differenza di 0,132745038 a
 > localizza il problema dominante nella rappresentazione. L'audit causale
-> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md)
+> [HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md](../history7-suite-2026-09/HU30_BUCKET_CAUSAL_AUDIT_2026-09-21.md)
 > trova un costo locale dimostrato nel numero di bucket e un contributo forte ma
 > non isolato nel cap river di `history7`. L'arresto del clustering non è una
 > causa materiale; le feature flop identiche producono una perdita trascurabile

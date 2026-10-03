@@ -5,7 +5,7 @@
 > RSS né, senza prova ulteriore, `solver_state_bytes`. I confronti numerici e i
 > PASS/FAIL memoria di questo report non dimostrano parità; breakdown, profili e
 > misure grezze restano evidenza tecnica. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **AGGIORNAMENTO OPERATIVO 2026-08-14.** Il problema `solver_state_bytes` è
 > chiuso sui tre benchmark mediante il formato core packed 13+11 da 3
@@ -144,7 +144,7 @@ il contratto. Il collo reale del benchmark è il **timing** (164s vs 17.66s = 9.
 ## 8. Riferimenti
 
 - Fixture: `benchmarks/fixtures/gto_plus_th7d6s_101.json` (+ `_smoke.json`)
-- Piano: `docs/ARCHITECTURAL_REWRITE_PLAN.md` (roadmap A–F)
+- Piano: `docs/archive/legacy-postflop-2026-07-09/ARCHITECTURAL_REWRITE_PLAN.md` (roadmap A–F)
 - Journey: `speed_optimization_journey.md` (§8.3 principio 399MB, §8.4 RAM, §8.5 analisi)
 - Screenshot: `.reasonix/attachments/clipboard-20260806-225859.895719-000001.png`
 - Dati misurati: `out/th7d6s_current.json` (164.0s, peak 867,954,688)

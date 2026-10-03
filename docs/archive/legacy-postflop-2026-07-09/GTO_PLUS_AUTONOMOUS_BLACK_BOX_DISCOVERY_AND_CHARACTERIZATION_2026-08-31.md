@@ -5,7 +5,7 @@
 > non autorizza un gate Peak RSS; la formula interna resta irrisolta. I campioni
 > black-box e la classificazione di automazione di questo report restano validi.
 > Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 ## Analisi
 

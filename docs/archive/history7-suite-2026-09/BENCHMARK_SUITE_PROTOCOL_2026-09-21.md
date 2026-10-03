@@ -199,7 +199,7 @@ su HU30/HU40 il 75-80 % dell'exploitability fisica e' errore di rappresentazione
 64.000 iterazioni: 0,0417 / 0,2383. La best response astratta su un campione di flop
 (`--sample-flops`) non e' ammessa per l'accettazione: sovrastima il valore esatto di 2-7 volte e il
 fattore dipende dal benchmark e dal seed (taratura del 2026-09-28, sezione 5.4.14 di
-[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](MEMORY_TIME_OPTIMIZATION_2026-09-21.md)).
+[MEMORY_TIME_OPTIMIZATION_2026-09-21.md](../../research/preflop_vector_cfr/MEMORY_TIME_OPTIMIZATION_2026-09-21.md)).
 
 **Decisione dell'utente del 2026-09-28, 12:40 (sostituisce il limite del 5 %).** Il limite superiore
 di 0,15 a sul certificato fisico e' tolto: un benchmark e' accettato con la sola best response
@@ -212,7 +212,7 @@ valore esatto non e' calcolabile con lo stesso metodo e servira' un limite super
 **Precisazione dell'utente del 2026-09-28.** Il limite di memoria (8 GiB) e l'obiettivo di 35 minuti
 valgono solo per la suite di benchmark HU10-HU40 sul PC di sviluppo; non sono regole del prodotto,
 che girera' su un server da 52 core e 256 GB e dovra' arrivare al 6-way (vedi
-[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](MONKER_RECIPE_REPRODUCTION_2026-09-28.md)).
+[MONKER_RECIPE_REPRODUCTION_2026-09-28.md](../../research/preflop_vector_cfr/MONKER_RECIPE_REPRODUCTION_2026-09-28.md)).
 
 **Build e test (decisione dell'utente del 2026-09-27).** Build, test unitari e sonde diagnostiche
 sono ammessi in qualsiasi momento fra le 00:00 e le 21:00, purche' non sia in corso un run di cui si

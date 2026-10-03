@@ -4,7 +4,7 @@
 > stato derivati restano evidenza, ma il cap 2 GB usato per respingere la
 > famiglia era inesistente. L'esito memory-based non è più corrente; servono un
 > ledger solver-owned e un nuovo pre-gate. Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 Data: 2026-08-31
 Decisione: **PREDICTIVE FAMILY EXHAUSTED UNDER THE FROZEN RAM/STATE CONTRACT — nessuna promozione production**
@@ -214,7 +214,7 @@ la candidate prima dei solver benchmark, come richiesto dal RAM kill gate.
 ## 8. Small formula oracle
 
 È stato aggiunto l'oracle test-only
-[`predictive_cfr_oracle_tests.cpp`](../tests/predictive_cfr_oracle_tests.cpp).
+[`predictive_cfr_oracle_tests.cpp`](../../../tests/predictive_cfr_oracle_tests.cpp).
 Non espone enum, flag o dispatch production. Verifica:
 
 - 2 e 3 azioni;

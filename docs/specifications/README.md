@@ -30,7 +30,7 @@ calcolo del solver.
 - [VALIDATION.md](VALIDATION.md): gerarchia delle prove e gate esterni.
 - [TESTING.md](TESTING.md): suite, preset e copertura.
 - [PERFORMANCE.md](PERFORMANCE.md): protocollo di benchmark e memoria.
-- [DESKTOP_UI.md](DESKTOP_UI.md): workflow Qt e semantica dei risultati.
+- [DESKTOP_UI.md](../archive/legacy-postflop-2026-07-09/DESKTOP_UI.md): workflow Qt e semantica dei risultati.
 - [CLI.md](CLI.md): comandi supportati e contratti di uscita.
 - [LIMITATIONS.md](LIMITATIONS.md): limiti correnti dichiarati.
 - [CHANGELOG.md](CHANGELOG.md): evoluzione delle specifiche.
@@ -43,7 +43,7 @@ In caso di conflitto:
 2. questi documenti definiscono il contratto intenzionale corrente;
 3. [GTO_PLUS_PARITY_JOURNEY.md](../GTO_PLUS_PARITY_JOURNEY.md) governa il gate
    temporaneo di parità GTO+;
-4. [ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md](../ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md)
+4. [ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md](../archive/legacy-postflop-2026-07-09/ROADMAP_HU_SHORT_DECK_GTO_SOLVER.md)
    governa ordine e dipendenze delle fasi;
 5. i report di completamento sono evidenza storica e non sovrascrivono un
    contratto successivo.

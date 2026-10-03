@@ -6,7 +6,7 @@
 > questo design non prevede né autorizza storage o kernel GPU.
 
 **Data**: 2026-08-06 · **Stato**: DESIGN (da approvare prima dell'esecuzione)
-**Riferimento**: `docs/ARCHITECTURAL_REWRITE_PLAN.md` §5 (oggi 5 righe) + misure della sessione.
+**Riferimento**: `docs/archive/legacy-postflop-2026-07-09/ARCHITECTURAL_REWRITE_PLAN.md` §5 (oggi 5 righe) + misure della sessione.
 **Obiettivo**: dimezzare il tempo di `run_solver` th7d6s (~164 s → <90 s) attaccando il collo
 strutturale: la latenza DRAM degli accessi sparsi allo stato.
 

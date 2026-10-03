@@ -4,7 +4,7 @@
 > corrente è in `specifications/TREE_FORMAT.md`; i conteggi v1 qui presenti
 > non descrivono la baseline naturale aggiornata.
 
-Contratto canonico corrente: [`specifications/TREE_FORMAT.md`](specifications/TREE_FORMAT.md).
+Contratto canonico corrente: [`specifications/TREE_FORMAT.md`](../../specifications/TREE_FORMAT.md).
 
 I conteggi AhKhQh in questo documento appartengono alla fixture storica
 `GTP-AHKHQH-001` senza raise. Il gate GTO+ corrente usa la fixture corretta

@@ -4,7 +4,7 @@
 > sono display “Memory needed for solving”, non Peak RSS o stato persistente.
 > I byte GTOSD restano misure; i giudizi comparativi memoria sono ritirati.
 > Vedere il
-> [`piano di correzione`](GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
+> [`piano di correzione`](../../GTO_PLUS_SOLVER_MEMORY_SEMANTICS_AND_GATE_CORRECTION_PLAN_2026-09-03.md).
 
 > **Stato storico/superseded.** Questa analisi precede il freeze production
 > comune. Le tre fixture qui misurate non condividevano ancora tutti i parametri
