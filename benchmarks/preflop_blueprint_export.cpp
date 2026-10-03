@@ -15,7 +15,6 @@
 #include "gtosd/preflop_blueprint/chart_export.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/policy_query.hpp"
 #include "gtosd/preflop_blueprint/postflop_tree_export.hpp"
@@ -103,7 +102,6 @@ pb::Certificate load_certificate(const std::filesystem::path &path) {
   certificate.boards = json.value("boards", 0U);
   certificate.tree_fingerprint = json.value("tree_fingerprint", "");
   certificate.policy_fingerprint = json.value("policy_fingerprint", "");
-  certificate.history_map_fingerprint = json.value("history_map_fingerprint", "");
   certificate.report.max_gain = json.value("max_gain", 0.0);
   certificate.report.max_gain_lower = json.value("max_gain_lower", 0.0);
   certificate.report.nashconv = json.value("nashconv", 0.0);
@@ -123,7 +121,6 @@ int main(const int argc, char **argv) {
     std::filesystem::path resources_dir;
     std::filesystem::path buckets_dir;
     std::filesystem::path policy_path;
-    std::filesystem::path history_rows_path;
     std::filesystem::path certificate_path;
     std::filesystem::path output_path;
     std::string query_history;
@@ -150,8 +147,6 @@ int main(const int argc, char **argv) {
         buckets_dir = std::filesystem::path(value);
       } else if (name == "--policy") {
         policy_path = std::filesystem::path(value);
-      } else if (name == "--history-rows") {
-        history_rows_path = std::filesystem::path(value);
       } else if (name == "--certificate") {
         certificate_path = std::filesystem::path(value);
       } else if (name == "--output") {
@@ -205,23 +200,8 @@ int main(const int argc, char **argv) {
                                pb::policy_file_error_name(loaded.error()));
     }
     const auto &policy = *loaded.value();
-    std::optional<pb::HistoryBucketRows> history_rows;
-    if (!history_rows_path.empty()) {
-      auto loaded_history = pb::HistoryBucketRows::load(history_rows_path);
-      if (!loaded_history) {
-        throw std::runtime_error(std::string("history rows rejected: ") +
-                                 pb::kernel_error_name(loaded_history.error()));
-      }
-      history_rows.emplace(std::move(loaded_history.value()));
-      if (history_rows->count(ca::BucketStreet::Flop) != info.flop_capacity ||
-          history_rows->count(ca::BucketStreet::Turn) != info.turn_capacity ||
-          history_rows->count(ca::BucketStreet::River) != info.river_capacity) {
-        throw std::runtime_error("history rows do not match policy capacities");
-      }
-    }
     options.policy_source = info.source;
-    options.abstraction = (history_rows ? "history_rows_" : "kmeans_buckets_") +
-                          std::to_string(info.flop_capacity) + "_" +
+    options.abstraction = "kmeans_buckets_" + std::to_string(info.flop_capacity) + "_" +
                           std::to_string(info.turn_capacity) + "_" +
                           std::to_string(info.river_capacity);
 
@@ -257,7 +237,6 @@ int main(const int argc, char **argv) {
       resources.flop = &flop.value();
       resources.turn = &turn.value();
       resources.river = &river.value();
-      resources.history_rows = history_rows ? &*history_rows : nullptr;
       const pb::QueryWorker worker(compiled.value(), policy, resources, options.threads);
       Json ready;
       ready["status"] = "ready";
@@ -268,8 +247,6 @@ int main(const int argc, char **argv) {
       ready["policySource"] = info.source;
       ready["iterations"] = options.iterations;
       ready["capacities"] = {info.flop_capacity, info.turn_capacity, info.river_capacity};
-      ready["historyMapFingerprint"] =
-          history_rows ? history_rows->fingerprint() : std::string{};
       std::cout << ready.dump() << '\n' << std::flush;
       std::string line;
       while (std::getline(std::cin, line)) {
@@ -318,7 +295,6 @@ int main(const int argc, char **argv) {
       tables.flop = &flop.value();
       tables.turn = &turn.value();
       tables.river = &river.value();
-      tables.history_rows = history_rows ? &*history_rows : nullptr;
       pb::QueryRequest request;
       request.actions = split(query_history, ',');
       const auto hand = parse_cards(query_hand);
@@ -361,7 +337,6 @@ int main(const int argc, char **argv) {
     resources.flop = &flop.value();
     resources.turn = &turn.value();
     resources.river = &river.value();
-    resources.history_rows = history_rows ? &*history_rows : nullptr;
     pb::Certificate certificate;
     if (!certificate_path.empty()) {
       certificate = load_certificate(certificate_path);

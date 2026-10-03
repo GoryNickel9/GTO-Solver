@@ -12,7 +12,6 @@
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include <nlohmann/json.hpp>
@@ -66,8 +65,6 @@ int main(const int argc, char **argv) {
     std::filesystem::path output_path;
     bool uniform = false;
     bool use_class_rows = false;
-    std::filesystem::path history_rows_path;
-    std::optional<pb::HistoryBucketRows> history_rows;
     std::filesystem::path reference_path;
     std::optional<pb::ClassBucketRows> class_rows;
     double target_pot_percent = 1.0;
@@ -95,8 +92,6 @@ int main(const int argc, char **argv) {
         resources_dir = std::filesystem::path(value);
       } else if (name == "--buckets-dir") {
         buckets_dir = std::filesystem::path(value);
-      } else if (name == "--history-rows") {
-        history_rows_path = std::filesystem::path(value);
       } else if (name == "--policy") {
         policy_path = std::filesystem::path(value);
       } else if (name == "--output") {
@@ -168,15 +163,6 @@ int main(const int argc, char **argv) {
     resources.flop = &flop.value();
     resources.turn = &turn.value();
     resources.river = &river.value();
-    if (!history_rows_path.empty()) {
-      if (use_class_rows)
-        throw std::runtime_error("--history-rows and --class-rows are mutually exclusive");
-      auto mapped = pb::HistoryBucketRows::load(history_rows_path);
-      if (!mapped)
-        throw std::runtime_error("history map load failed");
-      history_rows.emplace(std::move(mapped.value()));
-      resources.history_rows = &*history_rows;
-    }
     if (use_class_rows) {
       if (uniform) {
         throw std::runtime_error(
@@ -191,12 +177,9 @@ int main(const int argc, char **argv) {
     }
 
     std::string policy_source = "uniform";
-    const auto flop_capacity = history_rows ? history_rows->count(ca::BucketStreet::Flop)
-                                            : flop.value().capacity();
-    const auto turn_capacity = history_rows ? history_rows->count(ca::BucketStreet::Turn)
-                                            : turn.value().capacity();
-    const auto river_capacity = history_rows ? history_rows->count(ca::BucketStreet::River)
-                                             : river.value().capacity();
+    const auto flop_capacity = flop.value().capacity();
+    const auto turn_capacity = turn.value().capacity();
+    const auto river_capacity = river.value().capacity();
     // The policy is held through a pointer: a uniform placeholder table followed by a
     // move-assignment of the loaded table kept two full tables alive (7.6 GB on HU20).
     std::unique_ptr<pb::BucketPolicy> policy_holder;
@@ -216,15 +199,6 @@ int main(const int argc, char **argv) {
     }
     const pb::BucketPolicy &policy = *policy_holder;
 
-    if (history_rows && !uniform) {
-      const auto &layout = policy.layout();
-      if (!policy_source.ends_with("|abstraction=" + std::string(history_rows->format_name()) +
-                                   "|map=" + history_rows->fingerprint()) ||
-          layout.flop_capacity != history_rows->count(ca::BucketStreet::Flop) ||
-          layout.turn_capacity != history_rows->count(ca::BucketStreet::Turn) ||
-          layout.river_capacity != history_rows->count(ca::BucketStreet::River))
-        throw std::runtime_error("history policy and map identity mismatch");
-    }
     if (use_class_rows) {
       const std::array<std::uint32_t, 3> counts{class_rows->count(ca::BucketStreet::Flop),
                                                 class_rows->count(ca::BucketStreet::Turn),
@@ -305,8 +279,6 @@ int main(const int argc, char **argv) {
                                {"peak_private_commit_bytes", peaks.peak_private_commit_bytes},
                                {"page_faults", peaks.page_faults}};
       json["policy_table_bytes"] = policy.table().size() * sizeof(double);
-      json["history_map_resident_bytes"] =
-          history_rows ? history_rows->resident_byte_size() : std::uint64_t{0};
       json["preparation_seconds"] = preparation_seconds;
     }
     if (!output_path.empty()) {
