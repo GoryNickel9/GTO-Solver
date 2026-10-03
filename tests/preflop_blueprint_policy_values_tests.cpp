@@ -585,6 +585,15 @@ void test_checkdown_leg(const Resources &resources, const ca::ThreeWayTable *tab
     std::cout << "  " << label << ": class_cache EV gap " << cache_gap << ", rake residual "
               << ev_sum + cache.value().rake_sum / cache.value().weight << '\n';
     require(cache_gap <= tolerance, std::string(label) + ": class_cache EVs equal the class solver's");
+    // Proposal (T5 D.1, 02/10): on the exact list the class_cache values satisfy the rake identity.
+    double cache_direct = 0.0;
+    for (std::size_t hero = 0; hero < seats; ++hero)
+      cache_direct += cache.value().heroes[hero].ev_direct / cache.value().weight;
+    const double cache_residual = cache_direct + cache.value().rake_sum / cache.value().weight;
+    std::cout << "  " << label << ": class_cache direct EV sum " << cache_direct
+              << ", residual " << cache_residual << " (gated, proposal)\n";
+    require(std::abs(cache_residual) <= tolerance,
+            std::string(label) + ": class_cache, the direct EVs sum to minus the rake on the exact list");
   }
   std::cout << "  " << label << " total " << seconds_since(started) << " s\n";
 }
