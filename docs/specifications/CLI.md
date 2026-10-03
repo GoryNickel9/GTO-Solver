@@ -163,8 +163,9 @@ gate.
 `gtosd.hu_preflop_action_conditioned_telemetry.v1`. Il canale è diagnostico,
 opt-in e non può essere usato per promuovere WMAE/TV su smoke brevi. La
 classificazione dei terminali, la semantica della massa osservata e il gate
-V19 sono documentati in
-[`V19_FASE_A_AUDIT_2026-09-13.md`](../research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md).
+V19 sono documentati in `V19_FASE_A_AUDIT_2026-09-13.md`, tolto dal working
+tree il 2026-09-15 e recuperabile con
+`git show preflop-legacy-es-2026-09-15:docs/research/preflop_r6_20260910/V19_FASE_A_AUDIT_2026-09-13.md`.
 
 `--global-common-random-numbers` è un percorso di ricerca per la modalità
 batched: ripristina lo stato RNG all'ingresso di ogni confronto d'azione del

@@ -80,10 +80,12 @@ Molti di questi test leggono due insiemi di file:
 Se mancano, i test escono con il codice 77 e CTest li segna come saltati. I
 comandi per costruirli sono nel `README.md` del repository.
 
-Due test sono lunghi e vanno lanciati a parte:
+Tre test sono lunghi e vanno lanciati a parte:
 
 - `gtosd_preflop_blueprint_trainer3_long_tests`, label `phase3_long`, circa
   30-60 minuti a 2 thread;
+- `gtosd_preflop_blueprint_policy_values_long_tests`, label `phase3_long`,
+  circa 15-30 minuti a 2 thread;
 - `gtosd_preflop_blueprint_monker_values_rake_exact_smoke`, label
   `research;monker_exact`, circa 13 minuti a 3 thread.
 

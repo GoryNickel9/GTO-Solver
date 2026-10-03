@@ -106,16 +106,20 @@ $b = ".\out\build\windows-release\benchmarks"
 Useful subsets, by CTest label:
 
 ```powershell
-# preflop blueprint and card abstraction, without the long 3-way entry
+# preflop blueprint and card abstraction, without the long tests
 ctest --preset windows-release -L "preflop_blueprint|card_abstraction" -LE phase3_long
 # gto_cli, the postflop libraries and the rest of the legacy suite
 ctest --preset windows-release -LE "preflop_blueprint|card_abstraction|research|monker|monker_exact|phase3_long|nightly|slow"
 ```
 
-A plain run includes two long entries:
+A plain run includes three long tests:
 
-- `phase3_long`, about 30-60 minutes at 2 threads;
-- `monker_exact`, about 13 minutes on 3 threads.
+- `gtosd_preflop_blueprint_trainer3_long_tests`, label `phase3_long`, about 30-60 minutes at
+  2 threads;
+- `gtosd_preflop_blueprint_policy_values_long_tests`, label `phase3_long`, about 15-30 minutes
+  at 2 threads;
+- `gtosd_preflop_blueprint_monker_values_rake_exact_smoke`, label `monker_exact`, about
+  13 minutes on 3 threads.
 
 Run them on purpose, or leave them out with `-LE`. The correctness battery of the HU50 step-2
 path is described in [`benchmarks/monker/correctness/README.md`](benchmarks/monker/correctness/README.md).
