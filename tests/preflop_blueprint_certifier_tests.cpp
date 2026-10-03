@@ -6,7 +6,6 @@
 #include "gtosd/card_abstraction/showdown_counts.hpp"
 #include "gtosd/preflop_blueprint/board_texture.hpp"
 #include "gtosd/preflop_blueprint/certifier.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/river_engine.hpp"
 
@@ -694,115 +693,11 @@ std::vector<std::array<gtosd::CardId, 3>> support_flops(const Resources &resourc
   return support;
 }
 
-// Flat (v1) and hierarchical (v2) history maps over the full runouts of the
-// support flops, so that every prefix hand of those flops has its rows, as in
-// the trainer's history oracle.
-struct HistoryMaps {
-  std::vector<pb::HistoryObservation> observations;
-  std::optional<pb::HistoryBucketRows> flat;
-  std::optional<pb::HistoryBucketRows> hierarchy;
-};
-
-HistoryMaps build_history_maps(const Resources &resources,
-                               const std::vector<std::array<gtosd::CardId, 3>> &support) {
-  const pb::AbstractionTables tables{&*resources.catalog, &*resources.flop, &*resources.turn,
-                                     &*resources.river};
-  std::map<std::uint64_t, std::uint64_t> weights;
-  for (const auto &flop : support) {
-    for (const auto &board : pb::full_runouts(flop).boards) {
-      const auto context = pb::BoardContext::build(board.history, *resources.ranks, &tables);
-      require(context.has_value(), "history support context builds");
-      for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
-        const auto fkey = static_cast<std::uint64_t>(context.value().hand_classes()[hand]) *
-                              resources.flop->capacity() +
-                          context.value().row(gtosd::Street::Flop, hand);
-        const auto tkey =
-            fkey * resources.turn->capacity() + context.value().row(gtosd::Street::Turn, hand);
-        ++weights[tkey * resources.river->capacity() +
-                  context.value().row(gtosd::Street::River, hand)];
-      }
-    }
-  }
-  HistoryMaps maps;
-  for (const auto &[key, weight] : weights) {
-    maps.observations.push_back({key, weight});
-  }
-  auto flat = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                           maps.observations, 2U);
-  auto hierarchy = pb::HistoryBucketRows::build_hierarchy(
-      *resources.flop, *resources.turn, *resources.river, maps.observations, 2U, 2U);
-  require(flat.has_value() && hierarchy.has_value(), "history maps build");
-  maps.flat.emplace(std::move(flat.value()));
-  maps.hierarchy.emplace(std::move(hierarchy.value()));
-  return maps;
-}
-
-// river_row(river_cursor(...)) equals row(Street::River, ...) in both map
-// formats: on observed keys (at most about 50,000 per map, evenly spaced), on
-// other river buckets below the same turn histories, on arbitrary keys and on
-// out-of-range inputs.
-void test_history_river_cursor(const Resources &resources, const HistoryMaps &maps) {
-  const auto started = Clock::now();
-  const std::uint64_t flop_capacity = resources.flop->capacity();
-  const std::uint64_t turn_capacity = resources.turn->capacity();
-  const std::uint64_t river_capacity = resources.river->capacity();
-  constexpr std::size_t observed_checks = 50'000U;
-  const std::size_t stride = std::max<std::size_t>(1U, maps.observations.size() / observed_checks);
-  std::uint64_t lookups = 0U;
-  for (const pb::HistoryBucketRows *rows : {&*maps.flat, &*maps.hierarchy}) {
-    const std::string message =
-        std::string("cursor rows equal the map rows: ") + rows->format_name();
-    const auto check = [&](const std::uint64_t hand_class, const std::uint64_t flop,
-                           const std::uint64_t turn, const std::uint64_t river) {
-      const auto class_index = static_cast<std::uint8_t>(hand_class);
-      const auto flop_bucket = static_cast<std::uint16_t>(flop);
-      const auto turn_bucket = static_cast<std::uint16_t>(turn);
-      const auto river_bucket = static_cast<std::uint16_t>(river);
-      const auto expected =
-          rows->row(gtosd::Street::River, class_index, flop_bucket, turn_bucket, river_bucket);
-      require(rows->river_row(rows->river_cursor(class_index, flop_bucket, turn_bucket),
-                              river_bucket) == expected,
-              message);
-      ++lookups;
-      return expected;
-    };
-    // Draws in [0, bound], one past the capacity included.
-    ca::DeterministicRandom random(0x5031'0101ULL);
-    const auto draw_up_to = [&](const std::uint64_t bound) {
-      const auto limit = static_cast<std::uint32_t>(bound) + 1U;
-      return static_cast<std::uint64_t>(random.uniform_below(limit));
-    };
-    for (std::size_t index = 0; index < maps.observations.size(); index += stride) {
-      const auto &observation = maps.observations[index];
-      const auto river = observation.key % river_capacity;
-      const auto turn_key = observation.key / river_capacity;
-      const auto flop_key = turn_key / turn_capacity;
-      const auto hand_class = flop_key / flop_capacity;
-      require(check(hand_class, flop_key % flop_capacity, turn_key % turn_capacity, river) !=
-                  pb::no_history_row,
-              "observed keys have river rows");
-      const auto other_river = draw_up_to(river_capacity);
-      static_cast<void>(
-          check(hand_class, flop_key % flop_capacity, turn_key % turn_capacity, other_river));
-    }
-    constexpr int arbitrary_keys = 20'000;
-    for (int draw = 0; draw < arbitrary_keys; ++draw) {
-      const auto hand_class = draw_up_to(ca::preflop_hand_classes);
-      const auto flop = draw_up_to(flop_capacity);
-      const auto turn = draw_up_to(turn_capacity);
-      const auto river = draw_up_to(river_capacity);
-      static_cast<void>(check(hand_class, flop, turn, river));
-    }
-  }
-  std::cout << "history river cursor: " << lookups << " lookups equal row() in v1 and v2, "
-            << std::chrono::duration<double>(Clock::now() - started).count() << " s\n";
-}
-
 // RiverBoard with a RiverPrefix against BoardContext::build with the same
 // tables: the same boards accepted, the same hands, ranks, rank order and
-// river rows, with plain buckets, class rows, both history formats and board
-// class rows, on boards of the history support and on arbitrary boards.
-void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
+// river rows, with plain buckets, class rows and board class rows, on boards
+// of the support flops and on arbitrary boards.
+void test_river_board_rows(const Resources &resources,
                            const std::vector<std::array<gtosd::CardId, 3>> &support) {
   const auto class_rows =
       pb::ClassBucketRows::build(*resources.flop, *resources.turn, *resources.river);
@@ -812,14 +707,11 @@ void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
                                             resources.river->capacity());
   struct RowSource {
     const pb::ClassBucketRows *class_rows;
-    const pb::HistoryBucketRows *history_rows;
     const pb::BoardClassRows *board_class_rows;
   };
-  const std::array<RowSource, 5> sources{{{nullptr, nullptr, nullptr},
-                                          {&class_rows.value(), nullptr, nullptr},
-                                          {nullptr, &*maps.flat, nullptr},
-                                          {nullptr, &*maps.hierarchy, nullptr},
-                                          {nullptr, nullptr, &board_class_rows}}};
+  const std::array<RowSource, 3> sources{{{nullptr, nullptr},
+                                          {&class_rows.value(), nullptr},
+                                          {nullptr, &board_class_rows}}};
   ca::DeterministicRandom random(0x5031'0102ULL);
   pb::RiverPrefix prefix;
   pb::RiverBoard river;
@@ -829,8 +721,7 @@ void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
   for (const auto &source : sources) {
     const pb::AbstractionTables tables{&*resources.catalog, &*resources.flop,
                                        &*resources.turn,    &*resources.river,
-                                       source.class_rows,   source.history_rows,
-                                       source.board_class_rows};
+                                       source.class_rows,   source.board_class_rows};
     for (int draw = 0; draw < boards_per_source; ++draw) {
       auto history = resources.catalog->sample_physical_history(random);
       const bool on_support = draw % 2 == 0;
@@ -845,8 +736,7 @@ void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
       const bool built = prefix.assign(history.flop, history.turn, tables).has_value() &&
                          river.assign(history, *resources.ranks, &prefix).has_value();
       require(built == context.has_value(), "river board and board context accept the same boards");
-      require(built || (source.history_rows != nullptr && !on_support),
-              "boards with complete tables are accepted");
+      require(built, "boards with complete tables are accepted");
       if (!built) {
         ++rejected;
         continue;
@@ -864,7 +754,7 @@ void test_river_board_rows(const Resources &resources, const HistoryMaps &maps,
     }
   }
   std::cout << "river board rows: " << compared << " boards equal to BoardContext, " << rejected
-            << " rejected by both (outside the history support)\n";
+            << " rejected by both\n";
 }
 
 // Opponent reach of one lane: none, on about half the hands, on every hand,
@@ -1007,10 +897,10 @@ void test_joint_traversal(const Resources &resources) {
 
 // evaluate_flop with the joint engine against the reference engine: the flop
 // values are bit-identical with plain bucket rows on three flops, with hand
-// subsets, with class rows and with both history formats; the certifier
-// gives the same report with either engine, exact and sampled.
-void test_joint_engine_matches_reference(const Resources &resources, const HistoryMaps &maps,
-                                         const std::vector<std::array<gtosd::CardId, 3>> &support) {
+// subsets and with class rows; the certifier gives the same report with
+// either engine, exact and sampled.
+void test_joint_engine_matches_reference(
+    const Resources &resources, const std::vector<std::array<gtosd::CardId, 3>> &support) {
   const auto started = Clock::now();
   const auto game =
       pb::CompiledGame::compile(load_fixture("preflop_blueprint_hu10_reduced_v1.json"));
@@ -1085,20 +975,6 @@ void test_joint_engine_matches_reference(const Resources &resources, const Histo
   const auto classes = pb::BestResponseEvaluator::create(game.value(), class_policy, class_view);
   require(classes.has_value(), "class evaluator creates");
   compare(classes.value(), support[1], "class rows");
-
-  for (const pb::HistoryBucketRows *history : {&*maps.flat, &*maps.hierarchy}) {
-    const auto history_layout = pb::layout_state(game.value(),
-                                                 history->count(ca::BucketStreet::Flop),
-                                                 history->count(ca::BucketStreet::Turn),
-                                                 history->count(ca::BucketStreet::River));
-    const auto history_policy = sparse_policy(game.value(), history_layout, 0x5031'0107ULL);
-    auto history_view = view;
-    history_view.history_rows = history;
-    const auto mapped =
-        pb::BestResponseEvaluator::create(game.value(), history_policy, history_view);
-    require(mapped.has_value(), "history evaluator creates");
-    compare(mapped.value(), support[0], history->format_name());
-  }
 
   // The whole certificate JSON (17 significant digits, so every double and
   // the sign of a zero show) must agree once the timing and memory fields,
@@ -1377,8 +1253,7 @@ void test_board_class_rows(const Resources &resources) {
     require(same_flop_values(joint.value(), reference_values.value()),
             "joint river engine equals the reference bit for bit with board class rows");
     const pb::AbstractionTables tables{&*resources.catalog, &flop_table, &turn_table,
-                                       &river_table,        nullptr,     nullptr,
-                                       &rows};
+                                       &river_table,        nullptr,     &rows};
     const auto expected =
         traversal_entry_values(game.value(), policy, resources, tables, flop, largest_row);
     require(largest_row > 0xFFFFU, "the turn and river rows pass 65,535");
@@ -1573,8 +1448,7 @@ void test_board_texture_rows(const Resources &resources) {
     require(same_flop_values(joint.value(), reference_values.value()),
             "joint river engine equals the reference bit for bit with a texture");
     const pb::AbstractionTables tables{&*resources.catalog, &flop_table, &turn_table,
-                                       &river_table,        nullptr,     nullptr,
-                                       &rows};
+                                       &river_table,        nullptr,     &rows};
     const auto expected =
         traversal_entry_values(game.value(), policy, resources, tables, flop, largest_row);
     require(largest_row < rows.count(ca::BucketStreet::River),
@@ -1976,11 +1850,9 @@ int main(const int argc, char **argv) {
     test_partial_pass_and_resume(resources, scratch_dir);
     test_sampled_matches_trainer(resources, scratch_dir);
     const auto support = support_flops(resources);
-    const auto history_maps = build_history_maps(resources, support);
-    test_history_river_cursor(resources, history_maps);
-    test_river_board_rows(resources, history_maps, support);
+    test_river_board_rows(resources, support);
     test_joint_traversal(resources);
-    test_joint_engine_matches_reference(resources, history_maps, support);
+    test_joint_engine_matches_reference(resources, support);
     test_board_class_rows(resources);
     test_board_texture_rows(resources);
     test_street_restricted_response(resources, scratch_dir);

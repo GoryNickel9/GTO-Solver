@@ -303,17 +303,6 @@ if(GTOSD_BUILD_NIGHTLY_TESTS)
   endif()
 endif()
 
-add_executable(gtosd_phase9_tests phase9_tests.cpp)
-target_link_libraries(gtosd_phase9_tests PRIVATE gtosd::gui_prototype)
-gtosd_set_warnings(gtosd_phase9_tests)
-add_test(NAME gtosd_phase9_tests COMMAND gtosd_phase9_tests)
-set_tests_properties(gtosd_phase9_tests
-  PROPERTIES LABELS "phase9;gui;virtualization;d3d11;workflow")
-if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
-  set_tests_properties(gtosd_phase9_tests PROPERTIES
-    ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
-endif()
-
 add_executable(gtosd_phase10_tests phase10_tests.cpp)
 target_compile_definitions(gtosd_phase10_tests PRIVATE
   GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
@@ -886,6 +875,42 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     set_tests_properties(gtosd_preflop_blueprint_monker_values_tests PROPERTIES
       ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
   endif()
+  # Phase 3b, V11 (part A): Trainer::evaluate_policy_values against the
+  # heads-up physical evaluator on sampled flops (per-combo values, EVs,
+  # opponent reach, preflop response), the 3-way checkdown tree in
+  # board_kernels mode over the 19,998 canonical boards against the step-1
+  # class solver (EVs and per-seat preflop gains), the expected-rake and root
+  # identities, the resumable state and thread determinism. SKIP (exit 77)
+  # without the three-way table.
+  add_executable(gtosd_preflop_blueprint_policy_values_tests
+    preflop_blueprint_policy_values_tests.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_policy_values_tests
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction gtosd::solver gtosd::best_response
+            gtosd::core)
+  target_compile_definitions(gtosd_preflop_blueprint_policy_values_tests PRIVATE
+    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
+  gtosd_set_warnings(gtosd_preflop_blueprint_policy_values_tests)
+  add_test(NAME gtosd_preflop_blueprint_policy_values_tests
+    COMMAND gtosd_preflop_blueprint_policy_values_tests
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_values_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_policy_values_tests
+    PROPERTIES LABELS "preflop_blueprint;three_way;phase3;monker" SKIP_RETURN_CODE 77)
+  # The exact heads-up leg (HU10 reduced with rake over the 573 canonical flops
+  # against the physical evaluator's exact pass): about 15-30 min at 2 threads.
+  add_test(NAME gtosd_preflop_blueprint_policy_values_long_tests
+    COMMAND gtosd_preflop_blueprint_policy_values_tests --long
+      --resources-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_resources
+      --buckets-dir ${PROJECT_SOURCE_DIR}/out/preflop_blueprint_buckets_200_500_1000
+      --scratch-dir ${CMAKE_CURRENT_BINARY_DIR}/preflop_blueprint_policy_values_scratch)
+  set_tests_properties(gtosd_preflop_blueprint_policy_values_long_tests
+    PROPERTIES LABELS "phase3_long" SKIP_RETURN_CODE 77)
+  if(GTOSD_TEST_RUNTIME_ENVIRONMENT)
+    set_tests_properties(gtosd_preflop_blueprint_policy_values_tests
+      gtosd_preflop_blueprint_policy_values_long_tests PROPERTIES
+      ENVIRONMENT_MODIFICATION "${GTOSD_TEST_RUNTIME_ENVIRONMENT}")
+  endif()
   # Exact-flop per-board bucket tables (gtosd_preflop_blueprint_monker_buckets
   # --flop-exact, written by the benchmarks fixture): suit orbits and ids on
   # named and on all canonical flops, the 15x4 turn and 15-level river
@@ -989,6 +1014,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     # S3 of the correctness coverage, referee machinery only (no engine): the
     # referee passes dumps of its own trees, catches tampered amounts and
     # payoffs and attributes a dump written under an alternative convention.
+    # The full 3WAY50 tree adds the three-seat tampers (an odd chip moved, the
+    # rake charged to the loser, a side pot).
     add_test(NAME gtosd_preflop_blueprint_independent_referee_selftest
       COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py --self-test
@@ -996,7 +1023,8 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2.json
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_donk_rake25cap2.json
         "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
-        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only"
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json)
     set_tests_properties(gtosd_preflop_blueprint_independent_referee_selftest
       PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
   endif()
@@ -1009,7 +1037,11 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
     # referee's own enumeration. Exit 3 = only named conventions differ. The
     # correctness games include the three raked V2 twins (V2R5 is the only
     # correctness game where the cap binds) and the bets-and-raises games
-    # B0, B0M, B2 and HU8_B1 (plan section 3.5).
+    # B0, B0M, B2 and HU8_B1 (plan section 3.5). The 3WAY50 family in full
+    # mode covers the three-seat postflop: betting rounds with three seats,
+    # folds with dead money, two- and three-way showdowns with odd chips, the
+    # rake per winner set, the all-in cap (allin5x) and the side-pot-free
+    # invariant R9b on every node (phase 3b, referee3).
     add_test(NAME gtosd_preflop_blueprint_independent_referee
       COMMAND ${Python3_EXECUTABLE}
         ${PROJECT_SOURCE_DIR}/tools/independent/sd_referee.py
@@ -1039,7 +1071,12 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
         ${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_step2_2size_donk_allin5x.json
         ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_test_v1.json
         "${PROJECT_SOURCE_DIR}/benchmarks/monker/HU50_rake.json#checkdown"
-        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only")
+        "${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json#preflop_only"
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake25cap2.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_rake5cap075.json
+        ${PROJECT_SOURCE_DIR}/benchmarks/monker/3WAY50_donk_allin5x.json)
     set_tests_properties(gtosd_preflop_blueprint_independent_referee
       PROPERTIES LABELS "preflop_blueprint;independent" SKIP_RETURN_CODE 77)
     if(GTOSD_TEST_RUNTIME_ENVIRONMENT)

@@ -89,14 +89,11 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
   turn_ = turn;
   tables_ = tables;
   covered_.fill(std::uint8_t{0});
-  cursors_.fill(RiverRowCursor{});
   if (tables.catalog == nullptr || tables.flop == nullptr || tables.turn == nullptr ||
       tables.river == nullptr) {
     return Outcome::failure(KernelError::MissingTable);
   }
-  if ((tables.history_rows != nullptr ? 1 : 0) + (tables.class_rows != nullptr ? 1 : 0) +
-          (tables.board_class_rows != nullptr ? 1 : 0) >
-      1) {
+  if (tables.class_rows != nullptr && tables.board_class_rows != nullptr) {
     return Outcome::failure(KernelError::InvalidInput);
   }
   // The board-independent checks of BoardContext::build.
@@ -105,7 +102,6 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
     const auto &table = *streets[index];
     if (table.street() != static_cast<ca::BucketStreet>(index) ||
         (tables.class_rows != nullptr && !tables.class_rows->matches(table)) ||
-        (tables.history_rows != nullptr && !tables.history_rows->matches(table)) ||
         (tables.board_class_rows != nullptr && !tables.board_class_rows->matches(table))) {
       return Outcome::failure(KernelError::MissingTable);
     }
@@ -139,16 +135,6 @@ Result<bool, KernelError> RiverPrefix::assign(const std::array<CardId, 3> &flop,
         !street_row_exists(*tables.turn, tables.class_rows, hand_class, turn_bucket)) {
       continue;
     }
-    if (tables.history_rows != nullptr) {
-      const auto &history = *tables.history_rows;
-      if (history.row(Street::Flop, hand_class, flop_bucket, turn_bucket, ca::no_bucket) ==
-              no_history_row ||
-          history.row(Street::Turn, hand_class, flop_bucket, turn_bucket, ca::no_bucket) ==
-              no_history_row) {
-        continue;
-      }
-      cursors_[combo] = history.river_cursor(hand_class, flop_bucket, turn_bucket);
-    }
     covered_[combo] = 1U;
   }
   assigned_ = true;
@@ -160,8 +146,8 @@ Result<bool, KernelError> RiverBoard::assign(const ca::BoardHistory &history,
                                              const RiverPrefix *prefix) {
   using Outcome = Result<bool, KernelError>;
   history_ = history;
-  rows_.fill(no_history_row);
-  maximum_row_ = no_history_row;
+  rows_.fill(no_row);
+  maximum_row_ = no_row;
   const std::array<CardId, 5> board{history.flop[0], history.flop[1], history.flop[2],
                                     history.turn, history.river};
   std::array<std::uint8_t, 5> board_indices{};
@@ -247,11 +233,6 @@ Result<bool, KernelError> RiverBoard::assign(const ca::BoardHistory &history,
         return Outcome::failure(KernelError::InvalidInput);
       }
       row = mapped;
-    } else if (tables.history_rows != nullptr) {
-      row = tables.history_rows->river_row(prefix->cursor(combo), bucket);
-      if (row == no_history_row) {
-        return Outcome::failure(KernelError::InvalidInput);
-      }
     } else if (tables.board_class_rows != nullptr) {
       row = tables.board_class_rows->row(ca::BucketStreet::River, river_class, bucket);
     }

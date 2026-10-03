@@ -1,6 +1,4 @@
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
-#include "gtosd/preflop_blueprint/abstract_best_response.hpp"
 #include "gtosd/solver/enumerated_best_response.hpp"
 #include "preflop_blueprint_test_support.hpp"
 #include <map>
@@ -288,8 +286,7 @@ void test_alternating_conditional_expectation(const Resources &resources, const 
 // drop), a general-sum game: the oracle's CFR updates each player on its own
 // payoff, so any zero-sum shortcut in the trainer would show as a mismatch.
 void test_finite_game_oracle(const Resources &resources, const int stack = 0,
-                             const bool class_mode = false, const bool history_mode = false,
-                             const bool rake = false) {
+                             const bool class_mode = false, const bool rake = false) {
   const auto started = Clock::now();
   auto fixture = load_fixture(stack != 0 ? "preflop_blueprint_co40_test_v1.json"
                               : rake     ? "preflop_blueprint_hu10_reduced_rake_v1.json"
@@ -308,47 +305,13 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
   constexpr std::uint64_t iterations = 25U;
 
   std::optional<pb::ClassBucketRows> class_rows;
-  std::optional<pb::HistoryBucketRows> history_rows;
-  if (history_mode) {
-    std::map<std::uint64_t, std::uint64_t> weights;
-    const pb::AbstractionTables tables{&*resources.catalog, &*resources.flop, &*resources.turn,
-                                       &*resources.river};
-    // Complete the future support of each test flop so the physical BR can
-    // build every prefix hand, including those blocked by all listed rivers.
-    std::vector<std::array<gtosd::CardId, 3>> flops;
-    for (const auto &history : boards.histories)
-      if (std::find(flops.begin(), flops.end(), history.flop) == flops.end())
-        flops.push_back(history.flop);
-    for (const auto &flop : flops)
-      for (const auto &board : pb::full_runouts(flop).boards) {
-        const auto context = pb::BoardContext::build(board.history, *resources.ranks, &tables);
-        require(context.has_value(), "history oracle support context builds");
-        for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
-          const auto fkey = static_cast<std::uint64_t>(context.value().hand_classes()[hand]) *
-                                resources.flop->capacity() +
-                            context.value().row(gtosd::Street::Flop, hand);
-          const auto tkey =
-              fkey * resources.turn->capacity() + context.value().row(gtosd::Street::Turn, hand);
-          ++weights[tkey * resources.river->capacity() +
-                    context.value().row(gtosd::Street::River, hand)];
-        }
-      }
-    std::vector<pb::HistoryObservation> observations;
-    for (const auto &[key, weight] : weights)
-      observations.push_back({key, weight});
-    auto mapped = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                               std::move(observations), 2);
-    require(mapped.has_value(), "history oracle map builds");
-    history_rows.emplace(std::move(mapped.value()));
-  }
   if (class_mode) {
     auto mapped = pb::ClassBucketRows::build(*resources.flop, *resources.turn, *resources.river);
     require(mapped.has_value(), "class rows build for trainer oracle");
     class_rows.emplace(std::move(mapped.value()));
   }
   FiniteGameBuilder builder(game.value(), resources, false, nullptr,
-                            class_rows ? &*class_rows : nullptr,
-                            history_rows ? &*history_rows : nullptr);
+                            class_rows ? &*class_rows : nullptr);
   const auto finite = builder.build(boards, subsets);
   const auto summary = gtosd::validate_finite_game(finite);
   require(summary.has_value(),
@@ -366,12 +329,6 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
   config.scheme = pb::WeightingScheme::Linear;
   config.update_mode = pb::UpdateMode::Simultaneous;
   auto training_resources = resources.view();
-  if (history_rows) {
-    training_resources.history_rows = &*history_rows;
-    config.flop_capacity = history_rows->count(ca::BucketStreet::Flop);
-    config.turn_capacity = history_rows->count(ca::BucketStreet::Turn);
-    config.river_capacity = history_rows->count(ca::BucketStreet::River);
-  }
   if (class_rows) {
     training_resources.class_rows = &*class_rows;
     config.flop_capacity = class_rows->count(ca::BucketStreet::Flop);
@@ -445,8 +402,7 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
   // not an exact constrained oracle on these games. Compare the trainer with
   // the independently built physical game, lifting the SAME bucket policy.
   FiniteGameBuilder physical_builder(game.value(), resources, true, &average,
-                                     class_rows ? &*class_rows : nullptr,
-                                     history_rows ? &*history_rows : nullptr);
+                                     class_rows ? &*class_rows : nullptr);
   const auto physical_game = physical_builder.build(boards, subsets);
   const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
   require(nash_conv.has_value(), "lossless FiniteGame NashConv computes");
@@ -472,38 +428,11 @@ void test_finite_game_oracle(const Resources &resources, const int stack = 0,
     const auto recall = gtosd::has_perfect_recall(finite, player);
     const auto estimate = gtosd::estimate_best_response_enumeration(finite, player);
     require(recall.has_value() && estimate.has_value(), "bucket BR preflight computes");
-    if (history_mode)
-      require(recall.value(),
-              "history representation has perfect recall in the independent finite game");
     std::cout << "bucket BR preflight player=" << static_cast<unsigned>(player)
               << " perfect_recall=" << recall.value()
               << " information_sets=" << estimate.value().information_sets
               << " policies=" << estimate.value().policies
               << " overflow=" << estimate.value().overflow << '\n';
-  }
-  if (history_mode) {
-    const auto abstract_nash =
-        gtosd::calculate_nash_conv(finite, solved.value().average_strategy);
-    require(abstract_nash.has_value(), "perfect-recall abstract NashConv computes");
-    std::vector<pb::WeightedBoard> weighted;
-    for (std::size_t board = 0; board < boards.histories.size(); ++board)
-      weighted.push_back({boards.histories[board], boards.weights[board]});
-    pb::BucketPolicy diagnostic_policy(game.value(), layout,
-                                       std::vector<double>(average.table().begin(),
-                                                           average.table().end()));
-    pb::AbstractBestResponseOptions diagnostic_options;
-    diagnostic_options.threads = 2U;
-    diagnostic_options.hand_subsets = subsets.combos;
-    const auto diagnostic = pb::evaluate_abstract_best_response(
-        game.value(), std::move(diagnostic_policy), training_resources,
-        pb::group_by_flop(weighted), diagnostic_options);
-    require(diagnostic.has_value(), "history abstract best response evaluates");
-    for (const std::uint8_t player : {std::uint8_t{0}, std::uint8_t{1}}) {
-      const double oracle_gain = abstract_nash.value().best_response_value[player] -
-                                 abstract_nash.value().profile_value[player];
-      require(close(diagnostic.value().gain[player], oracle_gain, 1e-9),
-              "history sequence DP gain equals independent FiniteGame best response");
-    }
   }
   std::cout << "oracle" << (rake ? " (rake)" : "") << ": finite game " << summary.value().nodes
             << " nodes, "
@@ -1352,166 +1281,6 @@ void test_exploitability_decreases(const Resources &resources) {
   require(curve.front() > 0.1, "the uniform strategy is clearly exploitable");
 }
 
-void test_history_rows(const Resources &resources) {
-  std::map<std::uint64_t, std::uint64_t> weights;
-  const pb::AbstractionTables tables{&resources.catalog.value(), &resources.flop.value(),
-                                     &resources.turn.value(), &resources.river.value()};
-  const auto boards = branching_boards();
-  for (std::size_t i = 0; i < boards.histories.size(); ++i) {
-    const auto context =
-        pb::BoardContext::build(boards.histories[i], resources.ranks.value(), &tables);
-    require(context.has_value(), "history test context builds");
-    for (std::uint16_t hand = 0; hand < pb::live_hand_count; ++hand) {
-      const auto fkey = static_cast<std::uint64_t>(context.value().hand_classes()[hand]) *
-                            resources.flop->capacity() +
-                        context.value().row(gtosd::Street::Flop, hand);
-      const auto tkey =
-          fkey * resources.turn->capacity() + context.value().row(gtosd::Street::Turn, hand);
-      weights[tkey * resources.river->capacity() +
-              context.value().row(gtosd::Street::River, hand)] += i + 1;
-    }
-  }
-  std::vector<pb::HistoryObservation> observations;
-  for (const auto &[key, weight] : weights)
-    observations.push_back({key, weight});
-  pb::HistoryClusteringReport report;
-  auto exact = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                            observations, resources.river->capacity(), &report);
-  require(exact.has_value() && report.weighted_squared_distance == 0,
-          "uncompressed centroids have zero extra error");
-  auto single = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                             observations, 1, &report);
-  require(single.has_value(), "one river cluster per turn builds");
-  require(single.value().count(ca::BucketStreet::Turn) ==
-              single.value().count(ca::BucketStreet::River),
-          "river cap one retains exactly one distinct row per turn history");
-  pb::HistoryHierarchyReport hierarchy_report;
-  auto hierarchy = pb::HistoryBucketRows::build_hierarchy(
-      *resources.flop, *resources.turn, *resources.river, observations, 1, 1,
-      &hierarchy_report);
-  require(hierarchy.has_value(), "compact history hierarchy builds");
-  require(hierarchy.value().count(ca::BucketStreet::Turn) <=
-              exact.value().count(ca::BucketStreet::Turn) &&
-              hierarchy.value().count(ca::BucketStreet::River) <=
-                  exact.value().count(ca::BucketStreet::River),
-          "compact hierarchy does not increase history row counts");
-  require(hierarchy_report.turn.weight == hierarchy_report.river.weight &&
-              hierarchy_report.turn.weight > 0,
-          "both hierarchy levels preserve exact physical census weight");
-  require(hierarchy.value().resident_byte_size() > hierarchy.value().byte_size() &&
-              single.value().resident_byte_size() == single.value().byte_size(),
-          "compact hierarchy accounts for dense runtime lookup caches only in resident bytes");
-  std::reverse(observations.begin(), observations.end());
-  auto reversed = pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                               observations, 1);
-  require(reversed.has_value() && reversed.value().fingerprint() == single.value().fingerprint(),
-          "input order does not change clustering");
-  auto reversed_hierarchy = pb::HistoryBucketRows::build_hierarchy(
-      *resources.flop, *resources.turn, *resources.river, observations, 1, 1);
-  require(reversed_hierarchy.has_value() &&
-              reversed_hierarchy.value().fingerprint() == hierarchy.value().fingerprint(),
-          "input order does not change compact hierarchy");
-  std::map<std::uint32_t, std::uint64_t> parent_by_row;
-  std::map<std::uint32_t, std::uint32_t> hierarchy_turn_parent;
-  std::map<std::uint32_t, std::uint32_t> hierarchy_river_parent;
-  for (const auto &observation : observations) {
-    const auto parent = observation.key / resources.river->capacity();
-    const auto fkey = parent / resources.turn->capacity();
-    const auto cls = static_cast<std::uint8_t>(fkey / resources.flop->capacity());
-    const auto fb = static_cast<std::uint16_t>(fkey % resources.flop->capacity());
-    const auto tb = static_cast<std::uint16_t>(parent % resources.turn->capacity());
-    const auto rb = static_cast<std::uint16_t>(observation.key % resources.river->capacity());
-    const auto row = single.value().row(gtosd::Street::River, cls, fb, tb, rb);
-    require(row != pb::no_history_row, "all supported river observations mapped");
-    const auto [found, inserted] = parent_by_row.emplace(row, parent);
-    require(inserted || found->second == parent, "no river row can forget its turn history");
-    require(single.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket) ==
-                single.value().row(gtosd::Street::Turn, cls, fb, tb, rb),
-            "turn row does not depend on future river bucket");
-    const auto turn_row =
-        single.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket);
-    const auto flop_row =
-        single.value().row(gtosd::Street::Flop, cls, fb, ca::no_bucket, ca::no_bucket);
-    require(single.value().parent_row(gtosd::Street::River, row) == turn_row &&
-                single.value().parent_row(gtosd::Street::Turn, turn_row) == flop_row &&
-                single.value().parent_row(gtosd::Street::Flop, flop_row) == cls,
-            "derived history parents recover the complete abstract observation sequence");
-
-    const auto compact_turn =
-        hierarchy.value().row(gtosd::Street::Turn, cls, fb, tb, ca::no_bucket);
-    const auto compact_river =
-        hierarchy.value().row(gtosd::Street::River, cls, fb, tb, rb);
-    const auto compact_flop =
-        hierarchy.value().row(gtosd::Street::Flop, cls, fb, ca::no_bucket, ca::no_bucket);
-    require(compact_turn != pb::no_history_row && compact_river != pb::no_history_row,
-            "all supported compact hierarchy observations mapped");
-    require(hierarchy.value().row(gtosd::Street::Turn, cls, fb, tb, rb) == compact_turn,
-            "compact turn lookup does not depend on future river bucket");
-    const auto [turn_parent, inserted_turn] =
-        hierarchy_turn_parent.emplace(compact_turn, compact_flop);
-    const auto [river_parent, inserted_river] =
-        hierarchy_river_parent.emplace(compact_river, compact_turn);
-    require((inserted_turn || turn_parent->second == compact_flop) &&
-                (inserted_river || river_parent->second == compact_turn) &&
-                hierarchy.value().parent_row(gtosd::Street::Turn, compact_turn) == compact_flop &&
-                hierarchy.value().parent_row(gtosd::Street::River, compact_river) == compact_turn,
-            "every compact row has one causal parent");
-  }
-  auto duplicate = observations;
-  duplicate.push_back(duplicate.front());
-  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                        duplicate, 1),
-          "duplicate support rejected");
-  duplicate = observations;
-  duplicate.front().weight = 0;
-  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                        duplicate, 1),
-          "zero physical weight rejected");
-  require(!pb::HistoryBucketRows::build(*resources.flop, *resources.turn, *resources.river,
-                                        observations, 0),
-          "zero child capacity rejected");
-  require(!pb::HistoryBucketRows::build_hierarchy(*resources.flop, *resources.turn,
-                                                  *resources.river, observations, 0, 1) &&
-              !pb::HistoryBucketRows::build_hierarchy(*resources.flop, *resources.turn,
-                                                      *resources.river, observations, 1, 0),
-          "zero hierarchy capacity rejected");
-  const auto path =
-      std::filesystem::temp_directory_path() /
-      ("gtosd_history_" + std::to_string(Clock::now().time_since_epoch().count()) + ".bin");
-  require(single.value().save(path).has_value(), "history map saves");
-  auto loaded = pb::HistoryBucketRows::load(path);
-  require(loaded.has_value() && loaded.value().fingerprint() == single.value().fingerprint(),
-          "history map roundtrip preserves identity");
-  require(loaded.has_value() &&
-              loaded.value().parent_row(gtosd::Street::River, parent_by_row.begin()->first) !=
-                  pb::no_history_row,
-          "history map roundtrip rebuilds derived parent rows");
-  auto bytes = read_file(path);
-  bytes.back() ^= 1;
-  {
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
-  }
-  require(!pb::HistoryBucketRows::load(path), "corrupt history map rejected");
-  std::filesystem::remove(path);
-
-  const auto hierarchy_path =
-      std::filesystem::temp_directory_path() /
-      ("gtosd_history_hierarchy_" +
-       std::to_string(Clock::now().time_since_epoch().count()) + ".bin");
-  require(hierarchy.value().save(hierarchy_path).has_value(), "compact hierarchy saves");
-  auto loaded_hierarchy = pb::HistoryBucketRows::load(hierarchy_path);
-  require(loaded_hierarchy.has_value() &&
-              loaded_hierarchy.value().fingerprint() == hierarchy.value().fingerprint() &&
-              loaded_hierarchy.value().count(ca::BucketStreet::Turn) ==
-                  hierarchy.value().count(ca::BucketStreet::Turn) &&
-              loaded_hierarchy.value().parent_row(
-                  gtosd::Street::River, hierarchy_river_parent.begin()->first) ==
-                  hierarchy_river_parent.begin()->second,
-          "compact hierarchy roundtrip preserves rows and causal parents");
-  std::filesystem::remove(hierarchy_path);
-}
-
 void test_configurable_stop_rule() {
   pb::ExploitabilityEstimate estimate;
   estimate.max_gain = 0.029;
@@ -1743,13 +1512,11 @@ int main(const int argc, char **argv) {
       return 0;
     }
     test_configurable_stop_rule();
-    test_history_rows(resources);
     test_batch_policy_refresh(resources);
     test_table_storage(resources);
     test_forgotten_information_witness();
     test_diagnostic_contracts(resources);
     test_finite_game_oracle(resources, 40, true);
-    test_finite_game_oracle(resources, 40, false, true);
     std::cout << "resources " << (resources.loaded ? "loaded" : "built") << ", bucket tables "
               << (resources.buckets_loaded ? "loaded" : "built") << " ("
               << resources.flop->capacity() << "/" << resources.turn->capacity() << "/"
@@ -1771,7 +1538,7 @@ int main(const int argc, char **argv) {
     test_average_strategy_row_snapshot(resources);
     test_average_policy_snapshot(resources);
     test_physical_best_response(resources);
-    test_finite_game_oracle(resources, 0, false, false, true);
+    test_finite_game_oracle(resources, 0, false, true);
     test_physical_best_response(resources, 0, false, true);
     // The alternating sampled update with rake: at 40a the largest pot (80a)
     // is raked exactly the 2a cap, at 100a the cap binds (up to 200a).

@@ -28,19 +28,31 @@ Rules (R)
 - R6  The action moves to the next seat in cyclic seat order that is still in the hand and has chips.
 - R7  A bet or a full raise reopens the action: every other player in the hand with chips must act again.
       The betting round ends when nobody in the hand with chips still has to act (everyone with chips has
-      acted since the last bet or raise and matched it).
+      acted since the last bet or raise and matched it). So when a round ends with two or more players in
+      the hand, their street commitments are equal (nothing is left uncalled, R9b).
 - R8  When all players but one have folded, the hand ends at once: the remaining player wins the pot, after
       the uncalled part of their street commitment (the excess over every other player's street commitment)
-      has been returned to them.
-- R9  Heads-up, a call for less than to_call (all-in) leaves the excess of the bet uncalled; it is returned to
-      the bettor at once. (With more players this needs side pots, which these games never reach.)
+      has been returned to them. The folded players' chips stay in the pot (dead money); their cards are
+      dead.
+- R9  A call for less than to_call (a short all-in call) leaves the excess of the bet uncalled. Heads-up it
+      is returned to the bettor at once. With three or more players it would create a side pot, which these
+      games never reach (R9b); the referee refuses it (UnsupportedSituation) rather than guessing.
+- R9b Equal stacks, no side pots. Every player starts with the same stack and posts the same ante, so every
+      player can commit the same live total, stack - ante (the BTN's blind is part of it). A player who is
+      all-in has committed that total, which nobody can exceed. Hence a call is never short (whoever calls
+      an all-in has at least as much), every all-in player holds the largest net contribution among the
+      players in the hand, and the whole pot is one main pot that R11 shares. The referee asserts this at
+      every node of the engine's tree (check R-sidepot) instead of assuming it.
 - R10 When a betting round ends with two or more players in the hand: on the river the hand goes to showdown;
       before the river, when at most one of them has chips nobody can bet any more and the rest of the board
       is dealt (all-in runout, then showdown); otherwise the next street starts (flop, turn, river).
-- R11 At a showdown the winners (the best hands: any non-empty subset of the players in the hand) share the pot
-      after rake equally; the other players receive nothing.
+- R11 At a showdown the winners (the best hands: any non-empty subset of the players in the hand, 3 subsets
+      with two players left and 7 with three) share the pot after rake equally; the other players receive
+      nothing. A player who folded is never a winner. Odd units of the share follow C11.
 - R12 A player's net result is what they receive minus what they put in net of returns (ante + live chips -
-      returned chips).
+      returned chips). So over the players the net results of a winner set sum to minus the rake, a
+      non-winner's net result is minus their contribution, and two winners' receipts differ by at most one
+      unit (identities checked as R-identity).
 - R13 Rake, when enabled: min(percentage x pot, cap), taken from the pot before it is shared, only when the pot
       reaches the minimum pot and, with no-flop-no-drop, only when the flop was dealt. The pot is the called
       pot: uncalled chips were returned before (R8, R9). The winners bear it.
@@ -72,7 +84,7 @@ alternatives are in CONVENTIONS; the referee lists them all in its report.
       when the last aggressor of the previous street is in the hand, has chips and acts later.
 - C10 A postflop street outside postflop_betting_streets is checked through (check is the only action).
 - C11 Odd units of a split pot go one each to the winners in seat order from seat 0 (the first seat after the
-      BTN).
+      BTN). Heads-up pots are always even; the convention is exercised by the 3-way ties.
 - C12 The raked pot includes the dead antes.
 - C13 "Flop dealt" for no-flop-no-drop: every terminal after the flop (postflop folds included), a called
       preflop all-in (its runout deals the flop) and a checkdown leaf; only a preflop fold is exempt.
@@ -617,7 +629,7 @@ def apply_action(hand: Hand, action: Action) -> Hand:
             nxt.aggressor = player
         else:  # call
             nxt.must_act.discard(player)
-            if action.amount < to_call:  # R9
+            if action.amount < to_call:  # R9 (unreachable with equal stacks, R9b)
                 if nxt.players != 2:
                     raise UnsupportedSituation("short all-in call with three or more players (side pot)")
                 bettor = 1 - player
@@ -652,6 +664,46 @@ def next_street(rules: GameRules, hand: Hand) -> Hand:
     nxt.status = "in_progress"
     nxt.to_act = _first_to_act(nxt, 0)
     return nxt
+
+
+# ----------------------------------------------------------------------------------------- invariants
+
+
+def side_pot_violation(players: int, in_hand_mask: int, stacks: list[int], contributions: list[int]) -> str | None:
+    """R9b on a public state (the engine's fields or the referee's): every all-in player in the hand holds the
+    largest net contribution among the players in the hand, so the whole pot is one main pot. None when it
+    holds, else why not."""
+    live = [p for p in range(players) if in_hand_mask >> p & 1]
+    if not live:
+        return "no player in the hand"
+    top = max(contributions[p] for p in live)
+    for p in live:
+        if stacks[p] == 0 and contributions[p] < top:
+            return f"seat {p} all-in with {contributions[p]} below the largest contribution {top}: a side pot"
+    return None
+
+
+def unmatched_round(players: int, in_hand_mask: int, status: str, street_bets: list[int]) -> str | None:
+    """R7-R9b on a public state once the action on the street is over: with two or more players in the hand
+    their street commitments are equal (status street_complete, all_in_runout or showdown); after a fold the
+    winner's street commitment equals the largest other one, the excess having been returned (R8). None
+    while the action is open or when the invariant holds."""
+    live = [p for p in range(players) if in_hand_mask >> p & 1]
+    if status in ("street_complete", "all_in_runout", "showdown"):
+        if len(live) < 2:
+            return f"status {status} with {len(live)} player in the hand"
+        bets = sorted({street_bets[p] for p in live})
+        if len(bets) != 1:
+            return f"street commitments {[street_bets[p] for p in live]} of the players in the hand differ"
+    elif status == "folded":
+        if len(live) != 1:
+            return f"status folded with {len(live)} players in the hand"
+        winner = live[0]
+        others = max(street_bets[p] for p in range(players) if p != winner)
+        if street_bets[winner] != others:
+            return (f"the winner's street commitment {street_bets[winner]} is not the largest other one "
+                    f"{others}: uncalled chips not returned")
+    return None
 
 
 # ----------------------------------------------------------------------------------------- settlement
@@ -692,3 +744,28 @@ def settle(rules: GameRules, conv: Conventions, hand: Hand, kind: str, winners: 
     for index, seat in enumerate(order):
         received[seat] = share + (1 if index < odd else 0)
     return [received[p] - hand.contribution(p) for p in range(hand.players)], rake
+
+
+def settlement_identity_violation(hand: Hand, winners: int, rake: int, row: list[int]) -> str | None:
+    """R11-R12 identities of one payoff row, whatever the odd-chip order (C11): the row sums to minus the
+    rake, every non-winner loses exactly their contribution, the winners' receipts differ by at most one
+    unit and exactly (pot - rake) mod |winners| of them hold the extra unit. None when the row satisfies
+    them, else the first identity it breaks."""
+    if len(row) != hand.players:
+        return f"row of {len(row)} entries for {hand.players} players"
+    seats = [p for p in range(hand.players) if winners >> p & 1]
+    if not seats or any(not hand.in_hand[p] for p in seats):
+        return f"winner mask {winners} is not a non-empty subset of the players in the hand"
+    if sum(row) != -rake:
+        return f"the row sums to {sum(row)}, not to minus the rake {rake}"
+    for p in range(hand.players):
+        if p not in seats and row[p] != -hand.contribution(p):
+            return f"non-winner seat {p} nets {row[p]}, not minus their contribution {hand.contribution(p)}"
+    received = [row[p] + hand.contribution(p) for p in seats]
+    if max(received) - min(received) > 1:
+        return f"winners' receipts {received} differ by more than one unit"
+    share, odd = divmod(hand.pot - rake, len(seats))
+    extra = sum(1 for amount in received if amount == share + 1)
+    if min(received) != share or extra != odd:
+        return f"winners' receipts {received}: expected {len(seats) - odd} x {share} and {odd} x {share + 1}"
+    return None

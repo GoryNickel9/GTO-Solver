@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -215,7 +216,6 @@ struct TrainerResources {
   const card_abstraction::BucketTable *river{nullptr};
   // Optional immutable (preflop class, street bucket) map. Must outlive trainer.
   const ClassBucketRows *class_rows{nullptr};
-  const HistoryBucketRows *history_rows{nullptr};
   // MonkerSolver-style (board class, per-board bucket) rows. Must outlive trainer.
   const BoardClassRows *board_class_rows{nullptr};
   // Optional fixed preflop rows (see the contract above). Must outlive trainer.
@@ -377,7 +377,6 @@ struct MemoryBreakdown {
   std::uint64_t board_list_bytes{0U};
   std::uint64_t hand_mask_bytes{0U};
   std::uint64_t tree_bytes{0U};
-  std::uint64_t history_map_resident_bytes{0U};
   std::uint64_t bucket_table_bytes{0U};
   std::uint64_t rank_table_bytes{0U};
   std::uint64_t catalog_bytes{0U};
@@ -396,7 +395,7 @@ struct MemoryBreakdown {
            compact_policy_offsets_bytes + discount_timestamp_bytes + discount_factor_bytes +
            discount_offset_bytes + all_in_dense_bytes + board_batch_bytes + workspace_bytes +
            unit_bytes + layout_offset_bytes + partition_bytes + board_list_bytes +
-           hand_mask_bytes + tree_bytes + history_map_resident_bytes + bucket_table_bytes +
+           hand_mask_bytes + tree_bytes + bucket_table_bytes +
            rank_table_bytes + catalog_bytes + all_in_table_bytes + class_cache_bytes +
            class_values_bytes;
   }
@@ -408,6 +407,120 @@ struct ProcessMemoryPeaks {
   std::uint64_t private_commit_bytes{0U};
   std::uint64_t peak_private_commit_bytes{0U};
   std::uint64_t page_faults{0U};
+};
+
+// ---- Part A of phase 3b (PHASE3_SPEC_2026-09-30 section 6.2): the values of
+// a fixed policy through the trainer's own traversal, with no regret or
+// strategy-sum table (policy-only initialization). For every seat s, board B
+// of weight w_B (the weights of the list sum to one) and live hero hand h, the
+// traversal gives v_a[h] at s's preflop decisions, v[h] at the root and the
+// joint disjoint mass D[h] of the other seats at every node, all with the
+// other seats' reach inside and unnormalized (3 seats: ordered disjoint
+// pairs; heads-up: disjoint hands). With P = P(o1,o2|h) = 1/(406 * 351) (heads-up
+// P(o|h) = 1/406) and P(h) = 1/465 the sums accumulated per combo are
+//   value_sum[node][a][h] += w_B P v_a[h]      reach_sum[node][h] += w_B P D[h]
+//   root_sum[h] += w_B P v[h]                  live_sum[h] += w_B [h live on B]
+//   ev_direct += w_B sum_h P(h) P v[h]         rake_sum += w_B E[rake | B]
+// E[rake | B] = sum over the terminals t of rake(t) sum_h P(h) P r_s(h) D_t[h],
+// each terminal counted once, in the pass of its lowest active seat. The
+// chunk series (one record per flop, or per block of an explicit list) holds
+// the same sums per hand class for the standard errors over i.i.d. flops. A
+// per-combo mean is value_sum / live_sum; the class estimate pools the combos
+// of a class (the spec's choice for sampled lists). The two agree on a
+// suit-closed list only: on a canonical list with orbit weights the per-combo
+// means are not suit-symmetric and the pooled class values are the exact
+// per-combo values (a preflop class is one suit orbit of combos).
+enum class PolicyValuesBoardKind : std::uint8_t {
+  // The 573 canonical flops with their orbit weights, every turn and river:
+  // the exact list (605,088 boards, 573 chunks).
+  CanonicalFlops,
+  // `flops` physical flops drawn uniformly with `seed` (the draw of
+  // BoardCatalog::sample_physical_history, as the heads-up evaluator), every
+  // turn and river, weight 1 / flops each: one chunk per flop.
+  PhysicalFlops,
+  // An explicit exact list (sample = false), in blocks of chunk_boards.
+  List
+};
+
+struct PolicyValuesProgress {
+  std::uint32_t chunks_done{0U};
+  std::uint32_t chunks_total{0U};
+  std::uint64_t boards_done{0U};
+  double seconds{0.0};
+};
+
+struct PolicyValuesOptions {
+  PolicyValuesBoardKind boards{PolicyValuesBoardKind::PhysicalFlops};
+  // PhysicalFlops: the number of flops; CanonicalFlops: a limit on the
+  // canonical flops taken in catalog order (0 = all 573, a partial pass
+  // otherwise, for smoke tests).
+  std::uint32_t flops{64U};
+  std::uint64_t seed{0x5041'5254'4120'4121ULL};
+  const TrainingBoards *list{nullptr};
+  std::uint32_t chunk_boards{1'056U};
+  // Resumable state, rewritten atomically after every chunk (empty: none).
+  // A state file of another policy, game, configuration or board list is
+  // refused (IntegrityFailure).
+  std::filesystem::path state_path;
+  // Stop after this many chunks of this call (0 = run to the end); the result
+  // is then partial (complete = false) and the state file holds the rest.
+  std::uint32_t stop_after_chunks{0U};
+  std::function<void(const PolicyValuesProgress &)> progress;
+};
+
+struct PolicyValuesHeroChunk {
+  double ev_direct{0.0};
+  // [class]
+  std::vector<double> root;
+  // [slot][class]
+  std::vector<double> reach;
+  // [slot][action][class], slot s at PolicyValuesHero::class_offset[s].
+  std::vector<double> values;
+};
+
+struct PolicyValuesChunk {
+  std::uint32_t index{0U};
+  std::uint32_t boards{0U};
+  double weight{0.0};
+  double rake{0.0};
+  // [class]: sum of w_B times the live combos of the class.
+  std::vector<double> live;
+  std::vector<PolicyValuesHeroChunk> heroes;
+};
+
+struct PolicyValuesHero {
+  std::uint8_t hero{0U};
+  // The seat's preflop decision nodes in preorder (slots).
+  std::vector<std::uint32_t> nodes;
+  std::vector<std::uint8_t> actions;
+  // Offset of slot s in value_sum ([action][630]) and in a chunk's values
+  // ([action][81]).
+  std::vector<std::uint64_t> value_offset;
+  std::vector<std::uint64_t> class_offset;
+  std::vector<double> value_sum;
+  // [slot][630]
+  std::vector<double> reach_sum;
+  // [630]
+  std::vector<double> root_sum;
+  double ev_direct{0.0};
+};
+
+struct PolicyValues {
+  std::uint8_t seats{0U};
+  std::uint32_t chunks_total{0U};
+  std::uint32_t chunks_done{0U};
+  std::uint64_t boards{0U};
+  bool complete{false};
+  bool resumed{false};
+  // Sum of the weights of the chunks done (1 when complete).
+  double weight{0.0};
+  // [630]
+  std::vector<double> live_sum;
+  double rake_sum{0.0};
+  std::vector<PolicyValuesHero> heroes;
+  std::vector<PolicyValuesChunk> series;
+  double seconds{0.0};
+  std::string identity;
 };
 
 class Trainer {
@@ -524,6 +637,19 @@ public:
   // restored checkpoint on fresh flops; training is unaffected.
   void reseed_evaluation(const std::uint64_t seed) noexcept { evaluation_random_.reseed(seed); }
 
+  // Part A (see PolicyValues): the values of `policy` (its table is moved into
+  // the evaluator: no copy) over the boards of `options`, with the game's
+  // player count (2 or 3), the abstraction of `resources` and the trainer
+  // settings of `config` that matter here: threads, capacities, partition
+  // target, preflop_terminals and validation (BoardKernels needs a List and
+  // validation, as in create), hero_folded_shortcut. The regret and
+  // strategy-sum tables are never allocated; the harness, hand subsets, a
+  // preflop lock and lazy discount are refused (InvalidConfiguration).
+  [[nodiscard]] static Result<PolicyValues, TrainerError>
+  evaluate_policy_values(const CompiledGame &game, const TrainerResources &resources,
+                         const TrainerConfig &config, BucketPolicy policy,
+                         const PolicyValuesOptions &options);
+
   ~Trainer();
   Trainer(const Trainer &) = delete;
   Trainer &operator=(const Trainer &) = delete;
@@ -537,6 +663,9 @@ private:
   // in trainer.cpp; null in production).
   struct Unit3;
   struct Trace3;
+  // Part A: the per-pass buffers of evaluate_policy_values (defined in
+  // trainer.cpp; null in training).
+  struct ValueCollector;
   using ActiveRows = std::array<std::vector<std::uint32_t>, 4>;
   // Reach vector of every seat (seat order) at a node of the 3-seat traversal.
   using SeatReach = std::array<const double *, 3>;
@@ -631,6 +760,24 @@ private:
   [[nodiscard]] bool others_zero3(const CompiledNode &node, const SeatReach &reach,
                                   std::uint8_t hero) const noexcept;
   [[nodiscard]] bool class_cache_active() const noexcept;
+  // Part A hooks, active only while collector_ is set: the hero's action
+  // values and the other seats' disjoint mass at a preflop decision of the
+  // hero (heads-up path and 3-seat path), and the reach mass of a terminal
+  // times its rake (heads-up path; the 3-seat path collects inside terminal3).
+  void collect_hero_values(std::uint32_t node, const double *child_values,
+                           const double *opponent_reach, const BoardWork &board) const;
+  void collect_hero_values3(std::uint32_t node, const double *child_values,
+                            const SeatReach &reach, std::uint8_t hero, const BoardWork &board,
+                            Workspace &workspace) const;
+  void collect_terminal_rake(const CompiledNode &node, const double *hero_reach,
+                             const double *scratch, std::uint8_t hero,
+                             const BoardWork &board) const;
+  // Adds the collector's buffers of one pass of `hero` on `board` (weight w_B)
+  // to the chunk sums (per combo).
+  void harvest_pass(const PolicyValuesHero &hero_values, std::vector<double> &chunk_value_sum,
+                    std::vector<double> &chunk_reach_sum, std::vector<double> &chunk_root_sum,
+                    double &chunk_ev, double &chunk_rake, std::uint8_t hero,
+                    const BoardWork &board, double weight) const;
   card_abstraction::BoardHistory sample_history(card_abstraction::DeterministicRandom &random,
                                                 double &weight,
                                                 std::size_t *index_out = nullptr) const;
@@ -751,6 +898,10 @@ private:
   // Hero values at the root of a 3-seat pass (diagnostics).
   std::vector<double> root_values3_;
   Trace3 *trace3_{nullptr};
+  // Part A: no regret or strategy-sum table (set before initialize by
+  // evaluate_policy_values), and the collector of the current pass.
+  bool policy_only_{false};
+  ValueCollector *collector_{nullptr};
 };
 
 [[nodiscard]] std::uint64_t process_working_set_bytes() noexcept;

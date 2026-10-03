@@ -20,12 +20,28 @@ Checks, per config:
      R-state   at every node: kind, street, status, actor, players in the hand, all-in players, pot, antes,
                gross and net contributions, street commitments, stacks, uncalled returns, bet to match and
                minimum raise (where the actor can raise), remaining board cards;
-     R-payoff  every stored payoff row (the fold row, every winner subset at a showdown) = share of
-               (pot - rake) - own net contribution, rake = min(percentage x pot, cap) when raked.
+     R-payoff  every stored payoff row (the fold row, every winner subset at a showdown: 3 rows with two
+               players left, 7 with three) = share of (pot - rake) - own net contribution, rake =
+               min(percentage x pot, cap) when raked, odd units per C11;
+     R-sidepot on the engine's own fields at every node (R9b): every all-in player in the hand holds the
+               largest net contribution (no side pot), and once the action on a street is over the players
+               in the hand have equal street commitments, or after a fold the winner's commitment equals
+               the largest other one (nothing left uncalled);
+     R-identity every payoff row satisfies R11-R12 whatever the odd-chip order: it sums to minus the rake,
+               every non-winner loses exactly their contribution, the winners' receipts differ by at most one
+               unit and exactly (pot - rake) mod |winners| of them hold the extra unit.
 - A  the configured action abstraction: the engine's actions at every decision = the referee's (C3-C10),
      aggression level and limped-pot flag; and the path set of the engine tree = the path set of a tree the
      referee enumerates on its own (missing and extra paths).
 - C  labels and edge order (C15).
+- Coverage (SD_REFEREE_COVERAGE, per config): terminals by kind, street and players in the hand, decisions
+  by players with chips, payoff rows with odd units, with the rake capped, at the percentage or unraked,
+  incomplete all-in raises and short calls (always 0, R9b), so that the 3-way report can say which
+  situations the comparison exercised.
+
+Three players (3WAY50 family): the betting rounds, folds with dead money, two- and three-way showdowns, the
+odd chips of the three-way ties and the rake per winner set are all covered by the same R, A and C checks;
+the games are side-pot free by R9b, which R-sidepot verifies on the engine's tree instead of assuming.
 
 Classification: a failure that disappears when one convention takes one of its alternatives (and no new
 failure appears) is reported as a convention mismatch (name, id, the engine's apparent choice), not as a rule
@@ -76,6 +92,14 @@ RECORDED_TREE_FINGERPRINTS = {
     ("HU6_V0_flop", "full"): "fnv1a64:cd66796bdbdac5c1",
     ("HU6_V1_flopturn", "full"): "fnv1a64:da5c6942354ad5ad",
     ("HU6_V2_river", "full"): "fnv1a64:2f109f6f1891d9f2",
+    # 3WAY50 family (benchmarks/monker), as compiled on 01/10/2026 by the phase-3 build (library of commit
+    # 12fe441, the one frozen for the first 3WAY50_15x4_rake25cap2 run). 3WAY50_donk and the allin5x twin
+    # also appear in the lane-1 game report of 30/09. 7,225 nodes (7,126 for allin5x), 3 seats, full mode.
+    ("3WAY50_donk", "full"): "fnv1a64:49412deedbe6f6cc",
+    ("3WAY50_donk_rake", "full"): "fnv1a64:e32bb91ba7097549",
+    ("3WAY50_donk_rake25cap2", "full"): "fnv1a64:71abeabaab92fe56",
+    ("3WAY50_donk_rake5cap075", "full"): "fnv1a64:19983d7479b9bfe4",
+    ("3WAY50_donk_allin5x", "full"): "fnv1a64:78322185bfa4d03d",
 }
 
 
@@ -143,6 +167,48 @@ def tree_stats(nodes: list[RefNode]) -> dict:
         if node.settle_kind in ("runout", "checkdown"):
             stats[f"all_in_runouts_{street}"] += 1
         stats["maximum_depth"] = max(stats["maximum_depth"], len(node.path))
+    return dict(sorted(stats.items()))
+
+
+def coverage_stats(rules, conv, nodes: list[RefNode]) -> dict:
+    """Which situations the referee's tree (= the engine's once check A passes) exercises: terminals by kind,
+    street and players in the hand, decisions by players with chips, payoff rows by odd units and rake
+    regime, incomplete all-in raises and short calls (R9b: always 0)."""
+    stats = Counter()
+    for node in nodes:
+        hand = node.hand
+        street = R.STREET_NAMES[hand.street]
+        live = sum(1 for p in range(hand.players) if hand.in_hand[p])
+        if node.kind == "decision":
+            with_chips = sum(1 for p in range(hand.players) if hand.has_chips(p))
+            stats[f"decisions_{with_chips}chips"] += 1
+            to_call = hand.to_call(hand.to_act)
+            for action in node.actions:
+                if action.kind == "call" and action.amount < to_call:
+                    stats["short_calls"] += 1
+                if action.aggressive:
+                    increment = hand.street_bets[hand.to_act] + action.amount - hand.bet_to_match
+                    if increment < hand.minimum_raise:
+                        stats["incomplete_all_in_raises" if action.kind == "all_in"
+                              else "incomplete_raises"] += 1
+            continue
+        if node.kind == "chance":
+            continue
+        label = "fold" if node.settle_kind == "fold" else node.settle_kind
+        stats[f"terminal_{label}_{street}" + ("" if label == "fold" else f"_{live}live")] += 1
+        rake = R.rake_of(rules, conv, hand, node.settle_kind)
+        for mask, _ in expected_payoffs(rules, conv, hand, node.settle_kind):
+            stats["rows"] += 1
+            if (hand.pot - rake) % bin(mask).count("1"):
+                stats["rows_odd_units"] += 1
+            if rake == 0:
+                stats["rows_unraked"] += 1
+            elif rules.rake.enabled and rake == rules.rake.cap:
+                stats["rows_rake_capped"] += 1
+            else:
+                stats["rows_rake_percent"] += 1
+    for key in ("short_calls", "incomplete_all_in_raises", "incomplete_raises", "rows_odd_units"):
+        stats.setdefault(key, 0)
     return dict(sorted(stats.items()))
 
 
@@ -250,6 +316,13 @@ def compare_state(rules, record: dict, hand, kind: str, remaining: int, findings
                   - record["returned_uncalled_by_player"][p] for p in range(players)]
     expect("net_contribution", net_engine, [hand.contribution(p) for p in range(players)])
     expect("chip_conservation", sum(record["remaining_stacks"]) + record["pot"], players * rules.stack)
+    # R-sidepot (R9b, R7-R8) on the engine's own fields, not on the replay.
+    why = R.side_pot_violation(players, record["active_mask"], record["remaining_stacks"], net_engine)
+    if why is not None:
+        findings.fail("rule", "side_pot", node, why, path)
+    why = R.unmatched_round(players, record["active_mask"], record["status"], record["committed_this_street"])
+    if why is not None:
+        findings.fail("rule", "round_matched", node, why, path)
     expect("level", record["level"], hand.level, "abstraction")
     expect("limped_pot", record["limped_pot"], hand.limped, "abstraction")
     if kind == "decision":
@@ -275,11 +348,15 @@ def check_payoffs(rules, conv, record: dict, hand, settle_kind: str, findings: F
                       f"engine {[m for m, _ in engine_rows]}, referee {[m for m, _ in expected]}",
                       record["path"])
         return 0
+    rake = R.rake_of(rules, conv, hand, settle_kind)
     for (mask, engine), (_, referee) in zip(engine_rows, expected):
         if engine != referee:
             findings.fail("rule", "payoff_row", (node, mask),
                           f"winners {mask}: engine {engine}, referee {referee} (pot {hand.pot}, "
-                          f"rake {R.rake_of(rules, conv, hand, settle_kind)})", record["path"])
+                          f"rake {rake})", record["path"])
+        why = R.settlement_identity_violation(hand, mask, rake, engine)  # R-identity
+        if why is not None:
+            findings.fail("rule", "payoff_identity", (node, mask), f"winners {mask}: {why}", record["path"])
     return len(engine_rows)
 
 
@@ -492,6 +569,51 @@ def self_test(config: Path, mode: str) -> bool:
     ok &= caught
     outcomes.append(f"call+1={'caught' if caught else 'MISSED'}")
 
+    if rules.players >= 3:
+        # A three-way tie with odd units: one unit moved from the lowest winner to the highest (a wrong C11).
+        tampered = json.loads(json.dumps(records))
+        tie = next(((r, row) for r in tampered for row in r["payoffs"]
+                    if bin(row["winners"]).count("1") == 3 and len(set(row["payoff"])) > 1), None)
+        if tie is not None:
+            _, row = tie
+            seats = [p for p in range(rules.players) if row["winners"] >> p & 1]
+            row["payoff"][seats[0]] -= 1
+            row["payoff"][seats[-1]] += 1
+            found = referee_check(rules, R.Conventions(), mode, header, tampered)
+            failures, _, _ = classify_findings(rules, mode, header, tampered, found, True)
+            caught = any(item["check"] == "payoff_row" for item in failures)
+            ok &= caught
+            outcomes.append(f"odd_chip_moved={'caught' if caught else 'MISSED'}")
+        # The rake charged to the non-winner instead of the winners (a wrong R11/R13 with three seats).
+        tampered = json.loads(json.dumps(records))
+        raked = next(((r, row) for r in tampered for row in r["payoffs"]
+                      if sum(row["payoff"]) < 0 and bin(row["winners"]).count("1") < bin(r["active_mask"]).count("1")),
+                     None)
+        if raked is not None:
+            record, row = raked
+            rake = -sum(row["payoff"])
+            loser = next(p for p in range(rules.players) if record["active_mask"] >> p & 1 and not row["winners"] >> p & 1)
+            winner = next(p for p in range(rules.players) if row["winners"] >> p & 1)
+            row["payoff"][loser] -= rake
+            row["payoff"][winner] += rake
+            found = referee_check(rules, R.Conventions(), mode, header, tampered)
+            checks = {item["check"] for item in found.items.values()}
+            caught = "payoff_row" in checks and "payoff_identity" in checks
+            ok &= caught
+            outcomes.append(f"rake_on_loser={'caught' if caught else 'MISSED'}")
+        # An all-in player with less in the pot than another player in the hand (a side pot, against R9b):
+        # at a showdown without all-in players, one seat is marked all-in with one unit less committed.
+        tampered = json.loads(json.dumps(records))
+        showdown = next((r for r in tampered if r["kind"] == "terminal_showdown" and r["all_in_mask"] == 0), None)
+        if showdown is not None:
+            seat = next(p for p in range(rules.players) if showdown["active_mask"] >> p & 1)
+            showdown["remaining_stacks"][seat] = 0
+            showdown["committed_total"][seat] -= 1
+            found = referee_check(rules, R.Conventions(), mode, header, tampered)
+            caught = any(item["check"] == "side_pot" for item in found.items.values())
+            ok &= caught
+            outcomes.append(f"side_pot={'caught' if caught else 'MISSED'}")
+
     for name, value, conv in R.alternative_conventions():
         other_header, other = synthesize_dump(rules, conv, mode)
         if other == records:
@@ -577,6 +699,12 @@ def referee_case(args, config: Path, mode: str, index: int) -> dict:
           f"payoff_rows={counts.get('payoff_rows', 0)} rule_failures={len(rule)} "
           f"abstraction_failures={len(abstraction)} convention_mismatches={len(mismatches) + len(labels)} "
           f"-> {status}")
+    coverage = {}
+    try:
+        coverage = coverage_stats(rules, R.Conventions(), enumerate_tree(rules, R.Conventions(), mode))
+        print(f"SD_REFEREE_COVERAGE {label} " + " ".join(f"{k}={v}" for k, v in coverage.items()))
+    except (R.ConfigError, R.UnsupportedSituation):
+        pass  # already reported as an enumeration error
     for item in (rule + abstraction + labels)[:args.examples]:
         print(f"  {item['category']}:{item['check']} at {json_key(item['where'])} "
               f"[{item['path'] or 'root'}]: {item['detail']}")
@@ -586,7 +714,7 @@ def referee_case(args, config: Path, mode: str, index: int) -> dict:
     return {
         "config": str(config), "config_id": rules.config_id, "mode": mode, "dump": str(dump),
         "tree_fingerprint": header.get("tree_fingerprint"), "recorded_tree_fingerprint": recorded,
-        "config_fingerprint": header.get("config_fingerprint"), "compared": counts,
+        "config_fingerprint": header.get("config_fingerprint"), "compared": counts, "coverage": coverage,
         "rule_failures": summarize(rule, args.examples),
         "abstraction_failures": summarize(abstraction, args.examples),
         "label_and_order_conventions": summarize(labels, args.examples),

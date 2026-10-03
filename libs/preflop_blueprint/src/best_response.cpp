@@ -1,6 +1,5 @@
 #include "gtosd/preflop_blueprint/best_response.hpp"
 #include "gtosd/preflop_blueprint/action_labels.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include "gtosd/card_abstraction/card_abstraction.hpp"
 #include "gtosd/card_abstraction/combinatorics.hpp"
@@ -147,39 +146,13 @@ bool assign_board_class_rows(Universe &universe, const ca::BucketTable &table,
 }
 
 // Rows of a flop or turn universe with the street abstraction of the
-// resources (history rows are assigned by assign_history_prefix).
+// resources.
 bool assign_street_rows(Universe &universe, const BestResponseResources &resources,
                         const ca::BucketTable &table,
                         const Result<ca::CanonicalLookup, CardError> &lookup) {
   return resources.board_class_rows != nullptr
              ? assign_board_class_rows(universe, table, lookup, *resources.board_class_rows)
              : assign_bucket_rows(universe, table, lookup, resources.class_rows);
-}
-
-bool assign_history_prefix(Universe &universe, const BestResponseResources &resources,
-                           const std::array<CardId, 3> &flop,
-                           const std::optional<CardId> turn = std::nullopt) {
-  for (std::size_t hand = 0; hand < universe.size(); ++hand) {
-    const std::array<CardId, 2> cards{CardId::from_index(universe.cards[hand][0]).value(),
-                                      CardId::from_index(universe.cards[hand][1]).value()};
-    const auto fb = ca::lookup_flop_bucket(*resources.catalog, *resources.flop, flop, cards);
-    if (!fb)
-      return false;
-    std::uint16_t tb = ca::no_bucket;
-    if (turn) {
-      const auto found =
-          ca::lookup_turn_bucket(*resources.catalog, *resources.turn, flop, *turn, cards);
-      if (!found)
-        return false;
-      tb = found.value().bucket;
-    }
-    universe.rows[hand] = resources.history_rows->row(
-        turn ? Street::Turn : Street::Flop, ca::combo_table().hand_class[universe.combos[hand]],
-        fb.value().bucket, tb, ca::no_bucket);
-    if (universe.rows[hand] == no_history_row)
-      return false;
-  }
-  return true;
 }
 
 // Sum over the live hands disjoint from each hand of reach (per-card sums).
@@ -463,7 +436,6 @@ public:
     tables_.turn = context.resources.turn;
     tables_.river = context.resources.river;
     tables_.class_rows = context.resources.class_rows;
-    tables_.history_rows = context.resources.history_rows;
     tables_.board_class_rows = context.resources.board_class_rows;
     const auto &nodes = context.game->nodes();
     for (std::uint32_t node = 0; node < nodes.size(); ++node) {
@@ -734,9 +706,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     flop_mask |= card.mask();
   }
   auto flop_universe = make_universe(flop_mask);
-  if (!(resources.history_rows ? assign_history_prefix(flop_universe, resources, group.flop)
-                               : assign_street_rows(flop_universe, resources, *resources.flop,
-                                                    resources.catalog->lookup_flop(group.flop)))) {
+  if (!assign_street_rows(flop_universe, resources, *resources.flop,
+                          resources.catalog->lookup_flop(group.flop))) {
     ok = false;
     return result;
   }
@@ -852,10 +823,8 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
   for (const auto &[turn_card, turn_boards] : by_turn) {
     const auto turn = CardId::from_index(turn_card).value();
     auto turn_universe = make_universe(flop_mask | turn.mask());
-    if (!(resources.history_rows
-              ? assign_history_prefix(turn_universe, resources, group.flop, turn)
-              : assign_street_rows(turn_universe, resources, *resources.turn,
-                                   resources.catalog->lookup_flop_turn(group.flop, turn)))) {
+    if (!assign_street_rows(turn_universe, resources, *resources.turn,
+                            resources.catalog->lookup_flop_turn(group.flop, turn))) {
       ok = false;
       return result;
     }
@@ -931,7 +900,6 @@ FlopValues evaluate_flop_group(const BestResponseEvaluator::Impl &context, const
     tables.turn = resources.turn;
     tables.river = resources.river;
     tables.class_rows = resources.class_rows;
-    tables.history_rows = resources.history_rows;
     tables.board_class_rows = resources.board_class_rows;
     for (const auto *board : reference_boards) {
       const auto built = BoardContext::build(board->history, *resources.ranks, &tables);
@@ -1244,14 +1212,10 @@ BestResponseEvaluator::create(const CompiledGame &game, const BucketPolicy &aver
     if (resources.class_rows != nullptr && !resources.class_rows->matches(table)) {
       return Outcome::failure(KernelError::InvalidInput);
     }
-    if (resources.history_rows && (resources.class_rows || !resources.history_rows->matches(table)))
-      return Outcome::failure(KernelError::InvalidInput);
     if (resources.board_class_rows &&
-        (resources.class_rows || resources.history_rows ||
-         !resources.board_class_rows->matches(table)))
+        (resources.class_rows || !resources.board_class_rows->matches(table)))
       return Outcome::failure(KernelError::InvalidInput);
     const auto count = resources.board_class_rows ? resources.board_class_rows->count(table.street())
-                       : resources.history_rows   ? resources.history_rows->count(table.street())
                        : resources.class_rows == nullptr
                            ? table.capacity()
                            : resources.class_rows->count(table.street());

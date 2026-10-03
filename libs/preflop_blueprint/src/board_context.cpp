@@ -1,5 +1,4 @@
 #include "gtosd/preflop_blueprint/board_context.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include "gtosd/card_abstraction/combinatorics.hpp"
 #include "gtosd/card_abstraction/showdown_counts.hpp"
@@ -105,9 +104,7 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
     street.fill(card_abstraction::no_bucket);
   }
   if (tables != nullptr && tables->catalog != nullptr) {
-    if ((tables->history_rows != nullptr ? 1 : 0) + (tables->class_rows != nullptr ? 1 : 0) +
-            (tables->board_class_rows != nullptr ? 1 : 0) >
-        1)
+    if (tables->class_rows != nullptr && tables->board_class_rows != nullptr)
       return ContextResult::failure(KernelError::InvalidInput);
     context.class_rows_ = tables->class_rows;
     std::array<std::uint32_t, 3> board_classes{};
@@ -130,7 +127,6 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
       }
       if (entry.table->street() != entry.street || !entry.lookup ||
           (tables->class_rows != nullptr && !tables->class_rows->matches(*entry.table)) ||
-          (tables->history_rows != nullptr && !tables->history_rows->matches(*entry.table)) ||
           (tables->board_class_rows != nullptr &&
            !tables->board_class_rows->matches(*entry.table))) {
         return ContextResult::failure(KernelError::MissingTable);
@@ -153,21 +149,6 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
       }
       context.has_buckets_[index] = true;
     }
-    if (tables->history_rows) {
-      for (const auto present : context.has_buckets_)
-        if (!present)
-          return ContextResult::failure(KernelError::MissingTable);
-      for (std::size_t street = 0; street < 3; ++street)
-        for (std::uint16_t hand = 0; hand < live_hand_count; ++hand) {
-          const auto mapped = tables->history_rows->row(
-              static_cast<Street>(street + 1), context.hand_class_[hand], context.buckets_[0][hand],
-              context.buckets_[1][hand], context.buckets_[2][hand]);
-          if (mapped == no_history_row)
-            return ContextResult::failure(KernelError::InvalidInput);
-          context.history_rows_[street][hand] = mapped;
-        }
-      context.has_history_rows_ = true;
-    }
     if (tables->board_class_rows) {
       for (const auto present : context.has_buckets_)
         if (!present)
@@ -182,10 +163,10 @@ Result<BoardContext, KernelError> BoardContext::build(const card_abstraction::Bo
           rows.river_class(board_classes[1], board_classes[2])};
       for (std::size_t street = 0; street < 3; ++street)
         for (std::uint16_t hand = 0; hand < live_hand_count; ++hand)
-          context.history_rows_[street][hand] =
+          context.abstract_rows_[street][hand] =
               rows.row(static_cast<card_abstraction::BucketStreet>(street), classes[street],
                        context.buckets_[street][hand]);
-      context.has_history_rows_ = true;
+      context.has_abstract_rows_ = true;
     }
   } else if (tables != nullptr &&
              (tables->flop != nullptr || tables->turn != nullptr || tables->river != nullptr)) {

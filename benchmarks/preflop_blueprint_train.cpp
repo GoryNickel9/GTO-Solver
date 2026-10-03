@@ -28,7 +28,6 @@
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
 #include "gtosd/preflop_blueprint/certifier.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/trainer.hpp"
 #include "monker_chart_format.hpp"
 #include "monker_chart_lock.hpp"
@@ -217,7 +216,6 @@ nlohmann::json memory_breakdown_json(const pb::MemoryBreakdown &breakdown) {
       {"board_list_bytes", breakdown.board_list_bytes},
       {"hand_mask_bytes", breakdown.hand_mask_bytes},
       {"tree_bytes", breakdown.tree_bytes},
-      {"history_map_resident_bytes", breakdown.history_map_resident_bytes},
       {"bucket_table_bytes", breakdown.bucket_table_bytes},
       {"rank_table_bytes", breakdown.rank_table_bytes},
       {"catalog_bytes", breakdown.catalog_bytes},
@@ -255,7 +253,6 @@ int main(const int argc, char **argv) {
     // Texture of the board classes (board_texture.hpp): merged turn classes
     // sharing their rows. Without it every canonical board is its own class.
     std::filesystem::path board_texture_path;
-    std::filesystem::path history_rows_path;
     bool resume = false;
     std::uint64_t iterations = 100U;
     bool automatic_target = true;
@@ -401,8 +398,6 @@ int main(const int argc, char **argv) {
         resources_dir = value;
       } else if (name == "--buckets-dir") {
         buckets_dir = value;
-      } else if (name == "--history-rows") {
-        history_rows_path = value;
       } else if (name == "--board-texture-map") {
         if (value.empty())
           throw std::runtime_error("--board-texture-map needs a file");
@@ -678,19 +673,6 @@ int main(const int argc, char **argv) {
     resources.turn = &turn.value();
     resources.river = &river.value();
     std::optional<pb::ClassBucketRows> class_rows;
-    std::optional<pb::HistoryBucketRows> history_rows;
-    if (!history_rows_path.empty()) {
-      if (use_class_rows)
-        throw std::runtime_error("choose class rows or history rows");
-      auto mapped = pb::HistoryBucketRows::load(history_rows_path);
-      if (!mapped)
-        throw std::runtime_error("history map load failed");
-      history_rows.emplace(std::move(mapped.value()));
-      resources.history_rows = &*history_rows;
-      config.flop_capacity = history_rows->count(ca::BucketStreet::Flop);
-      config.turn_capacity = history_rows->count(ca::BucketStreet::Turn);
-      config.river_capacity = history_rows->count(ca::BucketStreet::River);
-    }
     if (use_class_rows) {
       auto built = pb::ClassBucketRows::build(flop.value(), turn.value(), river.value());
       if (!built) {
@@ -704,8 +686,8 @@ int main(const int argc, char **argv) {
     }
     std::optional<pb::BoardClassRows> board_class_rows;
     if (use_board_class_rows) {
-      if (use_class_rows || history_rows)
-        throw std::runtime_error("choose one of class rows, history rows, board class rows");
+      if (use_class_rows)
+        throw std::runtime_error("choose one of class rows, board class rows");
       // The best response reads board class rows, but the certificate does
       // not record them and the in-training evaluation of this CLI has not
       // been validated with them: evaluate the saved policy separately
@@ -854,8 +836,6 @@ int main(const int argc, char **argv) {
               << ", \"capacities\": [" << config.flop_capacity << ", " << config.turn_capacity
               << ", " << config.river_capacity << "], \"board_texture\": "
               << board_texture_json.dump() << ", \"state_bytes\": " << trainer.state_bytes()
-              << ", \"history_map_resident_bytes\": "
-              << (history_rows ? history_rows->resident_byte_size() : 0U)
               << ", \"units\": " << trainer.partition().unit_roots.size()
               << ", \"top_nodes\": " << trainer.partition().top_nodes
               << ", \"largest_unit\": " << trainer.partition().largest_unit_nodes
@@ -921,9 +901,7 @@ int main(const int argc, char **argv) {
 
     // Source text of the exported policies (the evaluators check the abstraction suffix).
     const std::string abstraction_source =
-        history_rows ? "|abstraction=" + std::string(history_rows->format_name()) +
-                           "|map=" + history_rows->fingerprint()
-        : use_class_rows
+        use_class_rows
             ? "|abstraction=class-major-v1|flop=" + flop.value().fingerprint() +
                   "|turn=" + turn.value().fingerprint() + "|river=" + river.value().fingerprint()
         : board_class_rows
@@ -1327,7 +1305,6 @@ int main(const int argc, char **argv) {
             certification_resources.turn = resources.turn;
             certification_resources.river = resources.river;
             certification_resources.class_rows = resources.class_rows;
-            certification_resources.history_rows = resources.history_rows;
             pb::CertifierOptions options;
             options.threads = config.evaluation_threads == 0U ? config.threads
                                                                : config.evaluation_threads;

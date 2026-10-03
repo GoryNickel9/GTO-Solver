@@ -59,11 +59,10 @@ struct BestResponseResources {
   const card_abstraction::BucketTable *turn{nullptr};
   const card_abstraction::BucketTable *river{nullptr};
   const ClassBucketRows *class_rows{nullptr};
-  const HistoryBucketRows *history_rows{nullptr};
   // MonkerSolver-style rows (board class, per-board bucket) of a policy
   // trained with them: the rows BoardContext::build gives the trainer, the
-  // river sharing the class of its turn. Exclusive with class_rows and
-  // history_rows; last, so positional initializers stay valid.
+  // river sharing the class of its turn. Exclusive with class_rows; last, so
+  // positional initializers stay valid.
   const BoardClassRows *board_class_rows{nullptr};
 };
 

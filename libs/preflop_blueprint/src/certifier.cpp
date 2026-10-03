@@ -1,5 +1,4 @@
 #include "gtosd/preflop_blueprint/certifier.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 
 #include "gtosd/card_abstraction/deterministic_random.hpp"
 #include "gtosd/preflop_blueprint/game_config.hpp"
@@ -233,8 +232,6 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
   certificate.turn_table_fingerprint = resources.turn->fingerprint();
   certificate.river_table_fingerprint = resources.river->fingerprint();
   certificate.policy_fingerprint = policy_fingerprint(policy);
-  if (resources.history_rows)
-    certificate.history_map_fingerprint = resources.history_rows->fingerprint();
   certificate.flop_capacity = policy.layout().flop_capacity;
   certificate.turn_capacity = policy.layout().turn_capacity;
   certificate.river_capacity = policy.layout().river_capacity;
@@ -285,10 +282,7 @@ Result<Certificate, CertifierError> certify(const CompiledGame &game, const Buck
   const auto entries = static_cast<std::uint32_t>(evaluator.value().entry_count());
   std::vector<std::optional<FlopValues>> done(total);
 
-  const auto evaluation_identity =
-      certificate.policy_fingerprint + (certificate.history_map_fingerprint.empty()
-                                            ? ""
-                                            : "|history=" + certificate.history_map_fingerprint);
+  const auto evaluation_identity = certificate.policy_fingerprint;
   // A restricted pass stores other records under the same policy: its header
   // names the restriction, so no pass resumes from a state of another one,
   // and the header of an unrestricted pass stays as it was.
@@ -563,9 +557,6 @@ std::string certificate_json(const Certificate &certificate) {
   out += "  \"turn_table_fingerprint\": " + json_string(certificate.turn_table_fingerprint) + ",\n";
   out += "  \"river_table_fingerprint\": " + json_string(certificate.river_table_fingerprint) + ",\n";
   out += "  \"policy_fingerprint\": " + json_string(certificate.policy_fingerprint) + ",\n";
-  if (!certificate.history_map_fingerprint.empty())
-    out += "  \"history_map_fingerprint\": " + json_string(certificate.history_map_fingerprint) +
-           ",\n";
   out += "  \"seconds\": " + json_number(certificate.seconds) + ",\n";
   out += "  \"evaluation_seconds\": " + json_number(certificate.evaluation_seconds) + ",\n";
   out += "  \"aggregation_seconds\": " + json_number(certificate.aggregation_seconds) + ",\n";

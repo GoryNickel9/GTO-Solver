@@ -10,12 +10,6 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   target_link_libraries(gtosd_preflop_blueprint_checkpoint_policies PRIVATE
     gtosd::preflop_blueprint nlohmann_json::nlohmann_json)
   gtosd_set_warnings(gtosd_preflop_blueprint_checkpoint_policies)
-  add_executable(gtosd_preflop_blueprint_history_census preflop_blueprint_history_census.cpp)
-  target_link_libraries(gtosd_preflop_blueprint_history_census PRIVATE
-    gtosd::preflop_blueprint nlohmann_json::nlohmann_json)
-  target_compile_definitions(gtosd_preflop_blueprint_history_census PRIVATE
-    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-  gtosd_set_warnings(gtosd_preflop_blueprint_history_census)
   add_executable(gtosd_short_deck_constrained_audit short_deck_constrained_audit.cpp)
   target_link_libraries(gtosd_short_deck_constrained_audit PRIVATE
     gtosd::preflop_blueprint gtosd::best_response nlohmann_json::nlohmann_json)
@@ -438,6 +432,13 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   target_link_libraries(gtosd_preflop_blueprint_monker_values
     PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
   gtosd_set_warnings(gtosd_preflop_blueprint_monker_values)
+  # Part A of phase 3b: the values of a fixed policy (2 or 3 seats) through the
+  # trainer's traversal (Trainer::evaluate_policy_values), JSON for
+  # tools/monker_compare/{monker_in_our_game,part_a_values}.py.
+  add_executable(gtosd_preflop_blueprint_policy_values preflop_blueprint_policy_values.cpp)
+  target_link_libraries(gtosd_preflop_blueprint_policy_values
+    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
+  gtosd_set_warnings(gtosd_preflop_blueprint_policy_values)
   add_test(NAME gtosd_preflop_blueprint_game_report
     COMMAND gtosd_preflop_blueprint_game
       --config ${PROJECT_SOURCE_DIR}/benchmarks/fixtures/preflop_blueprint_co40_v1.json)
@@ -618,16 +619,6 @@ if(GTOSD_BUILD_PREFLOP_BLUEPRINT)
   endforeach()
 
   add_executable(gtosd_preflop_blueprint_certify preflop_blueprint_certify.cpp)
-  add_executable(gtosd_preflop_blueprint_abstract_br preflop_blueprint_abstract_br.cpp)
-  target_link_libraries(gtosd_preflop_blueprint_abstract_br
-    PRIVATE gtosd::preflop_blueprint gtosd::card_abstraction nlohmann_json::nlohmann_json)
-  gtosd_set_warnings(gtosd_preflop_blueprint_abstract_br)
-  add_executable(gtosd_preflop_blueprint_history_rows preflop_blueprint_history_rows.cpp)
-  target_link_libraries(gtosd_preflop_blueprint_history_rows
-    PRIVATE gtosd::preflop_blueprint nlohmann_json::nlohmann_json)
-  target_compile_definitions(gtosd_preflop_blueprint_history_rows PRIVATE
-    GTOSD_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
-  gtosd_set_warnings(gtosd_preflop_blueprint_history_rows)
   add_executable(gtosd_preflop_blueprint_bucket_diagnostics
     preflop_blueprint_bucket_diagnostics.cpp)
   add_executable(gtosd_preflop_blueprint_temporal_witness preflop_blueprint_temporal_witness.cpp)

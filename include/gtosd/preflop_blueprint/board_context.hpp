@@ -10,6 +10,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <string>
 #include <vector>
@@ -22,12 +23,14 @@
 // seven-card ranks, rank order, preflop hand class, street buckets and the
 // per-card incidence lists used by the blocker corrections of the kernels.
 namespace gtosd::preflop_blueprint {
-class HistoryBucketRows;
 
 inline constexpr std::size_t live_hand_count = 465U;
 // Live hands that contain a given non-board card.
 inline constexpr std::size_t hands_per_card = 30U;
 inline constexpr std::uint16_t no_hand = 0xFFFFU;
+// Row of a hand that has none: a RiverBoard assigned without a prefix (the
+// joint river engine treats it as a missing row).
+inline constexpr std::uint32_t no_row = std::numeric_limits<std::uint32_t>::max();
 
 enum class KernelError : std::uint8_t { InvalidBoard, MissingTable, InvalidInput };
 
@@ -64,7 +67,6 @@ struct AbstractionTables {
   const card_abstraction::BucketTable *river{nullptr};
   // Must outlive contexts built from these tables. Null retains plain buckets.
   const ClassBucketRows *class_rows{nullptr};
-  const HistoryBucketRows *history_rows{nullptr};
   // MonkerSolver-style rows keyed by (board class, per-board bucket).
   const BoardClassRows *board_class_rows{nullptr};
 };
@@ -107,8 +109,8 @@ public:
       return hand_class_[hand];
     }
     const auto index = static_cast<std::size_t>(street) - 1U;
-    if (has_history_rows_)
-      return history_rows_[index][hand];
+    if (has_abstract_rows_)
+      return abstract_rows_[index][hand];
     return class_rows_ == nullptr
                ? buckets_[index][hand]
                : class_rows_->row(static_cast<card_abstraction::BucketStreet>(index),
@@ -145,8 +147,9 @@ public:
   }
 
 private:
-  bool has_history_rows_{false};
-  std::array<std::array<std::uint32_t, live_hand_count>, 3> history_rows_{};
+  // Rows wider than a bucket (board class rows), filled by build.
+  bool has_abstract_rows_{false};
+  std::array<std::array<std::uint32_t, live_hand_count>, 3> abstract_rows_{};
   const ClassBucketRows *class_rows_{nullptr};
   card_abstraction::BoardHistory history_{};
   std::array<CardId, 5> board_{};

@@ -30,10 +30,10 @@ endif()
 set(FORBIDDEN_LINK_TARGETS
   "gtosd::solver" "gtosd::best_response" "gtosd::solver_validation" "gtosd::isomorphism"
   "gtosd::memory" "gtosd::postflop" "gtosd::postflop_subgame" "gtosd::preflop"
-  "gtosd::preflop_trainer" "gtosd::preflop_certifier" "gtosd::storage" "gtosd::gui_prototype"
+  "gtosd::preflop_trainer" "gtosd::preflop_certifier" "gtosd::storage"
   "gtosd_solver" "gtosd_best_response" "gtosd_solver_validation" "gtosd_isomorphism"
   "gtosd_memory" "gtosd_postflop" "gtosd_postflop_subgame" "gtosd_preflop_trainer"
-  "gtosd_preflop_certifier" "gtosd_storage" "gtosd_gui_prototype")
+  "gtosd_preflop_certifier" "gtosd_storage")
 
 foreach(path IN LISTS GUARDED_CMAKE)
   file(READ "${path}" content)

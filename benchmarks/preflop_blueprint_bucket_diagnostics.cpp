@@ -6,7 +6,6 @@
 #include "gtosd/preflop_blueprint/action_labels.hpp"
 #include "gtosd/preflop_blueprint/best_response.hpp"
 #include "gtosd/preflop_blueprint/decision_gap.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include <nlohmann/json.hpp>
 
@@ -86,7 +85,7 @@ int main(const int argc, char **argv) {
       const std::string name = argv[i];
       if (name != "--config" && name != "--resources-dir" && name != "--buckets-dir" &&
           name != "--policy" && name != "--reference-certificate" && name != "--rows" &&
-          name != "--history-rows" && name != "--comparison-buckets-dir" && name != "--flops" &&
+          name != "--comparison-buckets-dir" && name != "--flops" &&
           name != "--seed" && name != "--threads" && name != "--nodes" && name != "--output" &&
           name != "--export-observations") {
         throw std::runtime_error("unknown option " + name);
@@ -169,7 +168,6 @@ int main(const int argc, char **argv) {
       throw std::runtime_error("reference fingerprint/capacity mismatch");
     }
     std::optional<pb::ClassBucketRows> class_rows;
-    std::optional<pb::HistoryBucketRows> history_rows;
     const auto row_kind = value("--rows", "class");
     if (row_kind == "class") {
       auto built = pb::ClassBucketRows::build(flop.value(), turn.value(), river.value());
@@ -177,24 +175,8 @@ int main(const int argc, char **argv) {
         throw std::runtime_error("class mapping failed");
       }
       class_rows.emplace(std::move(built.value()));
-    } else if (row_kind == "history") {
-      if (!args.contains("--history-rows")) {
-        throw std::runtime_error("history rows path required");
-      }
-      auto loaded = pb::HistoryBucketRows::load(args.at("--history-rows"));
-      if (!loaded) {
-        throw std::runtime_error("history mapping failed");
-      }
-      history_rows.emplace(std::move(loaded.value()));
-      if (!reference.contains("history_map_fingerprint") ||
-          reference.at("history_map_fingerprint") != history_rows->fingerprint() ||
-          layout.flop_capacity != history_rows->count(ca::BucketStreet::Flop) ||
-          layout.turn_capacity != history_rows->count(ca::BucketStreet::Turn) ||
-          layout.river_capacity != history_rows->count(ca::BucketStreet::River)) {
-        throw std::runtime_error("reference/history mapping mismatch");
-      }
     } else if (row_kind != "base") {
-      throw std::runtime_error("rows must be class, history or base");
+      throw std::runtime_error("rows must be class or base");
     }
     pb::BestResponseResources resources{&ranks.value(),
                                         &all_in.value(),
@@ -202,8 +184,7 @@ int main(const int argc, char **argv) {
                                         &flop.value(),
                                         &turn.value(),
                                         &river.value(),
-                                        class_rows ? &*class_rows : nullptr,
-                                        history_rows ? &*history_rows : nullptr};
+                                        class_rows ? &*class_rows : nullptr};
     const auto evaluator =
         pb::BestResponseEvaluator::create(game.value(), *policy.value(), resources);
     if (!evaluator) {
@@ -335,14 +316,12 @@ int main(const int argc, char **argv) {
           if (!lookup) {
             throw std::runtime_error("flop lookup failed");
           }
-          const auto row =
-              history_rows ? history_rows->row(gtosd::Street::Flop, combos.hand_class[combo],
-                                               lookup.value().bucket, ca::no_bucket, ca::no_bucket)
-              : class_rows ? class_rows->row(ca::BucketStreet::Flop, combos.hand_class[combo],
-                                             lookup.value().bucket)
-                           : lookup.value().bucket;
-          if (row == pb::no_history_row) {
-            throw std::runtime_error("history row lookup failed");
+          const std::uint32_t row =
+              class_rows ? class_rows->row(ca::BucketStreet::Flop, combos.hand_class[combo],
+                                           lookup.value().bucket)
+                         : lookup.value().bucket;
+          if (row == ca::no_bucket) {
+            throw std::runtime_error("class row lookup failed");
           }
           Observation observation;
           observation.flop = selected[i];

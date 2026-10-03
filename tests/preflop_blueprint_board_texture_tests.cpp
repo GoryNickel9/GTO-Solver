@@ -1561,7 +1561,7 @@ void evaluate_lifts(const Resources &resources, const pb::AbstractionTables &vie
         }
       }
     }
-    FiniteGameBuilder wrong_builder(game, resources, true, &average, nullptr, nullptr, &wrong,
+    FiniteGameBuilder wrong_builder(game, resources, true, &average, nullptr, &wrong,
                                     street_tables);
     const auto wrong_game = wrong_builder.build(boards, variant.subsets);
     require(gtosd::finite_game_fingerprint(wrong_game) ==
@@ -1613,7 +1613,7 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
 
   // The abstract game keyed by the BoardContext rows, solved by the
   // independent scalar CFR.
-  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, &rows,
                             street_tables);
   const auto finite = builder.build(boards, variant.subsets);
   const auto summary = gtosd::validate_finite_game(finite);
@@ -1735,7 +1735,7 @@ PoolingCounts river_key_oracle(const Resources &resources, const FoldedTables &t
   const auto bucket_value =
       gtosd::evaluate_strategy_profile(finite, solved.value().average_strategy);
   require(bucket_value.has_value(), "board-class bucket profile evaluates");
-  FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+  FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, &rows,
                                      street_tables);
   const auto physical_game = physical_builder.build(boards, variant.subsets);
   const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
@@ -2141,7 +2141,7 @@ void river_key_locked(const Resources &resources, const FoldedTables &tables,
               "the exported average preflop rows are the lock");
     }
   }
-  FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+  FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, &rows,
                                      street_tables);
   const auto physical_game = physical_builder.build(boards, variant.subsets);
   const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());
@@ -2341,7 +2341,7 @@ LockedOracleCounts river_key_locked_oracle(const Resources &resources, const Fol
   const auto factors = lock_factors(game, lock, classes);
 
   // The oracle: the abstract game with the locked preflop as chance.
-  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+  FiniteGameBuilder builder(game, resources, false, nullptr, nullptr, &rows,
                             street_tables, &lock);
   const auto finite = builder.build(boards, variant.subsets);
   const auto summary = gtosd::validate_finite_game(finite);
@@ -3250,12 +3250,12 @@ void test_river_key_alternating(const Resources &resources, const FoldedTables &
     gtosd::SolverConfig reference_config;
     reference_config.algorithm = gtosd::SolverAlgorithm::LinearCfr;
     reference_config.iterations = 1U;
-    FiniteGameBuilder first_builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+    FiniteGameBuilder first_builder(game, resources, false, nullptr, nullptr, &rows,
                                     street_tables);
     const auto first_finite = first_builder.build(first_board, subsets);
     const auto first = gtosd::solve_finite_game(first_finite, reference_config);
     require(first.has_value(), "first player's conditional reference solves: " + name);
-    FiniteGameBuilder full_builder(game, resources, false, nullptr, nullptr, nullptr, &rows,
+    FiniteGameBuilder full_builder(game, resources, false, nullptr, nullptr, &rows,
                                    street_tables);
     const auto full_finite = full_builder.build(boards, subsets);
     const auto initial = gtosd::solve_finite_game(full_finite, reference_config);
@@ -3483,7 +3483,7 @@ void test_river_key_gain_lower(const Resources &resources, const FoldedTables &t
     }
 
     // The preflop as chance: the hero follows the lock, then best-responds.
-    FiniteGameBuilder restricted_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+    FiniteGameBuilder restricted_builder(game, resources, true, &average, nullptr, &rows,
                                          street_tables, &lock);
     const auto restricted_game = restricted_builder.build(boards, *entry.subsets);
     const auto restricted_summary = gtosd::validate_finite_game(restricted_game);
@@ -3512,7 +3512,7 @@ void test_river_key_gain_lower(const Resources &resources, const FoldedTables &t
             "the locked policy is exploitable from the flop on (the check is not vacuous)");
 
     // The same locked policy with the unrestricted physical best response.
-    FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, nullptr, &rows,
+    FiniteGameBuilder physical_builder(game, resources, true, &average, nullptr, &rows,
                                        street_tables);
     const auto physical_game = physical_builder.build(boards, *entry.subsets);
     const auto nash_conv = gtosd::calculate_nash_conv(physical_game, physical_builder.profile());

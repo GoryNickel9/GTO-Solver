@@ -5,7 +5,6 @@
 #include "gtosd/card_abstraction/rank_table.hpp"
 #include "gtosd/preflop_blueprint/board_context.hpp"
 #include "gtosd/preflop_blueprint/compiled_game.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/traversal.hpp"
 
 #include <array>
@@ -44,10 +43,9 @@ class RiverPrefix {
 public:
   // Checks the tables as BoardContext::build does and reads, for every combo
   // disjoint from the prefix, whether its flop and turn buckets (and class
-  // or history rows) exist and, with history rows, the cursor of its turn
-  // history; with board class rows, the class of the turn, which its rivers
-  // share. The tables must outlive the prefix and every board assigned from
-  // it; all three bucket tables and the catalog are required.
+  // rows) exist and, with board class rows, the class of the turn, which its
+  // rivers share. The tables must outlive the prefix and every board assigned
+  // from it; all three bucket tables and the catalog are required.
   [[nodiscard]] Result<bool, KernelError> assign(const std::array<CardId, 3> &flop, CardId turn,
                                                  const AbstractionTables &tables);
 
@@ -60,10 +58,6 @@ public:
   [[nodiscard]] bool covers(const std::uint16_t combo) const noexcept {
     return covered_[combo] != 0U;
   }
-  // Turn-history cursor of a covered combo (history rows only).
-  [[nodiscard]] const RiverRowCursor &cursor(const std::uint16_t combo) const noexcept {
-    return cursors_[combo];
-  }
   // Board class of the prefix's rivers with board class rows: the texture's
   // river class of the canonical flop+turn index (the index itself without a
   // texture, and without board class rows).
@@ -75,7 +69,6 @@ private:
   AbstractionTables tables_{};
   bool assigned_{false};
   std::uint32_t turn_class_{0U};
-  std::array<RiverRowCursor, card_abstraction::combo_count> cursors_{};
   std::array<std::uint8_t, card_abstraction::combo_count> covered_{};
 };
 
@@ -88,8 +81,8 @@ public:
   // that BoardContext::build accepts with the same tables, but a rejection
   // may carry a different error code, since the checks run in another order;
   // evaluate_flop cannot show the difference, as it maps every failure to
-  // InvalidInput. Without a prefix every row is no_history_row, which the
-  // joint traversal treats as a missing row.
+  // InvalidInput. Without a prefix every row is no_row, which the joint
+  // traversal treats as a missing row.
   [[nodiscard]] Result<bool, KernelError> assign(const card_abstraction::BoardHistory &history,
                                                  const card_abstraction::RankTable &ranks,
                                                  const RiverPrefix *prefix = nullptr);
@@ -135,7 +128,7 @@ private:
   std::array<std::uint16_t, live_hand_count + 1U> group_starts_{};
   std::uint16_t rank_groups_{0U};
   std::array<std::uint32_t, live_hand_count> rows_{};
-  std::uint32_t maximum_row_{no_history_row};
+  std::uint32_t maximum_row_{no_row};
 };
 
 // fold_mass and showdown_masses of kernels.hpp on both lanes at once: lane h

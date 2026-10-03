@@ -1,6 +1,4 @@
 #include "gtosd/preflop_blueprint/trainer.hpp"
-#include "gtosd/preflop_blueprint/abstract_best_response.hpp"
-#include "gtosd/preflop_blueprint/history_bucket_rows.hpp"
 #include "gtosd/preflop_blueprint/multiway_kernels.hpp"
 #include "gtosd/preflop_blueprint/policy_file.hpp"
 #include "gtosd/preflop_blueprint/preflop_class_cache.hpp"
@@ -25,6 +23,7 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <iterator>
 #include <limits>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -447,6 +446,9 @@ struct Trainer::Workspace {
   std::array<std::uint64_t, 3> terminals_visited{};
   std::array<std::uint64_t, 3> terminals_pruned{};
   std::array<std::uint64_t, 3> terminals_shortcut{};
+  // Part A: the five masses of a showdown kernel (evaluate_policy_values
+  // reads the deal mass as their sum); empty in training.
+  std::vector<double> collector_masses;
 
   // scratch_vectors hands-sized vectors per level: 3 on the heads-up path, 4
   // on the 3-seat path (a terminal's D3 or the harness's three all-in masses,
@@ -483,7 +485,40 @@ struct Trainer::Workspace {
                sizeof(double);
     if (multiway)
       total += MultiwayScratch::bytes();
+    total += collector_masses.capacity() * sizeof(double);
     return total + (regret_weight.capacity() + strategy_weight.capacity()) * sizeof(double);
+  }
+};
+
+// Part A (evaluate_policy_values): the per-pass buffers written by the
+// traversal hooks. Every preflop decision of the hero is visited once per
+// pass, and every terminal is counted once, in the pass of its lowest active
+// seat, so each slot has one writer and the buffers need no synchronization.
+struct Trainer::ValueCollector {
+  std::uint8_t hero{0U};
+  bool collect_rake{false};
+  // The current hero's preflop decisions: slot of every node (no_unit for
+  // the others), actions and the offset of the slot's [action][live hand]
+  // block in `values`.
+  std::vector<std::uint32_t> slot_of_node;
+  std::vector<std::uint8_t> slot_actions;
+  std::vector<std::uint64_t> slot_offset;
+  std::vector<double> values;
+  // [slot][live hand]: the other seats' disjoint mass at the node.
+  std::vector<double> reach;
+  // [live hand]: root values of the heads-up path (the 3-seat path keeps them
+  // in root_values3_).
+  std::vector<double> root;
+  // [node]: rake(t) x sum_h P(h) P r_hero(h) D_t[h] of the terminals counted
+  // in this pass.
+  std::vector<double> rake_mass;
+  // [node]: the rake of every terminal in antes (0 elsewhere).
+  std::vector<double> terminal_rake;
+
+  void begin_pass() {
+    std::fill(values.begin(), values.end(), 0.0);
+    std::fill(reach.begin(), reach.end(), 0.0);
+    std::fill(rake_mass.begin(), rake_mass.end(), 0.0);
   }
 };
 
@@ -631,24 +666,16 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
     const auto capacity = [&](const card_abstraction::BucketTable &table) {
       if (resources_.board_class_rows)
         return resources_.board_class_rows->count(table.street());
-      if (resources_.history_rows)
-        return resources_.history_rows->count(table.street());
       return resources_.class_rows ? resources_.class_rows->count(table.street())
                                    : static_cast<std::uint32_t>(table.capacity());
     };
-    if (resources_.history_rows &&
-        (resources_.class_rows || !resources_.history_rows->matches(*resources_.flop) ||
-         !resources_.history_rows->matches(*resources_.turn) ||
-         !resources_.history_rows->matches(*resources_.river)))
-      return Outcome::failure(TrainerError::InvalidConfiguration);
     if (resources_.class_rows && (!resources_.class_rows->matches(*resources_.flop) ||
                                   !resources_.class_rows->matches(*resources_.turn) ||
                                   !resources_.class_rows->matches(*resources_.river))) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
     }
     if (resources_.board_class_rows &&
-        (resources_.class_rows || resources_.history_rows ||
-         !resources_.board_class_rows->matches(*resources_.flop) ||
+        (resources_.class_rows || !resources_.board_class_rows->matches(*resources_.flop) ||
          !resources_.board_class_rows->matches(*resources_.turn) ||
          !resources_.board_class_rows->matches(*resources_.river))) {
       return Outcome::failure(TrainerError::InvalidConfiguration);
@@ -720,7 +747,13 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   fixed_policy_evaluation_ = fixed_policy != nullptr;
   const bool float_regrets = config_.storage == TableStorage::Float32;
   const bool float_sums = config_.storage != TableStorage::Double;
-  if (float_regrets)
+  // Part A (policy_only_): no regret table either; the traversal then runs
+  // with zero regret weights and never touches a table.
+  if (policy_only_ && !fixed_policy_evaluation_)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (policy_only_) {
+    // Nothing to allocate.
+  } else if (float_regrets)
     regrets_f32_.assign(layout_.entries, 0.0f);
   else
     regrets_.assign(layout_.entries, 0.0);
@@ -858,8 +891,6 @@ Result<bool, TrainerError> Trainer::initialize(const TrainingBoards *boards,
   if (resources_.class_rows) {
     identity += "|class-major-rows-v1";
   }
-  if (resources_.history_rows)
-    identity += "|history-rows=" + resources_.history_rows->fingerprint();
   if (resources_.board_class_rows)
     identity += "|" + resources_.board_class_rows->fingerprint();
   // Double storage keeps the historical identity; a narrower storage cannot
@@ -1004,7 +1035,6 @@ Result<bool, TrainerError> Trainer::prepare_board(const card_abstraction::BoardH
   tables.turn = resources_.turn;
   tables.river = resources_.river;
   tables.class_rows = resources_.class_rows;
-  tables.history_rows = resources_.history_rows;
   tables.board_class_rows = resources_.board_class_rows;
   const bool with_tables = resources_.catalog != nullptr && resources_.flop != nullptr &&
                            resources_.turn != nullptr && resources_.river != nullptr;
@@ -1680,6 +1710,8 @@ void Trainer::pass(const BoardWork &board, const std::uint8_t hero, const double
   if (profile)
     telemetry->traversal_top_reduce_seconds +=
         std::chrono::duration<double>(Clock::now() - phase).count();
+  if (collector_ != nullptr)
+    std::copy_n(primary.levels[0].scratch.data(), live_hand_count, collector_->root.data());
 }
 
 void Trainer::top_down_reach(const std::uint32_t node_id, const double *hero_reach,
@@ -1774,6 +1806,9 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
     } else {
       const auto terminal_started = profile_sample ? Clock::now() : Clock::time_point{};
       terminal(node, opponent_reach, values, workspace.levels[depth].scratch.data(), hero, board);
+      if (collector_ != nullptr && collector_->collect_rake)
+        collect_terminal_rake(node, hero_reach, workspace.levels[depth].scratch.data(), hero,
+                              board);
       if (profile_sample) {
         const auto seconds = std::chrono::duration<double>(Clock::now() - terminal_started).count();
         if (node.kind == NodeKind::TerminalFold)
@@ -1848,6 +1883,8 @@ void Trainer::traverse(const std::uint32_t node_id, const std::uint32_t depth,
                level.child_values.data() + static_cast<std::size_t>(action) * live_hand_count, hero,
                board, workspace, top_phase);
     }
+    if (preflop && collector_ != nullptr)
+      collect_hero_values(node_id, level.child_values.data(), opponent_reach, board);
     const auto update_started = profile_sample ? Clock::now() : Clock::time_point{};
     const bool accumulate_strategy = !fixed_policy_evaluation_;
     // Locked classes play their fixed row: no regret and no strategy-sum write.
@@ -2264,6 +2301,22 @@ void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double
     return static_cast<double>(game_->showdown_payoffs(node.id, winners)[hero]) * ante_scale;
   };
   const bool preflop = node.street == Street::Preflop;
+  // Part A: the expected rake of this terminal, counted once, in the pass of
+  // its lowest active seat: rake(t) x sum_h P(h) P r_hero(h) D_t[h], D_t the
+  // other seats' disjoint mass at the terminal (the deal mass the kernels
+  // compute, read here as the sum of their masses).
+  const bool rake_here =
+      collector_ != nullptr && collector_->collect_rake &&
+      hero == static_cast<std::uint8_t>(std::countr_zero(static_cast<unsigned>(node.active_mask))) &&
+      collector_->terminal_rake[node.id] != 0.0;
+  const auto count_rake = [&](const double *deal) {
+    double mass = 0.0;
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand)
+      mass += reach[hero][hand] * deal[hand];
+    collector_->rake_mass[node.id] = collector_->terminal_rake[node.id] *
+                                     (three_seat_pair_probability / static_cast<double>(live_hand_count)) *
+                                     mass;
+  };
   if (preflop && class_cache_active()) {
     // Every preflop terminal (all-in, checkdown leaf or fold, the hero active
     // or not) has a cache term for every seat: the hero's class value.
@@ -2272,6 +2325,10 @@ void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double
       const auto classes = board.context.hand_classes();
       for (std::size_t hand = 0; hand < live_hand_count; ++hand)
         values[hand] = class_values[classes[hand]];
+      if (rake_here) {
+        deal_mass3(node, reach, scratch, hero, board, workspace);
+        count_rake(scratch);
+      }
       return;
     }
   }
@@ -2291,6 +2348,8 @@ void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double
     // is valued at its own decision node).
     deal_mass3(node, reach, scratch, hero, board, workspace);
     scaled(static_cast<double>(game_->fold_payoffs(node.id)[hero]) * ante_scale, scratch);
+    if (rake_here)
+      count_rake(scratch);
     return;
   }
   if (preflop && harness_) {
@@ -2324,6 +2383,32 @@ void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double
     payoffs.tie_higher = payoff(static_cast<std::uint8_t>(hero_bit | higher_bit));
     payoffs.tie_both = payoff(node.active_mask);
     payoffs.lose = payoff(lower_bit);
+    if (rake_here) {
+      // The masses themselves: the values as the kernel combines them, and
+      // the deal mass as their sum.
+      double *masses = workspace.collector_masses.data();
+      const ThreeActiveMassSpans spans{HandSpan(masses, live_hand_count),
+                                       HandSpan(masses + live_hand_count, live_hand_count),
+                                       HandSpan(masses + 2U * live_hand_count, live_hand_count),
+                                       HandSpan(masses + 3U * live_hand_count, live_hand_count),
+                                       HandSpan(masses + 4U * live_hand_count, live_hand_count)};
+      three_active_masses(board.context, ConstHandSpan(reach[seats[0]], live_hand_count),
+                          ConstHandSpan(reach[seats[1]], live_hand_count), spans,
+                          *workspace.multiway);
+      for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+        const double win = masses[hand];
+        const double tie_lower = masses[live_hand_count + hand];
+        const double tie_higher = masses[2U * live_hand_count + hand];
+        const double tie_both = masses[3U * live_hand_count + hand];
+        const double lose = masses[4U * live_hand_count + hand];
+        values[hand] = payoffs.win * win + payoffs.tie_lower * tie_lower +
+                       payoffs.tie_higher * tie_higher + payoffs.tie_both * tie_both +
+                       payoffs.lose * lose;
+        scratch[hand] = win + tie_lower + tie_higher + tie_both + lose;
+      }
+      count_rake(scratch);
+      return;
+    }
     kernel_three_active(board.context, reach[seats[0]], reach[seats[1]], payoffs, values,
                         *workspace.multiway);
     return;
@@ -2337,6 +2422,23 @@ void Trainer::terminal3(const CompiledNode &node, const SeatReach &reach, double
   payoffs.win = payoff(hero_bit);
   payoffs.tie = payoff(node.active_mask);
   payoffs.lose = payoff(seat_bit(opponent));
+  if (rake_here) {
+    double *masses = workspace.collector_masses.data();
+    const TwoActiveMassSpans spans{HandSpan(masses, live_hand_count),
+                                   HandSpan(masses + live_hand_count, live_hand_count),
+                                   HandSpan(masses + 2U * live_hand_count, live_hand_count)};
+    two_active_masses(board.context, ConstHandSpan(reach[opponent], live_hand_count),
+                      ConstHandSpan(reach[folded], live_hand_count), spans, *workspace.multiway);
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+      const double win = masses[hand];
+      const double tie = masses[live_hand_count + hand];
+      const double lose = masses[2U * live_hand_count + hand];
+      values[hand] = payoffs.win * win + payoffs.tie * tie + payoffs.lose * lose;
+      scratch[hand] = win + tie + lose;
+    }
+    count_rake(scratch);
+    return;
+  }
   kernel_two_active(board.context, reach[opponent], reach[folded], payoffs, values,
                     *workspace.multiway);
 }
@@ -2608,6 +2710,8 @@ void Trainer::traverse3(const std::uint32_t node_id, const std::uint32_t depth,
       next[hero] = level.child_reach.data() + static_cast<std::size_t>(action) * live_hand_count;
       traverse3(child, depth + 1U, next, child_values, hero, board, workspace, top_phase);
     }
+    if (preflop && collector_ != nullptr)
+      collect_hero_values3(node_id, level.child_values.data(), reach, hero, board, workspace);
     const auto update_started = profile_sample ? Clock::now() : Clock::time_point{};
     const bool accumulate_strategy = !fixed_policy_evaluation_;
     // Locked classes play their fixed row: no regret and no strategy-sum write.
@@ -3056,8 +3160,6 @@ MemoryBreakdown Trainer::memory_breakdown() const noexcept {
   breakdown.tree_bytes = game_->nodes().size() * sizeof(CompiledNode) +
                          game_->edges().size() * sizeof(CompiledEdge) +
                          game_->states().size() * sizeof(PublicState);
-  breakdown.history_map_resident_bytes =
-      resources_.history_rows ? resources_.history_rows->resident_byte_size() : 0U;
   for (const auto *table : {resources_.flop, resources_.turn, resources_.river})
     if (table != nullptr)
       breakdown.bucket_table_bytes += table->payload_bytes();
@@ -3121,7 +3223,6 @@ Trainer::estimate_exploitability(const std::uint32_t flops, const bool exact_on_
   resources.turn = resources_.turn;
   resources.river = resources_.river;
   resources.class_rows = resources_.class_rows;
-  resources.history_rows = resources_.history_rows;
   resources.board_class_rows = resources_.board_class_rows;
   BestResponseOptions options;
   options.threads = config_.evaluation_threads == 0U ? config_.threads
@@ -3311,165 +3412,6 @@ Result<bool, TrainerError> Trainer::load_checkpoint(const std::filesystem::path 
   return Outcome::success(true);
 }
 
-Result<AbstractBestResponseReport, TrainerError>
-TrainerAccess::abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                                      const TrainerResources &resources,
-                                      const std::vector<FlopGroup> &groups,
-                                      const AbstractBestResponseOptions &options) {
-  using Outcome = Result<AbstractBestResponseReport, TrainerError>;
-  const auto started = Clock::now();
-  if (options.threads == 0U || groups.empty() || resources.history_rows == nullptr ||
-      game.config().player_count != 2U)
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-  const auto &source_layout = policy.layout();
-  if (source_layout.entries != policy.table().size())
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-
-  double group_weight = 0.0;
-  for (const auto &group : groups) {
-    if (!(group.weight > 0.0) || !std::isfinite(group.weight) || group.boards.empty())
-      return Outcome::failure(TrainerError::InvalidConfiguration);
-    group_weight += group.weight;
-    double board_weight = 0.0;
-    for (const auto &board : group.boards) {
-      if (!(board.weight > 0.0) || !std::isfinite(board.weight))
-        return Outcome::failure(TrainerError::InvalidConfiguration);
-      board_weight += board.weight;
-    }
-    if (!(board_weight > 0.0) || !std::isfinite(board_weight))
-      return Outcome::failure(TrainerError::InvalidConfiguration);
-  }
-  if (!(group_weight > 0.0) || !std::isfinite(group_weight))
-    return Outcome::failure(TrainerError::InvalidConfiguration);
-
-  TrainerConfig config;
-  config.flop_capacity = source_layout.flop_capacity;
-  config.turn_capacity = source_layout.turn_capacity;
-  config.river_capacity = source_layout.river_capacity;
-  config.batch_boards = 1U;
-  config.threads = options.threads;
-  std::vector<double> fixed_policy = std::move(policy.table());
-  std::unique_ptr<Trainer> evaluator(new Trainer(game, resources, config));
-  HandSubsets subsets;
-  subsets.combos = options.hand_subsets;
-  const bool restricted = !subsets.combos[0].empty() || !subsets.combos[1].empty();
-  const auto initialized =
-      evaluator->initialize(nullptr, restricted ? &subsets : nullptr, &fixed_policy);
-  if (!initialized)
-    return Outcome::failure(initialized.error());
-
-  AbstractBestResponseReport report;
-  report.flops = static_cast<std::uint32_t>(groups.size());
-  Trainer::BoardWork work;
-  for (std::size_t group_index = 0; group_index < groups.size(); ++group_index) {
-    const auto &group = groups[group_index];
-    const double normalized_group = group.weight / group_weight;
-    const double board_total = std::accumulate(
-        group.boards.begin(), group.boards.end(), 0.0,
-        [](const double sum, const WeightedBoard &board) { return sum + board.weight; });
-    for (const auto &board : group.boards) {
-      const auto prepared = evaluator->prepare_board(
-          board.history, normalized_group * board.weight / board_total, work);
-      if (!prepared)
-        return Outcome::failure(prepared.error());
-      evaluator->pass(work, 0U, 1.0);
-      evaluator->pass(work, 1U, 1.0);
-      ++report.boards;
-    }
-    if (options.progress) {
-      AbstractBestResponseProgress progress;
-      progress.flops_done = static_cast<std::uint32_t>(group_index + 1U);
-      progress.flops_total = report.flops;
-      progress.boards_done = report.boards;
-      progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-      options.progress(progress);
-    }
-  }
-
-  struct Predecessor {
-    std::uint32_t node{no_node};
-    std::uint8_t action{0U};
-  };
-  std::vector<Predecessor> predecessors(game.nodes().size());
-  for (const auto &node : game.nodes()) {
-    if (node.kind != NodeKind::Decision)
-      continue;
-    auto child = node.id;
-    auto parent = node.parent;
-    while (parent != no_node) {
-      const auto &ancestor = game.nodes()[parent];
-      if (ancestor.kind == NodeKind::Decision && ancestor.actor == node.actor) {
-        const auto edges = game.edges_of(parent);
-        const auto edge = std::find_if(edges.begin(), edges.end(),
-                                       [&](const CompiledEdge &entry) {
-                                         return entry.child == child;
-                                       });
-        if (edge == edges.end())
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        predecessors[node.id] =
-            {parent, static_cast<std::uint8_t>(edge - edges.begin())};
-        break;
-      }
-      child = parent;
-      parent = ancestor.parent;
-    }
-  }
-
-  const auto predecessor_row = [&](const Street street, const std::uint32_t row,
-                                   const Street target) {
-    auto current_street = street;
-    auto current_row = row;
-    while (current_street != target && current_row != no_history_row) {
-      if (current_street == Street::Preflop)
-        return no_history_row;
-      current_row = resources.history_rows->parent_row(current_street, current_row);
-      current_street = static_cast<Street>(static_cast<std::uint8_t>(current_street) - 1U);
-    }
-    return current_street == target ? current_row : no_history_row;
-  };
-
-  for (const std::uint8_t hero : {std::uint8_t{0}, std::uint8_t{1}}) {
-    double gain = 0.0;
-    for (auto iterator = game.nodes().rbegin(); iterator != game.nodes().rend(); ++iterator) {
-      const auto &node = *iterator;
-      if (node.kind != NodeKind::Decision || node.actor != hero)
-        continue;
-      const auto rows = StateLayout::rows_for(node.street, source_layout.flop_capacity,
-                                              source_layout.turn_capacity,
-                                              source_layout.river_capacity);
-      const auto &predecessor = predecessors[node.id];
-      for (std::uint32_t row = 0; row < rows; ++row) {
-        const auto offset = source_layout.offsets[node.id] +
-                            static_cast<std::uint64_t>(row) * node.action_count;
-        double value = -std::numeric_limits<double>::infinity();
-        for (std::uint8_t action = 0; action < node.action_count; ++action)
-          value = std::max(value, evaluator->regret(offset + action));
-        if (!std::isfinite(value))
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        if (predecessor.node == no_node) {
-          gain += value;
-          continue;
-        }
-        const auto &parent = game.nodes()[predecessor.node];
-        const auto parent_row = predecessor_row(node.street, row, parent.street);
-        if (parent_row == no_history_row)
-          return Outcome::failure(TrainerError::IntegrityFailure);
-        const auto parent_offset =
-            source_layout.offsets[parent.id] +
-            static_cast<std::uint64_t>(parent_row) * parent.action_count + predecessor.action;
-        evaluator->add_regret(parent_offset, value);
-      }
-    }
-    if (!std::isfinite(gain) || gain < -1e-9)
-      return Outcome::failure(TrainerError::IntegrityFailure);
-    report.gain[hero] = std::max(0.0, gain);
-  }
-  report.max_gain = std::max(report.gain[0], report.gain[1]);
-  report.process_bytes = process_working_set_bytes();
-  report.seconds = std::chrono::duration<double>(Clock::now() - started).count();
-  return Outcome::success(report);
-}
-
 Result<bool, TrainerError> TrainerAccess::set_regrets(Trainer &trainer,
                                                       const std::span<const double> regrets) {
   using Outcome = Result<bool, TrainerError>;
@@ -3590,12 +3532,627 @@ TrainerAccess::terminal3_values(Trainer &trainer, const std::span<const std::uin
   return Outcome::success(std::move(values));
 }
 
-Result<AbstractBestResponseReport, TrainerError>
-evaluate_abstract_best_response(const CompiledGame &game, BucketPolicy policy,
-                                const TrainerResources &resources,
-                                const std::vector<FlopGroup> &groups,
-                                const AbstractBestResponseOptions &options) {
-  return TrainerAccess::abstract_best_response(game, std::move(policy), resources, groups, options);
+// ===========================================================================
+// Part A of phase 3b (PHASE3_SPEC_2026-09-30 section 6.2): the values of a
+// fixed policy through the production traversals, policy-only initialization.
+// ===========================================================================
+
+void Trainer::collect_hero_values(const std::uint32_t node_id, const double *child_values,
+                                  const double *opponent_reach, const BoardWork &board) const {
+  auto &collector = *collector_;
+  const auto slot = collector.slot_of_node[node_id];
+  if (slot == no_unit)
+    return;
+  std::copy_n(child_values,
+              static_cast<std::size_t>(collector.slot_actions[slot]) * live_hand_count,
+              collector.values.data() + collector.slot_offset[slot]);
+  fold_mass(board.context, ConstHandSpan(opponent_reach, live_hand_count),
+            HandSpan(collector.reach.data() + static_cast<std::size_t>(slot) * live_hand_count,
+                     live_hand_count));
+}
+
+void Trainer::collect_hero_values3(const std::uint32_t node_id, const double *child_values,
+                                   const SeatReach &reach, const std::uint8_t hero,
+                                   const BoardWork &board, Workspace &workspace) const {
+  auto &collector = *collector_;
+  const auto slot = collector.slot_of_node[node_id];
+  if (slot == no_unit)
+    return;
+  std::copy_n(child_values,
+              static_cast<std::size_t>(collector.slot_actions[slot]) * live_hand_count,
+              collector.values.data() + collector.slot_offset[slot]);
+  deal_mass3(game_->nodes()[node_id], reach,
+             collector.reach.data() + static_cast<std::size_t>(slot) * live_hand_count, hero,
+             board, workspace);
+}
+
+void Trainer::collect_terminal_rake(const CompiledNode &node, const double *hero_reach,
+                                    const double *scratch, const std::uint8_t hero,
+                                    const BoardWork &board) const {
+  // Heads-up path: the masses terminal() left in the scratch (the disjoint
+  // mass of a fold; win, tie and lose of a showdown) sum to the opponent's
+  // disjoint mass at the terminal.
+  if (hero != static_cast<std::uint8_t>(std::countr_zero(static_cast<unsigned>(node.active_mask))))
+    return;
+  const double rake = collector_->terminal_rake[node.id];
+  if (rake == 0.0)
+    return;
+  const bool showdown = node.kind == NodeKind::TerminalShowdown;
+  if (showdown && node.street == Street::Preflop && !all_in_available_)
+    return;
+  double mass = 0.0;
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    double deal = scratch[hand];
+    if (showdown)
+      deal += scratch[live_hand_count + hand] + scratch[2U * live_hand_count + hand];
+    mass += board.hand_probability[hero][hand] * board.pair_probability[hero][hand] *
+            hero_reach[hand] * deal;
+  }
+  collector_->rake_mass[node.id] = rake * mass;
+}
+
+void Trainer::harvest_pass(const PolicyValuesHero &hero_values,
+                           std::vector<double> &chunk_value_sum,
+                           std::vector<double> &chunk_reach_sum, std::vector<double> &chunk_root_sum,
+                           double &chunk_ev, double &chunk_rake, const std::uint8_t hero,
+                           const BoardWork &board, const double weight) const {
+  const auto &collector = *collector_;
+  const auto combos = board.context.combo_ids();
+  const bool three = traversal_seats_ == 3U;
+  const double *root = three ? root_values3_.data() : collector.root.data();
+  const double hand_probability3 = 1.0 / static_cast<double>(live_hand_count);
+  for (std::size_t slot = 0; slot < hero_values.nodes.size(); ++slot) {
+    const auto actions = hero_values.actions[slot];
+    const double *node_values = collector.values.data() + collector.slot_offset[slot];
+    const double *node_reach = collector.reach.data() + slot * live_hand_count;
+    double *out_values = chunk_value_sum.data() + hero_values.value_offset[slot];
+    double *out_reach = chunk_reach_sum.data() + slot * card_abstraction::combo_count;
+    for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+      const double scale =
+          weight * (three ? three_seat_pair_probability : board.pair_probability[hero][hand]);
+      const auto combo = combos[hand];
+      for (std::size_t action = 0; action < actions; ++action)
+        out_values[action * card_abstraction::combo_count + combo] +=
+            scale * node_values[action * live_hand_count + hand];
+      out_reach[combo] += scale * node_reach[hand];
+    }
+  }
+  double ev = 0.0;
+  for (std::size_t hand = 0; hand < live_hand_count; ++hand) {
+    const double pair = three ? three_seat_pair_probability : board.pair_probability[hero][hand];
+    const double hand_probability = three ? hand_probability3 : board.hand_probability[hero][hand];
+    chunk_root_sum[combos[hand]] += weight * pair * root[hand];
+    ev += hand_probability * pair * root[hand];
+  }
+  chunk_ev += weight * ev;
+  double rake = 0.0;
+  for (const auto mass : collector.rake_mass)
+    rake += mass;
+  chunk_rake += weight * rake;
+}
+
+namespace {
+
+constexpr std::array<char, 8> values_state_magic{'G', 'T', 'O', 'S', 'D', 'P', 'V', 'S'};
+constexpr std::uint32_t values_state_version = 1U;
+constexpr std::size_t runouts_per_flop = 33U * 32U;
+
+void append_double(std::string &buffer, const double value) {
+  append_little(buffer, std::bit_cast<std::uint64_t>(value));
+}
+
+bool read_double(binary_io::Reader &reader, double &value) {
+  std::uint64_t bits = 0U;
+  if (!reader.read_little(bits))
+    return false;
+  value = std::bit_cast<double>(bits);
+  return true;
+}
+
+// The state file: header, totals per combo, the chunk series per class, and
+// the FNV-1a checksum of everything before it.
+std::string encode_policy_values(const PolicyValues &values, const std::uint64_t identity_hash) {
+  std::string buffer;
+  buffer.append(values_state_magic.data(), values_state_magic.size());
+  append_little32(buffer, values_state_version);
+  append_little(buffer, identity_hash);
+  append_little32(buffer, values.seats);
+  append_little32(buffer, values.chunks_total);
+  append_little32(buffer, values.chunks_done);
+  append_little(buffer, values.boards);
+  append_double(buffer, values.weight);
+  append_double(buffer, values.rake_sum);
+  binary_io::append_doubles(buffer, values.live_sum);
+  for (const auto &hero : values.heroes) {
+    append_little32(buffer, static_cast<std::uint32_t>(hero.nodes.size()));
+    for (std::size_t slot = 0; slot < hero.nodes.size(); ++slot) {
+      append_little32(buffer, hero.nodes[slot]);
+      append_little32(buffer, hero.actions[slot]);
+    }
+    append_double(buffer, hero.ev_direct);
+    binary_io::append_doubles(buffer, hero.root_sum);
+    binary_io::append_doubles(buffer, hero.reach_sum);
+    binary_io::append_doubles(buffer, hero.value_sum);
+  }
+  append_little32(buffer, static_cast<std::uint32_t>(values.series.size()));
+  for (const auto &chunk : values.series) {
+    append_little32(buffer, chunk.index);
+    append_little32(buffer, chunk.boards);
+    append_double(buffer, chunk.weight);
+    append_double(buffer, chunk.rake);
+    binary_io::append_doubles(buffer, chunk.live);
+    for (const auto &hero : chunk.heroes) {
+      append_double(buffer, hero.ev_direct);
+      binary_io::append_doubles(buffer, hero.root);
+      binary_io::append_doubles(buffer, hero.reach);
+      binary_io::append_doubles(buffer, hero.values);
+    }
+  }
+  append_little(buffer, detail::fnv1a_text(buffer));
+  return buffer;
+}
+
+// Fills the totals and the series of `values` (built with the slots of the
+// current evaluation) from a state file of the same identity; false when the
+// file does not match.
+bool decode_policy_values(const std::string &data, const std::uint64_t identity_hash,
+                          PolicyValues &values) {
+  if (data.size() < values_state_magic.size() + 8U)
+    return false;
+  const std::string body = data.substr(0U, data.size() - 8U);
+  std::uint64_t stored_hash = 0U;
+  {
+    const std::string tail = data.substr(data.size() - 8U);
+    binary_io::Reader tail_reader(tail);
+    if (!tail_reader.read_little(stored_hash) || stored_hash != detail::fnv1a_text(body))
+      return false;
+  }
+  binary_io::Reader reader(body);
+  std::vector<std::uint8_t> magic;
+  std::uint32_t version = 0U;
+  std::uint64_t identity = 0U;
+  std::uint32_t seats = 0U;
+  std::uint32_t chunks_total = 0U;
+  std::uint32_t chunks_done = 0U;
+  if (!reader.read_bytes(magic, values_state_magic.size()) ||
+      !std::equal(magic.begin(), magic.end(), values_state_magic.begin(),
+                  [](const std::uint8_t left, const char right) {
+                    return left == static_cast<std::uint8_t>(right);
+                  }) ||
+      !reader.read_little32(version) || version != values_state_version ||
+      !reader.read_little(identity) || identity != identity_hash || !reader.read_little32(seats) ||
+      seats != values.seats || !reader.read_little32(chunks_total) ||
+      chunks_total != values.chunks_total || !reader.read_little32(chunks_done) ||
+      chunks_done > chunks_total)
+    return false;
+  std::uint64_t boards = 0U;
+  double weight = 0.0;
+  double rake_sum = 0.0;
+  if (!reader.read_little(boards) || !read_double(reader, weight) ||
+      !read_double(reader, rake_sum))
+    return false;
+  std::vector<double> live_sum;
+  if (!reader.read_doubles(live_sum, card_abstraction::combo_count))
+    return false;
+  std::vector<PolicyValuesHero> heroes = values.heroes;
+  for (auto &hero : heroes) {
+    std::uint32_t slots = 0U;
+    if (!reader.read_little32(slots) || slots != hero.nodes.size())
+      return false;
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+      std::uint32_t node = 0U;
+      std::uint32_t actions = 0U;
+      if (!reader.read_little32(node) || node != hero.nodes[slot] ||
+          !reader.read_little32(actions) || actions != hero.actions[slot])
+        return false;
+    }
+    if (!read_double(reader, hero.ev_direct) ||
+        !reader.read_doubles(hero.root_sum, card_abstraction::combo_count) ||
+        !reader.read_doubles(hero.reach_sum, hero.nodes.size() * card_abstraction::combo_count) ||
+        !reader.read_doubles(hero.value_sum, values.heroes[&hero - heroes.data()].value_sum.size()))
+      return false;
+  }
+  std::uint32_t series_count = 0U;
+  if (!reader.read_little32(series_count) || series_count != chunks_done)
+    return false;
+  std::vector<PolicyValuesChunk> series(series_count);
+  for (auto &chunk : series) {
+    if (!reader.read_little32(chunk.index) || !reader.read_little32(chunk.boards) ||
+        !read_double(reader, chunk.weight) || !read_double(reader, chunk.rake) ||
+        !reader.read_doubles(chunk.live, class_count3))
+      return false;
+    chunk.heroes.resize(heroes.size());
+    for (std::size_t index = 0; index < heroes.size(); ++index) {
+      auto &hero = chunk.heroes[index];
+      const auto &totals = values.heroes[index];
+      const auto class_values =
+          totals.value_sum.size() / card_abstraction::combo_count * class_count3;
+      if (!read_double(reader, hero.ev_direct) || !reader.read_doubles(hero.root, class_count3) ||
+          !reader.read_doubles(hero.reach, totals.nodes.size() * class_count3) ||
+          !reader.read_doubles(hero.values, class_values))
+        return false;
+    }
+  }
+  if (!reader.at_end())
+    return false;
+  values.chunks_done = chunks_done;
+  values.boards = boards;
+  values.weight = weight;
+  values.rake_sum = rake_sum;
+  values.live_sum = std::move(live_sum);
+  values.heroes = std::move(heroes);
+  values.series = std::move(series);
+  return true;
+}
+
+} // namespace
+
+Result<PolicyValues, TrainerError>
+Trainer::evaluate_policy_values(const CompiledGame &game, const TrainerResources &resources,
+                                const TrainerConfig &config_in, BucketPolicy policy,
+                                const PolicyValuesOptions &options) {
+  using Outcome = Result<PolicyValues, TrainerError>;
+  const auto started = Clock::now();
+  const auto players = game.config().player_count;
+  if (players != 2U && players != 3U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (config_in.three_seat_harness || config_in.lazy_discount)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (resources.ranks == nullptr || resources.catalog == nullptr)
+    return Outcome::failure(TrainerError::MissingResource);
+  if (resources.preflop_lock != nullptr && !resources.preflop_lock->rows.empty())
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  const bool list = options.boards == PolicyValuesBoardKind::List;
+  if (list && (options.list == nullptr || options.list->histories.empty() ||
+               options.list->sample ||
+               options.list->weights.size() != options.list->histories.size() ||
+               options.chunk_boards == 0U))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (options.boards == PolicyValuesBoardKind::PhysicalFlops && options.flops == 0U)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  // The same rules as create(): the board kernels only for 3 players, in
+  // validation mode, on an exact list; the shortcut switched off only there.
+  if (config_in.preflop_terminals == PreflopTerminals::BoardKernels &&
+      (players != 3U || !config_in.validation || !list))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  if (!config_in.hero_folded_shortcut &&
+      (players != 3U || !config_in.validation ||
+       config_in.preflop_terminals != PreflopTerminals::BoardKernels))
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+
+  TrainerConfig config = config_in;
+  config.lazy_discount = false;
+  config.batch_boards = 1U;
+  config.threads = std::max(1U, config.threads);
+  config.evaluation_threads = 0U;
+  config.prefetch_refresh_rows = 0U;
+  config.prefetch_update_hands = 0U;
+  config.detailed_profile = false;
+  config.reuse_discount_invariant_policy = false;
+  config.three_seat_harness = false;
+  config.poison_skipped_units = false;
+  const auto &layout = policy.layout();
+  if (layout.flop_capacity != config.flop_capacity || layout.turn_capacity != config.turn_capacity ||
+      layout.river_capacity != config.river_capacity || layout.entries != policy.table().size())
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  std::vector<double> table = std::move(policy.table());
+  std::unique_ptr<Trainer> owner(new Trainer(game, resources, config));
+  Trainer &self = *owner;
+  self.policy_only_ = true;
+  if (const auto initialized = self.initialize(nullptr, nullptr, &table); !initialized)
+    return Outcome::failure(initialized.error());
+  if (self.harness_ || self.subsets_)
+    return Outcome::failure(TrainerError::InvalidConfiguration);
+  const bool three = self.traversal_seats_ == 3U;
+
+  // The chunks: one per flop (all its ordered runouts), or a block of the list.
+  const auto &catalog = *resources.catalog;
+  const auto &nodes = game.nodes();
+  std::vector<std::array<CardId, 3>> flops;
+  std::vector<double> chunk_weights;
+  std::uint32_t chunks_total = 0U;
+  double list_total = 0.0;
+  std::string board_spec;
+  if (options.boards == PolicyValuesBoardKind::CanonicalFlops) {
+    const auto &canonical = catalog.flops();
+    const auto total = options.flops == 0U ? canonical.size()
+                                           : std::min<std::size_t>(options.flops, canonical.size());
+    double multiplicity_total = 0.0;
+    for (std::size_t index = 0; index < total; ++index)
+      multiplicity_total += static_cast<double>(canonical[index].multiplicity);
+    for (std::size_t index = 0; index < total; ++index) {
+      auto cards = canonical[index].cards;
+      std::sort(cards.begin(), cards.end());
+      flops.push_back(cards);
+      chunk_weights.push_back(static_cast<double>(canonical[index].multiplicity) /
+                              multiplicity_total);
+    }
+    board_spec = "canonical-flops:" + std::to_string(total) + "/" + std::to_string(canonical.size());
+  } else if (options.boards == PolicyValuesBoardKind::PhysicalFlops) {
+    card_abstraction::DeterministicRandom random(options.seed);
+    for (std::uint32_t draw = 0; draw < options.flops; ++draw) {
+      flops.push_back(catalog.sample_physical_history(random).flop);
+      chunk_weights.push_back(1.0 / static_cast<double>(options.flops));
+    }
+    board_spec = "physical-flops:" + std::to_string(options.flops) +
+                 ":seed=" + std::to_string(options.seed);
+  } else {
+    std::string digest;
+    for (std::size_t index = 0; index < options.list->histories.size(); ++index) {
+      const auto &board = options.list->histories[index];
+      for (const auto card : board.flop)
+        digest.push_back(static_cast<char>(card.value()));
+      digest.push_back(static_cast<char>(board.turn.value()));
+      digest.push_back(static_cast<char>(board.river.value()));
+      const auto weight = options.list->weights[index];
+      if (!(weight > 0.0) || !std::isfinite(weight))
+        return Outcome::failure(TrainerError::InvalidConfiguration);
+      append_little(digest, std::bit_cast<std::uint64_t>(weight));
+      list_total += weight;
+    }
+    const auto count = options.list->histories.size();
+    const std::size_t blocks = (count + options.chunk_boards - 1U) / options.chunk_boards;
+    for (std::size_t block = 0; block < blocks; ++block) {
+      double weight = 0.0;
+      const auto begin = block * options.chunk_boards;
+      const auto end = std::min<std::size_t>(begin + options.chunk_boards, count);
+      for (std::size_t index = begin; index < end; ++index)
+        weight += options.list->weights[index] / list_total;
+      chunk_weights.push_back(weight);
+    }
+    board_spec = "list:" + std::to_string(count) + ":chunk=" + std::to_string(options.chunk_boards) +
+                 ":" + detail::hex64_text(detail::fnv1a_text(digest));
+  }
+  chunks_total = static_cast<std::uint32_t>(chunk_weights.size());
+  const auto make_chunk = [&](const std::uint32_t index,
+                              std::vector<card_abstraction::BoardHistory> &histories,
+                              std::vector<double> &weights) {
+    histories.clear();
+    weights.clear();
+    if (list) {
+      const auto count = options.list->histories.size();
+      const auto begin = static_cast<std::size_t>(index) * options.chunk_boards;
+      const auto end = std::min<std::size_t>(begin + options.chunk_boards, count);
+      for (std::size_t board = begin; board < end; ++board) {
+        histories.push_back(options.list->histories[board]);
+        weights.push_back(options.list->weights[board] / list_total);
+      }
+      return;
+    }
+    const auto &flop = flops[index];
+    const double weight = chunk_weights[index] / static_cast<double>(runouts_per_flop);
+    constexpr std::uint8_t deck_cards = 36U;
+    std::uint64_t mask = 0U;
+    for (const auto card : flop)
+      mask |= std::uint64_t{1} << card.value();
+    for (std::uint8_t turn = 0; turn < deck_cards; ++turn) {
+      if ((mask & (std::uint64_t{1} << turn)) != 0U)
+        continue;
+      for (std::uint8_t river = 0; river < deck_cards; ++river) {
+        if (river == turn || (mask & (std::uint64_t{1} << river)) != 0U)
+          continue;
+        card_abstraction::BoardHistory history;
+        history.flop = flop;
+        history.turn = CardId::from_index(turn).value();
+        history.river = CardId::from_index(river).value();
+        histories.push_back(history);
+        weights.push_back(weight);
+      }
+    }
+  };
+
+  // Identity of the evaluation: trainer identity (game, abstraction, modes),
+  // the policy bytes and the board list.
+  const std::uint64_t policy_hash = detail::fnv1a_text(std::string_view(
+      reinterpret_cast<const char *>(self.compact_policy_.data()),
+      self.compact_policy_.size() * sizeof(double)));
+  PolicyValues result;
+  result.identity = self.identity_ + "|policy=" + detail::hex64_text(policy_hash) +
+                    "|boards=" + board_spec + "|part-a-v1";
+  const std::uint64_t identity_hash = detail::fnv1a_text(result.identity);
+  result.seats = players;
+  result.chunks_total = chunks_total;
+  result.live_sum.assign(card_abstraction::combo_count, 0.0);
+
+  // The seats' preflop decisions (slots) and the collector.
+  std::array<std::vector<std::uint32_t>, 3> slot_of_node{};
+  std::array<std::vector<std::uint64_t>, 3> collector_offsets{};
+  std::size_t collector_values = 0U;
+  std::size_t collector_slots = 0U;
+  for (std::uint8_t hero = 0; hero < players; ++hero) {
+    PolicyValuesHero values;
+    values.hero = hero;
+    slot_of_node[hero].assign(nodes.size(), no_unit);
+    std::uint64_t value_offset = 0U;
+    std::uint64_t class_offset = 0U;
+    std::uint64_t hand_offset = 0U;
+    for (const auto &node : nodes) {
+      if (node.kind != NodeKind::Decision || node.street != Street::Preflop || node.actor != hero)
+        continue;
+      slot_of_node[hero][node.id] = static_cast<std::uint32_t>(values.nodes.size());
+      values.nodes.push_back(node.id);
+      values.actions.push_back(node.action_count);
+      values.value_offset.push_back(value_offset);
+      values.class_offset.push_back(class_offset);
+      collector_offsets[hero].push_back(hand_offset);
+      value_offset += static_cast<std::uint64_t>(node.action_count) * card_abstraction::combo_count;
+      class_offset += static_cast<std::uint64_t>(node.action_count) * class_count3;
+      hand_offset += static_cast<std::uint64_t>(node.action_count) * live_hand_count;
+    }
+    values.value_sum.assign(static_cast<std::size_t>(value_offset), 0.0);
+    values.reach_sum.assign(values.nodes.size() * card_abstraction::combo_count, 0.0);
+    values.root_sum.assign(card_abstraction::combo_count, 0.0);
+    collector_values = std::max<std::size_t>(collector_values, static_cast<std::size_t>(hand_offset));
+    collector_slots = std::max(collector_slots, values.nodes.size());
+    result.heroes.push_back(std::move(values));
+  }
+  ValueCollector collector;
+  collector.collect_rake = true;
+  collector.values.assign(collector_values, 0.0);
+  collector.reach.assign(collector_slots * live_hand_count, 0.0);
+  collector.root.assign(live_hand_count, 0.0);
+  collector.rake_mass.assign(nodes.size(), 0.0);
+  collector.terminal_rake.assign(nodes.size(), 0.0);
+  for (const auto &node : nodes) {
+    // The seats' payoffs of a terminal sum to minus its rake for every winner
+    // set (the per-terminal identity of the game tests).
+    std::int64_t total = 0;
+    if (node.kind == NodeKind::TerminalFold) {
+      for (const auto payoff : game.fold_payoffs(node.id))
+        total += payoff;
+    } else if (node.kind == NodeKind::TerminalShowdown) {
+      const auto winners = static_cast<std::uint8_t>(
+          std::uint8_t{1} << std::countr_zero(static_cast<unsigned>(node.active_mask)));
+      for (const auto payoff : game.showdown_payoffs(node.id, winners))
+        total += payoff;
+    } else {
+      continue;
+    }
+    collector.terminal_rake[node.id] = -static_cast<double>(total) * ante_scale;
+  }
+  for (auto &workspace : self.workspaces_)
+    workspace->collector_masses.assign(5U * live_hand_count, 0.0);
+
+  // Resume.
+  if (!options.state_path.empty() && std::filesystem::exists(options.state_path)) {
+    std::ifstream input(options.state_path, std::ios::binary);
+    if (!input)
+      return Outcome::failure(TrainerError::IoFailure);
+    const std::string data((std::istreambuf_iterator<char>(input)),
+                           std::istreambuf_iterator<char>());
+    if (!decode_policy_values(data, identity_hash, result))
+      return Outcome::failure(TrainerError::IntegrityFailure);
+    result.resumed = true;
+  }
+
+  std::vector<card_abstraction::BoardHistory> histories;
+  std::vector<double> weights;
+  std::vector<BoardWork> work;
+  std::vector<double> chunk_live(card_abstraction::combo_count, 0.0);
+  std::vector<std::vector<double>> chunk_value(players);
+  std::vector<std::vector<double>> chunk_reach(players);
+  std::vector<std::vector<double>> chunk_root(players);
+  std::vector<double> chunk_ev(players, 0.0);
+  const auto &combo_table = card_abstraction::combo_table();
+  std::uint32_t chunks_this_call = 0U;
+  for (std::uint32_t index = result.chunks_done; index < chunks_total; ++index) {
+    make_chunk(index, histories, weights);
+    work.resize(histories.size());
+    std::atomic<bool> failed{false};
+    self.executor_->run(work.size(), [&](const std::size_t board, const unsigned) {
+      if (!self.prepare_board(histories[board], 1.0, work[board]))
+        failed.store(true, std::memory_order_relaxed);
+    });
+    if (failed.load(std::memory_order_relaxed))
+      return Outcome::failure(TrainerError::BoardFailure);
+    std::fill(chunk_live.begin(), chunk_live.end(), 0.0);
+    double chunk_rake = 0.0;
+    double chunk_weight = 0.0;
+    for (std::size_t board = 0; board < work.size(); ++board) {
+      chunk_weight += weights[board];
+      for (const auto combo : work[board].context.combo_ids())
+        chunk_live[combo] += weights[board];
+    }
+    for (std::uint8_t hero = 0; hero < players; ++hero) {
+      const auto &hero_values = result.heroes[hero];
+      chunk_value[hero].assign(hero_values.value_sum.size(), 0.0);
+      chunk_reach[hero].assign(hero_values.reach_sum.size(), 0.0);
+      chunk_root[hero].assign(card_abstraction::combo_count, 0.0);
+      chunk_ev[hero] = 0.0;
+      collector.hero = hero;
+      collector.slot_of_node = slot_of_node[hero];
+      collector.slot_actions = hero_values.actions;
+      collector.slot_offset = collector_offsets[hero];
+      self.collector_ = &collector;
+      if (three)
+        self.prepare_preflop_classes3(hero);
+      for (std::size_t board = 0; board < work.size(); ++board) {
+        collector.begin_pass();
+        if (three)
+          self.pass3(work[board], hero, 0.0);
+        else
+          self.pass(work[board], hero, 0.0);
+        self.harvest_pass(hero_values, chunk_value[hero], chunk_reach[hero], chunk_root[hero],
+                          chunk_ev[hero], chunk_rake, hero, work[board], weights[board]);
+      }
+      self.collector_ = nullptr;
+    }
+    // Totals (chunk order, whatever the resume points) and the class series.
+    PolicyValuesChunk record;
+    record.index = index;
+    record.boards = static_cast<std::uint32_t>(work.size());
+    record.weight = chunk_weight;
+    record.rake = chunk_rake;
+    record.live.assign(class_count3, 0.0);
+    for (std::size_t combo = 0; combo < card_abstraction::combo_count; ++combo) {
+      result.live_sum[combo] += chunk_live[combo];
+      record.live[combo_table.hand_class[combo]] += chunk_live[combo];
+    }
+    result.rake_sum += chunk_rake;
+    for (std::uint8_t hero = 0; hero < players; ++hero) {
+      auto &totals = result.heroes[hero];
+      PolicyValuesHeroChunk entry;
+      entry.ev_direct = chunk_ev[hero];
+      entry.root.assign(class_count3, 0.0);
+      entry.reach.assign(totals.nodes.size() * class_count3, 0.0);
+      entry.values.assign(totals.value_sum.size() / card_abstraction::combo_count * class_count3,
+                          0.0);
+      totals.ev_direct += chunk_ev[hero];
+      for (std::size_t combo = 0; combo < card_abstraction::combo_count; ++combo) {
+        const auto hand_class = combo_table.hand_class[combo];
+        totals.root_sum[combo] += chunk_root[hero][combo];
+        entry.root[hand_class] += chunk_root[hero][combo];
+        for (std::size_t slot = 0; slot < totals.nodes.size(); ++slot) {
+          const auto reach_index = slot * card_abstraction::combo_count + combo;
+          totals.reach_sum[reach_index] += chunk_reach[hero][reach_index];
+          entry.reach[slot * class_count3 + hand_class] += chunk_reach[hero][reach_index];
+          for (std::size_t action = 0; action < totals.actions[slot]; ++action) {
+            const auto value_index =
+                totals.value_offset[slot] + action * card_abstraction::combo_count + combo;
+            totals.value_sum[value_index] += chunk_value[hero][value_index];
+            entry.values[totals.class_offset[slot] + action * class_count3 + hand_class] +=
+                chunk_value[hero][value_index];
+          }
+        }
+      }
+      record.heroes.push_back(std::move(entry));
+    }
+    result.series.push_back(std::move(record));
+    result.chunks_done = index + 1U;
+    result.boards += work.size();
+    result.weight += chunk_weight;
+    if (!options.state_path.empty()) {
+      const auto temporary = std::filesystem::path(options.state_path.string() + ".tmp");
+      {
+        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
+        const auto data = encode_policy_values(result, identity_hash);
+        output.write(data.data(), static_cast<std::streamsize>(data.size()));
+        output.flush();
+        if (!output)
+          return Outcome::failure(TrainerError::IoFailure);
+      }
+      std::error_code error;
+      std::filesystem::rename(temporary, options.state_path, error);
+      if (error) {
+        std::filesystem::remove(temporary, error);
+        return Outcome::failure(TrainerError::IoFailure);
+      }
+    }
+    if (options.progress) {
+      PolicyValuesProgress progress;
+      progress.chunks_done = result.chunks_done;
+      progress.chunks_total = chunks_total;
+      progress.boards_done = result.boards;
+      progress.seconds = std::chrono::duration<double>(Clock::now() - started).count();
+      options.progress(progress);
+    }
+    ++chunks_this_call;
+    if (options.stop_after_chunks != 0U && chunks_this_call >= options.stop_after_chunks)
+      break;
+  }
+  result.complete = result.chunks_done == chunks_total;
+  result.seconds = std::chrono::duration<double>(Clock::now() - started).count();
+  return Outcome::success(std::move(result));
 }
 
 std::uint64_t process_working_set_bytes() noexcept {

@@ -248,13 +248,12 @@ public:
   FiniteGameBuilder(const pb::CompiledGame &game, const Resources &resources,
                     const bool lossless = false, const pb::BucketPolicy *average = nullptr,
                     const pb::ClassBucketRows *class_rows = nullptr,
-                    const pb::HistoryBucketRows *history_rows = nullptr,
                     const pb::BoardClassRows *board_class_rows = nullptr,
                     const StreetTables street_tables = {},
                     const pb::PreflopLock *preflop_chance = nullptr)
       : game_(game), resources_(resources), lossless_(lossless), average_(average),
-        class_rows_(class_rows), history_rows_(history_rows),
-        board_class_rows_(board_class_rows), street_tables_(street_tables) {
+        class_rows_(class_rows), board_class_rows_(board_class_rows),
+        street_tables_(street_tables) {
     if (preflop_chance != nullptr) {
       for (const auto &locked : preflop_chance->rows) {
         preflop_chance_[{locked.node, locked.hand_class}] = &locked.frequencies;
@@ -282,7 +281,6 @@ public:
     tables.river =
         street_tables_.river != nullptr ? street_tables_.river : &resources_.river.value();
     tables.class_rows = class_rows_;
-    tables.history_rows = history_rows_;
     tables.board_class_rows = board_class_rows_;
     for (std::size_t board = 0; board < boards.histories.size(); ++board) {
       const auto context =
@@ -470,7 +468,6 @@ private:
   bool lossless_{false};
   const pb::BucketPolicy *average_{nullptr};
   const pb::ClassBucketRows *class_rows_{nullptr};
-  const pb::HistoryBucketRows *history_rows_{nullptr};
   const pb::BoardClassRows *board_class_rows_{nullptr};
   StreetTables street_tables_{};
   // Locked preflop frequencies by (node, hand class).
